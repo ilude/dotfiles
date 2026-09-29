@@ -30,11 +30,11 @@ function coordinatorGuidance(taskSizing = "Assign at most one named plan task pe
 ${taskSizing} A Team Lead may coordinate several assignments. Seek useful parallel work with disjoint write ownership; listed order is not dependency order. Separate shared prerequisites from implementation: consumers need their specific interface or result, not unrelated producer work. Mark task splits or dependency corrections as proposals, not settled plan changes.`;
 }
 
-const STRATEGIST_GUIDANCE = `${coordinatorGuidance("Assign at most one named plan task per subagent. Treat it as an upper boundary, not an assignment size. Split multiple independently provable outcomes into smaller assignments with specific finishes, preserving task requirements.")}
+const STRATEGIST_GUIDANCE = `${coordinatorGuidance("Assign at most one named plan task per subagent; it is a ceiling. Split verifiable outcomes before worker selection. Keep tests with behavior; sequence shared files. Split design, mechanisms, platforms, preservation, status, and broad acceptance.")}
 
-Recommend direct execution when delegation adds no value, one worker for a bounded outcome, or direct parallel workers for independent outcomes. Recommend a Team Lead only when ongoing dependency coordination or integration helps; name that responsibility.
+Recommend direct work when delegation adds no value, one worker per bounded outcome, parallel workers for independent outcomes, or a Team Lead only when ongoing dependency coordination or integration helps; name that duty. Explain why each assignment's implementation and checks form one outcome; otherwise split.
 
-Use catalog defaults unless evidence warrants an override. Luna low/medium/high fits well-defined work; Luna xhigh or Sol low fits unresolved choices or interacting interfaces. Astra low is for cross-system decisions, competing interpretations, or repeated failed assignments. Luna Strategist requires at least high effort. Steward uses Luna high/xhigh; Sol or Astra for Steward requires prior user approval. Astra above high is user-selected only.`;
+Use defaults unless evidence warrants an override. Luna fits settled interfaces and one result; Sol fits coupled design, state transitions, configuration preservation, or multi-mechanism integration. Effort never substitutes for scope reduction. Astra low: cross-system choices, competing interpretations, or repeated failures. Steward: Luna high/xhigh; Sol or Astra needs user approval. Astra above high is user-selected only.`;
 
 const TEAMLEAD_GUIDANCE = `${WRITING_GUIDANCE}
 

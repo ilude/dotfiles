@@ -1,5 +1,14 @@
 # Agent process failure log
 
+## APR-080 - Transient GitLab API files were written into the worktree root
+
+- **Reference:** EISA all-pipeline Podman pipeline monitoring, 2026-09-29; AIF-098.
+- **Observed:** Repeated status checks used `glab api ... > jobs<id>.json`, parsed the file, and removed it. A command interruption or parse failure could leave the untracked response in the worktree root and activate unrelated-work preservation or damage-control handling.
+- **Finding:** This followed an unsuccessful attempt to use `/tmp`, where Bash and Windows Python resolved the path differently. The recovery chose a repository-root temporary file rather than direct streaming or the repository's ignored `.tmp/` directory.
+- **Remediation:** Stop creating `jobs*.json` in the worktree root. Pipe API JSON directly to Python, or use a verified ignored/system temporary path with reliable cleanup.
+- **Recurrence:** Pipeline #8678 monitoring later on 2026-09-29 repeated the same pattern with `.tmp-pipeline-8678.json`, `.tmp-job-114778.json`, and `.tmp-job-114778.log` in the repository root despite the existing ignored `.tmp/` directory.
+- **Status:** Recurrence recorded and root artifacts removed. The operator approved a profile-wide `AGENTS.md` instruction requiring direct streaming or verified ignored/system temporary locations and prohibiting transient artifacts in the worktree root.
+
 ## APR-079 - Brave attach support did not make ordinary Windows launch surfaces CDP-capable
 
 - **Reference:** Operator report after recurring `Brave CDP endpoint did not become available`, 2026-09-29.

@@ -16,6 +16,8 @@
 
  Never redirect to `NUL` in a shell.
 
+ Stream transient command output directly when practical. When a temporary file is needed, use a verified ignored repository `.tmp/` directory or a system temporary location. Never place transient command or API artifacts in the worktree root.
+
  ## Investigation
 
  - Inspect relevant evidence before deciding. Test assumptions that could invalidate the approach early. Stop investigating when further evidence would not change the next action.

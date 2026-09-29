@@ -173,27 +173,32 @@ describe("delegation guidance", () => {
 
   it("sizes outcomes within named tasks only in Strategist guidance", () => {
     const text = composedAgentPrompt(strategist, definitions, ["leaf"]);
-    expect(text).toContain("Treat it as an upper boundary, not an assignment size");
-    expect(text).toContain("Split multiple independently provable outcomes into smaller assignments with specific finishes");
-    expect(text).toContain("preserving task requirements");
+    expect(text).toContain("it is a ceiling");
+    expect(text).toContain("Split verifiable outcomes before worker selection");
+    expect(text).toContain("Keep tests with behavior");
+    expect(text).toContain("sequence shared files");
+    expect(text).toContain("Split design, mechanisms, platforms, preservation, status, and broad acceptance");
+    expect(text).toContain("Explain why each assignment's implementation and checks form one outcome; otherwise split");
     expect(text).not.toContain("split larger tasks into independently verifiable outcomes");
     const coordinatorText = composedAgentPrompt(coordinator, definitions);
     expect(coordinatorText).toContain("split larger tasks into independently verifiable outcomes");
     for (const audience of ["caller", "coordinator", "teamlead", "council", "leaf"] as const) {
-      expect(delegationContext({ audience, definitions })).not.toContain("upper boundary, not an assignment size");
+      expect(delegationContext({ audience, definitions })).not.toContain("it is a ceiling");
     }
   });
 
   it("gives Strategist detailed selection advice without follow-up or retry policy", () => {
     const text = composedAgentPrompt(strategist, definitions, ["leaf"]);
-    expect(text).toContain("Recommend direct execution");
-    expect(text).toContain("Use catalog defaults unless evidence warrants an override");
-    expect(text).toContain("one worker for a bounded outcome");
-    expect(text).toContain("direct parallel workers for independent outcomes");
-    expect(text).toContain("ongoing dependency coordination or integration helps; name that responsibility");
-    expect(text).toContain("Luna Strategist requires at least high effort");
-    expect(text).toContain("Steward uses Luna high/xhigh");
-    expect(text).toContain("requires prior user approval");
+    expect(text).toContain("Recommend direct work");
+    expect(text).toContain("Use defaults unless evidence warrants an override");
+    expect(text).toContain("one worker per bounded outcome");
+    expect(text).toContain("parallel workers for independent outcomes");
+    expect(text).toContain("ongoing dependency coordination or integration helps; name that duty");
+    expect(text).toContain("Luna fits settled interfaces and one result");
+    expect(text).toContain("Sol fits coupled design, state transitions, configuration preservation, or multi-mechanism integration");
+    expect(text).toContain("Effort never substitutes for scope reduction");
+    expect(text).toContain("Steward: Luna high/xhigh");
+    expect(text).toContain("needs user approval");
     expect(text).not.toContain("consult Steward");
     expect(text).not.toContain("One stronger-family retry");
   });

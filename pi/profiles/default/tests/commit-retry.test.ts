@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { realpathSync } from "node:fs";
 import { createAssistantMessageEventStream, type AssistantMessage, type Model, type Tool, type TranscriptContext } from "@earendil-works/pi-ai";
-import type { ExtensionAPI, ExtensionContext, ModelRuntime, createBashTool } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionToolContext, ModelRuntime, createBashTool } from "@earendil-works/pi-coding-agent";
 import { commitReviewerTool } from "../commands/commit/reviewer.ts";
 
 // Keep the real Agent and its stream/tool lifecycle. Only provider and shell/Git
@@ -96,7 +96,7 @@ function start(signal?: AbortSignal, push = false, update?: (text: string) => vo
 	// This tool accesses only exec and cwd/hasUI unless ask_ignore is called.
 	// Casts keep the test doubles limited to the external boundary under test.
 	const pi = { exec: git } as unknown as ExtensionAPI;
-	const ctx = { cwd: root, hasUI: false } as ExtensionContext;
+	const ctx = { cwd: root, hasUI: false } as ExtensionToolContext;
 	const permission = vi.fn(() => push);
 	const run = commitReviewerTool(pi, permission).execute("test", {}, signal, result => {
 		const text = result.content.filter(part => part.type === "text").map(part => part.text).join("\n");

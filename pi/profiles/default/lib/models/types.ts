@@ -25,7 +25,7 @@ export type ModelLike = {
 	compat?: unknown;
 };
 
-export type ProviderModelDef = ProviderModelConfig & {
+export type ProviderModelDef = Exclude<ProviderModelConfig, { type: "image" | "classifier" }> & {
 	api: NonNullable<ProviderModelConfig["api"]>;
 };
 

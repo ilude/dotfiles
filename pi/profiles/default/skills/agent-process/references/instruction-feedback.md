@@ -1,5 +1,22 @@
 # Agent instruction feedback log
 
+## AIF-099 - Strategist must split coupled plan tasks before model selection
+
+- **Reference:** Standalone Damage Control execution, 2026-09-29.
+- **Feedback:** Strategist assigned each complete platform installer task to one Luna xhigh worker, combining installation, configuration preservation, conflict handling, status reporting, routing, and broad scenario coverage. The orchestrator accepted the recommendation and later expanded both assignments.
+- **Finding:** Existing guidance already treated named plan tasks as upper boundaries and required independently provable outcomes, but its abstract wording did not prevent Strategist from copying T7 and T8 directly into oversized assignments. Higher effort was also treated as compensation for coupled scope. This recurs after AIF-083 and APR-071.
+- **Decision:** Strategist guidance now requires identifying independently verifiable outcomes before worker selection, names observable split triggers, uses sequential assignments for shared-file ownership, and requires a brief bounded-outcome justification. Luna is reserved for bounded implementation with settled interfaces and one primary result; Sol handles coupled design, state transitions, configuration preservation, or multi-mechanism integration. Higher effort does not compensate for excessive scope.
+- **Status:** Implemented locally with composed-guidance tests and documentation; behavioral adherence remains to be checked against the triggering T7/T8 input.
+
+## AIF-098 - Put transient command artifacts in an ignored temporary location
+
+- **Reference:** EISA all-pipeline Podman execution, 2026-09-29.
+- **Feedback:** The orchestrator repeatedly redirected GitLab job API responses to `jobs*.json` in the repository root even though they were temporary. This can expose untracked files to preservation or damage-control workflows if a later command fails before cleanup.
+- **Finding:** The files were created only to pass JSON between `glab` and Python, then removed in the same compound command. After an initial `/tmp` path mismatch between the Bash and Windows Python path models, the orchestrator chose the tracked worktree root instead of an ignored repository `.tmp/` path, a system temporary file usable by both processes, or a direct pipe. No prior feedback entry covers this exact behavior.
+- **Correction:** Stream transient command output directly where practical. When a file is needed, create it under the repository's ignored `.tmp/` directory or another verified ignored/system temporary location, and clean it with a trap or equivalent reliable cleanup. Do not place transient API responses in the worktree root.
+- **Recurrence:** During EISA pipeline #8678 monitoring later on 2026-09-29, the orchestrator again wrote `.tmp-pipeline-8678.json`, `.tmp-job-114778.json`, and `.tmp-job-114778.log` into the repository root before removing them. The repository already had an ignored `.tmp/` directory, so the earlier correction was not followed.
+- **Status:** After the recurrence, the operator approved a profile-wide instruction. `AGENTS.md` now requires direct streaming where practical, otherwise a verified ignored repository `.tmp/` or system temporary location, and prohibits transient command or API artifacts in the worktree root.
+
 ## AIF-097 - Assign unrelated review fixes to separate agents
 
 - **Reference:** ICP restoration execution, 2026-09-28.

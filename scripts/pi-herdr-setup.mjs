@@ -7,7 +7,7 @@ import { spawnSync } from "node:child_process";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const profile = resolve(root, "pi/profiles/default");
 const integration = readFileSync(resolve(profile, "extensions/herdr-agent-state.ts"), "utf8");
-if (!integration.includes("typeof file === \"string\" && isAbsolute(file)")) {
+if (!integration.includes("path.posix.isAbsolute(file) || path.win32.isAbsolute(file)")) {
   throw new Error("herdr-agent-state.ts is missing the cross-platform absolute session-path guard; restore it after refreshing the generated integration");
 }
 const packageDir = realpathSync(resolve(profile, "node_modules/@earendil-works/pi-coding-agent"));
