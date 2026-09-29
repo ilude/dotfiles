@@ -37,9 +37,13 @@ describe("subagent definitions",()=>{
  it("does not resolve a similar model from an unapproved provider",()=>{
   expect(()=>resolveModel("sol",undefined,registry([model("openrouter","upstage/solar-pro4")],["openrouter"]))).toThrow(/No authenticated openai-codex sol model/);
  });
- it.each(["astra", "sol", "terra", "luna"])("resolves the latest %s default with the actual Pi registry", family=>{
+ it.each(["astra", "terra", "luna"])("resolves the latest %s default from the supplied registry", family=>{
   const source=registry([model("openai-codex",`gpt-6-${family}`),model("openai-codex",`gpt-7-${family}`)],["openai-codex"]);
   expect(resolveModel(undefined,family,source)).toEqual({provider:"openai-codex",id:`gpt-7-${family}`});
+ });
+ it("keeps the repository-pinned Sol model when newer Sol models are available",()=>{
+  const source=registry([model("openai-codex","gpt-5.6-sol"),model("openai-codex","gpt-6.1-sol")],["openai-codex"]);
+  expect(resolveModel(undefined,"sol",source)).toEqual({provider:"openai-codex",id:"gpt-5.6-sol"});
  });
  it("uses the canonical bare model before effort restrictions",()=>{
   const resolved=resolveModel("luna",undefined,registry([model("openai-codex","gpt-5.6-luna")],["openai-codex"]));

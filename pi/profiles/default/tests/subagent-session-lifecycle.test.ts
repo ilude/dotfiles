@@ -120,7 +120,8 @@ export default function(pi) {
     const next = await command("next");
     expect(next.stale).toMatchObject({ isError: true, details: { error: "Subagent runtime is no longer active" } });
     expect(next.owner).toBe(reloaded.owner);
-    expect(next.next).toMatchObject({ status: "settled", outcome: "complete", processState: "exited", origin: first.origin });
+    expect(next.next).toMatchObject({ subagentId: expect.any(String), id: expect.any(String), status: "settled", outcome: "complete", processState: "exited" });
+    expect(next.next).not.toHaveProperty("origin");
     expect(next.next.displayName).toBeTruthy();
     expect(next.next.displayName).toBe(first.records[0].displayName);
     expect(outcomes(next)).toHaveLength(1);

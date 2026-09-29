@@ -220,7 +220,7 @@ describe("/refresh-models command", () => {
 		});
 		const ctx = {
 			modelRegistry: {
-				getAll: () => [model("gpt-5.6-sol"), model("gpt-6-astra"), model("gpt-6-sol"), model("codex-auto-review")],
+				getAll: () => [model("gpt-5.6-sol"), model("gpt-6-astra"), model("gpt-6-sol"), model("gpt-6.1-sol"), model("codex-auto-review")],
 				getProviderAuthStatus: (provider: string) => ({
 					configured: provider === "openai-codex",
 				}),
@@ -231,9 +231,10 @@ describe("/refresh-models command", () => {
 
 		expect(result.scope).toEqual([
 			"openai-codex/gpt-6-astra",
-			"openai-codex/gpt-6-sol",
+			"openai-codex/gpt-6.1-sol",
 			"openai-codex/gpt-5.6-sol",
 		]);
+		expect(result.scope).not.toContain("openai-codex/gpt-6-sol");
 		expect(result.scope).not.toContain("openai-codex/gpt-5.4");
 		const settings = JSON.parse(fs.readFileSync(path.join(tempHome, ".pi", "agent", "settings.json"), "utf-8"));
 		expect(settings).toMatchObject({ defaultProvider: "openai-codex", defaultModel: "gpt-5.6-sol" });

@@ -42,7 +42,7 @@ const ALLOW_EXACT_IDS = {
 } as const;
 
 const HIDE_EXACT_IDS = {
-	"openai-codex": new Set(["codex-auto-review"]),
+	"openai-codex": new Set(["codex-auto-review", "gpt-6-sol"]),
 	opencode: new Set([
 		"claude-3-5-haiku",
 		"claude-haiku-4-5",

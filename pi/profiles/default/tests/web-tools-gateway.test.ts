@@ -7,7 +7,14 @@ const complete = vi.hoisted(() => vi.fn());
 vi.mock("../extensions/web-tools/gateway.ts", async original => ({ ...await original(), requestGateway: gateway }));
 vi.mock("@earendil-works/pi-coding-agent", async original => ({
   ...await original(), getAgentDir: () => "/test-profile",
-  ModelRuntime: { create: async () => ({ getModel: () => ({}), completeSimple: complete }) },
+  ModelRuntime: { create: async () => ({
+    getAvailable: async () => [{
+      provider: "openai-codex", id: "gpt-6-luna", name: "Luna", api: "openai-codex-responses",
+      baseUrl: "https://example.test", reasoning: true, input: ["text"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 1000, maxTokens: 100,
+    }],
+    completeSimple: complete,
+  }) },
 }));
 afterEach(() => { vi.clearAllMocks(); vi.unstubAllEnvs(); });
 const reply = { ok: true, request_id: "fixture", requested_url: "https://8.8.8.8/", final_url: "https://8.8.8.8/", fetched_at: new Date().toISOString(), elapsed_ms: 5, attempts: [{ backend: "trawl", revision: "test", elapsed_ms: 5, outcome: "useful", reason: null, http_status: 200, tier: 3 }], backend: "trawl", title: "Page", content: "Readable article", format: "markdown", quality: "useful", truncated: false, warnings: [] };

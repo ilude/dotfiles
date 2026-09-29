@@ -116,6 +116,12 @@ describe("shouldHideModel", () => {
 			}),
 		).toBe(true);
 		expect(
+			shouldHideModel("openai-codex", {
+				id: "gpt-6-sol",
+				name: "GPT-6 Sol",
+			}),
+		).toBe(true);
+		expect(
 			shouldHideModel("opencode", {
 				id: "claude-opus-4-1",
 				name: "Claude Opus 4.1",
@@ -159,6 +165,12 @@ describe("shouldHideModel", () => {
 	it("keeps non-blocked modern models", () => {
 		expect(
 			shouldHideModel("openai-codex", { id: "gpt-5.5", name: "GPT-5.5" }),
+		).toBe(false);
+		expect(
+			shouldHideModel("openai-codex", { id: "gpt-5.6-sol", name: "GPT-5.6 Sol" }),
+		).toBe(false);
+		expect(
+			shouldHideModel("openai-codex", { id: "gpt-6.1-sol", name: "GPT-6.1 Sol" }),
 		).toBe(false);
 		expect(
 			shouldHideModel("opencode", {
