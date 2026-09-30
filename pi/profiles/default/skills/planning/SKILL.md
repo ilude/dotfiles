@@ -75,7 +75,12 @@ reopening them.
    checks, archive the whole spec and commit it with the task changes on the task
    branch. For authorized `/do-it` execution, the orchestrator dispatches the
    Integrator from the recorded target checkout after that commit; the role owns
-   local integration and cleanup under its skill. Preserve explicit no-merge
+   local integration and cleanup under its skill. Prepared Herdr runs use the
+   runtime-admitted same-tab successor: it publishes integration readiness, waits
+   for orchestrator-only authorized obligations and exact-origin retirement, then
+   cleans up and owns operator questions/final reporting. Direct/run-here execution
+   keeps ordinary parent-owned communication. Consume runtime-prepared coordinates
+   without creating another worktree or replacing the recorded origin. Preserve explicit no-merge
    instructions as an intentional exception. Operator manual or live testing happens
    after completion and never blocks archival, commit, or authorized integration;
    record it only as a non-blocking verification limit. Require accurate unfinished

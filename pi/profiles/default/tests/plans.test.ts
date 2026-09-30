@@ -5,13 +5,13 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { stripTerminalSequences, visibleWidth } from "@earendil-works/pi-tui";
 import plansCommand, { archivePlan, executePlans, openPlanInCode, planSelector } from "../extensions/plans.ts";
 import { copyToClipboard } from "@earendil-works/pi-coding-agent";
-import { createHerdrPiTab, HerdrPiTabLaunchError, renameHerdrPiTab } from "../extensions/session-launch.ts";
+import { launchPreparedHerdrPlan, HerdrPiTabLaunchError, renameHerdrPiTab } from "../extensions/session-launch.ts";
 import { discoverPlans, parsePlan } from "../lib/plans.ts";
 import { HERDR_TAB_TITLE_OWNED } from "../lib/herdr-tab-title-events.ts";
 import { spawnSync } from "node:child_process";
 vi.mock("node:child_process", () => ({ spawnSync: vi.fn(), execFile: vi.fn() }));
 vi.mock("../extensions/session-launch.ts", async importOriginal => ({
-  ...await importOriginal<Record<string, unknown>>(), createHerdrPiTab: vi.fn(), renameHerdrPiTab: vi.fn(),
+  ...await importOriginal<Record<string, unknown>>(), launchPreparedHerdrPlan: vi.fn(), renameHerdrPiTab: vi.fn(),
 }));
 vi.mock("@earendil-works/pi-coding-agent", async importOriginal => ({
   ...await importOriginal<Record<string, unknown>>(), copyToClipboard: vi.fn(),
@@ -226,7 +226,7 @@ it("refuses do-it outside Herdr without launching a fallback", async () => {
   const failure = component.render(80).join("\n");
   expect(failure).toContain("Browse"); expect(failure).toContain("d Retry");
   expect(failure).toContain("requires a Herdr-managed Pi session");
-  expect(createHerdrPiTab).not.toHaveBeenCalled(); expect(spawnSync).not.toHaveBeenCalled();
+  expect(launchPreparedHerdrPlan).not.toHaveBeenCalled(); expect(spawnSync).not.toHaveBeenCalled();
   component.handleInput("q"); await execution;
   expect(custom).toHaveBeenCalledOnce();
 });
@@ -389,8 +389,8 @@ it("submits Run here once when Herdr tab naming fails", async () => {
 it.each([false, true])( "acknowledges a delayed launch, ignores repeats, and dismisses without reopening (details=%s)", async details => {
   vi.stubEnv("HERDR_ENV", "1");
   const base = root(); add(base, "aaa-other", complete); add(base, "new-tab", complete);
-  let completeLaunch!: (value: { tabId: string }) => void;
-  vi.mocked(createHerdrPiTab).mockReturnValue(new Promise(resolve => { completeLaunch = resolve; }));
+  let completeLaunch!: (value: Awaited<ReturnType<typeof launchPreparedHerdrPlan>>) => void;
+  vi.mocked(launchPreparedHerdrPlan).mockReturnValue(new Promise(resolve => { completeLaunch = resolve; }));
   const sendUserMessage = vi.fn(); const notify = vi.fn(); const requestRender = vi.fn();
   let component!: Picker;
   const custom = vi.fn((factory: any) => new Promise(resolve => {
@@ -401,15 +401,15 @@ it.each([false, true])( "acknowledges a delayed launch, ignores repeats, and dis
   expect(component.render(100).join("\n")).toContain("Launching new tab...");
   expect(component.render(100).join("\n")).toContain(`Plans · ${details ? "Details" : "Browse"}`);
   expect(requestRender).toHaveBeenCalledWith(true);
-  expect(createHerdrPiTab).not.toHaveBeenCalled();
+  expect(launchPreparedHerdrPlan).not.toHaveBeenCalled();
   for (const key of ["d", "d", "\r", "r", "c", "o", "a", "q", "\x1b"]) component.handleInput(key);
   await nextTurn();
-  expect(createHerdrPiTab).toHaveBeenCalledExactlyOnceWith(base, "new-tab", undefined, ".specs/new-tab/plan.md");
+  expect(launchPreparedHerdrPlan).toHaveBeenCalledExactlyOnceWith({ originCheckoutPath: base, specRelativePath: ".specs/new-tab/plan.md", title: "new-tab" });
   component.handleInput("d");
   expect(custom).toHaveBeenCalledOnce(); expect(notify).not.toHaveBeenCalled();
-  completeLaunch({ tabId: "tab-test" }); await execution;
+  completeLaunch({ tabId: "tab-test", workspaceId: "workspace-test", taskWorktreePath: "/task", taskBranch: "task/new-tab", preparedRun: { version: 1, specRelativePath: ".specs/new-tab/plan.md", specStub: "new-tab", taskWorktreePath: "/task", taskBranch: "task/new-tab", originCheckoutPath: base, originBranch: "main", startingTargetCommit: "commit" } }); await execution;
   expect(custom).toHaveBeenCalledOnce();
-  component.handleInput("d"); expect(createHerdrPiTab).toHaveBeenCalledOnce();
+  component.handleInput("d"); expect(launchPreparedHerdrPlan).toHaveBeenCalledOnce();
   expect(sendUserMessage).not.toHaveBeenCalled(); expect(copyToClipboard).not.toHaveBeenCalled();
 });
 

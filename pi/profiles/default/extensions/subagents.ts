@@ -11,8 +11,10 @@ import { parentVisibleRecord, presentationDetails, progressResult, renderSubagen
 import type { ChildRecord } from "../lib/subagents/rpc.ts";
 import { dispatchOperation, withDispatchMetadata, type InputDisposition } from "../lib/subagents/control-result.ts";
 import type { MessageOptions } from "../lib/subagents/transport.ts";
-import { delegationContext } from "../lib/subagents/guidance.ts";
-import { extractCloseoutHandoff } from "../lib/subagents/closeout-handoff.ts";
+import { delegationContext, composedIntegratorSuccessorPrompt, preparedPlanRunContext } from "../lib/subagents/guidance.ts";
+import type { PreparedPlanRun } from "../lib/plan-run.ts";
+import { CloseoutSuccessorHandoff, extractCloseoutHandoff } from "../lib/subagents/closeout-handoff.ts";
+import { samePlatformPath } from "../lib/path-identity.ts";
 import { registerProfileCommand } from "../lib/profile-command.ts";
 import { SUBAGENT_EXTENSION_VERSION, SUBAGENT_EXTENSION_VERSION_ENTRY } from "../lib/subagents/version.ts";
 
@@ -22,6 +24,14 @@ export function composeCallerSystemPrompt(systemPrompt: string, definitions: Rea
  return `${systemPrompt}\n\n${delegationContext({audience:"caller",definitions})}\n\n${CALLER_GUIDANCE_SUFFIX}`;
 }
 
+const preparedOwnerKey=Symbol.for("dotfiles.pi.default.prepared-plan-origin");
+type PreparedOwnerGlobal=typeof globalThis & {[preparedOwnerKey]?:string};
+function preparedReceipt(value:unknown,cwd:string):PreparedPlanRun|undefined{
+ if(!value||typeof value!=="object")return;
+ const v=value as Record<string,unknown>;
+ if(v.version!==1||typeof v.specRelativePath!=="string"||typeof v.specStub!=="string"||typeof v.taskWorktreePath!=="string"||typeof v.taskBranch!=="string"||typeof v.originCheckoutPath!=="string"||typeof v.originBranch!=="string"||typeof v.startingTargetCommit!=="string"||!samePlatformPath(v.taskWorktreePath,cwd)||v.specRelativePath!==`.specs/${v.specStub}/plan.md`)return;
+ return {version:1,specRelativePath:v.specRelativePath,specStub:v.specStub,taskWorktreePath:v.taskWorktreePath,taskBranch:v.taskBranch,originCheckoutPath:v.originCheckoutPath,originBranch:v.originBranch,startingTargetCommit:v.startingTargetCommit};
+}
 const Surface=Type.Union([Type.Literal("headless"),Type.Literal("visible")]);
 const Effort=Type.Union(EFFORTS.map(x=>Type.Literal(x)) as any);
 function output(value:unknown,error=false){return{content:[{type:"text" as const,text:JSON.stringify(value,null,2)}],details:value,isError:error}}
@@ -38,6 +48,7 @@ export default function subagents(pi:ExtensionAPI){
  const active=()=>runtime??=(getSubagentRuntime());
  const profile=resolve(getAgentDir()),childExt=join(dirname(fileURLToPath(import.meta.url)),"subagent-child.ts");
  let origin="",catalog=loadDefinitions(process.cwd(),false),current:ExtensionContext|undefined;
+ let prepared:PreparedPlanRun|undefined,preparedOrigin="";
  const deliver=(r:Delivery)=>{
   if(r.origin!==origin||!current||current.sessionManager.getSessionId()!==origin)return false;
   pi.sendMessage({customType:"subagent-result",details:{deliveryId:r.deliveryId,origin:r.origin,...presentationDetails(r)},content:outcomeText(r),display:true},{triggerTurn:true,deliverAs:current.isIdle()?"followUp":"steer"});
@@ -46,14 +57,36 @@ export default function subagents(pi:ExtensionAPI){
  // Progress never invokes sendMessage. Results are delivered through the transcript
  // and remain available through /subagents; there is no persistent status widget.
  const binding={deliver};
+ const successorNotices: Array<{origin:string;kind:string;evidence:unknown}> = [];
+ const flushSuccessorNotices=()=>{
+  if(!current||current.sessionManager.getSessionId()!==origin)return;
+  for(let index=0;index<successorNotices.length;){
+   const notice=successorNotices[index]!;
+   if(notice.origin!==origin){index++;continue;}
+   pi.sendMessage({customType:"closeout-successor",content:JSON.stringify({kind:notice.kind,evidence:notice.evidence}),display:true},{triggerTurn:true,deliverAs:current.isIdle()?"followUp":"steer"});
+   successorNotices.splice(index,1);
+  }
+ };
+ const successor=new CloseoutSuccessorHandoff(undefined,(owner,kind,evidence)=>{successorNotices.push({origin:owner,kind,evidence});flushSuccessorNotices();});
  let unsubscribeReset=(pi as any).events?.on?.(SUBAGENT_RUNTIME_RESET,(respond:any)=>{if(typeof respond==="function")respond((async()=>{runtime=await resetSubagentRuntime("clear");})());})??(()=>{});
  (pi as any).registerMessageRenderer?.("subagent-result",renderSubagentMessage);
  pi.on("session_start",(_e,ctx)=>{
   if(origin&&runtime)runtime.unbind(origin,binding);
   runtime=getSubagentRuntime();
-  current=ctx;origin=ctx.sessionManager.getSessionId();
+  current=ctx;origin=ctx.sessionManager.getSessionId();prepared=undefined;preparedOrigin="";
+  const stored=ctx.sessionManager.getBranch?.().find(entry=>entry.type==="custom"&&entry.customType==="prepared-plan-run");
+  if(stored?.type==="custom"){
+   const data=stored.data as {origin?:unknown;receipt?:unknown}|undefined;
+   if(data?.origin===origin){prepared=preparedReceipt(data.receipt,ctx.cwd);if(prepared)preparedOrigin=origin;}
+  }
+  const processOwner=globalThis as PreparedOwnerGlobal;
+  if(!processOwner[preparedOwnerKey]&&process.env.PI_HERDR_PLAN_RUN){
+   processOwner[preparedOwnerKey]=origin;
+   const receipt=preparedReceipt(JSON.parse(process.env.PI_HERDR_PLAN_RUN),ctx.cwd);
+   if(receipt){prepared=receipt;preparedOrigin=origin;pi.appendEntry("prepared-plan-run",{origin,receipt});}
+  }
   pi.appendEntry(SUBAGENT_EXTENSION_VERSION_ENTRY,{version:SUBAGENT_EXTENSION_VERSION});
-  catalog=loadDefinitions(ctx.cwd,ctx.isProjectTrusted());runtime.bind(origin,binding);
+  catalog=loadDefinitions(ctx.cwd,ctx.isProjectTrusted());runtime.bind(origin,binding);flushSuccessorNotices();
  });
  pi.on("session_shutdown",async(e)=>{
   const owner=runtime;
@@ -63,14 +96,17 @@ export default function subagents(pi:ExtensionAPI){
    if(!cleanup.complete)console.error(`[subagent cleanup] ${cleanup.failures.map(f=>`${f.id}: ${f.error}`).join("; ")}`);
   }
   if(e.reason==="reload"&&owner)await retireSubagentRuntime();
-  if(e.reason==="quit"||e.reason==="reload"){unsubscribeReset();unsubscribeReset=()=>{};}
+  if(e.reason==="quit"||e.reason==="reload"){await successor.close();unsubscribeReset();unsubscribeReset=()=>{};}
  });
  pi.on("message_end",(event,ctx)=>{
   const message=event.message as any;
   if(message.role==="custom"&&message.customType==="subagent-result"&&message.details?.origin===ctx.sessionManager.getSessionId())runtime?.acknowledge(message.details.origin,message.details.deliveryId);
  });
- pi.on("agent_settled",()=>{runtime?.flush(origin)});
- pi.on("before_agent_start",event=>({systemPrompt:composeCallerSystemPrompt(event.systemPrompt,catalog.agents)}));
+ pi.on("agent_settled",(_event,ctx)=>{
+  if(successor.retirementRequested(ctx.sessionManager.getSessionId())){ctx.shutdown();return;}
+  runtime?.flush(origin);
+ });
+ pi.on("before_agent_start",(event,ctx)=>({systemPrompt:composeCallerSystemPrompt(event.systemPrompt,catalog.agents)+(prepared&&preparedOrigin===ctx.sessionManager.getSessionId()?`\n\n${preparedPlanRunContext(prepared)}`:"")}));
  pi.registerTool({name:"subagent",label:"Subagent",description:"Launch one defined subagent. Background completion automatically triggers another orchestrator turn containing the result; continue independent work or end the current turn and let the result resume you without polling. Strategist always runs in the foreground and is never retained, regardless of background or retain. For any other foreground launch, blockingReason is required and must explain why no useful independent work remains and why automatic resumption after returning control is unsuitable; a downstream dependency alone is insufficient. Omit surface for normal delegation: visible in Herdr, headless elsewhere. Inside Herdr, select headless only when the user requests it, not merely because work is parallel, unattended, or in a worktree. Interrupting a foreground wait does not cancel the child.",parameters:Type.Object({agent:Type.String(),instructions:Type.String(),cwd:Type.Optional(Type.String()),model:Type.Optional(Type.String()),effort:Type.Optional(Effort),skills:Type.Optional(Type.Array(Type.String())),background:Type.Optional(Type.Boolean()),blockingReason:Type.Optional(Type.String({description:"Required for non-Strategist foreground launches. Explain why no useful independent work remains and why automatic resumption after returning control is unsuitable; a downstream dependency alone is insufficient."})),surface:Type.Optional(Surface),retain:Type.Optional(Type.Boolean())}),renderCall:renderSubagentCall,renderResult:renderSubagentResult,async execute(_id,p,signal,onUpdate,ctx){try{
   catalog=loadDefinitions(ctx.cwd,ctx.isProjectTrusted());const d=catalog.agents.get(p.agent);if(!d)throw new Error(`Unknown or invalid agent ${p.agent}. ${catalog.errors.join("; ")}`);
   const handoff=extractCloseoutHandoff(p.instructions);
@@ -117,6 +153,29 @@ export default function subagents(pi:ExtensionAPI){
   const snapshot=c.snapshot();
   return output(parentVisibleRecord(p.action==="message"||p.action==="answer" ? withDispatchMetadata(snapshot,dispatchOperation(p.action,p.replyTo),disposition) : snapshot));
  }catch(e){throw new Error(e instanceof Error?e.message:String(e))}}});
+ pi.registerTool({name:"closeout_successor",label:"Integrator closeout",description:"For a prepared Herdr plan run only: launch the restricted Integrator in the same tab using the exact closeout manifest envelope. Inspect or message before handoff. After integration readiness, finish explicitly authorized orchestrator-only obligations, then release final reporting to the Integrator and gracefully retire this exact session. Release terminates this turn without an orchestrator final report. Never release for no-merge or blocked integration.",parameters:Type.Object({action:Type.Union([Type.Literal("launch"),Type.Literal("inspect"),Type.Literal("message"),Type.Literal("release")]),instructions:Type.Optional(Type.String()),message:Type.Optional(Type.String())}),async execute(_id,p,_signal,_update,ctx){
+  const owner=ctx.sessionManager.getSessionId();
+  if(p.action==="launch"){
+   if(process.env.HERDR_ENV!=="1"||!prepared||preparedOrigin!==owner)throw new Error("Closeout successors require this exact runtime-prepared Herdr plan session");
+   const receipt=prepared;
+   const handoff=extractCloseoutHandoff(p.instructions??"");
+   if(!handoff)throw new Error("Explicit closeout manifest envelope required");
+   const manifest=handoff.manifest;
+   if(receipt.version!==1||typeof receipt.taskWorktreePath!=="string"||typeof receipt.originCheckoutPath!=="string"||!samePlatformPath(receipt.taskWorktreePath,ctx.cwd)||!samePlatformPath(receipt.taskWorktreePath,manifest.taskWorktree)||!samePlatformPath(receipt.originCheckoutPath,manifest.targetCheckout)||receipt.taskBranch!==manifest.taskBranch||receipt.originBranch!==manifest.targetBranch||receipt.specStub!==manifest.activeSpecStub)throw new Error("Closeout manifest does not match this prepared run");
+   const definition=loadDefinitions(profile,false,profile).agents.get("integrator");
+   if(!definition)throw new Error("Profile Integrator definition unavailable");
+   const chosen=resolveModel(definition.model,undefined,ctx.modelRegistry),model=`${chosen.provider}/${chosen.id}`;
+   const record=await successor.launch({definition,instructions:handoff.instructions,cwd:manifest.targetCheckout,model,effort:resolveAgentEffort(definition.name,model,undefined,definition.effort),skills:[join(profile,"skills/plan-integration/SKILL.md")],origin:owner,retained:true,surface:"visible",closeoutManifest:manifest,closeoutParentSessionId:owner,displayName:"Integrator",prompt:composedIntegratorSuccessorPrompt()},profile,owner);
+   return output(record);
+  }
+  if(p.action==="inspect")return output(await successor.inspect(owner));
+  if(p.action==="message"){
+   if(!p.message?.trim())throw new Error("message requires text");
+   return output(await successor.message(owner,p.message));
+  }
+  await successor.release(owner);
+  return {...output({handoff:"released",finalReportOwner:"Integrator",originRetirement:"requested"}),terminate:true};
+ }});
  registerProfileCommand(pi,"subagents",{description:"Inspect, wait for, or cancel subagents without relaunching",handler:async(args,ctx)=>{
   const [cmd="inspect",id]=args.trim().split(/\s+/),owner=ctx.sessionManager.getSessionId();
   try{

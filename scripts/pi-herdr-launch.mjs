@@ -64,6 +64,7 @@ export async function reportInitialAgentPresence(env = process.env, connect = en
 // Only the setup-owned manifest supplies the entrypoint. Per-launch input is
 // deliberately not an arbitrary argv or environment serialization surface.
 export function launchArguments(env = process.env) {
+  if (env.PI_HERDR_CLOSEOUT_SUCCESSOR !== undefined) throw new Error("Closeout successor launch is handled by its dedicated bootstrap path");
   const profile = env.PI_HERDR_PROFILE_DIR;
   if (!profile || !isAbsolute(profile) || !statSync(profile).isDirectory()) throw new Error("Absolute Pi profile directory required");
   const session = env.PI_HERDR_SESSION_FILE;
@@ -80,6 +81,12 @@ export function launchArguments(env = process.env) {
     const inside = relative(root, resolved);
     if (!inside || inside === ".." || inside.startsWith(`..${sep}`) || isAbsolute(inside)) throw new Error("Plan path escapes launch cwd");
     initialMessage = `/do-it ${plan}`;
+  }
+  if (env.PI_HERDR_PLAN_RUN !== undefined) {
+    let receipt;
+    try { receipt = JSON.parse(env.PI_HERDR_PLAN_RUN); } catch { throw new Error("Invalid prepared plan-run receipt"); }
+    const required = ["specRelativePath", "specStub", "taskWorktreePath", "taskBranch", "originCheckoutPath", "originBranch", "startingTargetCommit"];
+    if (!receipt || receipt.version !== 1 || required.some(key => typeof receipt[key] !== "string" || !receipt[key]) || !plan || receipt.specRelativePath !== plan || resolve(receipt.taskWorktreePath) !== resolve(env.PI_HERDR_CWD || process.cwd())) throw new Error("Prepared plan-run receipt does not match this launch cwd and plan");
   }
   const args = session ? ["--session", session] : initialMessage ? [initialMessage] : [];
   const preflight = fileURLToPath(new URL("./pi-damage-control-preflight.mjs", import.meta.url));
@@ -116,9 +123,35 @@ async function runPi(entry, args, env) {
   }
 }
 
+export function successorAdmission(env = process.env) {
+  if (env.PI_HERDR_CLOSEOUT_SUCCESSOR === undefined) return undefined;
+  if (env.PI_HERDR_CLOSEOUT_SUCCESSOR !== "1") throw new Error("Invalid closeout successor launch flag");
+  if (env.PI_HERDR_SESSION_FILE || env.PI_HERDR_PLAN_PATH || env.PI_HERDR_PLAN_RUN || env.PI_HERDR_SUBAGENT) throw new Error("Closeout successor launch is mutually exclusive with session, plan, and ordinary subagent inputs");
+  const raw = env.PI_HERDR_SUCCESSOR_ADMISSION_ENDPOINT;
+  if (!raw || raw.trim() !== raw || raw.length > 4096) throw new Error("Valid closeout successor admission endpoint required");
+  let endpoint;
+  try { endpoint = JSON.parse(raw); } catch { throw new Error("Invalid closeout successor admission endpoint"); }
+  if (!endpoint || !Number.isInteger(endpoint.port) || endpoint.port < 1 || endpoint.port > 65535
+    || typeof endpoint.token !== "string" || !/^[a-f0-9]{64}$/.test(endpoint.token)
+    || ![endpoint.child, endpoint.run, endpoint.origin].every(value => typeof value === "string" && value.trim())) throw new Error("Invalid closeout successor admission endpoint");
+  return raw;
+}
+
 export async function main() {
   const entry = process.argv[2];
   if (process.argv.length !== 3 || !entry || !isAbsolute(entry) || !existsSync(entry)) throw new Error("Expected setup-owned absolute Pi entrypoint");
+  // This receipt belongs only to the exact prepared-plan Pi process. Do not
+  // let a shell-inherited value affect ordinary, resumed, or branch launches.
+  if (!process.env.PI_HERDR_PLAN_PATH) delete process.env.PI_HERDR_PLAN_RUN;
+  const admissionEndpoint = successorAdmission();
+  if (admissionEndpoint) {
+    const profile = process.env.PI_HERDR_PROFILE_DIR;
+    if (!profile || !isAbsolute(profile) || !statSync(profile).isDirectory()) throw new Error("Absolute Pi profile directory required");
+    process.env.PI_CODING_AGENT_DIR = resolve(profile);
+    const { hostCloseoutSuccessor } = await import("./pi-closeout-successor-host.mjs");
+    await hostCloseoutSuccessor(entry, resolve(profile), admissionEndpoint);
+    return;
+  }
   const { profile, args } = launchArguments();
   process.env.PI_CODING_AGENT_DIR = profile;
   if (process.env.PI_HERDR_SUBAGENT) {
@@ -130,6 +163,7 @@ export async function main() {
   delete process.env.PI_HERDR_PROFILE_DIR;
   delete process.env.PI_HERDR_SESSION_FILE;
   delete process.env.PI_HERDR_PLAN_PATH;
+  delete process.env.PI_HERDR_PLAN_RUN;
   if (process.platform !== "win32") process.env.TMPDIR = "/tmp";
   // Register the plugin pane immediately. Fresh Pi sessions may not have a
   // session reference when the generated lifecycle extension first runs.

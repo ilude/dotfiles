@@ -5,7 +5,7 @@ import { spawnSync } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { afterEach, expect, it, vi } from "vitest";
 // @ts-expect-error The repository bootstrap is executable JavaScript outside this TS project.
-import { reportInitialAgentPresence, retirePluginPane } from "../../../scripts/pi-herdr-launch.mjs";
+import { reportInitialAgentPresence, retirePluginPane, launchArguments, successorAdmission } from "../../../scripts/pi-herdr-launch.mjs";
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 
@@ -70,6 +70,24 @@ it("preserves a Pi process signal termination", () => {
   const run = spawnSync(process.execPath, [resolve("../../../scripts/pi-herdr-launch.mjs"), entry], { env: { ...process.env, PI_HERDR_PROFILE_DIR: profile, HERDR_PLUGIN_ID: "" }, encoding: "utf8" });
   if (process.platform !== "win32") expect(run.signal).toBe("SIGTERM");
   else expect(run.status).not.toBe(0);
+});
+
+it("validates prepared plan receipts against the launched plan and cwd", () => {
+  const root = mkdtempSync(join(tmpdir(), "herdr prepared receipt ")); roots.push(root);
+  const profile = join(root, "fixture"); mkdirSync(profile);
+  mkdirSync(join(root, ".specs", "demo"), { recursive: true }); writeFileSync(join(root, ".specs/demo/plan.md"), "# Plan");
+  const receipt = { version: 1, specRelativePath: ".specs/demo/plan.md", specStub: "demo", taskWorktreePath: root, taskBranch: "task/demo", originCheckoutPath: root, originBranch: "feature/target", startingTargetCommit: "a".repeat(40) };
+  expect(launchArguments({ PI_HERDR_PROFILE_DIR: profile, PI_HERDR_PLAN_PATH: receipt.specRelativePath, PI_HERDR_PLAN_RUN: JSON.stringify(receipt), PI_HERDR_CWD: root }).args).toEqual(["/do-it .specs/demo/plan.md"]);
+  expect(() => launchArguments({ PI_HERDR_PROFILE_DIR: profile, PI_HERDR_PLAN_PATH: receipt.specRelativePath, PI_HERDR_PLAN_RUN: JSON.stringify({ ...receipt, taskWorktreePath: join(root, "elsewhere") }), PI_HERDR_CWD: root })).toThrow("does not match");
+  expect(() => launchArguments({ PI_HERDR_PROFILE_DIR: profile, PI_HERDR_PLAN_RUN: JSON.stringify(receipt), PI_HERDR_CWD: root })).toThrow("does not match");
+});
+
+it("validates the dedicated successor endpoint and excludes other launch modes", () => {
+  const endpoint = JSON.stringify({ port: 1234, token: "a".repeat(64), child: "child", run: "run", origin: "origin" });
+  expect(successorAdmission({ PI_HERDR_CLOSEOUT_SUCCESSOR: "1", PI_HERDR_SUCCESSOR_ADMISSION_ENDPOINT: endpoint })).toBe(endpoint);
+  expect(() => successorAdmission({ PI_HERDR_CLOSEOUT_SUCCESSOR: "1", PI_HERDR_SUCCESSOR_ADMISSION_ENDPOINT: "{}" })).toThrow("Invalid closeout");
+  expect(() => successorAdmission({ PI_HERDR_CLOSEOUT_SUCCESSOR: "1", PI_HERDR_SUCCESSOR_ADMISSION_ENDPOINT: endpoint, PI_HERDR_PLAN_PATH: ".specs/x/plan.md" })).toThrow("mutually exclusive");
+  expect(() => launchArguments({ PI_HERDR_PROFILE_DIR: "/profile", PI_HERDR_CLOSEOUT_SUCCESSOR: "1" })).toThrow("dedicated bootstrap");
 });
 
 it("constructs a constrained do-it message for a direct-child plan", () => {

@@ -6,9 +6,11 @@ import { join } from "node:path";
 import type { BeforeAgentStartEvent, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { buildSystemPrompt, normalizeBuildSystemPromptOptions } from "../node_modules/@earendil-works/pi-coding-agent/dist/core/system-prompt.js";
 import { SessionManager } from "../node_modules/@earendil-works/pi-coding-agent/dist/core/session-manager.js";
-import register, { createHerdrPiTab, HerdrPiTabLaunchError, parseNewInstanceArgs } from "../extensions/session-launch.ts";
+import register, { createHerdrPiTab, launchPreparedHerdrPlan, HerdrPiTabLaunchError, parseNewInstanceArgs } from "../extensions/session-launch.ts";
+import { preparePlanRun } from "../lib/plan-run.ts";
 
 vi.mock("node:child_process", () => ({ execFile: vi.fn(), spawnSync: vi.fn() }));
+vi.mock("../lib/plan-run.ts", () => ({ preparePlanRun: vi.fn() }));
 
 const roots: string[] = [];
 
@@ -97,6 +99,47 @@ function realBranchFixture() {
 	}
 	return { commands, ctx, parent, renderers, promptFor };
 }
+
+it("opens the prepared plan in a native worktree workspace and removes only its initial shell", async () => {
+	const cwd = "C:/repo";
+	const preparedRun = { version: 1 as const, specRelativePath: ".specs/demo/plan.md", specStub: "demo", taskWorktreePath: "C:/repo/.worktrees/demo", taskBranch: "task/demo", originCheckoutPath: cwd, originBranch: "feature/target", startingTargetCommit: "a".repeat(40) };
+	vi.mocked(preparePlanRun).mockReturnValue(preparedRun);
+	vi.stubEnv("HERDR_ENV", "1");
+	vi.mocked(execFile).mockImplementation((_command: any, args: any, _options: any, callback: any) => {
+		const stdout = args[0] === "worktree" && args[1] === "list" ? JSON.stringify({ result: { worktrees: [] } })
+			: args[0] === "worktree" && args[1] === "open" ? JSON.stringify({ result: { workspace: { workspace_id: "w10" }, root_pane: { pane_id: "w10:p1" } } })
+			: args[0] === "pane" ? JSON.stringify({ result: { pane: { workspace_id: "w9" } } })
+			: args[0] === "plugin" ? JSON.stringify({ result: { plugin_pane: { pane: { tab_id: "w10:t2", pane_id: "w10:p2" } } } }) : "";
+		callback(null, { stdout, stderr: "" }); return {} as any;
+	});
+	const receipt = await launchPreparedHerdrPlan({ originCheckoutPath: cwd, specRelativePath: preparedRun.specRelativePath, title: "demo" });
+	expect(receipt).toMatchObject({ tabId: "w10:t2", paneId: "w10:p2", workspaceId: "w10", taskWorktreePath: preparedRun.taskWorktreePath, preparedRun });
+	const calls = vi.mocked(execFile).mock.calls.map(call => call[1] as string[]);
+	expect(calls).toContainEqual(["worktree", "open", "--cwd", cwd, "--path", preparedRun.taskWorktreePath, "--no-focus"]);
+	const plugin = calls.find(args => args[0] === "plugin")!;
+	expect(plugin).toContain(`PI_HERDR_PLAN_RUN=${JSON.stringify(preparedRun)}`);
+	expect(plugin.slice(plugin.indexOf("--cwd") + 1, plugin.indexOf("--cwd") + 2)).toEqual([preparedRun.taskWorktreePath]);
+	expect(calls).toContainEqual(["tab", "focus", "w10:t2"]);
+	expect(calls).toContainEqual(["pane", "close", "w10:p1"]);
+});
+
+it("reuses a matching native worktree workspace without closing its existing panes", async () => {
+	const cwd = "C:/repo";
+	const preparedRun = { version: 1 as const, specRelativePath: ".specs/demo/plan.md", specStub: "demo", taskWorktreePath: "C:/repo/.worktrees/demo", taskBranch: "task/demo", originCheckoutPath: cwd, originBranch: "feature/target", startingTargetCommit: "b".repeat(40) };
+	vi.mocked(preparePlanRun).mockReturnValue(preparedRun);
+	vi.stubEnv("HERDR_ENV", "1");
+	vi.mocked(execFile).mockImplementation((_command: any, args: any, _options: any, callback: any) => {
+		const stdout = args[0] === "worktree" && args[1] === "list" ? JSON.stringify({ result: { worktrees: [{ path: preparedRun.taskWorktreePath, open_workspace_id: "w10" }] } })
+			: args[0] === "worktree" && args[1] === "open" ? JSON.stringify({ result: { workspace: { workspace_id: "w10" } } })
+			: args[0] === "pane" ? JSON.stringify({ result: { pane: { workspace_id: "w9" } } })
+			: args[0] === "plugin" ? JSON.stringify({ result: { plugin_pane: { pane: { tab_id: "w10:t2", pane_id: "w10:p2" } } } }) : "";
+		callback(null, { stdout, stderr: "" }); return {} as any;
+	});
+	await launchPreparedHerdrPlan({ originCheckoutPath: cwd, specRelativePath: preparedRun.specRelativePath, title: "demo" });
+	const calls = vi.mocked(execFile).mock.calls.map(call => call[1] as string[]);
+	expect(calls.filter(args => args[0] === "worktree" && args[1] === "open")).toHaveLength(1);
+	expect(calls.some(args => args[0] === "pane" && args[1] === "close")).toBe(false);
+});
 
 it("parses fresh and resumed new-instance arguments", () => {
 	expect(parseNewInstanceArgs("")).toEqual({});

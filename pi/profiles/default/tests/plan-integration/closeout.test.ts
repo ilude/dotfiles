@@ -1,10 +1,11 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, expect, it } from "vitest";
 import { closeout, inspectCloseout } from "../../lib/plan-integration/closeout.ts";
 import type { CloseoutManifest } from "../../lib/plan-integration/contracts.ts";
+import { preparePlanRun } from "../../lib/plan-run.ts";
 
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
@@ -28,6 +29,95 @@ function fixture() {
   return { root, taskPath, manifest, archive };
 }
 
+function preparedFixture() {
+  const { root, taskPath, manifest } = fixture();
+  git(root, "worktree", "remove", taskPath);
+  git(root, "branch", "-D", "task/demo");
+  rmSync(join(root, ".specs/archive"), { recursive: true });
+  mkdirSync(join(root, ".specs/demo"));
+  writeFileSync(join(root, ".specs/demo/plan.md"), "---\nstatus: in progress\n---\n# Prepared\n");
+  writeFileSync(join(root, ".specs/demo/support.md"), "original support\n");
+  commit(root, "active selected spec");
+  writeFileSync(join(root, ".specs/demo/support.md"), "dirty carried support\n");
+  writeFileSync(join(root, ".specs/demo/loose.md"), "untracked carried support\n");
+  const receipt = preparePlanRun({ originCheckoutPath: root, specRelativePath: ".specs/demo/plan.md", taskWorktreePath: taskPath, taskBranch: "task/demo" });
+  mkdirSync(join(taskPath, ".specs/archive"), { recursive: true });
+  renameSync(join(taskPath, ".specs/demo"), join(taskPath, ".specs/archive/demo"));
+  const taskCommit = commit(taskPath, "archive prepared spec");
+  return { root, taskPath, manifest: { ...manifest, taskCommit, targetStartingCommit: receipt.startingTargetCommit } };
+}
+
+it("retires unchanged prepared receipt and dirty/untracked carried support before preservation", () => {
+  const { root, taskPath, manifest } = preparedFixture();
+  expect(existsSync(join(root, ".specs/demo/.pi-plan-run.json"))).toBe(true);
+  const result = closeout(manifest, { operation: "integrate" });
+  expect(result).toMatchObject({ outcome: "INTEGRATION READY", activeSpecAbsent: true, stashState: "not-needed" });
+  expect(existsSync(join(root, ".specs/demo"))).toBe(false);
+  expect(readFileSync(join(root, ".specs/archive/demo/support.md"), "utf8")).toBe("dirty carried support\n");
+  expect(readFileSync(join(root, ".specs/archive/demo/loose.md"), "utf8")).toBe("untracked carried support\n");
+  expect(git(root, "show", `${manifest.taskCommit}:.specs/archive/demo/.pi-plan-run.json`)).toContain("sourceSpecSnapshot");
+  expect(git(root, "stash", "list")).toBe("");
+  expect(existsSync(taskPath)).toBe(true);
+  expect(closeout(manifest, { operation: "cleanup" }).outcome).toBe("COMPLETED");
+}, 30_000);
+
+for (const change of ["changed", "new", "receipt", "missing"] as const) it(`retains prepared source without merge or stash on ${change} divergence`, () => {
+  const { root, manifest } = preparedFixture();
+  const path = join(root, ".specs/demo", change === "receipt" ? ".pi-plan-run.json" : change === "new" ? "concurrent.md" : "support.md");
+  if (change === "missing") rmSync(path);
+  else writeFileSync(path, "concurrent source work\n");
+  const before = git(root, "rev-parse", "HEAD");
+  const result = closeout(manifest, { operation: "integrate" });
+  expect(result).toMatchObject({ outcome: "USER INPUT REQUIRED", merge: "not-started", stashState: "not-needed", retainedArtifacts: [join(root, ".specs/demo")] });
+  expect(result.reason).toContain(change === "receipt" ? ".pi-plan-run.json" : change === "new" ? "concurrent.md" : "support.md");
+  expect(git(root, "rev-parse", "HEAD")).toBe(before);
+  expect(git(root, "stash", "list")).toBe("");
+  expect(existsSync(join(root, ".specs/demo/.pi-plan-run.json"))).toBe(true);
+  if (change !== "missing") expect(readFileSync(path, "utf8")).toBe("concurrent source work\n");
+}, 30_000);
+
+it("retires staged task-owned support through ordinary Git deletion without restoration", () => {
+  const { root, manifest } = preparedFixture();
+  git(root, "add", "--", ".specs/demo/support.md", ".specs/demo/loose.md");
+  const result = closeout(manifest, { operation: "integrate" });
+  expect(result).toMatchObject({ outcome: "INTEGRATION READY", stashState: "not-needed", activeSpecAbsent: true });
+  expect(git(root, "status", "--porcelain=v1")).toBe("");
+}, 30_000);
+
+it("preserves divergent staged source content even when working bytes still match preparation", () => {
+  const { root, manifest } = preparedFixture();
+  const support = join(root, ".specs/demo/support.md");
+  writeFileSync(support, "concurrent staged work\n");
+  git(root, "add", "--", ".specs/demo/support.md");
+  writeFileSync(support, "dirty carried support\n");
+  const result = closeout(manifest);
+  expect(result.outcome).toBe("USER INPUT REQUIRED");
+  expect(result.reason).toContain(".specs/demo/support.md has divergent staged content");
+  expect(git(root, "show", ":.specs/demo/support.md")).toBe("concurrent staged work");
+  expect(readFileSync(support, "utf8")).toBe("dirty carried support\n");
+  expect(git(root, "stash", "list")).toBe("");
+}, 30_000);
+
+it("does not consume prepared source using a receipt from outside exact taskCommit", () => {
+  const { root, taskPath, manifest } = preparedFixture();
+  rmSync(join(taskPath, ".specs/archive/demo/.pi-plan-run.json"));
+  const taskCommit = commit(taskPath, "omit receipt from task commit");
+  const result = closeout({ ...manifest, taskCommit });
+  expect(result).toMatchObject({ outcome: "USER INPUT REQUIRED", merge: "not-started" });
+  expect(result.reason).toContain("has no archived record in exact taskCommit");
+  expect(existsSync(join(root, ".specs/demo/.pi-plan-run.json"))).toBe(true);
+  expect(readFileSync(join(root, ".specs/demo/support.md"), "utf8")).toBe("dirty carried support\n");
+}, 30_000);
+
+it("leaves prepared source receipt and supporting files unchanged under noMerge", () => {
+  const { root, manifest } = preparedFixture();
+  const before = git(root, "status", "--porcelain=v1", "--untracked-files=all");
+  const receipt = readFileSync(join(root, ".specs/demo/.pi-plan-run.json"), "utf8");
+  expect(closeout({ ...manifest, noMerge: true }).outcome).toBe("USER INPUT REQUIRED");
+  expect(git(root, "status", "--porcelain=v1", "--untracked-files=all")).toBe(before);
+  expect(readFileSync(join(root, ".specs/demo/.pi-plan-run.json"), "utf8")).toBe(receipt);
+}, 30_000);
+
 it("resolves unique abbreviated task and starting commits", () => {
   const { manifest } = fixture();
   const inspection = inspectCloseout({ ...manifest, taskCommit: manifest.taskCommit.slice(0, 7), targetStartingCommit: manifest.targetStartingCommit!.slice(0, 7) });
@@ -46,6 +136,64 @@ it("completes a clean target, commits only completion metadata, and removes the 
   expect(git(root, "show-ref", "--verify", "refs/heads/task/demo")).toContain(manifest.taskCommit);
   expect(readFileSync(archive, "utf8")).toContain("status: completed\ncompleted: 2026-09-26");
   expect(git(root, "log", "-2", "--format=%s")).toContain(`docs(plan): record demo integration`);
+}, 30_000);
+
+it("stages verified delivery before later bounded cleanup through the canonical entrypoint", () => {
+  const { root, taskPath, manifest, archive } = fixture();
+  const helper = resolve("scripts/plan-integration.mjs");
+  const authority = {
+    id: "child", agent: "integrator", delegates: [], cwd: root,
+    closeout: { manifest, provenance: { source: "subagent-runtime", version: 1, agent: "integrator", childId: "child", parentSessionId: "parent", targetCheckout: root } },
+  };
+  const invoke = (operation: string) => JSON.parse(execFileSync(process.execPath, [helper, operation], {
+    cwd: root, encoding: "utf8", env: { ...process.env, PI_SUBAGENT_AUTHORITY: JSON.stringify(authority), PI_SUBAGENT_ENDPOINT: "authenticated-endpoint" },
+  }));
+  const ready = invoke("integrate");
+  expect(ready).toMatchObject({ outcome: "INTEGRATION READY", merge: "merged", metadata: "committed", worktree: "registered", archivedPlanVerified: true, activeSpecAbsent: true, retainedArtifacts: [taskPath] });
+  expect(ready.targetCommit).toBe(git(root, "rev-parse", "HEAD"));
+  expect(existsSync(taskPath)).toBe(true);
+  expect(readFileSync(archive, "utf8")).toContain("status: completed");
+  expect(inspectCloseout(manifest)).toMatchObject({ merged: true, metadataCommitted: true, worktree: "registered" });
+  const repeated = invoke("integrate");
+  expect(repeated).toMatchObject({ outcome: "INTEGRATION READY", metadata: "already-committed", targetCommit: ready.targetCommit });
+  const cleaned = invoke("cleanup");
+  expect(cleaned).toMatchObject({ outcome: "COMPLETED", targetCommit: ready.targetCommit, worktree: "deregistered" });
+  expect(existsSync(taskPath)).toBe(false);
+  expect(git(root, "show-ref", "--verify", "refs/heads/task/demo")).toContain(manifest.taskCommit);
+  expect(invoke("cleanup")).toMatchObject({ outcome: "COMPLETED", targetCommit: ready.targetCommit, worktree: "missing" });
+}, 30_000);
+
+it("does not integrate or write metadata when cleanup is requested before delivery", () => {
+  const { root, taskPath, manifest, archive } = fixture();
+  const before = git(root, "rev-parse", "HEAD");
+  const text = readFileSync(archive, "utf8");
+  expect(closeout(manifest, { operation: "cleanup" })).toMatchObject({ outcome: "USER INPUT REQUIRED", retainedArtifacts: [taskPath] });
+  expect(git(root, "rev-parse", "HEAD")).toBe(before);
+  expect(readFileSync(archive, "utf8")).toBe(text);
+  expect(existsSync(taskPath)).toBe(true);
+});
+
+it("reports post-delivery Git removal failure without undoing integration", () => {
+  const { root, taskPath, manifest } = fixture();
+  const ready = closeout(manifest, { operation: "integrate" });
+  expect(ready.outcome).toBe("INTEGRATION READY");
+  git(root, "worktree", "lock", "--reason", "removal failure fixture", taskPath);
+  const cleaned = closeout(manifest, { operation: "cleanup" });
+  expect(cleaned).toMatchObject({ outcome: "CLEANUP PENDING", targetCommit: ready.targetCommit, metadata: "already-committed", worktree: "registered", archivedPlanVerified: true, retainedArtifacts: [taskPath] });
+  expect(cleaned.reason).toContain("Git could not remove");
+  expect(existsSync(taskPath)).toBe(true);
+  expect(git(root, "rev-parse", "HEAD")).toBe(ready.targetCommit);
+  git(root, "worktree", "unlock", taskPath);
+  expect(closeout(manifest, { operation: "cleanup" }).outcome).toBe("COMPLETED");
+});
+
+it("keeps a dirty task worktree after integration-ready until cleanup can succeed", () => {
+  const { taskPath, manifest } = fixture();
+  writeFileSync(join(taskPath, "retained.txt"), "uncommitted task work\n");
+  const ready = closeout(manifest, { operation: "integrate" });
+  expect(ready.outcome).toBe("INTEGRATION READY");
+  expect(closeout(manifest, { operation: "cleanup" })).toMatchObject({ outcome: "CLEANUP PENDING", targetCommit: ready.targetCommit, retainedArtifacts: [taskPath] });
+  expect(readFileSync(join(taskPath, "retained.txt"), "utf8")).toBe("uncommitted task work\n");
 });
 
 it("leaves disjoint tracked and untracked target changes in place and excludes ignored files from preservation", () => {
@@ -68,8 +216,10 @@ it("stashes overlapping tracked and untracked changes without stashing ignored f
   writeFileSync(join(root, "file.txt"), "one\ntwo\nthree\nfour\nlocal-five\n");
   writeFileSync(join(root, "loose.txt"), "local untracked\n");
   writeFileSync(join(root, "ignored.tmp"), "ignored\n");
-  const result = closeout({ ...manifest, taskCommit });
-  expect(result).toMatchObject({ outcome: "COMPLETED", stashState: "restored", merge: "merged" });
+  const result = closeout({ ...manifest, taskCommit }, { operation: "integrate" });
+  expect(result).toMatchObject({ outcome: "INTEGRATION READY", stashState: "restored", merge: "merged" });
+  expect(existsSync(taskPath)).toBe(true);
+  expect(closeout({ ...manifest, taskCommit }, { operation: "cleanup" })).toMatchObject({ outcome: "COMPLETED", targetCommit: result.targetCommit });
   expect(result.stashOid).toMatch(/^[0-9a-f]{40}$/);
   expect(readFileSync(join(root, "file.txt"), "utf8")).toBe("task-one\ntwo\nthree\nfour\nlocal-five\n");
   expect(readFileSync(join(root, "loose.txt"), "utf8")).toBe("local untracked\n");
@@ -82,7 +232,7 @@ it("reports a routine merge conflict with exact paths and retains evidence", () 
   writeFileSync(join(root, "file.txt"), "target\n"); commit(root, "target edit");
   writeFileSync(join(taskPath, "file.txt"), "task\n");
   const updatedTask = commit(taskPath, "task edit");
-  const result = closeout({ ...manifest, taskCommit: updatedTask });
+  const result = closeout({ ...manifest, taskCommit: updatedTask }, { operation: "integrate" });
   expect(result).toMatchObject({ outcome: "MERGE BLOCKED", merge: "conflict", worktree: "registered" });
   expect(result.reason).toContain("file.txt");
   expect(existsSync(taskPath)).toBe(true);
@@ -142,8 +292,10 @@ it("reports inspection and rejects absent or ambiguous preservation identity rat
 it("honors no-merge authorization without changing Git state", () => {
   const { root, taskPath, manifest } = fixture();
   const before = git(root, "rev-parse", "HEAD");
-  const result = closeout({ ...manifest, noMerge: true });
-  expect(result.outcome).toBe("USER INPUT REQUIRED");
+  for (const operation of ["closeout", "integrate", "cleanup"] as const) {
+    const result = closeout({ ...manifest, noMerge: true }, { operation });
+    expect(result.outcome).toBe("USER INPUT REQUIRED");
+  }
   expect(git(root, "rev-parse", "HEAD")).toBe(before);
   expect(existsSync(taskPath)).toBe(true);
   expect(git(root, "stash", "list")).toBe("");
@@ -171,7 +323,10 @@ it("recognizes and removes only an exact post-deregistration remnant", () => {
   // An ordinary interrupted closeout can leave a registered worktree; model Git deregistration plus remnant.
   git(root, "worktree", "remove", taskPath);
   mkdirSync(taskPath); writeFileSync(join(taskPath, "remnant"), "simulated long-path residue");
-  const result = closeout(manifest);
+  expect(inspectCloseout(manifest).worktree).toBe("deregistered");
+  expect(closeout(manifest, { operation: "integrate" })).toMatchObject({ outcome: "INTEGRATION READY", worktree: "deregistered" });
+  expect(existsSync(taskPath)).toBe(true);
+  const result = closeout(manifest, { operation: "cleanup" });
   expect(result).toMatchObject({ outcome: "COMPLETED", worktree: "remnant-removed" });
   expect(existsSync(taskPath)).toBe(false);
 });

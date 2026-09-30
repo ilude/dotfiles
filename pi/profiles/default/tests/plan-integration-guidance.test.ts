@@ -2,7 +2,8 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { fileURLToPath } from "node:url";
 import { loadDefinitions } from "../lib/subagents/definitions.ts";
-import { composedAgentPrompt, delegationContext } from "../lib/subagents/guidance.ts";
+import { composedAgentPrompt, delegationContext, composedIntegratorSuccessorPrompt, preparedPlanRunContext } from "../lib/subagents/guidance.ts";
+import { successorSystemPrompt } from "../lib/subagents/successor-surface.ts";
 import { extractCloseoutHandoff } from "../lib/subagents/closeout-handoff.ts";
 import subagents from "../extensions/subagents.ts";
 import { composeCallerSystemPrompt } from "../extensions/subagents.ts";
@@ -22,13 +23,33 @@ describe("Integrator plan closeout guidance", () => {
     expect(prompt).toContain("routine conflicts within settled intent");
     expect(prompt).toContain("additive `CHANGELOG.md` restoration conflicts");
     expect(prompt).toContain("other restoration conflicts, consequential overlaps");
-    expect(prompt).toContain("The parent owns user questions and final reporting");
+    expect(prompt).toContain("Ordinary closeout returns to the parent, which owns user questions and final reporting");
     expect(prompt).toContain("Do not push or deploy unless the selected plan records explicit authorization");
     expect(prompt).toContain("With `--no-merge`, do not dispatch the Integrator for mutation");
     expect(prompt).toContain("🔴 **NOT COMPLETE: MERGE BLOCKED**");
     expect(prompt).toContain("🔴 **NOT COMPLETE: USER INPUT REQUIRED**");
     expect(prompt).toContain("🟡 **CLEANUP PENDING**");
     expect(prompt).not.toContain("without stashing, discarding, or committing unrelated changes");
+  });
+
+  it("separates prepared execution and successor ownership from direct and no-merge paths", () => {
+    const prompt = read("../prompts/do-it.md");
+    const skill = read("../skills/plan-integration/SKILL.md");
+    expect(prompt).toContain("runtime-issued prepared-run context identifies this selected plan");
+    expect(prompt).toContain("Do not create a second worktree");
+    expect(prompt).toContain("Without that context, create or resume");
+    expect(prompt).toContain("use `closeout_successor` action `launch` only for the runtime-issued prepared Herdr run");
+    expect(prompt).toContain("otherwise use ordinary `subagent` closeout");
+    expect(prompt).toContain("Respect each module's owning repository");
+    expect(prompt).toContain("before action `release`");
+    expect(prompt).toContain("Do not duplicate its report or mutate its target concurrently");
+    expect(prompt).toContain("With `--no-merge`, do not dispatch the Integrator for mutation");
+    expect(skill).toContain("For ordinary closeout, remove the task worktree");
+    expect(skill).toContain("`INTEGRATION READY` with the worktree still present");
+    expect(skill).toContain("`closeout_successor_handoff`");
+    expect(skill).toContain("In ordinary closeout, do not ask the user directly");
+    expect(skill).toContain("In runtime-admitted successor closeout, use native operator input");
+    expect(skill).toContain("Keep your pane available after reporting");
   });
 
   it("puts future closeout routing in planning and Git guidance, not duplicate helper procedure", () => {
@@ -63,6 +84,38 @@ describe("Integrator plan closeout guidance", () => {
     expect(specialist).not.toContain("## Delegation guidance");
   });
 
+  it("composes distinct ordinary/successor audiences and deterministic prepared coordinates", () => {
+    const catalog = loadDefinitions(profile, false, profile);
+    const integrator = catalog.agents.get("integrator");
+    if (!integrator) throw new Error("Missing Integrator role");
+    const ordinary = composedAgentPrompt(integrator, catalog.agents);
+    const replacement = composedIntegratorSuccessorPrompt();
+    const manifest = { repositoryRoot: "/repo", targetCheckout: "/repo", targetBranch: "dev", taskWorktree: "/repo/.worktrees/task", taskBranch: "task/task", taskCommit: "a".repeat(40), archivedPlanPath: ".specs/archive/task/plan.md", activeSpecStub: "task", noMerge: false, completedDate: "2026-09-30", integrationEvidence: "checks passed" };
+    const successor = successorSystemPrompt("inherited prompt", integrator.tools, replacement, manifest);
+    expect(ordinary).toContain("Report consequential decisions to the parent; do not prompt the user directly");
+    expect(successor).not.toContain("do not prompt the user directly");
+    expect(successor).not.toContain("Report consequential decisions to the parent");
+    expect(successor).toContain("Accept native operator input");
+    expect(successor).toContain("closeout_successor_handoff");
+    expect(successor).toContain("INTEGRATION READY is not whole-run completion");
+    expect(successor).toContain("**Reason** and **Action needed**");
+    expect(successor).not.toContain("## Delegation guidance");
+    expect(integrator.delegates).toEqual([]);
+    expect(integrator.tools).toEqual(["read", "grep", "find", "ls", "bash", "edit", "write"]);
+    expect(integrator.model).toBe("luna");
+    expect(integrator.effort).toBe("high");
+    expect(Buffer.byteLength(successor)).toBeLessThan(3000);
+    const receipt = { version: 1 as const, specRelativePath: ".specs/task/plan.md", specStub: "task", taskWorktreePath: "/repo/.worktrees/task", taskBranch: "task/task", originCheckoutPath: "/repo", originBranch: "dev", startingTargetCommit: "b".repeat(40) };
+    const prepared = preparedPlanRunContext(receipt);
+    expect(prepared).toBe(preparedPlanRunContext({ ...receipt }));
+    expect(prepared).toBe(preparedPlanRunContext(Object.fromEntries(Object.entries(receipt).reverse()) as typeof receipt));
+    expect(prepared).toContain('"originBranch":"dev"');
+    expect(prepared).toContain("With --no-merge, do not launch mutating closeout or release/retire");
+    expect(prepared).toContain("Direct/run-here execution without this runtime context");
+    expect(Buffer.byteLength(prepared)).toBeLessThan(1800);
+    expect(composeCallerSystemPrompt("inherited prompt", catalog.agents)).not.toContain("Runtime-issued prepared plan-run context");
+  });
+
   it("keeps the complete manifest out of the ordinary subagent tool schema and transfers it only from assignment text", () => {
     const tools: Record<string, any> = {};
     const pi: any = {
@@ -80,7 +133,7 @@ describe("Integrator plan closeout guidance", () => {
       if (previousAuthority === undefined) delete process.env.PI_SUBAGENT_AUTHORITY;
       else process.env.PI_SUBAGENT_AUTHORITY = previousAuthority;
     }
-    expect(Object.keys(tools)).toEqual(["subagent", "subagent_control"]);
+    expect(Object.keys(tools)).toEqual(["subagent", "subagent_control", "closeout_successor"]);
     expect(JSON.stringify(tools.subagent.parameters)).not.toContain("closeoutManifest");
     expect(JSON.stringify(tools.subagent.parameters)).not.toContain("targetCheckout");
 
@@ -97,7 +150,13 @@ describe("Integrator plan closeout guidance", () => {
     expect(subagents).toContain("the orchestrator dispatches Integrator after the task commit");
     expect(subagents).toContain("`--no-merge` skips dispatch");
     expect(subagents).toContain("rather than a closeout field in the ordinary subagent tool schema");
-    expect(subagents).toContain("The orchestrator retains user questions, final reporting");
+    expect(subagents).toContain("For ordinary/direct closeout, the orchestrator retains user questions, final reporting");
+    expect(subagents).toContain("Prepared Herdr runs instead use the narrow `closeout_successor`");
+    const herdr = read("../docs/herdr.md");
+    expect(herdr).toContain("Herdr's native worktree open/reuse groups that checkout");
+    expect(herdr).toContain("Only a known newly created initial shell is removed");
+    expect(herdr).toContain("Direct `/do-it`, run here");
+    expect(herdr).toContain("`--no-merge` excludes successor mutation and retirement");
     expect(damageControl).toContain("only the unmodified canonical plan-integration helper");
     expect(damageControl).toContain("`/do-it` dispatches the Integrator after the task-branch commit");
     expect(damageControl).toContain("local closeout authority does not include push or deployment");

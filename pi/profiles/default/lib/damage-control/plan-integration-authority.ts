@@ -5,7 +5,7 @@ import { validateCloseoutManifest } from "../plan-integration/closeout.ts";
 import type { CloseoutManifest } from "../plan-integration/contracts.ts";
 import { samePlatformPath } from "../path-identity.ts";
 
-const HELPER_SHA256 = "5e652b6bb5d73a30dca4613c157b8388d3e0319b4a43dc52482b4a04303f30b8";
+const HELPER_SHA256 = "5e80a54de179b9ab5357d23145be351bd79fc3320c478949bc91e5807f4a2067";
 
 function authority(): Record<string, unknown> | undefined {
   try {
@@ -53,7 +53,7 @@ export function authorizedPlanIntegration(request: ToolRequest, analysis: Analys
 
   // Accept only a single literal invocation. Shell composition, environment
   // assignments, pipes, redirections, aliases, and additional commands fail closed.
-  const match = /^\s*node(?:\.exe)?\s+(?:"([^"\r\n]+)"|'([^'\r\n]+)'|([^\s;&|<>]+))\s+closeout\s*$/.exec(request.input.command);
+  const match = /^\s*node(?:\.exe)?\s+(?:"([^"\r\n]+)"|'([^'\r\n]+)'|([^\s;&|<>]+))\s+(closeout|integrate|cleanup)\s*$/.exec(request.input.command);
   if (!match) return false;
   const invoked = match[1] ?? match[2] ?? match[3];
   const expected = resolve(profile, "scripts/plan-integration.mjs");
@@ -67,6 +67,6 @@ export function authorizedPlanIntegration(request: ToolRequest, analysis: Analys
       && realpathSync(source.path) === expected
       && source.sha256 === HELPER_SHA256
       && source.argv.length === 1
-      && source.argv[0] === "closeout";
+      && source.argv[0] === match[4];
   } catch { return false; }
 }

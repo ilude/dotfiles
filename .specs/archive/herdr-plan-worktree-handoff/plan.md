@@ -1,6 +1,6 @@
 ---
 created: 2026-09-30
-status: ready
+status: in progress
 completed: null
 ---
 
@@ -127,33 +127,33 @@ Use technical judgment for equivalent implementation details. Continue independe
 
 ## Tasks
 
-- [ ] **T1: Prepare and identify the plan task worktree before Pi launch**
+- [x] **T1: Prepare and identify the plan task worktree before Pi launch**
   - Depends on: none.
   - Parallel with: T3 and T4 with disjoint files.
   - Files/inputs: proposed `pi/profiles/default/lib/plan-run.ts`, associated focused tests, existing plan/path helpers as needed. Own the preparation/run-coordinate contract; do not edit the picker UI.
   - Change: implement create/resume, origin capture, task-coordinate association, and whole-spec carry-forward. Preserve existing work and newer resumed progress. Return a compact prepared-run receipt for launch and model context.
   - Verify: real disposable Git repositories covering fresh preparation, reuse, uncommitted spec files, a non-`main` integration target, and a mismatched occupied task path. No mutation of the production checkout in tests.
   - Done when: the selected spec is available in the verified task checkout and the receipt identifies its real task and integration coordinates without implementing the plan.
-  - Evidence: Not started.
+  - Evidence: Four disposable-Git tests pass, including the final `pnpm test plan-run.test.ts plan-integration/closeout.test.ts damage-control/plan-integration-authority.test.ts --maxWorkers=2` run (47 tests total). Coverage includes dirty whole-spec and nested untracked supporting files, non-main origin, resume, occupied path, malformed receipts, explicit coordinate conflicts, selected-spec identity mismatch, and direct-child selection. Resume verifies common Git directory and registered worktree membership. The private raw record captures sorted file-byte SHA256 or symlink-target identities before copying; the public launch receipt remains compact. Final typecheck passed.
 
-- [ ] **T2: Launch the prepared orchestrator in its native Herdr worktree workspace**
+- [x] **T2: Launch the prepared orchestrator in its native Herdr worktree workspace**
   - Depends on: T1's prepared-run receipt and resume contract.
   - Files/inputs: `extensions/plans.ts`, `extensions/session-launch.ts`, `scripts/pi-herdr-launch.mjs`, relevant launch/picker tests, and a small launch adapter if needed.
   - Change: replace only `d`'s launch backend with preparation, native worktree open/reuse, correct plugin cwd/workspace, constrained preparation handoff, and exact focus. Handle the workspace's initial shell without touching existing panes. Preserve profile/preflight/process identity and current picker/failure semantics.
   - Verify: focused picker/bootstrap/session-launch tests proving one launch, unchanged keys/rendering, correct task cwd and origin receipt, relative plan delivery, known prelaunch failure, and ambiguous-created-run behavior.
   - Done when: `d` starts one new orchestrator in the task checkout and grouped worktree workspace, not in the originating checkout or a second task worktree.
-  - Evidence: Not started.
+  - Evidence: Initial picker/session/bootstrap run passed 87 focused tests. Real installed-Pi isolated Herdr launch exposed initial-shell retention: a registered checkout was mistaken for an already-open workspace. Fixed by requiring native `open_workspace_id`, preserving reused user panes and clearing inherited receipt context on ordinary launches. Follow-up focused run passed 72 tests (live case skipped), then `PI_PLANS_HERDR_LIVE=1 pnpm test plans-herdr-live.test.ts` passed one real-Pi case proving native grouping, task cwd/session, selected plan delivery and only the Pi pane remaining. No production server/plugin changes.
 
-- [ ] **T3: Expose the integration-ready boundary before task-worktree removal**
+- [x] **T3: Expose the integration-ready boundary before task-worktree removal**
   - Depends on: none; the staged result contract above supplies the interface.
   - Parallel with: T1 and T4 with disjoint files.
   - Files/inputs: default `lib/plan-integration/{contracts,closeout}.ts`, `scripts/plan-integration.mjs`, `lib/damage-control/plan-integration-authority.ts`, and corresponding Git/authority tests.
   - Change: split integration/metadata from cleanup for successor runs while retaining ordinary one-shot closeout. Report the intermediate state accurately and keep cleanup bounded to the existing manifest. Update canonical helper argv/hash validation and existing allow-path tests with the change.
   - Verify: real disposable Git closeout tests for successful staged integration with the task worktree still present, later removal, an integration blocker, and removal failure after delivery. Existing one-shot and no-merge tests continue passing. Authority tests reject mismatched provenance/helper/argv without widening the allowance.
   - Done when: the Integrator can finish integration and completion metadata before orchestrator retirement, then clean up afterward using the same exact authority.
-  - Evidence: Not started.
+  - Evidence: The final preparation/closeout/authority run passed 47 tests (26 closeout, 17 authority, four preparation). Real staged CLI, one-shot/no-merge, restoration, blockers, and post-delivery locked-worktree removal remain covered. Prepared-source retirement verifies the exact committed raw receipt and whole unchanged source before consuming task-owned tracked/untracked inputs; tests retain changed, new, missing, divergent staged, and mismatched-receipt source without merge or stash. Current typecheck, runtime smoke and whitespace checks pass.
 
-- [ ] **T4: Host a restricted Integrator successor that survives its orchestrator**
+- [x] **T4: Host a restricted Integrator successor that survives its orchestrator**
   - Depends on: none; use the existing manifest and the successor lifetime contract above. Do not wait for unrelated launch/UI work.
   - Parallel with: T1 and T3 with disjoint files.
   - Files/inputs: proposed dedicated successor host/lifetime module, existing child launch/transport code where useful, restricted role loading, and focused process-lifecycle tests. Coordinate edits to the shared bootstrap with T2 rather than assigning it concurrently to two writers.
@@ -161,37 +161,37 @@ Use technical judgment for equivalent implementation details. Continue independe
   - Complexity / split hints: host process ownership, surviving authenticated authority, and restricted Pi resource loading are coupled. If oversized, split independent host startup/lifetime from restricted successor application loading before assignment; never generalize all subagents just to obtain survival.
   - Verify: bounded process fixtures for orchestrator exit without successor termination, successor exit cleanup, and unchanged ordinary child parent-loss behavior. Test actual host handles/lifetimes rather than mocking the survival being asserted.
   - Done when: an admitted Integrator successor can keep accepting direct user input and perform bounded closeout after its originating orchestrator exits.
-  - Evidence: Not started.
+  - Evidence: `pnpm test closeout-successor-lifetime.test.ts` passed three actual-process tests: authenticated closeout authority and direct input survive real origin exit; successor exit closes its host endpoint; ordinary visible parent-loss cleanup still terminates its child. Successor admission rejects non-Integrator and altered frozen definitions, with no delegation. The successor-only CLI tool ceiling includes exactly its handoff tool in addition to frozen role tools. Process fixtures strip inherited live Herdr/subagent identities so ordinary cleanup cannot close the developer pane, record the actual spawned host PID before readiness, and use bounded startup/cleanup. Real installed-Pi behavior is separately covered by T7.
 
-- [ ] **T5: Wire same-tab closeout placement, graceful retirement, and final-report ownership**
+- [x] **T5: Wire same-tab closeout placement, graceful retirement, and final-report ownership**
   - Depends on: T3's integration-ready/cleanup operations and T4's surviving successor host/authority.
   - Files/inputs: proposed closeout handoff extension/module, exact session/pane identity resolution, successor pane placement and application lifecycle, relevant handoff tests, and shared runtime files only where necessary.
   - Change: dispatch the Integrator in the same live tab with parent cwd. Coordinate integration readiness and any remaining orchestrator-only obligations; retire only the exact origin on successful handoff. Observe exit before worktree cleanup. Keep both panes available before retirement on blocked closeout and keep the successor's pane/tab open afterward without losing the report. Preserve the explicit plan title and lifecycle reporting.
   - Verify: success transition, integration blocker with both panes retained, exact-target shutdown, parent shutdown not killing the successor, post-retirement cleanup failure, and ordinary subagent layout/cleanup regressions for any affected code.
   - Done when: the required two-pane handoff reaches a surviving user-facing Integrator without duplicate reports or a Pi instance left running in the removed checkout.
-  - Evidence: Not started.
+  - Evidence: Four focused handoff tests and 50 ordinary integration/cleanup/session/layout regressions passed. Same-tab frozen-origin controller is independent of ordinary children; event-driven readiness resumes the origin, final release terminates the turn and exact captured session shutdown occurs at settlement. Prepared context is scoped to the originating session with metadata restore on reload, not new chats. Runtime smoke and scoped whitespace checks passed. Real Pi process/pane transitions are verified by T7, not these focused mocks.
 
-- [ ] **T6: Route prepared runs through the new handoff and reconcile instructions/docs**
+- [x] **T6: Route prepared runs through the new handoff and reconcile instructions/docs**
   - Depends on: T2's prepared-run context and T5's closeout workflow.
   - Files/inputs: default `prompts/do-it.md`, `agents/integrator.md`, conditional child/successor prompt composition, `skills/plan-integration/SKILL.md`, affected planning/Git closeout guidance, `pi/README.md`, default `docs/herdr.md`, `docs/subagents.md`, root `CHANGELOG.md`, and guidance tests.
   - Change: consume preprepared worktrees without duplicate creation; select successor closeout only for the integrated prepared-run mode. Replace conflicting parent-only report/question instructions conditionally rather than adding contradictory exceptions. Keep ordinary closeout, run-here/direct invocation, `--no-merge`, explicit authorization, and module boundaries intact. Document workflow and cleanup limits without duplicating the Git procedure.
   - Verify: composed guidance for ordinary Integrator versus successor, prepared versus direct `/do-it`, no-merge exclusion, and unchanged ordinary role/tool boundaries. Record static prompt-size/placement changes honestly; no cache-performance claim without provider evidence.
   - Done when: a fresh-context executor follows the correct path from the selected run's runtime context, and docs describe both successor and preserved ordinary behavior consistently.
-  - Evidence: Not started.
+  - Evidence: Seven guidance tests passed, with deterministic receipt ordering and audience/prepared/direct/no-merge separation. Ordinary Integrator role remains 366 bytes unchanged; successor replacement 1,635 bytes (2,509-byte affected fixture composition), prepared conditional context 1,252 bytes, caller catalog/guidance 3,733 bytes. `/do-it` grew 6,387 to 7,912 bytes; integration skill 3,798 to 5,138 bytes after the prepared-source retirement clarification. The seven guidance tests passed again after that clarification. Actual inherited context, assignments and provider serialization remain dynamic. No provider cache-performance measurement or claim. Scoped whitespace check passed.
 
-- [ ] **T7: Verify the complete Herdr worktree and closeout handoff**
+- [x] **T7: Verify the complete Herdr worktree and closeout handoff**
   - Depends on: T2, T5, and T6's integrated workflow.
   - Files/inputs: existing isolated Herdr test helpers/fixtures, updated `tests/plans-herdr-live.test.ts`, proposed `tests/plan-closeout-herdr-live.test.ts`, and focused acceptance evidence in this spec.
   - Change: add a bounded isolated acceptance scenario using disposable Git, an isolated Herdr server/config/plugin registry with an explicitly pinned test socket, and the installed real Pi CLI. Use deterministic fixture inputs/events where model reasoning is irrelevant. Do not replace the host/process lifetime under test with mocks or relink production.
   - Verify: native grouped workspace provenance; orchestrator launch cwd and session identity; same-tab Integrator with parent cwd; success retires the exact orchestrator, delivers commits/metadata and removes the worktree, leaving a live report pane; a pre-retirement integration blocker leaves both panes and checkout; a cleanup failure after retirement reports delivered changes and retained path. Distinguish actual Pi integration evidence from inert-host or mocked-unit coverage.
   - Done when: the finite automated checks below pass and their evidence/limits are recorded. Attached-client visual experience and provider reasoning are non-blocking manual verification limits, not extra completion gates.
-  - Evidence: Not started.
+  - Evidence: `PI_PLANS_HERDR_LIVE=1 pnpm test plans-herdr-live.test.ts` passed one real installed-Pi 0.99.1 case (10.01 seconds). The final `PI_PLAN_CLOSEOUT_HERDR_LIVE=1 pnpm test plan-closeout-herdr-live.test.ts` run passed all three isolated scenarios (103.96 seconds): same-tab real successor in parent cwd and a distinct durable session; delivery/metadata, exact origin settlement shutdown and pane retirement, then task-worktree removal with a surviving report process; pre-retirement merge blocker retaining both panes/task checkout; post-retirement cleanup failure retaining the exact path and reporting delivered changes. The earlier source-receipt deletion workaround is removed: unchanged prepared source retires naturally and untracked selected-spec support is verified in the archive. Deterministic fixture provider/commands exercise production host/handoff/helper and real Pi/bootstrap lifetimes without external reasoning or network. Native grouped provenance is asserted. Attached-client visual experience and provider reasoning remain non-blocking manual limits. No shared Herdr restart, production plugin relink, or module changes.
 
 - [ ] **T8: Archive, commit, and integrate this implementation plan**
   - Depends on: T1-T7 and the agreed checks.
   - Change: record actual results and limitations, archive this entire spec, repair links, and commit the implementation/archive on this plan's task branch. Use the authorized closeout contract below, preserving unrelated target work. Activate through the normal settled-only boundary; do not assume the already-running session acquired new lifecycle code.
   - Done when: implementation and archive are delivered to the recorded target, completion metadata is committed, task-worktree cleanup is accurately verified or reported, and no unauthorized push/deployment occurred.
-  - Evidence: Not started.
+  - Evidence: Implementation and agreed checks are complete. Whole-spec archival and task commit precede local integration; delivery, completion metadata and task-worktree cleanup remain pending. The executing runtime is the existing ordinary closeout path, not the newly edited successor code. No push/deployment is authorized.
 
 ## Agreed validation and current handoff
 
@@ -209,9 +209,17 @@ Use shell-appropriate environment syntax on PowerShell. `PI_PLAN_CLOSEOUT_HERDR_
 
 Fix established task-related defects. If a check fails for an unrelated baseline issue, verify that baseline with bounded evidence and report it without silently expanding this plan. Rerun only checks made stale by subsequent relevant changes. Do not upgrade Herdr or restart the shared server as a test shortcut.
 
-- Status: Ready for implementation; planning only.
-- Completed work: read-only repository/runtime investigation and standalone plan authoring.
-- Next: execute T1, T3, and T4 with disjoint ownership after authorization and the required Strategist consultation.
+- Status: Execution in progress, 2026-09-30, default profile.
+- Actual task checkout: `C:/Users/mglenn/.dotfiles/.worktrees/herdr-plan-worktree-handoff`, branch `task/herdr-plan-worktree-handoff`.
+- Recorded integration target: `C:/Users/mglenn/.dotfiles`, branch `main`, starting commit `12ed41afa33584f08a7bb51052ec96fe064989fb`.
+- Whole source spec copied without deleting its source. The origin advanced from the initial observation to `12ed41af` before worktree creation, committing the spec and unrelated command edits; the task uses that recorded base. Target changes remain untouched. Strategist execution consultation completed.
+- Completed work: T1-T7 implemented and validated with disjoint write ownership and coordinated preparation, staged-helper, independent-host and bootstrap contracts. T8 remains pending authorized local delivery and cleanup.
+- Environment: frozen default-profile dependency install completed. Concurrent runtime link setup reported an EEXIST collision; all five runtime package links resolve and `pnpm run check:runtime` passed in the task checkout.
+- Checks: the finite 14-file aggregate passed 203 tests with two existing 15-second Git fixture timeouts; those demonstrated budgets were increased to 30 seconds and their targeted rerun passed. Subsequent source-retirement changes passed the affected preparation/closeout/authority selection (47 tests, 168.54 seconds). Dedicated actual-process lifetime tests passed all three cases; final guidance rerun passed seven. Final typecheck/runtime smoke and whitespace checks pass. Native launch passed its one real-Pi case; the corrected live closeout fixture passed all three cases without source-receipt deletion. No optional verification gate was added.
+- Task-related defects resolved: native workspace initial-shell retention, successor-only CLI tool ceiling, fixture inheritance of live pane identity, and unchanged prepared-source retirement. The source fix preserves divergent/new operator work and relies on the exact archived task record, rather than treating prepared support as unrelated stash content. This implements the settled whole-spec/closeout workflow.
+- The process-churn diagnostic stalled in its performance-counter query; bounded sampling showed no hot LSM/CryptSvc. No unrelated processes were changed. The two failed parent lifetime fixture directories were removed after their owned processes exited.
+- Next: archive the whole spec, commit this task branch, and dispatch exactly one ordinary Integrator from the recorded target. It owns authorized local merge, completion metadata and verified cleanup; the current orchestrator owns the final report. Preserve the target's unrelated feedback-file edit.
+- Agent-owned implementation blockers: none. Integration and cleanup are intentionally pending, not declared complete.
 - Blockers/open user decisions: none in the selected scope. Equivalent execution-record format, host modules, split geometry, and staged-helper API remain implementer choices.
 - Verification limits: no implementation tests, native worktree mutations, successor lifetime tests, or attached-client UX checks were run during planning. Windows directory-use behavior is unverified; cleanup does not depend on assuming deletion will work while the orchestrator is alive.
 

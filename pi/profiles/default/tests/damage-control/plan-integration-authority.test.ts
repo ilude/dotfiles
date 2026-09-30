@@ -1,4 +1,7 @@
-import { appendFile, copyFile, mkdir } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { appendFile, copyFile, mkdir, readFile } from "node:fs/promises";
+import { authorizedPlanIntegration } from "../../lib/damage-control/plan-integration-authority.ts";
+import type { Analysis, ToolRequest } from "../../lib/damage-control/types.ts";
 import { join, resolve } from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
 import { harness } from "./fixtures/fake-pi.ts";
@@ -8,7 +11,7 @@ afterEach(() => {
   delete process.env.PI_SUBAGENT_ENDPOINT;
 });
 
-async function authorizedFixture(reviewRequired = false) {
+async function authorizedFixture(reviewRequired = false, operation = "closeout") {
   const h = await harness(reviewRequired ? {
     analyze: async () => ({
       effects: [], uncertainties: [], health: { status: "ready" as const },
@@ -34,16 +37,42 @@ async function authorizedFixture(reviewRequired = false) {
   };
   process.env.PI_SUBAGENT_AUTHORITY = JSON.stringify(authority);
   process.env.PI_SUBAGENT_ENDPOINT = "authenticated-endpoint";
-  const command = `node "${helper}" closeout`;
+  const command = `node "${helper}" ${operation}`;
   const emitted = await h.emit("tool_call", { toolName: "bash", toolCallId: "integrator-closeout", input: { command } });
   return { ...h, helper, authority, manifest, command, emitted };
 }
 
-it.each(["clean integration", "stash and restore", "exact worktree cleanup"])("quietly authorizes bounded closeout operation: %s", async () => {
-  const fixture = await authorizedFixture();
+it.each(["closeout", "integrate", "cleanup"])("quietly authorizes bounded closeout operation: %s", async operation => {
+  const fixture = await authorizedFixture(false, operation);
   expect(fixture.emitted).toBeUndefined();
   expect(fixture.review).not.toHaveBeenCalled();
   expect(fixture.select).not.toHaveBeenCalled();
+});
+
+it.each(["closeout", "integrate", "cleanup"])("requires exact helper, argv and provenance for %s even with otherwise clean analysis", async operation => {
+  const fixture = await authorizedFixture(false, operation);
+  const request: ToolRequest = { callId: "bounded", cwd: fixture.cwd, text: fixture.command, tool: "bash", language: "bash", input: { command: fixture.command } };
+  const source = { path: fixture.helper, sha256: createHash("sha256").update(await readFile(fixture.helper)).digest("hex"), range: { start: 0, end: fixture.command.length }, argv: [operation] };
+  const analysis: Analysis = { effects: [], matches: [], uncertainties: [], health: { status: "ready" }, internal: { docker: [], scripts: [source] } };
+  const profile = join(fixture.cwd, "profile");
+  expect(authorizedPlanIntegration(request, analysis, profile)).toBe(true);
+  for (const command of [fixture.command + " extra", fixture.command + "; git status", fixture.command.replace(` ${operation}`, " inspect"), `node "${fixture.helper}.other" ${operation}`]) {
+    expect(authorizedPlanIntegration({ ...request, input: { command } }, analysis, profile)).toBe(false);
+  }
+  for (const argv of [["inspect"], [operation, "extra"], [operation === "cleanup" ? "integrate" : "cleanup"]]) {
+    expect(authorizedPlanIntegration(request, { ...analysis, internal: { docker: [], scripts: [{ ...source, argv }] } }, profile)).toBe(false);
+  }
+  expect(authorizedPlanIntegration(request, { ...analysis, internal: { docker: [], scripts: [{ ...source, sha256: "0".repeat(64) }] } }, profile)).toBe(false);
+  for (const authority of [
+    { ...fixture.authority, parentId: "nested-parent" },
+    { ...fixture.authority, delegates: ["developer"] },
+    { ...fixture.authority, closeout: { ...fixture.authority.closeout, manifest: { ...fixture.manifest, noMerge: true } } },
+    { ...fixture.authority, closeout: { ...fixture.authority.closeout, provenance: { ...fixture.authority.closeout.provenance, childId: "other-child" } } },
+    { ...fixture.authority, closeout: { ...fixture.authority.closeout, provenance: { ...fixture.authority.closeout.provenance, targetCheckout: join(fixture.cwd, "other") } } },
+  ]) {
+    process.env.PI_SUBAGENT_AUTHORITY = JSON.stringify(authority);
+    expect(authorizedPlanIntegration(request, analysis, profile)).toBe(false);
+  }
 });
 
 it.each([

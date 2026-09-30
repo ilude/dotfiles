@@ -42,7 +42,9 @@ Do not predetermine routine implementation details.
 ## Execution guidance
 
 Create or resume the recorded dedicated task worktree and branch. Record the actual
-path, branch, and originating integration target before editing. Preserve unrelated
+path, branch, and originating integration target before editing. If runtime-issued
+prepared-run context matches this plan, use those coordinates without creating a
+second worktree or taking the task branch as the target. Preserve unrelated
 work and carry task-owned uncommitted plan content without deleting its source.
 
 Before delegating plan work, consult `strategist` unless the user explicitly requests
@@ -107,8 +109,14 @@ task branch. Do not archive unfinished implementation.
 
 For authorized `/do-it` execution, after the task commit dispatch the Integrator
 from the recorded target checkout with the closeout manifest. The Integrator owns
-local integration and cleanup; the orchestrator owns user questions and final
-reporting. If integration is blocked, retain the worktree and report implementation
+local integration and cleanup. Ordinary direct/run-here closeout keeps user questions
+and final reporting with the orchestrator. A runtime-prepared Herdr run uses the
+same-tab successor, which owns operator questions and final reporting: establish
+integration readiness, finish explicitly authorized orchestrator-only obligations,
+release the exact origin for graceful retirement, then clean up from the surviving
+Integrator pane. Readiness alone is not completion. Keep both panes and the worktree
+when blocked before retirement; after delivery report cleanup failures and the
+exact retained path without rollback or recreating the orchestrator. If integration is blocked, retain the worktree and report implementation
 and checks separately from pending delivery. If `--no-merge` applies, do not dispatch
 the Integrator for mutation; keep the committed worktree and report integration as
 intentionally pending.

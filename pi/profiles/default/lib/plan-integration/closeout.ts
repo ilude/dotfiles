@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, lstatSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, lstatSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, realpathSync, rmdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { CloseoutInspection, CloseoutManifest, CloseoutOptions, CloseoutResult, StashState, WorktreeState } from "./contracts.ts";
@@ -137,6 +138,103 @@ function result(manifest: CloseoutManifest, values: Partial<CloseoutResult> = {}
   };
 }
 
+interface PreparedSourceRetirement {
+  paths: string[];
+  tracked: string[];
+  directories: string[];
+}
+
+/** Only the exact task commit can authorize consumption of a prepared source. */
+function preparedSourceRetirement(manifest: CloseoutManifest): PreparedSourceRetirement | undefined {
+  const prefix = `.specs/${manifest.activeSpecStub}`;
+  const directory = resolve(manifest.targetCheckout, prefix);
+  if (!existsSync(directory)) return undefined;
+  const recordPath = `${prefix}/.pi-plan-run.json`;
+  const archiveRecordPath = `.specs/archive/${manifest.activeSpecStub}/.pi-plan-run.json`;
+  let archived: Buffer;
+  try { archived = execFileSync("git", ["show", `${manifest.taskCommit}:${archiveRecordPath}`], { cwd: manifest.repositoryRoot, stdio: ["ignore", "pipe", "pipe"], maxBuffer: GIT_MAX_BUFFER }); }
+  catch {
+    if (existsSync(resolve(manifest.targetCheckout, recordPath))) fail(`Prepared source ${recordPath} has no archived record in exact taskCommit ${manifest.taskCommit}.`);
+    return undefined;
+  }
+  const mismatch = (detail: string): never => fail(`Prepared source retained: ${detail}`);
+  try {
+    if (run(manifest.repositoryRoot, ["cat-file", "-t", `${manifest.taskCommit}:${manifest.archivedPlanPath}`]) !== "blob") mismatch("Archived plan is not a file in exact taskCommit.");
+  } catch { mismatch(`${manifest.archivedPlanPath} is missing from exact taskCommit ${manifest.taskCommit}.`); }
+  const sourceStat = lstatSync(directory);
+  if (!sourceStat.isDirectory() || sourceStat.isSymbolicLink() || realpathSync(directory) !== directory) mismatch(prefix);
+  const receipt = resolve(manifest.targetCheckout, recordPath);
+  if (!existsSync(receipt) || !lstatSync(receipt).isFile() || lstatSync(receipt).isSymbolicLink()
+    || !readFileSync(receipt).equals(archived)) mismatch(`${recordPath} differs from the archived task receipt.`);
+  const value: unknown = JSON.parse(archived.toString("utf8"));
+  if (!value || typeof value !== "object" || Array.isArray(value)) return mismatch(`${archiveRecordPath} is invalid.`);
+  const record = value as Record<string, unknown>;
+  if (record.version !== 1 || record.specRelativePath !== `${prefix}/plan.md` || record.specStub !== manifest.activeSpecStub
+    || record.taskBranch !== manifest.taskBranch || record.originBranch !== manifest.targetBranch
+    || typeof record.taskWorktreePath !== "string" || !samePath(record.taskWorktreePath, manifest.taskWorktree)
+    || typeof record.originCheckoutPath !== "string" || !samePath(record.originCheckoutPath, manifest.targetCheckout)
+    || record.startingTargetCommit !== manifest.targetStartingCommit) mismatch(`${archiveRecordPath} coordinates do not match the manifest.`);
+  const snapshot = record.sourceSpecSnapshot;
+  if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) return mismatch(`${archiveRecordPath} has no sourceSpecSnapshot.`);
+  const data = snapshot as Record<string, unknown>;
+  if (data.version !== 1 || !Array.isArray(data.files)) return mismatch(`${archiveRecordPath} has an invalid sourceSpecSnapshot.`);
+  const expected = new Map<string, { sha256?: string; symlinkTarget?: string }>();
+  for (const entry of data.files) {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) return mismatch("Invalid snapshot entry.");
+    const item = entry as Record<string, unknown>;
+    if (typeof item.path !== "string" || !item.path || item.path.includes("\\") || item.path.split("/").some(part => !part || part === "." || part === "..")
+      || item.path === ".pi-plan-run.json" || expected.has(item.path)
+      || !((typeof item.sha256 === "string" && /^[0-9a-f]{64}$/.test(item.sha256) && item.symlinkTarget === undefined)
+        || (typeof item.symlinkTarget === "string" && item.sha256 === undefined))) return mismatch("Invalid snapshot path or identity.");
+    expected.set(item.path, typeof item.sha256 === "string" ? { sha256: item.sha256 } : { symlinkTarget: item.symlinkTarget as string });
+  }
+  const seen = new Set<string>();
+  const directories: string[] = [];
+  const visit = (current: string, relativePath = "") => {
+    for (const entry of readdirSync(current, { withFileTypes: true })) {
+      const path = relativePath ? `${relativePath}/${entry.name}` : entry.name;
+      const absolute = resolve(current, entry.name);
+      if (entry.isDirectory()) {
+        if (![...expected.keys()].some(file => file.startsWith(`${path}/`))) mismatch(`${prefix}/${path} is new.`);
+        visit(absolute, path); directories.push(absolute);
+      } else if (path !== ".pi-plan-run.json") {
+        const identity = expected.get(path);
+        if (!identity || !(entry.isFile() && identity.sha256 === createHash("sha256").update(readFileSync(absolute)).digest("hex")
+          || entry.isSymbolicLink() && identity.symlinkTarget === readlinkSync(absolute))) mismatch(`${prefix}/${path} is new or changed.`);
+        seen.add(path);
+      }
+    }
+  };
+  visit(directory);
+  for (const path of expected.keys()) if (!seen.has(path)) mismatch(`${prefix}/${path} is missing.`);
+  const activeInTask = run(manifest.repositoryRoot, ["ls-tree", "-r", "--name-only", manifest.taskCommit, "--", prefix]);
+  if (activeInTask) mismatch(`taskCommit still contains active source paths: ${activeInTask}.`);
+  const paths = [...expected.keys()].map(path => `${prefix}/${path}`).concat(recordPath);
+  const tracked = [...new Set([
+    ...run(manifest.targetCheckout, ["ls-files", "-z", "--", prefix]).split("\0").filter(Boolean),
+    ...run(manifest.targetCheckout, ["ls-tree", "-r", "--name-only", "-z", "HEAD", "--", prefix]).split("\0").filter(Boolean),
+  ])];
+  for (const path of run(manifest.targetCheckout, ["diff", "--cached", "--name-only", "-z", "--", prefix]).split("\0").filter(Boolean)) {
+    let staged: Buffer;
+    try { staged = execFileSync("git", ["show", `:${path}`], { cwd: manifest.targetCheckout, stdio: ["ignore", "pipe", "pipe"], maxBuffer: GIT_MAX_BUFFER }); }
+    catch { continue; } // A selected staged deletion is retired by the task deletion.
+    const absolute = resolve(manifest.targetCheckout, path);
+    const current = lstatSync(absolute).isSymbolicLink() ? Buffer.from(readlinkSync(absolute)) : readFileSync(absolute);
+    if (!staged.equals(current)) mismatch(`${path} has divergent staged content.`);
+  }
+  if (tracked.some(path => !paths.includes(path))) mismatch(`Index contains additional source paths: ${tracked.filter(path => !paths.includes(path)).join(", ")}.`);
+  return { paths, tracked, directories: [...directories, directory] };
+}
+
+function retirePreparedSource(manifest: CloseoutManifest, retirement: PreparedSourceRetirement): void {
+  // Restore task-owned tracked inputs to HEAD so the task commit's deletions can
+  // merge normally. Untracked carried inputs must not become a restoration stash.
+  if (retirement.tracked.length) run(manifest.targetCheckout, ["restore", "--source=HEAD", "--staged", "--worktree", "--", ...retirement.tracked]);
+  const trackedAtHead = new Set(run(manifest.targetCheckout, ["ls-tree", "-r", "--name-only", "HEAD", "--", `.specs/${manifest.activeSpecStub}`]).split(/\r?\n/).filter(Boolean));
+  for (const path of retirement.paths) if (!trackedAtHead.has(path)) rmSync(resolve(manifest.targetCheckout, path), { force: true });
+  for (const path of retirement.directories) if (existsSync(path) && readdirSync(path).length === 0) rmdirSync(path);
+}
+
 /** Inspect the integration-relevant state without changing either checkout. */
 export function inspectCloseout(input: CloseoutManifest): CloseoutInspection {
   const manifest = normalizeCloseoutManifest(input);
@@ -157,7 +255,7 @@ export function inspectCloseout(input: CloseoutManifest): CloseoutInspection {
   let worktree: WorktreeState;
   if (registered) worktree = "registered";
   else if (!taskPresent) worktree = "missing";
-  else worktree = "remnant-removed";
+  else worktree = "deregistered";
   return {
     targetBranch: branch(target), targetCommit, taskCommit: manifest.taskCommit, taskCommitPresent,
     merged: taskCommitPresent && isAncestor(target, manifest.taskCommit, targetCommit), dirtyPaths: statusPaths(target),
@@ -166,7 +264,74 @@ export function inspectCloseout(input: CloseoutManifest): CloseoutInspection {
   };
 }
 
-/** Complete an authorized local closeout. Each step is state-checked so it can resume after interruption. */
+/** Remove only the manifest worktree. Delivery must already be verified by the caller. */
+function cleanupWorktree(manifest: CloseoutManifest, initial: CloseoutResult): CloseoutResult {
+  const root = manifest.repositoryRoot;
+  let state = initial;
+  const pending = (reason: string, action: string): CloseoutResult => ({
+    ...state, outcome: "CLEANUP PENDING", reason, action,
+    retainedArtifacts: [...new Set([...state.retainedArtifacts, manifest.taskWorktree])],
+  });
+  try {
+    const registered = registeredWorktree(root, manifest.taskWorktree);
+    if (!registered && !existsSync(manifest.taskWorktree)) state = { ...state, worktree: "missing" };
+    else if (!registered) state = { ...state, worktree: "deregistered" };
+    else {
+      state = { ...state, worktree: "registered" };
+      if (!existsSync(manifest.taskWorktree) || branch(manifest.taskWorktree) !== manifest.taskBranch
+        || run(manifest.taskWorktree, ["rev-parse", "HEAD"]) !== manifest.taskCommit) {
+        return pending("Registered task worktree is missing or no longer matches the manifest.", "Inspect the exact task worktree before cleanup.");
+      }
+      const workStatus = statusPaths(manifest.taskWorktree);
+      const unmerged = run(manifest.taskWorktree, ["diff", "--name-only", "--diff-filter=U"]).split(/\r?\n/).filter(Boolean);
+      if (workStatus.length || unmerged.length) return pending(`Task worktree is not clean: ${[...workStatus, ...unmerged].join(", ")}.`, "Commit or resolve task-worktree changes before removing it.");
+      try { run(root, ["worktree", "remove", manifest.taskWorktree]); }
+      catch (error) { return pending(`Git could not remove the task worktree: ${String(error)}.`, "Inspect task-worktree status, including ignored files, then retry removal."); }
+      state = { ...state, worktree: "deregistered" };
+    }
+    if (existsSync(manifest.taskWorktree)) {
+      const taskPath = resolve(manifest.taskWorktree);
+      const worktrees = resolve(realpathSync(root), ".worktrees");
+      if (!inside(worktrees, taskPath) || taskPath === worktrees || registeredWorktree(root, taskPath)) return pending("Task path is not a deregistered contained worktree remnant.", "Inspect Git registration and exact path before cleanup.");
+      const stat = lstatSync(taskPath);
+      if (!stat.isDirectory() || stat.isSymbolicLink()) return pending("Task remnant is not a plain directory.", "Inspect the exact remnant path before cleanup.");
+      rmSync(taskPath, { recursive: true, force: false });
+      state = { ...state, worktree: "remnant-removed" };
+    }
+    return { ...state, outcome: "COMPLETED", retainedArtifacts: [] };
+  } catch (error) {
+    return pending(String(error), "Inspect the exact task-worktree state and retry cleanup.");
+  }
+}
+
+/** Verify delivery independently. Cleanup never merges, restores stashes, or writes metadata. */
+function cleanupDelivered(manifest: CloseoutManifest): CloseoutResult {
+  let state = result(manifest);
+  try {
+    gitPath(manifest.repositoryRoot, ".");
+    gitPath(manifest.targetCheckout, ".");
+    const inspection = inspectCloseout(manifest);
+    state = { ...state, targetCommit: inspection.targetCommit, worktree: inspection.worktree,
+      archivedPlanVerified: inspection.archivedPlanExists, activeSpecAbsent: inspection.activeSpecAbsent,
+      merge: inspection.merged ? "already-merged" : "not-started",
+      metadata: inspection.metadataCommitted ? "already-committed" : "not-started" };
+    const archive = inspection.archivedPlanExists ? planText(manifest.targetCheckout, manifest.archivedPlanPath) : "";
+    if (inspection.targetBranch !== manifest.targetBranch
+      || run(manifest.repositoryRoot, ["rev-parse", "--verify", `${manifest.taskBranch}^{commit}`]) !== manifest.taskCommit
+      || !inspection.merged || !inspection.metadataCommitted || !inspection.activeSpecAbsent
+      || !archive.includes(`completed: ${manifest.completedDate}`) || !archive.includes(manifest.integrationEvidence.trim())
+      || inspection.pendingMerge || run(manifest.targetCheckout, ["diff", "--name-only", "--diff-filter=U"])
+      || inspection.matchingStashes.length || (manifest.preservationStashOid && resolveStash(manifest.targetCheckout, manifest.preservationStashOid).length)) {
+      return { ...state, outcome: "USER INPUT REQUIRED", reason: "Integration and restoration with exact committed completion metadata are not verified.",
+        action: "Finish integration using the same manifest before requesting cleanup.", retainedArtifacts: [manifest.taskWorktree, ...inspection.matchingStashes] };
+    }
+    return cleanupWorktree(manifest, state);
+  } catch (error) {
+    return { ...state, outcome: "USER INPUT REQUIRED", reason: String(error), action: "Verify delivery and the manifest before cleanup.", retainedArtifacts: [manifest.taskWorktree] };
+  }
+}
+
+/** Complete an authorized local closeout, or stop at the integration-ready lifetime boundary. */
 export function closeout(input: CloseoutManifest, options: CloseoutOptions = {}): CloseoutResult {
   const manifest = normalizeCloseoutManifest(input);
   validateCloseoutManifest(manifest);
@@ -177,12 +342,18 @@ export function closeout(input: CloseoutManifest, options: CloseoutOptions = {})
   const retained = (path: string) => { if (!state.retainedArtifacts.includes(path)) state.retainedArtifacts.push(path); };
   const stop = (outcome: CloseoutResult["outcome"], reason: string, action: string): CloseoutResult => ({ ...state, outcome, reason, action });
   if (manifest.noMerge) return stop("USER INPUT REQUIRED", "Manifest forbids merge and closeout mutation.", "Skip Integrator closeout and leave the task worktree pending.");
+  if (options.operation !== undefined && !["closeout", "integrate", "cleanup"].includes(options.operation)) fail("Invalid closeout operation.");
+  if (options.operation === "cleanup") {
+    const cleaned = cleanupDelivered(manifest);
+    event(cleaned.outcome === "COMPLETED" ? "completed" : "cleanup-stopped", { targetCommit: cleaned.targetCommit, taskCommit: manifest.taskCommit });
+    return cleaned;
+  }
   try {
     if (gitPath(root, ".") !== "." || gitPath(target, ".") !== ".") fail("Repository root/target is not a Git worktree root.");
     if (branch(target) !== manifest.targetBranch) return stop("USER INPUT REQUIRED", `Target checkout is on ${branch(target)}, not ${manifest.targetBranch}.`, "Check out the recorded target branch and rerun.");
     if (run(root, ["rev-parse", "--verify", `${manifest.taskBranch}^{commit}`]) !== manifest.taskCommit) return stop("USER INPUT REQUIRED", "Task branch does not point to the recorded task commit.", "Verify the task branch and manifest before continuing.");
     const taskRegistered = registeredWorktree(root, manifest.taskWorktree);
-    state = { ...state, worktree: taskRegistered ? "registered" : existsSync(manifest.taskWorktree) ? "remnant-removed" : "missing" };
+    state = { ...state, worktree: taskRegistered ? "registered" : existsSync(manifest.taskWorktree) ? "deregistered" : "missing" };
     if (taskRegistered) {
       if (!existsSync(manifest.taskWorktree) || branch(manifest.taskWorktree) !== manifest.taskBranch) return stop("USER INPUT REQUIRED", "Registered task worktree is missing or on another branch.", "Inspect Git worktree state before continuing.");
       if (run(manifest.taskWorktree, ["rev-parse", "HEAD"]) !== manifest.taskCommit) return stop("USER INPUT REQUIRED", "Task worktree HEAD differs from the recorded commit.", "Verify task worktree history before continuing.");
@@ -192,6 +363,16 @@ export function closeout(input: CloseoutManifest, options: CloseoutOptions = {})
     if (manifest.targetStartingCommit && (!isAncestor(root, baseCommit, manifest.taskCommit) || !isAncestor(root, baseCommit, targetHeadAtStart))) return stop("USER INPUT REQUIRED", "Recorded target starting commit is not an ancestor of both histories.", "Verify the target/task base and update the manifest only with exact repository evidence.");
     const taskPaths = new Set(run(root, ["diff", "--name-only", "-z", `${baseCommit}..${manifest.taskCommit}`]).split("\0").filter(Boolean));
     const mergePending = (() => { try { run(target, ["rev-parse", "--verify", "MERGE_HEAD"]); return true; } catch { return false; } })();
+    try {
+      const retirement = preparedSourceRetirement(manifest);
+      if (retirement) {
+        retirePreparedSource(manifest, retirement);
+        state.evidence.push(`prepared-source-retired=${retirement.paths.join(",")}`);
+      }
+    } catch (error) {
+      retained(resolve(target, ".specs", manifest.activeSpecStub));
+      return stop("USER INPUT REQUIRED", String(error), "Inspect the selected source spec and exact archived receipt; preserve divergent source paths and reconcile them before retrying.");
+    }
     let dirty = statusPaths(target);
     const overlaps = overlap(taskPaths, new Set(dirty));
     const message = `plan-integration:${manifest.activeSpecStub}:${manifest.taskCommit}`;
@@ -291,29 +472,17 @@ export function closeout(input: CloseoutManifest, options: CloseoutOptions = {})
       state = { ...state, metadata: "committed", targetCommit: run(target, ["rev-parse", "HEAD"]) };
     } else state = { ...state, metadata: "already-committed", targetCommit: run(target, ["rev-parse", "HEAD"]) };
 
-    if (!taskRegistered && !existsSync(manifest.taskWorktree)) {
-      state = { ...state, worktree: "missing" };
-    } else if (!taskRegistered) {
-      state = { ...state, worktree: "deregistered" };
-    } else {
-      const workStatus = statusPaths(manifest.taskWorktree);
-      const unmerged = run(manifest.taskWorktree, ["diff", "--name-only", "--diff-filter=U"]).split(/\r?\n/).filter(Boolean);
-      if (workStatus.length || unmerged.length) { state = { ...state, worktree: "registered" }; retained(manifest.taskWorktree); return stop("CLEANUP PENDING", `Task worktree is not clean: ${[...workStatus, ...unmerged].join(", ")}.`, "Commit or resolve task-worktree changes before removing it."); }
-      try { run(root, ["worktree", "remove", manifest.taskWorktree]); }
-      catch (error) { state = { ...state, worktree: "registered" }; retained(manifest.taskWorktree); return stop("CLEANUP PENDING", `Git could not remove the task worktree: ${String(error)}.`, "Inspect task-worktree status, including ignored files, then retry removal."); }
-      state = { ...state, worktree: "deregistered" };
+    // Metadata commit is not the whole-run completion boundary for staged callers.
+    const verified = inspectCloseout(manifest);
+    if (!verified.merged || !verified.metadataCommitted || !verified.activeSpecAbsent) return stop("MERGE BLOCKED", "Integration metadata verification failed.", "Verify committed delivery before retiring the orchestrator.");
+    if (options.operation === "integrate") {
+      if (existsSync(manifest.taskWorktree) || taskRegistered) retained(manifest.taskWorktree);
+      state = { ...state, outcome: "INTEGRATION READY" };
+      event("integration-ready", { targetCommit: state.targetCommit, taskCommit: manifest.taskCommit });
+      return state;
     }
-    if (existsSync(manifest.taskWorktree)) {
-      const rootReal = realpathSync(root);
-      const taskPath = resolve(manifest.taskWorktree);
-      if (!inside(resolve(rootReal, ".worktrees"), taskPath) || taskPath === resolve(rootReal, ".worktrees") || registeredWorktree(root, taskPath)) return stop("CLEANUP PENDING", "Task path is not a deregistered contained worktree remnant.", "Inspect Git registration and exact path before cleanup.");
-      const stat = lstatSync(taskPath);
-      if (!stat.isDirectory() || stat.isSymbolicLink()) return stop("CLEANUP PENDING", "Task remnant is not a plain directory.", "Inspect the exact remnant path before cleanup.");
-      rmSync(taskPath, { recursive: true, force: false });
-      state = { ...state, worktree: "remnant-removed" };
-    }
-    state = { ...state, outcome: "COMPLETED", targetCommit: run(target, ["rev-parse", "HEAD"]), activeSpecAbsent: !existsSync(resolve(target, ".specs", manifest.activeSpecStub)), archivedPlanVerified: existsSync(resolve(target, manifest.archivedPlanPath)), retainedArtifacts: [] };
-    event("completed", { targetCommit: state.targetCommit, taskCommit: manifest.taskCommit });
+    state = cleanupWorktree(manifest, state);
+    event(state.outcome === "COMPLETED" ? "completed" : "cleanup-stopped", { targetCommit: state.targetCommit, taskCommit: manifest.taskCommit });
     return state;
   } catch (error) {
     event("error", { message: String(error) });

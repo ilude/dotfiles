@@ -15,7 +15,8 @@ export interface CloseoutManifest {
   integrationEvidence: string;
 }
 
-export type CloseoutOutcome = "COMPLETED" | "MERGE BLOCKED" | "USER INPUT REQUIRED" | "CLEANUP PENDING";
+export type CloseoutOperation = "closeout" | "integrate" | "cleanup";
+export type CloseoutOutcome = "INTEGRATION READY" | "COMPLETED" | "MERGE BLOCKED" | "USER INPUT REQUIRED" | "CLEANUP PENDING";
 export type StashState = "not-needed" | "created" | "restored" | "retained" | "ambiguous" | "missing";
 export type WorktreeState = "registered" | "deregistered" | "remnant-removed" | "missing";
 
@@ -53,6 +54,8 @@ export interface CloseoutResult {
 }
 
 export interface CloseoutOptions {
+  /** Default one-shot closeout, integration without removal, or verified cleanup only. */
+  operation?: CloseoutOperation;
   /** Called after an interruption or a safe stop with the exact state observed. */
   onEvent?: (event: string, details: Record<string, string>) => void;
 }

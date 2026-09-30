@@ -13,8 +13,9 @@ function fail(message) {
   process.exitCode = 1;
 }
 
-if (process.argv.length !== 3 || process.argv[2] !== "closeout") {
-  fail("Usage: node <canonical plan-integration.mjs> closeout");
+const operation = process.argv[2];
+if (process.argv.length !== 3 || !["closeout", "integrate", "cleanup"].includes(operation)) {
+  fail("Usage: node <canonical plan-integration.mjs> <closeout|integrate|cleanup>");
 } else {
   try {
     const authority = JSON.parse(process.env.PI_SUBAGENT_AUTHORITY ?? "null");
@@ -32,7 +33,7 @@ if (process.argv.length !== 3 || process.argv[2] !== "closeout") {
       || resolve(authority.cwd) !== resolve(handoff.manifest.targetCheckout)) {
       throw new Error("Closeout target does not match the authorized manifest");
     }
-    process.stdout.write(`${JSON.stringify(closeout(handoff.manifest), null, 2)}\n`);
+    process.stdout.write(`${JSON.stringify(closeout(handoff.manifest, { operation }), null, 2)}\n`);
   } catch (error) {
     fail(`Plan integration closeout failed: ${error instanceof Error ? error.message : String(error)}`);
   }

@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-09-30: Run Herdr plans in prepared worktrees with successor closeout
+
+- Default Pi `/plans` action `d` prepares or verifies the task checkout and whole selected spec before opening Pi in Herdr's native worktree workspace. The run carries its actual task coordinates and originating integration target, preserving uncommitted spec content and newer resumed progress without copying unrelated work. Closeout retires only unchanged prepared source proven by the raw record in the archived task commit; concurrent source edits remain intact and block integration. Picker controls, explicit plan titles, and the lasting runtime profile remain unchanged.
+- Integrated prepared Herdr runs launch a restricted Integrator in the same tab at the parent checkout. Local integration, preservation/restoration, and completion metadata reach `INTEGRATION READY` before the orchestrator finishes separately authorized obligations and releases its exact session for graceful retirement. The surviving Integrator then removes the task worktree and owns operator questions and the final report, leaving its pane open.
+- Blocked closeout preserves both panes and the worktree. Failure to retire the origin or remove the worktree after delivery is `CLEANUP PENDING` with exact retained artifacts, not rollback or orchestrator recreation. Direct/run-here and non-Herdr execution keep ordinary closeout; `--no-merge` retains the committed task worktree without mutating successor dispatch or retirement. Ordinary subagent lifetimes/layouts, module ownership, task-branch retention, and explicit push/deployment authorization are preserved. No Herdr server upgrade, production relink, broad detach/control capability, or durable coordination service is added.
+
 ## 2026-09-30: Add /pi as a new-instance alias
 
 - Default Pi now accepts `/pi [title]` and `/pi --resume <session-uuid> [title]` through the same launcher as `/new-instance`. The existing command and F7 shortcut remain unchanged.

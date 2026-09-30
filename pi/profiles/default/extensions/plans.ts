@@ -4,7 +4,7 @@ import { spawnSync } from "node:child_process";
 import { copyToClipboard, type ExtensionAPI, type ExtensionCommandContext, type Theme } from "@earendil-works/pi-coding-agent";
 import { Container, Key, matchesKey, stripTerminalSequences, Text, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 import { containedRealPath, discoverPlans, parsePlan, type PlanRecord } from "../lib/plans.ts";
-import { createHerdrPiTab, HerdrPiTabLaunchError, renameHerdrPiTab } from "./session-launch.ts";
+import { launchPreparedHerdrPlan, HerdrPiTabLaunchError, renameHerdrPiTab } from "./session-launch.ts";
 import { PLAN_EVENT_TYPE, PlanEventRecorder, eventPlan, formatPlanEvent, notifyLoggingFailure, type PlanActionEvent, type PlanEventAction } from "../lib/plan-events.ts";
 import { claimHerdrTabTitle } from "../lib/herdr-tab-title-events.ts";
 import { registerProfileCommand } from "../lib/profile-command.ts";
@@ -250,7 +250,7 @@ export async function executePlans(ctx: ExtensionCommandContext, pi: Pick<Extens
 			launch: async plan => {
 				const attemptId = attempts.get(`run-new-tab:${plan.path}`);
 				if (process.env.HERDR_ENV !== "1") throw new HerdrPiTabLaunchError("Plan execution from /plans requires a Herdr-managed Pi session.", { mayHaveLaunched: false });
-				const receipt = await createHerdrPiTab(root, plan.stub, undefined, plan.relativePath);
+				const receipt = await launchPreparedHerdrPlan({ originCheckoutPath: root, specRelativePath: plan.relativePath, title: plan.stub });
 				automaticallyDismissed = true;
 				recorder.outcome(attemptId, "run-new-tab", "success", { plan: eventPlan(plan), target: receipt, phase: "outcome" });
 				return receipt;

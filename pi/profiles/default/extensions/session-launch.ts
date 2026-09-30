@@ -7,6 +7,7 @@ import { Type } from "typebox";
 import { SessionManager } from "../node_modules/@earendil-works/pi-coding-agent/dist/core/session-manager.js";
 import { Text } from "@earendil-works/pi-tui";
 import { activeProfileName } from "../lib/profile.ts";
+import { preparePlanRun, type PreparedPlanRun } from "../lib/plan-run.ts";
 import { registerProfileCommand } from "../lib/profile-command.ts";
 
 interface LaunchPlan {
@@ -243,15 +244,17 @@ async function currentHerdrWorkspace(cwd: string): Promise<string> {
 	}
 }
 
-export async function createHerdrPiTab(cwd: string, title: string, sessionFile?: string, planPath?: string, titleExplicit = Boolean(planPath), workspaceId?: string): Promise<{ tabId: string; paneId?: string }> {
+export async function createHerdrPiTab(cwd: string, title: string, sessionFile?: string, planPath?: string, titleExplicit = Boolean(planPath), workspaceId?: string, planRun?: PreparedPlanRun): Promise<{ tabId: string; paneId?: string }> {
 	if (sessionFile && planPath) throw new HerdrPiTabLaunchError("A Herdr Pi tab cannot resume a session and launch a plan together.", { mayHaveLaunched: false });
 	const workspace = workspaceId || await currentHerdrWorkspace(cwd);
 	const args = ["plugin", "pane", "open", "--plugin", "local.pi", "--entrypoint", "pi", "--placement", "tab", "--workspace", workspace,
 		"--cwd", process.platform === "win32" ? msysPathToWindows(cwd) : cwd,
 		"--env", `PI_HERDR_PROFILE_DIR=${profileDir()}`, "--env", `PI_HERDR_SESSION_FILE=${sessionFile || ""}`,
 		"--env", `PI_HERDR_PLAN_PATH=${planPath || ""}`,
+		"--env", `PI_HERDR_PLAN_RUN=${planRun ? JSON.stringify(planRun) : ""}`,
 		"--env", `PI_HERDR_TAB_TITLE=${title}`, "--env", `PI_HERDR_TAB_TITLE_EXPLICIT=${titleExplicit ? "1" : "0"}`,
-		"--env", `PI_HERDR_TAB_LABEL=${planPath ? title : ""}`, "--no-focus"];
+		"--env", `PI_HERDR_TAB_LABEL=${planPath ? title : ""}`];
+	args.push("--no-focus");
 	let output: string;
 	try {
 		output = await runHerdrAsync(args, cwd);
@@ -276,6 +279,79 @@ export async function createHerdrPiTab(cwd: string, title: string, sessionFile?:
 		throw new HerdrPiTabLaunchError(`Pi tab ${tab} was created, but focusing failed. Do not relaunch. ${String(error)}`, { mayHaveLaunched: true, tabId: tab, paneId: pane });
 	}
 	return { tabId: tab, paneId: pane };
+}
+
+function herdrResult(output: string): Record<string, unknown> {
+	const parsed = extractJsonObject(output);
+	const result = parsed.result;
+	if (!result || typeof result !== "object") throw new Error("Herdr returned no worktree result.");
+	return result as Record<string, unknown>;
+}
+
+function nestedId(value: unknown, key: string): string | undefined {
+	if (!value || typeof value !== "object") return undefined;
+	const id = (value as Record<string, unknown>)[key];
+	return typeof id === "string" && id ? id : undefined;
+}
+
+function hasOpenedCheckout(value: unknown, expectedPath: string): boolean {
+	if (Array.isArray(value)) return value.some(item => hasOpenedCheckout(item, expectedPath));
+	if (!value || typeof value !== "object") return false;
+	const record = value as Record<string, unknown>;
+	const expected = path.resolve(expectedPath);
+	const candidate = record.path;
+	const openedWorkspace = record.open_workspace_id;
+	if (typeof candidate === "string" && typeof openedWorkspace === "string" && openedWorkspace) {
+		const actual = path.resolve(candidate);
+		if ((process.platform === "win32" ? actual.toLowerCase() : actual) === (process.platform === "win32" ? expected.toLowerCase() : expected)) return true;
+	}
+	return Object.values(record).some(item => hasOpenedCheckout(item, expectedPath));
+}
+
+export async function launchPreparedHerdrPlan(input: { originCheckoutPath: string; specRelativePath: string; title: string }): Promise<{ tabId: string; paneId?: string; workspaceId: string; taskWorktreePath: string; taskBranch: string; preparedRun: PreparedPlanRun }> {
+	let preparedRun: PreparedPlanRun;
+	try {
+		preparedRun = preparePlanRun({ originCheckoutPath: input.originCheckoutPath, specRelativePath: input.specRelativePath });
+	} catch (error) {
+		throw new HerdrPiTabLaunchError(`Plan worktree preparation failed. ${String(error)}`, { mayHaveLaunched: false });
+	}
+	let opened: Record<string, unknown>;
+	let alreadyOpen = false;
+	try {
+		const listed = herdrResult(await runHerdrAsync(["worktree", "list", "--cwd", preparedRun.originCheckoutPath], preparedRun.originCheckoutPath));
+		alreadyOpen = hasOpenedCheckout(listed, preparedRun.taskWorktreePath);
+		const output = await runHerdrAsync(["worktree", "open", "--cwd", preparedRun.originCheckoutPath, "--path", preparedRun.taskWorktreePath, "--no-focus"], preparedRun.originCheckoutPath);
+		opened = herdrResult(output);
+	} catch (error) {
+		throw new HerdrPiTabLaunchError(`Prepared worktree retained at ${preparedRun.taskWorktreePath}; Herdr could not open it. ${String(error)}`, { mayHaveLaunched: false });
+	}
+	const workspace = nestedId(opened.workspace, "workspace_id") ?? nestedId(opened.workspace, "id");
+	const shellPane = nestedId(opened.root_pane, "pane_id");
+	if (!workspace) throw new HerdrPiTabLaunchError(`Prepared worktree is open or may be open at ${preparedRun.taskWorktreePath}, but Herdr omitted workspace identity. Inspect before retrying.`, { mayHaveLaunched: true });
+	const removeKnownInitialShell = async (launched?: { tabId: string; paneId?: string }) => {
+		if (!shellPane || alreadyOpen) return;
+		try { await runHerdrAsync(["pane", "close", shellPane], preparedRun.taskWorktreePath); }
+		catch (error) { throw new HerdrPiTabLaunchError(`Pi opened in ${workspace}, but its known initial shell pane ${shellPane} could not be removed. Inspect before retrying. ${String(error)}`, { mayHaveLaunched: true, tabId: launched?.tabId, paneId: launched?.paneId, workspaceId: workspace }); }
+	};
+	let receipt: { tabId: string; paneId?: string };
+	try {
+		receipt = await createHerdrPiTab(preparedRun.taskWorktreePath, input.title, undefined, preparedRun.specRelativePath, true, workspace, preparedRun);
+	} catch (error) {
+		if (error instanceof HerdrPiTabLaunchError) {
+			if (error.paneId) {
+				try { await removeKnownInitialShell(error.tabId ? { tabId: error.tabId, paneId: error.paneId } : undefined); }
+				catch (cleanupError) { error.message = `${error.message} ${String(cleanupError)}`; }
+			}
+			error.message = `${error.message} Prepared worktree retained at ${preparedRun.taskWorktreePath}; workspace ${workspace}.`;
+		}
+		throw error;
+	}
+	await removeKnownInitialShell(receipt);
+	if (shellPane && !alreadyOpen) {
+		try { await runHerdrAsync(["tab", "focus", receipt.tabId], preparedRun.taskWorktreePath); }
+		catch (error) { throw new HerdrPiTabLaunchError(`Pi tab ${receipt.tabId} exists, but focus could not be confirmed after initial-shell cleanup. Do not relaunch. ${String(error)}`, { mayHaveLaunched: true, tabId: receipt.tabId, paneId: receipt.paneId, workspaceId: workspace }); }
+	}
+	return { ...receipt, workspaceId: workspace, taskWorktreePath: preparedRun.taskWorktreePath, taskBranch: preparedRun.taskBranch, preparedRun };
 }
 
 function isHerdr(): boolean {

@@ -1,4 +1,5 @@
 import type { AgentDefinition } from "./definitions.ts";
+import type { PreparedPlanRun } from "../plan-run.ts";
 
 export type DelegationAudience = "caller" | "coordinator" | "strategist" | "teamlead" | "council" | "leaf";
 
@@ -79,6 +80,34 @@ export function delegationContext(options: DelegationContextOptions): string {
           ? COUNCIL_GUIDANCE
           : CALLER_GUIDANCE;
   return `${guidance}\n\n${catalog}\n${entries || "- none"}`;
+}
+
+/** Full role replacement for admitted closeout successors, not an ordinary leaf exception. */
+export function composedIntegratorSuccessorPrompt(): string {
+  return `Perform only the authorized local closeout described by the runtime-issued manifest. Follow the plan-integration skill. Use closeout_successor_handoff for staged integration and metadata, integration readiness, exact originating-session handoff, and cleanup. INTEGRATION READY is not whole-run completion: keep the worktree until the orchestrator finishes its explicitly authorized obligations, releases the handoff, and the runtime observes its exact retirement. Do not select or shut down panes yourself.
+
+Accept native operator input and ask consequential questions here with exact evidence and a recommendation. Before retirement, blocked integration or a consequential decision preserves both panes and the task worktree; do not choose between consequential edits. Own the final operator report in this surviving pane and remain available afterward. Never push, deploy, delete the task branch, rewrite published history, delegate, or expand the manifest scope.
+
+Start the report with one outcome: 🟢 **COMPLETED**, 🔴 **NOT COMPLETE: MERGE BLOCKED**, 🔴 **NOT COMPLETE: USER INPUT REQUIRED**, or 🟡 **CLEANUP PENDING**. COMPLETED requires verified integration, completion metadata, and task-worktree removal. After delivery, retirement/removal failure is CLEANUP PENDING, not rollback or orchestrator recreation. For blocked or cleanup-pending outcomes, put **Reason** and **Action needed** before successes, naming the exact issue, owner and next action. Report checks, archive/active-spec evidence, target/task commits, preservation state, and exact retained paths; distinguish verified delivery from unfinished cleanup.`;
+}
+
+/** The caller validates receipt/cwd before admitting this conditional system section. */
+export function preparedPlanRunContext(receipt: PreparedPlanRun): string {
+  const coordinates: PreparedPlanRun = {
+    version: receipt.version,
+    specRelativePath: receipt.specRelativePath,
+    specStub: receipt.specStub,
+    taskWorktreePath: receipt.taskWorktreePath,
+    taskBranch: receipt.taskBranch,
+    originCheckoutPath: receipt.originCheckoutPath,
+    originBranch: receipt.originBranch,
+    startingTargetCommit: receipt.startingTargetCommit,
+  };
+  return `## Runtime-issued prepared plan-run context
+
+${JSON.stringify(coordinates)}
+
+For this selected plan, use the prepared task checkout/branch directly. Do not create a second worktree or infer the target from task cwd. The origin checkout/branch above is the recorded integration target. Preserve the plan's scope, module ownership and separate publication/deployment authorization. After the task commit, use closeout_successor launch with the closeout manifest only when merge is authorized; inspect readiness, finish explicitly authorized orchestrator-only obligations, then release the exact origin for graceful retirement. The successor owns operator questions, cleanup after observed retirement, and final reporting; do not duplicate its report or mutate its target concurrently. With --no-merge, do not launch mutating closeout or release/retire this orchestrator; retain the committed task worktree intentionally. Direct/run-here execution without this runtime context uses ordinary preparation and parent-owned closeout.`;
 }
 
 export function composedAgentPrompt(
