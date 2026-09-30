@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-09-30: Add /pi as a new-instance alias
+
+- Default Pi now accepts `/pi [title]` and `/pi --resume <session-uuid> [title]` through the same launcher as `/new-instance`. The existing command and F7 shortcut remain unchanged.
+
 ## 2026-09-30: Report native subagent input disposition accurately
 
 - Default Pi subagent dispatch now distinguishes prompts and steering accepted as started or queued from input consumed by an extension. Dispatch metadata describes acceptance and disposition only; it does not claim model completion, and a handled prompt does not create a pending model run or erase earlier results. Native lifecycle events remain authoritative when they occur before the response.

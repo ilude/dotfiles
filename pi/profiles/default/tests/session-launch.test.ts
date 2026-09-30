@@ -138,6 +138,17 @@ it("launches an exact active-profile session from the tool using its saved cwd",
 	expect(args.join(" ")).toContain(session);
 });
 
+it.each(["new-instance", "pi"])("registers /%s to launch a titled fresh instance", async (name) => {
+	const { commands, ctx } = fixture();
+
+	await commands[name].handler("alias test", ctx);
+
+	const calls = vi.mocked(execFile).mock.calls.map(call => call[1] as string[]);
+	expect(calls[1]).toContain("PI_HERDR_TAB_TITLE=alias test");
+	expect(calls[1]).toContain("PI_HERDR_SESSION_FILE=");
+	expect(calls[2]).toEqual(["tab", "focus", "w9:t4"]);
+});
+
 it("registers f7 to launch a fresh instance", async () => {
 	const { shortcuts, ctx } = fixture();
 
