@@ -206,11 +206,11 @@ Tasks below have disjoint primary write ownership. Avoid assigning shared mocks,
   - Archive the entire spec and commit implementation/archive on the dotfiles task branch. Follow the closeout contract below for authorized local integration and cleanup. After integration and completion metadata, the orchestrator pushes the dotfiles integration branch to its configured remote. `--no-merge` preserves committed task worktrees intentionally; if selected, publish only task branches without merging or advancing integration targets, and still publish the module task revision before the parent gitlink.
   - Done when: module delivery ordering is satisfied, dotfiles implementation and archive are committed, authorized integration/metadata and both repository pushes are recorded, and owned worktree cleanup is verified or intentionally skipped under `--no-merge`.
   - If publication fails or the user later withdraws permission: retain owned module/task work as needed, do not commit an unpublished parent gitlink, and report exact blocker, next action, and owner. Continue independent approved work first.
-  - Evidence: Module task commit `a4b7dd9dde3e972cf696dc76e85d8fa8d4263d93` published to `origin/task/pi-native-tool-composition` on 2026-09-30 before parent gitlink staging. Canonical module target remains on `feature/v2-broker-core`; origin target was fetched and matched the task starting commit. `--no-merge` overrides target integration/pull advancement and cleanup. Dotfiles archive/task commit and task-branch publication are next, owned by orchestrator.
+  - Evidence: Module task commit `a4b7dd9dde3e972cf696dc76e85d8fa8d4263d93` published to `origin/task/pi-native-tool-composition` on 2026-09-30 before parent gitlink staging. Canonical module target remains on `feature/v2-broker-core`; origin target was fetched and matched the task starting commit. `--no-merge` overrides target integration/pull advancement and cleanup. Dotfiles implementation/archive commit `e787307a2195a137f2f5810804c0afc0d0c9cadb` published to `origin/task/pi-native-tool-composition` after module publication. Whole spec moved to `.specs/archive/pi-native-tool-composition/`; operator guidance links to the archive. Delivery evidence is committed separately on the same task branch. No Integrator was dispatched, no canonical target was advanced, and both owned worktrees are intentionally retained.
   - [x] Implementation and agreed checks passed.
   - [x] Module task revision committed and published before parent gitlink.
-  - [ ] Whole spec archived and dotfiles task changes committed.
-  - [ ] Dotfiles task branch published.
+  - [x] Whole spec archived and dotfiles task changes committed.
+  - [x] Dotfiles task branch published.
   - [ ] Integration into recorded canonical targets, intentionally skipped under `--no-merge`.
   - [ ] Task-worktree cleanup, intentionally skipped under `--no-merge`.
 
@@ -219,9 +219,9 @@ Concurrent implementation groups: T1/T2/T3 and the disjoint result tasks T4/T5a/
 ## Agreed validation and current handoff
 
 - Status: execution in progress; settled behavior, scope, and task commit/push authorization remain unchanged.
-- Completed: T1 through T9 implementation and agreed checks. Module task revision is committed and published. See per-task dated evidence above.
-- Next: archive/commit dotfiles with the published module gitlink, then publish its task branch and record delivery receipts.
-- Blockers/open decisions: no user decision pending. Integration/cleanup are intentionally pending under `--no-merge`. Commits and task-branch pushes in both repositories remain authorized; deployment is excluded.
+- Implemented and delivered: T1 through T9 and T10 task-only commit/archive/publication. Module `a4b7dd9` published first; dotfiles `e787307a` publishes that gitlink and the archive. Whole-plan completion is not claimed.
+- Next: none for this `--no-merge` invocation. Integration and cleanup remain intentionally pending; the operator must authorize a later integration invocation if desired. No automatic resumption, deployment or further tests are scheduled.
+- Blockers/open decisions: none. Integration/cleanup are intentionally pending under `--no-merge`; dedicated root/module task worktrees remain in place. Both task branches are published without advancing canonical targets.
 - Existing unrelated check limit: `pnpm test subagent-coordinator-control.test.ts` reproduced 7 failures/5 passes in unchanged canonical default at `12ed41af` on 2026-09-30 (expected accepted dispatch receipt, actual undefined at lines 81/110). This predates task changes; T3's agreed RPC disposition/tracking tests pass. No unrelated disposition redesign is included.
 - Verification limits: no live service, authenticated provider, attached browser, or operator UI acceptance run. Those checks do not block agent-owned completion. Actual future runs must record date, active profile/path, scope, and result separately from these planning probes.
 
