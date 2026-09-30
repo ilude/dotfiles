@@ -9,7 +9,7 @@ import { getSubagentRuntime, retireSubagentRuntime, resetSubagentRuntime, SUBAGE
 import { outcomeText } from "../lib/subagents/status.ts";
 import { parentVisibleRecord, presentationDetails, progressResult, renderSubagentCall, renderSubagentControlCall, renderSubagentMessage, renderSubagentResult } from "../lib/subagents/presentation.ts";
 import type { ChildRecord } from "../lib/subagents/rpc.ts";
-import { dispatchOperation, withDispatchMetadata } from "../lib/subagents/control-result.ts";
+import { dispatchOperation, withDispatchMetadata, type InputDisposition } from "../lib/subagents/control-result.ts";
 import type { MessageOptions } from "../lib/subagents/transport.ts";
 import { delegationContext } from "../lib/subagents/guidance.ts";
 import { extractCloseoutHandoff } from "../lib/subagents/closeout-handoff.ts";
@@ -106,15 +106,16 @@ export default function subagents(pi:ExtensionAPI){
    try{return output(parentVisibleRecord(await active().wait(p.id,owner,signal)))}finally{clearInterval(refresh);unsubscribe();bridge.stop()}
   }
   if(c.record.userOwned&&p.action!=="escalate")throw new Error("Parent control is suspended during direct user intervention; the user can use /subagents cancel");
+  let disposition:InputDisposition|undefined;
   if(p.action==="message"){
    if(!p.message)throw new Error("message requires text");
    const options:MessageOptions={delivery:p.delivery,interaction:p.interaction,protocol:p.protocol,replyTo:p.replyTo};
-   if(p.replyTo)await c.answer(p.message,p.replyTo);else await c.message(p.message,options);
+   if(p.replyTo)disposition=await c.answer(p.message,p.replyTo);else disposition=await c.message(p.message,options);
   }
-  else if(p.action==="answer"){if(!p.message)throw new Error("answer requires text");await c.answer(p.message,p.replyTo)}
+  else if(p.action==="answer"){if(!p.message)throw new Error("answer requires text");disposition=await c.answer(p.message,p.replyTo)}
   else if(p.action==="cancel")await c.cancel();else if(p.action==="finish")await c.finish();else if(p.action==="escalate")await c.escalate(ctx);
   const snapshot=c.snapshot();
-  return output(parentVisibleRecord(p.action==="message"||p.action==="answer" ? withDispatchMetadata(snapshot,dispatchOperation(p.action,p.replyTo)) : snapshot));
+  return output(parentVisibleRecord(p.action==="message"||p.action==="answer" ? withDispatchMetadata(snapshot,dispatchOperation(p.action,p.replyTo),disposition) : snapshot));
  }catch(e){throw new Error(e instanceof Error?e.message:String(e))}}});
  registerProfileCommand(pi,"subagents",{description:"Inspect, wait for, or cancel subagents without relaunching",handler:async(args,ctx)=>{
   const [cmd="inspect",id]=args.trim().split(/\s+/),owner=ctx.sessionManager.getSessionId();

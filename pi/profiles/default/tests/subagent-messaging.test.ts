@@ -44,6 +44,15 @@ describe("native subagent message boundaries", () => {
     await expect(settled).resolves.toMatchObject({ outcome: "complete", result: "steered: check the Windows path" });
   });
 
+  it("distinguishes queued and handled native steering", async () => {
+    const instance=child();const settled=instance.start();
+    await vi.waitFor(()=>expect(instance.record.processState).toBe("running"));
+    await expect(instance.message("[handled] consume",{delivery:"queued"})).resolves.toBe("handled");
+    expect(instance.snapshot().notice).toContain("not queued or completed");
+    await expect(instance.message("release",{delivery:"queued"})).resolves.toBe("queued");
+    await expect(settled).resolves.toMatchObject({outcome:"complete",result:"steered: release"});
+  });
+
   it("interrupts intentionally and resumes the same conversation", async () => {
     const instance = child();
     const settled = instance.start();
@@ -158,7 +167,7 @@ describe("native subagent message boundaries", () => {
     (instance as any).last = "A later assistant response from the same mixed batch";
     await (instance as any).finishFromTurn();
     expect(instance.snapshot()).toMatchObject({ status: "waiting", phase: "waiting-parent", requestId: request.id, result: "Question from one tool" });
-    await expect(instance.answer("resolved", request.id)).resolves.toBeUndefined();
+    await expect(instance.answer("resolved", request.id)).resolves.toBe("started");
   });
 
   it.each(["answer", "cancel"] as const)("preserves first resolution and reports late %s resolution", async winner => {

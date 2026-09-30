@@ -75,6 +75,26 @@ describe("bundled CLI child authority",()=>{
   } finally { child.kill(); await exited; rmSync(scratch,{recursive:true,force:true}); }
  },20_000);
 
+ it("reports handled input through the installed bundled RPC CLI without starting a model run",async()=>{
+  const scratch=mkdtempSync(join(tmpdir(),"subagent-handled-cli-"));
+  const fixture=join(scratch,"consume.mjs");
+  writeFileSync(fixture,"export default function(pi) { pi.on('input', event => event.text === 'consume without a model' ? { action: 'handled' } : { action: 'continue' }); }");
+  const child=spawn(process.execPath,[cli,"--mode","rpc","--offline","--no-session","--no-skills","--no-context-files","--no-tools","-e",fixture],{cwd:scratch,env:{...process.env,PI_CODING_AGENT_DIR:join(scratch,"profile")},stdio:["pipe","pipe","pipe"],windowsHide:true});
+  let stderr="",stdout="";child.stderr.on("data",chunk=>{stderr=(stderr+chunk).slice(-4000)});child.stdout.on("data",chunk=>{stdout=(stdout+chunk).slice(-4000)});
+  const exited=new Promise<void>(done=>child.once("close",()=>done()));
+  try{
+   const response=await new Promise<any>((resolve,reject)=>{
+    const timeout=setTimeout(()=>reject(new Error(`Handled-input CLI response timed out: stdout=${stdout} stderr=${stderr}`)),10_000);
+    const finish=(error?:Error,value?:any)=>{clearTimeout(timeout);error?reject(error):resolve(value)};
+    const parser=new JsonLines(value=>{const event=value as any;if(event.type==="response"&&event.id==="handled-probe")finish(undefined,event)});
+    child.stdout.on("data",chunk=>{try{parser.push(chunk)}catch(error){finish(error as Error)}});
+    child.once("error",error=>finish(error));
+    setTimeout(()=>child.stdin.write(JSON.stringify({type:"prompt",id:"handled-probe",message:"consume without a model"})+"\n"),1000);
+   });
+   expect(response).toMatchObject({success:true,data:{disposition:"handled"}});
+  }finally{child.kill();await exited;rmSync(scratch,{recursive:true,force:true})}
+ },15_000);
+
  it("lets a Team Lead discover and activate only permitted deferred Herdr tools",async()=>{
   const pi=createMockPi();
   for(const [name,description] of [["read","Read files"],["herdr_agent","Inspect and prompt live Herdr agents"],["herdr_layout","Inspect Herdr panes and workspaces"],["herdr_pane","Read or recover a Herdr pane"],["image_transform","Transform images"]])pi.registerTool({name,description,parameters:{},execute:async()=>({content:[]})});

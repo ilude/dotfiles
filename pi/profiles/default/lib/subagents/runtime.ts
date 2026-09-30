@@ -4,6 +4,7 @@ import { ChildTransport, type ChildIdentity, type ApplicationMessage, type Messa
 import type { AgentDefinition, AgentEffort } from "./definitions.ts";
 import { VisibleChild } from "./visible.ts";
 import { RpcChild, type ChildRecord, type LaunchSpec } from "./rpc.ts";
+import { dispatchOperation, withDispatchMetadata, type InputDisposition } from "./control-result.ts";
 import { EFFORTS, resolveAgentEffort, resolveModel, resolveSkills } from "./options.ts";
 import { workspaceRoot } from "./workspace.ts";
 import { NameAllocator } from "./names.ts";
@@ -62,9 +63,9 @@ class InertChild {
  snapshot(): ChildRecord { return cloneRecord(this.record); }
  wait(): Promise<ChildRecord> { return Promise.resolve(this.snapshot()); }
  private unavailable(): never { throw new Error("This settled subagent is no longer controllable after reload"); }
- async message(_value: string, _options?: MessageOptions): Promise<void> { this.unavailable(); }
+ async message(_value: string, _options?: MessageOptions): Promise<InputDisposition | undefined> { this.unavailable(); }
  async command(_type: string, _data: Record<string, unknown> = {}): Promise<never> { return this.unavailable(); }
- async answer(_value: string, _replyTo?: string): Promise<void> { this.unavailable(); }
+ async answer(_value: string, _replyTo?: string): Promise<InputDisposition | undefined> { this.unavailable(); }
  async cancel(): Promise<void> { this.unavailable(); }
  async finish(): Promise<void> { this.unavailable(); }
  async escalate(_ctx: unknown): Promise<void> { this.unavailable(); }
@@ -278,17 +279,18 @@ if(this.pending.get(id)?.origin!==origin)return;this.pending.delete(id);this.que
    const target=this.getDirectChild(payload.id,identity.child,identity.origin);
    if(!target)throw new Error("Only direct children may be controlled");
    if(target.record.userOwned&&payload.action!=="inspect")throw new Error("Parent control is suspended during direct user intervention");
+   let disposition:InputDisposition|undefined;
    if(payload.action==="message"||payload.action==="answer"){
     if(typeof payload.message!=="string")throw new Error("Message required");
-    if(payload.action==="answer")await target.answer(payload.message,typeof payload.replyTo==="string"?payload.replyTo:undefined);
-    else if(typeof payload.replyTo==="string")await target.answer(payload.message,payload.replyTo);
-    else await target.message(payload.message,{delivery:payload.delivery as "queued"|"immediate"|undefined,interaction:payload.interaction as "notify"|"request"|undefined,protocol:payload.protocol as "question-answer"|undefined});
+    if(payload.action==="answer")disposition=await target.answer(payload.message,typeof payload.replyTo==="string"?payload.replyTo:undefined);
+    else if(typeof payload.replyTo==="string")disposition=await target.answer(payload.message,payload.replyTo);
+    else disposition=await target.message(payload.message,{delivery:payload.delivery as "queued"|"immediate"|undefined,interaction:payload.interaction as "notify"|"request"|undefined,protocol:payload.protocol as "question-answer"|undefined});
    }else if(payload.action==="cancel")await target.cancel();
    else if(payload.action==="finish")await target.finish();
    else if(payload.action!=="inspect")throw new Error("Unsupported child control");
    const snapshot=target.snapshot();
    if(payload.consume===true&&snapshot.status!=="running")this.acknowledgeRecord(identity.origin,snapshot.id,snapshot.exchangeId);
-   return snapshot;
+   return payload.action==="message"||payload.action==="answer"?withDispatchMetadata(snapshot,dispatchOperation(payload.action,typeof payload.replyTo==="string"?payload.replyTo:undefined),disposition):snapshot;
   }
   return child.parentMessage(message);
  }
@@ -362,9 +364,16 @@ if(this.pending.get(id)?.origin!==origin)return;this.pending.delete(id);this.que
    void child.start(endpoint).catch(error=>child.launchFailed(error));
   }catch(error){child.launchFailed(error)}
   this.publish(input.origin);
-  if(background)return child.snapshot();
+  // Preserve foreground wait interruption while initial acceptance is outstanding.
+  let detach:(()=>void)|undefined;
+  const disposition=signal?await Promise.race([
+   child.initialDispatch,
+   new Promise<undefined>(resolve=>{detach=()=>resolve(undefined);if(signal.aborted)detach();else signal.addEventListener("abort",detach,{once:true});}),
+  ]).finally(()=>{if(detach)signal.removeEventListener("abort",detach)}):await child.initialDispatch;
+  const dispatched=(record:ChildRecord)=>disposition?withDispatchMetadata(record,"assignment",disposition):record;
+  if(background)return dispatched(child.snapshot());
   const refresh=setInterval(()=>input.progress?.(child.snapshot()),1000);refresh.unref();
-  try{return await this.wait(child.record.id,input.origin,signal)}finally{clearInterval(refresh)}
+  try{return dispatched(await this.wait(child.record.id,input.origin,signal))}finally{clearInterval(refresh)}
  }
  subscribe(id:string,origin:string,listener:(record:ChildRecord)=>void){
   const child=this.get(id,origin);

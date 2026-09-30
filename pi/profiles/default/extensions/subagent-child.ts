@@ -8,7 +8,6 @@ import { workspaceRoot } from "../lib/subagents/workspace.ts";
 import { parentVisibleRecord, progressResult, renderSubagentCall, renderSubagentControlCall, renderSubagentResult, renderSubagentMessage } from "../lib/subagents/presentation.ts";
 import { registerProfileCommand } from "../lib/profile-command.ts";
 import type { ChildRecord } from "../lib/subagents/rpc.ts";
-import { dispatchOperation, withDispatchMetadata } from "../lib/subagents/control-result.ts";
 import { writeSubagentLineage } from "../lib/subagents/lineage.ts";
 import { activateTools } from "../lib/tool-activation.js";
 import type { CloseoutManifest } from "../lib/plan-integration/contracts.ts";
@@ -95,7 +94,6 @@ export default function childAuthority(pi:ExtensionAPI){
  pi.registerTool({name:"subagent_control",label:"Control direct subagent",description:"Inspect, message, request an answer, or cancel a directly commissioned subagent. id accepts a returned subagentId (legacy id is also accepted), not sessionId. Messages use native queued steering by default; immediate is an intentional redirect.",parameters:Type.Object({id:Type.String({description:"A returned subagentId (legacy id is also accepted), display name, or unique prefix. This is not the native sessionId."}),action:Type.Union([Type.Literal("inspect"),Type.Literal("message"),Type.Literal("answer"),Type.Literal("finish"),Type.Literal("cancel")]),message:Type.Optional(Type.String()),delivery:Type.Optional(Type.Union([Type.Literal("queued"),Type.Literal("immediate")])),interaction:Type.Optional(Type.Union([Type.Literal("notify"),Type.Literal("request")])),protocol:Type.Optional(Type.Literal("question-answer")),replyTo:Type.Optional(Type.String()),background:Type.Optional(Type.Boolean())}),async execute(_id,p,signal,onUpdate){
   if(!allowed.has("subagent_control"))throw new Error("Control is outside frozen authority");
   let result=await requestParent(parentEndpoint(),{type:"control",payload:p});
-  if(p.action==="message"||p.action==="answer")result=withDispatchMetadata(result as ChildRecord,dispatchOperation(p.action,p.replyTo));
   const visible=parentVisibleRecord(result as ChildRecord);
   return{content:[{type:"text",text:JSON.stringify(visible)}],details:visible};
  },renderCall:renderSubagentControlCall,renderResult:renderSubagentResult});

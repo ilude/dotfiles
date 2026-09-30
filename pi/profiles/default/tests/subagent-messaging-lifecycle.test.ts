@@ -116,6 +116,7 @@ describe("combined subagent messaging lifecycle", () => {
         definition: coordinator, instructions: "[hold]", cwd: here, model: "openai-codex/test", effort: "low",
         skills: [], origin, retained: true, surface: "headless", catalog: new Map([[coordinator.name, coordinator], [probe.name, probe]]),
       }, profile, extension, true);
+      expect(parent).toMatchObject({ dispatch: { accepted: true, operation: "assignment", disposition: "started", completion: "not-reported" } });
       await waitForRecord(runtime, parent.id, { sessionId: expect.any(String), processState: "running" });
       const parentEndpoint = endpoints.get(parent.id)!;
       const controls = childAuthorityHarness(parentEndpoint, origin);
@@ -154,7 +155,7 @@ describe("combined subagent messaging lifecycle", () => {
         action: "answer", id: a.id, message: "[hold]", replyTo: question.id,
       });
       expect(answered.details).toMatchObject({
-        subagentId: a.id, id: a.id, sessionId: expect.any(String), status: "running", dispatch: { accepted: true, operation: "answer", completion: "not-reported" },
+        subagentId: a.id, id: a.id, sessionId: expect.any(String), status: "running", dispatch: { accepted: true, operation: "answer", disposition: "started", completion: "not-reported" },
       });
       expect(answered.details).not.toHaveProperty("sessionFile");
       const resolution = await requestParent(parentEndpoint, { type: "heartbeat" }) as any;
@@ -170,7 +171,7 @@ describe("combined subagent messaging lifecycle", () => {
       }, undefined, undefined, root.ctx);
       expect(directed.details).toMatchObject({
         subagentId: parent.id, id: parent.id, sessionId: expect.any(String), status: "running", outcome: "partial",
-        dispatch: { accepted: true, operation: "message", completion: "not-reported" },
+        dispatch: { accepted: true, operation: "message", disposition: "queued", completion: "not-reported" },
       });
       await waitForRecord(runtime, parent.id, { phase: "waiting-children", status: "running", outcome: "partial", result: "Earlier work remains active." });
 
@@ -201,7 +202,7 @@ describe("combined subagent messaging lifecycle", () => {
       // Release A through native steering, consume its separate outcome, and only
       // then allow the parent to settle its later final turn.
       const release = await controls.subagent_control.execute("message", { action: "message", id: a.id, message: "release A", background: true });
-      expect(release.details).toMatchObject({ id: a.id, dispatch: { accepted: true, completion: "not-reported" } });
+      expect(release.details).toMatchObject({ id: a.id, dispatch: { accepted: true, disposition: "queued", completion: "not-reported" } });
       await waitForRecord(runtime, a.id, { status: "settled", outcome: "complete" });
       const aDelivery = await requestParent(parentEndpoint, { type: "heartbeat" }) as any;
       expect(aDelivery.delivery).toMatchObject({ id: a.id, outcome: "complete" });

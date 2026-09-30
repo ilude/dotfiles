@@ -189,7 +189,10 @@ function updateCallComponent(result: any, theme: Theme, context: RenderContext):
 
 function lifecycleLine(record: PresentedRecord): string {
   const name = record.displayName ?? record.agent ?? "Subagent";
-  if (record.dispatch) return `${name}: ${record.dispatch.operation} accepted`;
+  if (record.dispatch) {
+    const disposition = record.dispatch.disposition;
+    return `${name}: ${record.dispatch.operation} ${disposition === "handled" ? "consumed by extension" : disposition === "queued" ? "queued; consumption not confirmed" : disposition === "started" ? "started; completion not reported" : "accepted"}`;
+  }
   if (record.questionResolution) return `${name}'s question was ${record.questionResolution.outcome}`;
   if (record.status === "waiting" && record.phase === "waiting-user") return `${name} needs user input${record.result ? `: ${oneLine(record.result)}` : ""}`;
   if (record.status === "waiting" && record.result) return `${name} asked: ${oneLine(record.result)}`;
@@ -213,7 +216,7 @@ function resultComponent(record: PresentedRecord, expanded: boolean, theme: Them
       : "accent";
   const lines = [theme.fg(titleColor, theme.bold(title))];
   if (record.dispatch) {
-    lines.push(`Dispatch: accepted · ${record.dispatch.operation} · completion not reported`);
+    lines.push(`Dispatch: accepted · ${record.dispatch.operation}${record.dispatch.disposition ? ` · ${record.dispatch.disposition}` : ""} · completion not reported`);
   }
   if (record.exchangeId) {
     lines.push(`Exchange: ${record.exchangeKind ?? "original"} · ${record.exchangeId}`);

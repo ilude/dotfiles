@@ -6,6 +6,7 @@ import { JsonLines } from "./framing.ts";
 import type { ChildEndpoint, ApplicationMessage, MessageOptions, ParentEventConsumer } from "./transport.ts";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { childLaunch } from "./launch.ts";
+import { nativeInputDisposition, type InputDisposition } from "./control-result.ts";
 import type { AgentDefinition, AgentEffort } from "./definitions.ts";
 import type { CloseoutManifest } from "../plan-integration/contracts.ts";
 export type Outcome = "complete" | "partial" | "blocked" | "failed" | "cancelled";
@@ -62,6 +63,11 @@ function text(message: any): string { return Array.isArray(message?.content) ? m
 export class RpcChild {
   readonly record: ChildRecord;
   private pending = new Map<string, (r:any)=>void>();
+  /** Initial acceptance belongs to the launch call, never to assignment evidence. */
+  initialDispatch?: Promise<InputDisposition | undefined>;
+  private resolveInitialDispatch?: (value: InputDisposition | undefined) => void;
+  private activatePrompt?: () => void;
+  private initialRunObserved = false;
   protected settled?: ()=>void;
   protected last = "";
   private settlementCycle = 0;
@@ -138,6 +144,13 @@ export class RpcChild {
   }
   private rpcActivity(e:any) {
     this.contact();
+    const runEvent = e.type === "agent_start" || e.type === "turn_start" || e.type.startsWith("tool_execution_") || e.type === "message_update" || ((e.type === "message_start" || e.type === "message_end") && e.message?.role === "assistant");
+    if(runEvent){
+      this.initialRunObserved = true;
+      this.activatePrompt?.();
+      // An extension may start independent work after consuming an input.
+      if(e.type === "agent_start" && ((this.record.status === "waiting" && this.record.phase === "settled") || (this.record.status === "settled" && this.record.retained && this.record.outcome !== "cancelled")))this.activateMessage(this.record.assignment ?? this.spec.instructions);
+    }
     if(this.record.status === "settled") return;
     if(this.record.status === "waiting" && (this.record.phase === "waiting-parent" || this.record.phase === "waiting-user")) return;
     if(e.type === "tool_execution_start" || e.type === "tool_execution_update") this.activity("tool", typeof e.toolName === "string" ? e.toolName : this.record.toolName);
@@ -194,7 +207,19 @@ export class RpcChild {
     // Observe authoritative preflight rejection. No assignment timeout: a silent child
     // stays inspectable/cancellable with honest activity age rather than invented failure.
     const id=randomUUID();
-    this.pending.set(id,e=>{this.pending.delete(id);if(!e.success)this.fail(`Initial prompt rejected: ${e.error||"unknown rejection"}`)});
+    this.initialDispatch=new Promise(resolve=>{this.resolveInitialDispatch=resolve});
+    this.pending.set(id,e=>{
+      this.pending.delete(id);
+      if(!e.success){this.resolveInitialDispatch?.(undefined);this.fail(`Initial prompt rejected: ${e.error||"unknown rejection"}`);return;}
+      try{
+        const disposition=nativeInputDisposition(e.data,"prompt");
+        this.resolveInitialDispatch?.(disposition);
+        if(disposition==="handled"&&!this.initialRunObserved&&this.record.status==="running"){
+          this.record.status="waiting";this.record.assignmentStartedAt=undefined;
+          this.activity("settled");this.record.notice="Input consumed by an extension; no model run started for this input.";this.done();
+        }
+      }catch(error){this.resolveInitialDispatch?.(undefined);this.fail(String(error));}
+    });
     this.send("prompt",{id,message:`Assignment:\n${this.spec.instructions}\n\nConclude with a non-empty result. Use subagent_parent to report partial or blocked work when needed.`});
     return waiting;
   }
@@ -223,28 +248,46 @@ export class RpcChild {
       this.activity("redirecting");
       try {
         await this.command("abort");
-        this.record.status="running";
-        this.record.phase="starting";
-        this.record.notice=undefined;
-        await this.startMessage(value);
+        return await this.startMessage(value);
       } finally { this.intentionalRedirect=false; }
-      return;
     }
     if (this.record.status !== "settled" && this.record.status !== "waiting") {
       if (mode !== "queued") throw new Error("Immediate delivery could not interrupt the active child");
-      await this.command("steer",{message:value});
-      this.record.notice="Queued message accepted for delivery; consumption is not confirmed.";
+      const data=await this.command("steer",{message:value});
+      const disposition=this.record.surface==="headless"?nativeInputDisposition(data,"steer"):undefined;
+      this.record.notice=disposition==="handled"?"Input consumed by an extension; not queued or completed by the model.":"Queued message accepted for delivery; consumption is not confirmed.";
       this.onProgress?.(this.snapshot());
-      return;
+      return disposition;
     }
-    await this.startMessage(value);
+    return this.startMessage(value);
   }
-  private async startMessage(value:string){
+  private activateMessage(value:string){
     this.beginExchange();
     this.last="";this.toolFailure=undefined;this.uiRequest=undefined;this.settlementReport=undefined;this.record.result=undefined;this.record.outcome=undefined;this.record.error=undefined;this.record.notice=undefined;
     this.record.assignment=value;this.record.assignmentStartedAt=new Date().toISOString();this.record.assignmentFinishedAt=undefined;
     this.record.status="running";this.record.requestId=this.question?.id;this.activity("starting");
-    try{await this.command("prompt",{message:value})}catch(error){this.fail(`Follow-up prompt rejected: ${String(error)}`);throw error}
+  }
+  private async startMessage(value:string):Promise<InputDisposition | undefined>{
+    let activated=false;
+    const activate=()=>{if(activated||this.record.outcome==="cancelled")return;activated=true;this.activateMessage(value);};
+    // Visible acceptance is application queueing, not a native response.
+    if(this.record.surface==="visible")activate();
+    else this.activatePrompt=activate;
+    try{
+      const data=await this.command("prompt",{message:value});
+      const disposition=this.record.surface==="headless"?nativeInputDisposition(data,"prompt"):undefined;
+      if(this.record.outcome==="cancelled")return disposition;
+      if(disposition!=="handled")activate();
+      else if(!activated){
+        // Keep prior assignment results and exchange identity intact.
+        this.record.notice="Input consumed by an extension; no model run started for this input.";
+        if(this.record.status!=="settled"){
+          this.record.status="waiting";this.activity("settled");this.done();
+        }else this.onProgress?.(this.snapshot());
+      }
+      return disposition;
+    }catch(error){if(!activated)activate();this.fail(`Follow-up prompt rejected: ${String(error)}`);throw error}
+    finally{if(this.activatePrompt===activate)this.activatePrompt=undefined;}
   }
   async answer(value:string, replyTo?:string){
     if(this.record.userOwned)throw new Error("Parent steering is suspended during user intervention");
@@ -261,7 +304,8 @@ export class RpcChild {
       throw new Error("Reply does not match the pending parent question");
     }
     this.resolveQuestion(question.id,"answered","parent");
-    await this.startMessage(`Answer to your question:\n${value}`);
+    this.record.result=undefined;
+    return this.startMessage(`Answer to your question:\n${value}`);
   }
   cancelQuestion(requestId?:string){
     const question=this.question;
@@ -308,6 +352,7 @@ export class RpcChild {
   }
   parentMessage(message: ApplicationMessage): unknown {
     if (!this.spec.definition.tools.includes("subagent_parent")) throw new Error("Parent helper is outside frozen authority");
+    if(message.type==="question"||message.type==="partial"||message.type==="blocked")this.activatePrompt?.();
     if (this.record.status === "settled") throw new Error("Assignment is already settled");
     if (message.type === "question") {
       if(this.question)throw new Error("A parent question is already pending");
@@ -345,6 +390,8 @@ export class RpcChild {
     throw new Error(`Unsupported parent message: ${message.type}`);
   }
   async cancel():Promise<CleanupResult>{
+    this.activatePrompt=undefined;
+    this.resolveInitialDispatch?.(undefined);
     const terminal=this.record.status==="settled";
     if(!terminal){
       const pendingPrompt=Boolean(this.question||this.uiRequest);
@@ -410,8 +457,9 @@ export class RpcChild {
     if(!this.record.retained&&!this.record.userOwned)await this.cleanupOwnedResources();
     this.done();
   }
-  launchFailed(error:unknown){this.record.processState="exited";this.fail(`Child launch failed: ${String(error)}`)}
+  launchFailed(error:unknown){this.resolveInitialDispatch?.(undefined);this.record.processState="exited";this.fail(`Child launch failed: ${String(error)}`)}
   protected fail(error:string){
+    this.activatePrompt=undefined;
     if(this.record.status==="settled"||this.intentionalRedirect)return;
     const pendingPrompt=Boolean(this.question||this.uiRequest);
     if(this.question)this.resolveQuestion(this.question.id,"cancelled","assignment");

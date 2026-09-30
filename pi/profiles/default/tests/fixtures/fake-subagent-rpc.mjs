@@ -24,7 +24,14 @@ process.stdin.on('data',chunk=>{
 async function handle(command){
  if(command.type==='prompt'){await startup;
    if(command.message.includes('[reject]')){process.stdout.write(JSON.stringify({type:'response',id:command.id,success:false,error:'fixture provider preflight rejected'})+'\n');return}
-   process.stdout.write(JSON.stringify({type:'response',id:command.id,success:true})+'\n');
+   const handled=command.message.includes('[handled]');
+   const queued=command.message.includes('[queued]');
+   if(command.message.includes('[event-first]'))process.stdout.write(JSON.stringify({type:'agent_start'})+'\n');
+   process.stdout.write(JSON.stringify({type:'response',id:command.id,success:true,data:{disposition:handled?'handled':queued?'queued':'started'}})+'\n');
+   if(handled){
+    if(command.message.includes('[event-first]')){process.stdout.write(JSON.stringify({type:'message_end',message:{role:'assistant',content:[{type:'text',text:'independent event result'}]}})+'\n');process.stdout.write('{"type":"agent_settled"}\n')}
+    return;
+   }
    if(command.message.includes('[activity]')){
     process.stdout.write(JSON.stringify({type:'agent_start'})+'\n');
     process.stdout.write(JSON.stringify({type:'tool_execution_start',toolName:'bash',args:{private:'must not appear in progress'}})+'\n');
@@ -48,7 +55,8 @@ async function handle(command){
    const marker=/WAIT_FILE:([^\n]+)/.exec(command.message)?.[1];
    if(marker){const timer=setInterval(()=>{if(existsSync(marker)){clearInterval(timer);reply()}},10)}else reply();
   }else if(command.type==='steer'){
-   process.stdout.write(JSON.stringify({type:'response',id:command.id,success:true})+'\n');
+   process.stdout.write(JSON.stringify({type:'response',id:command.id,success:true,data:{disposition:command.message.includes('[handled]')?'handled':'queued'}})+'\n');
+   if(command.message.includes('[handled]'))return;
    process.stdout.write(JSON.stringify({type:'message_end',message:{role:'assistant',content:[{type:'text',text:`steered: ${command.message}`}]}})+'\n');
    process.stdout.write('{"type":"agent_settled"}\n');
   }else if(command.type==='extension_ui_response'){

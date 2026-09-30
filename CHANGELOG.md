@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-09-30: Report native subagent input disposition accurately
+
+- Default Pi subagent dispatch now distinguishes prompts and steering accepted as started or queued from input consumed by an extension. Dispatch metadata describes acceptance and disposition only; it does not claim model completion, and a handled prompt does not create a pending model run or erase earlier results. Native lifecycle events remain authoritative when they occur before the response.
+- Visible subagents continue reporting their application-transport queue acceptance without synthesizing native RPC dispositions. Cancellation, question resolution, and original assignment evidence remain unchanged.
+
 ## 2026-09-29: Trial Sol 6.1 as the default Sol route
 
 - Default Pi now selects Codex Sol 6.1 for new sessions, `/sol`, Sol-role subagents, and model-catalog refresh defaults. Resumed Sol sessions select 6.1 within their saved provider when available. The shared Sol pin remains explicit rather than automatically adopting future versions.

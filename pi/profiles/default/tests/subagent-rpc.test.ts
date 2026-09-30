@@ -17,6 +17,23 @@ describe("subagent RPC lifecycle",()=>{
   const result=await child("[aggregate]",false).start();
   expect(result).toMatchObject({outcome:"complete",result:"first answer",processState:"exited"});
  });
+ it("reports prompt acceptance without inventing a run or completion, and preserves retained results when handled",async()=>{
+  const initial=child("[handled]",false);
+  const consumed=await initial.start();
+  expect(consumed).toMatchObject({status:"waiting",phase:"settled",notice:expect.stringContaining("consumed")});
+  expect(consumed).not.toHaveProperty("outcome");expect(consumed).not.toHaveProperty("result");
+  await expect(initial.initialDispatch).resolves.toBe("handled");
+  const eventFirst=child("[handled] [event-first]",false);
+  await expect(eventFirst.start()).resolves.toMatchObject({status:"settled",outcome:"complete",result:"independent event result"});
+  await expect(eventFirst.initialDispatch).resolves.toBe("handled");
+  const queued=child("[queued]",false);
+  await expect(queued.start()).resolves.toMatchObject({status:"settled",outcome:"complete",result:"first answer"});
+  await expect(queued.initialDispatch).resolves.toBe("queued");
+
+  const retained=child();const original=await retained.start();
+  await expect(retained.message("[handled] follow-up")).resolves.toBe("handled");
+  expect(retained.snapshot()).toMatchObject({status:"settled",outcome:"complete",result:"first answer",originalAssignment:original.originalAssignment,notice:expect.stringContaining("consumed")});
+ });
  it.each([['[reject]',/Initial prompt rejected: fixture provider preflight rejected/],['[provider-error]',/fixture provider unavailable/],['[oversize]',/type=agent_end.*limit=16777216/]] as const)("reports concrete %s failure after process cleanup",async(input,error)=>{
   const result=await child(input,false).start();
   expect(result.outcome).toBe("failed");expect(result.error).toMatch(error);expect(result.processState).toBe("exited");
