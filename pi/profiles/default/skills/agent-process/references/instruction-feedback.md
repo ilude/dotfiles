@@ -1,5 +1,15 @@
 # Agent instruction feedback log
 
+## AIF-100 - Plain-language commit and push requests authorize ordinary Git
+
+- **Reference:** Operator correction in gcc_automation, 2026-09-30, following explicit commit-and-push request.
+- **Feedback:** `/commit` is a convenience tool, not the sole authorization channel. An explicit plain-language request to commit and push authorizes the orchestrator to do both.
+- **Finding:** `commands/commit/reviewer.ts` describes the helper's slash-bound push mode as the only grant of push permission and says not to perform Git work afterward. `docs/commands.md` explicitly says this option binding is not a security sandbox and ordinary shell tools retain normal permissions. The orchestrator conflated helper mode with overall operator authority and left one requested commit unpublished.
+- **Related:** AIF-029A permitted direct tool use while retaining helper invocation binding; that distinction does not prohibit separately authorized ordinary Git.
+- **Initial proposal:** Narrow the helper description and permit ordinary Git to finish a requested push. Operator clarified that the tool belongs only to `/commit`, so this wording-only approach was insufficient.
+- **Decision:** Remove the main-agent commit tool entirely. `/commit` and its existing shortcuts invoke the private Luna runner directly; ordinary commit/push requests use Bash. Preserve command UX and keep unrelated prompt commands unchanged. Do not add a replacement model-facing tool, codemode layer, or global authorization rule.
+- **Status:** Implemented in the default profile: removed main-agent tool registration, hidden commit prompt, and obsolete invocation authority. `/commit` and F9/F10 call the private runner directly, wait for main-turn idle, and retain Escape/shutdown cancellation with cleanup. Results are interface-only. Updated docs; 47 focused offline tests, default-profile typecheck, and diff check passed. Reload is required; live UI/Git mutation behavior was not exercised.
+
 ## AIF-099 - Strategist must split coupled plan tasks before model selection
 
 - **Reference:** Standalone Damage Control execution, 2026-09-29.
@@ -963,3 +973,12 @@ Factual history for refining agent instructions. This log is not executable poli
 - **Comparison:** AIF-027/AIF-061/AIF-062/AIF-083 and TCA-009 already connect broad assignments with supervision and delayed completion, while explicitly leaving model causality unresolved. This incident is a recurrence of sizing non-adherence, not proof of a universal model ranking.
 - **Post-cutoff addendum:** Outside interval counts, at 20:49:47Z typecheck, the three focused files (56 tests), and `git diff --check` passed. At 20:50Z Iris requested contract freeze; the parent confirmed the existing candidate contract and requested final evidence and ownership release without adding implementation scope.
 - **Status:** Process incident recorded only. No active B cancellation/reassignment, instruction/product change, commit, or push authorized.
+
+## AIF-092 - Directory ownership did not bound a Vitest repair assignment
+
+- **Reference:** EISA Vitest repair, 2026-09-30; child `a581e3c9-2e5f-4538-bd13-16b8e6dd834f`.
+- **Feedback:** Operator identified assigning the entire user-management services directory to one Luna-medium developer as too much work.
+- **Facts:** Assignment combined nine failing specs, request-builder mocks, store/injector fixtures, subscription assertions, and two effects suites including zoneless async migration. Child returned after repairing three fixtures, without successful verification, and could not resume because its process was no longer retained.
+- **Decision:** Preserve partial edits. Limit the replacement worker to two effects specs; orchestrator handles remaining service fixtures and directory integration. Future notices/admin dispatches should use independently verifiable repair seams, not whole-directory names as sizing evidence.
+- **Related:** AIF-091, AIF-083, AIF-061/AIF-062. This is a recurrence of assignment-sizing non-adherence, not missing instructions.
+- **Status:** Feedback recorded; no instruction changes. Repair remains active.

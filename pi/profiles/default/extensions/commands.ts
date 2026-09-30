@@ -1,135 +1,137 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { CommandInvocationAuthority } from "../lib/command-invocations.ts";
+import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { Box, matchesKey, Text } from "@earendil-works/pi-tui";
 import { completePartialArgument } from "../lib/argument-completions.ts";
 import { commands } from "../commands/index.ts";
+import { runCommitReviewer } from "../commands/commit/reviewer.ts";
 import { registerProfileCommand } from "../lib/profile-command.ts";
 
+const RESULT_ENTRY = "profile-commit-result";
+const STATUS_KEY = "profile-commit";
+
 export default function profileCommands(pi: ExtensionAPI): void {
-
 	const directory = join(dirname(fileURLToPath(import.meta.url)), "..", "commands");
-	const owned = new Set<string>();
-	const toolsByCommand = new Map<string, ReadonlySet<string>>();
-	const commandByTool = new Map<string, string>();
-	const loadErrors = new Map<string, string>();
-	const invocations = new CommandInvocationAuthority();
+	let active: AbortController | undefined;
 
-	function clearOwnedTools(): void {
-		// Remove only our tools, preserving changes made by other extensions.
-		pi.setActiveTools(pi.getActiveTools().filter((name) => !owned.has(name)));
-	}
-
-	function settle(): void {
-		invocations.settle();
-		clearOwnedTools();
-	}
+	pi.registerEntryRenderer<{ text: string; error: boolean }>(RESULT_ENTRY, (entry, _options, theme) => {
+		const box = new Box(1, 1, content => theme.bg("userMessageBg", content));
+		const data = entry.data;
+		box.addChild(new Text(data?.error ? theme.fg("error", data.text) : data?.text ?? "", 0, 0));
+		return box;
+	});
 
 	function report(message: string, ctx: ExtensionContext, triggerTurn = false): void {
 		if (ctx.hasUI) ctx.ui.notify(message, "error");
 		pi.sendMessage({ customType: "profile-command-error", content: message, display: true }, { triggerTurn });
 	}
 
-	async function invokeCommand(command: (typeof commands)[number], rawArgs: string, ctx: ExtensionContext): Promise<void> {
+	function presentCommit(text: string, error: boolean, ctx: ExtensionContext): void {
+		pi.appendEntry(RESULT_ENTRY, { text, error });
+		if (ctx.hasUI && error) ctx.ui.notify("/commit failed; see result above", "error");
+	}
+
+	async function waitForMainIdle(ctx: ExtensionContext, signal: AbortSignal): Promise<void> {
+		if (ctx.isIdle()) return;
+		await new Promise<void>((resolve, reject) => {
+			let unsubscribe = () => {};
+			const cleanup = () => { unsubscribe(); signal.removeEventListener("abort", onAbort); };
+			const onAbort = () => { cleanup(); reject(new Error("Cancelled")); };
+			const onSettled = () => {
+				if (!ctx.isIdle()) return;
+				cleanup();
+				resolve();
+			};
+			signal.addEventListener("abort", onAbort, { once: true });
+			unsubscribe = pi.on("agent_settled", onSettled);
+			if (signal.aborted) onAbort();
+			else onSettled(); // Cover settlement between the initial check and subscription.
+		});
+	}
+
+	async function commit(rawArgs: string, ctx: ExtensionContext, waitForIdle?: () => Promise<void>): Promise<void> {
+		let controller: AbortController | undefined;
+		let stopInput: (() => void) | undefined;
+		let inIgnoreDialog = false;
 		try {
-			const failure = loadErrors.get(command.name);
-			if (failure) throw new Error(failure);
+			const parse = commands.find((command) => command.name === "commit")?.arguments;
+			if (!parse) throw new Error("Commit command is unavailable.");
+			const parsed = parse(rawArgs.trim());
+			if (active) throw new Error("A commit is already running.");
+			controller = new AbortController();
+			active = controller;
+			if (ctx.mode === "tui") stopInput = ctx.ui.onTerminalInput((data) => {
+				// Let the native input path handle Escape too. In particular, an
+				// ignore-file dialog owns its own cancellation while it is open.
+				if (matchesKey(data, "escape") && !inIgnoreDialog) controller?.abort();
+				return undefined;
+			});
+			ctx.ui.setStatus(STATUS_KEY, "Committing…");
+			if (ctx.hasUI) ctx.ui.notify("Committing…", "info");
+			if (waitForIdle) {
+				const signal = controller.signal;
+				await new Promise<void>((resolve, reject) => {
+					const onAbort = () => { signal.removeEventListener("abort", onAbort); reject(new Error("Cancelled")); };
+					signal.addEventListener("abort", onAbort, { once: true });
+					void waitForIdle().then(
+						() => { signal.removeEventListener("abort", onAbort); resolve(); },
+						(error) => { signal.removeEventListener("abort", onAbort); reject(error); },
+					);
+					if (signal.aborted) onAbort();
+				});
+			} else await waitForMainIdle(ctx, controller.signal);
+			controller.signal.throwIfAborted();
+			const result = await runCommitReviewer(pi, ctx, parsed.options?.push === true, controller.signal,
+				(text) => {
+					inIgnoreDialog = text === "Waiting for ignore-file decision…";
+					ctx.ui.setStatus(STATUS_KEY, text);
+				});
+			presentCommit(result.text, false, ctx);
+		} catch (error) {
+			presentCommit(`/commit failed: ${error instanceof Error ? error.message : String(error)}`, true, ctx);
+		} finally {
+			stopInput?.();
+			if (controller && active === controller) active = undefined;
+			if (controller) ctx.ui.setStatus(STATUS_KEY, undefined);
+		}
+	}
+
+	async function invokePrompt(command: (typeof commands)[number], rawArgs: string, ctx: ExtensionContext): Promise<void> {
+		try {
 			const args = rawArgs.trim();
 			if (!command.arguments && args) throw new Error(`Usage: /${command.name}`);
-			const parsed = command.arguments?.(args) ?? { extra: "", options: {} };
+			const parsed = command.arguments?.(args) ?? { extra: "" };
 			const prompt = readFileSync(join(directory, command.name, "prompt.md"), "utf8").trim();
 			if (!prompt) throw new Error("Command prompt is empty.");
-
-			const invocation = invocations.create(command.name, parsed.options ?? {});
-			// Prepare schemas before submission. This is additive so an executing batch
-			// keeps its tools; authority is still granted only at message delivery.
-			const currentTools = pi.getActiveTools();
-			pi.setActiveTools([...new Set([...currentTools, ...(toolsByCommand.get(command.name) ?? [])])]);
 			pi.sendMessage({
 				customType: "profile-command-prompt",
 				content: parsed.extra ? `${prompt}\n\n${parsed.extra}` : prompt,
 				display: false,
-				details: { invocationId: invocation.id },
 			}, { deliverAs: "steer", triggerTurn: true });
 		} catch (error) {
-			// Invalid or failed submissions must not deactivate a valid in-flight command.
 			report(`/${command.name} failed: ${error instanceof Error ? error.message : String(error)}`, ctx, true);
 		}
 	}
 
 	for (const command of commands) {
-		try {
-			const tools = command.tools?.(pi, invocations) ?? [];
-			const toolNames = new Set<string>();
-			for (const tool of tools) {
-				if (owned.has(tool.name)) throw new Error(`Duplicate command tool: ${tool.name}`);
-				owned.add(tool.name);
-				toolNames.add(tool.name);
-				commandByTool.set(tool.name, command.name);
-				pi.registerTool({
-					...tool,
-					async execute(...args) {
-						const [toolCallId] = args;
-						const invocation = invocations.getToolCall(toolCallId);
-						if ((!invocation || invocation.command !== command.name || !toolNames.has(tool.name)) && !command.allowDirectToolCalls) {
-							throw new Error(`${tool.name} is only available during its delivered /${command.name} invocation.`);
-						}
-						return tool.execute(...args);
-					},
-				});
-			}
-			toolsByCommand.set(command.name, toolNames);
-		} catch (error) {
-			loadErrors.set(command.name, error instanceof Error ? error.message : String(error));
-		}
-
 		registerProfileCommand(pi, command.name, {
 			description: command.description,
 			getArgumentCompletions: (prefix) => completePartialArgument(prefix, command.completions ?? []),
-			handler: (rawArgs, ctx) => invokeCommand(command, rawArgs, ctx),
+			handler: (rawArgs, ctx: ExtensionCommandContext) => command.name === "commit"
+				? commit(rawArgs, ctx, () => ctx.waitForIdle())
+				: invokePrompt(command, rawArgs, ctx),
 		});
 	}
 
-	const commit = commands.find((command) => command.name === "commit");
-	if (commit) {
-		pi.registerShortcut("f9", {
-			description: "Commit changes and push to origin",
-			handler: (ctx) => invokeCommand(commit, "push", ctx),
-		});
-		pi.registerShortcut("f10", {
-			description: "Commit changes",
-			handler: (ctx) => invokeCommand(commit, "", ctx),
-		});
-	}
+	pi.registerShortcut("f9", {
+		description: "Commit changes and push to origin",
+		handler: (ctx) => commit("push", ctx),
+	});
+	pi.registerShortcut("f10", {
+		description: "Commit changes",
+		handler: (ctx) => commit("", ctx),
+	});
 
-	// Details are selected only for a locally-created, actually delivered message.
-	pi.on("message_start", (event) => {
-		const message = event.message as { customType?: unknown; details?: unknown };
-		if (message.customType === "profile-command-prompt") invocations.deliver(message.details);
-	});
-	// Bind before execution, then discard each binding after its result is finalized.
-	pi.on("tool_call", (event) => {
-		const command = commandByTool.get(event.toolName);
-		if (!command) return;
-		try {
-			invocations.bindToolCall(event.toolCallId, event.toolName, command, toolsByCommand);
-		} catch (error) {
-			const definition = commands.find((item) => item.name === command);
-			if (!definition?.allowDirectToolCalls) return { block: true, reason: error instanceof Error ? error.message : String(error), terminate: true };
-		}
-	});
-	pi.on("tool_result", (event) => invocations.releaseToolCall(event.toolCallId));
-	pi.on("tool_execution_end", (event) => invocations.releaseToolCall(event.toolCallId));
-
-	pi.on("session_start", (_event, ctx) => {
-		settle();
-		for (const [name, error] of loadErrors) report(`/${name} unavailable: ${error}`, ctx);
-	});
-	// Keep tools through retries, compaction, and queued continuations, not just one turn.
-	pi.on("agent_settled", () => settle());
-	pi.on("session_shutdown", () => {
-		invocations.shutdown();
-		clearOwnedTools();
-	});
+	pi.on("session_shutdown", () => active?.abort());
 }

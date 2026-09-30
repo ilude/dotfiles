@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { realpathSync } from "node:fs";
 import { createAssistantMessageEventStream, type AssistantMessage, type Model, type Tool, type TranscriptContext } from "@earendil-works/pi-ai";
-import type { ExtensionAPI, ExtensionToolContext, ModelRuntime, createBashTool } from "@earendil-works/pi-coding-agent";
-import { commitReviewerTool } from "../commands/commit/reviewer.ts";
+import type { ExtensionAPI, ExtensionContext, ModelRuntime, createBashTool } from "@earendil-works/pi-coding-agent";
+import { runCommitReviewer } from "../commands/commit/reviewer.ts";
 
 // Keep the real Agent and its stream/tool lifecycle. Only provider and shell/Git
 // boundaries are replaced: these tests never send requests or mutate a repository.
@@ -93,17 +93,14 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 function start(signal?: AbortSignal, push = false, update?: (text: string) => void) {
-	// This tool accesses only exec and cwd/hasUI unless ask_ignore is called.
-	// Casts keep the test doubles limited to the external boundary under test.
+	// Only exec and cwd/hasUI are used unless ask_ignore is called.
 	const pi = { exec: git } as unknown as ExtensionAPI;
-	const ctx = { cwd: root, hasUI: false } as ExtensionToolContext;
-	const permission = vi.fn(() => push);
-	const run = commitReviewerTool(pi, permission).execute("test", {}, signal, result => {
-		const text = result.content.filter(part => part.type === "text").map(part => part.text).join("\n");
+	const ctx = { cwd: root, hasUI: false } as ExtensionContext;
+	const run = runCommitReviewer(pi, ctx, push, signal, text => {
 		progress.push(text);
 		update?.(text);
-	}, ctx);
-	return { run, permission };
+	});
+	return { run };
 }
 
 it.each([false, true])("retries the same response context after a completed tool (stream started=%s)", async started => {
@@ -113,17 +110,16 @@ it.each([false, true])("retries the same response context after a completed tool
 		{ message: message([toolCall("parent commit")], "toolUse") },
 		{ message: done() },
 	);
-	const { run, permission } = start();
+	const { run } = start();
 	const result = await run;
-	expect(result.details).toMatchObject({ model: "openai-codex/gpt-6-luna:low" });
+	expect(result.model).toBe("openai-codex/gpt-6-luna:low");
 	expect(doubles.getAvailable).toHaveBeenCalledWith("openai-codex", { signal: expect.any(AbortSignal) });
 	expect(commits).toEqual(["child commit", "parent commit"]);
 	expect(requests[2]).toEqual(requests[1]);
 	expect(requests[2]!.messages.filter(item => item.role === "user")).toHaveLength(1);
 	expect(requests[2]!.messages.at(-1)).toMatchObject({ role: "toolResult", content: [{ type: "text", text: "completed child commit" }] });
-	expect(result.content).toEqual([{ type: "text", text: "abc0 child commit\nabc1 parent commit" }]);
+	expect(result.text).toBe("abc0 child commit\nabc1 parent commit");
 	expect(progress.filter(text => text.startsWith("Retrying"))).toEqual(["Retrying model response (1/3)…"]);
-	expect(permission).toHaveBeenCalledTimes(1);
 	expect(git.mock.calls.some(([, args]) => args[2] === "branch")).toBe(false);
 });
 
@@ -215,13 +211,12 @@ it("shares the original active deadline across retries and backoff", async () =>
 
 it("retains captured push permission and annotations through recovery", async () => {
 	responses.push({ message: failed() }, { message: message([{ type: "text", text: "Pushed" }]) });
-	const { run, permission } = start(undefined, true);
+	const { run } = start(undefined, true);
 	const result = await run;
-	expect(permission).toHaveBeenCalledTimes(1);
 	expect(requests[1]).toEqual(requests[0]);
 	expect(JSON.stringify(requests[1])).toContain("Publication: eligible");
 	expect(git.mock.calls.filter(([, args]) => args[2] === "branch")).toHaveLength(1);
-	expect(result.content).toEqual([{ type: "text", text: "No commits created.\nPushed." }]);
+	expect(result.text).toBe("No commits created.\nPushed.");
 });
 
 const haiku = { ...model, id: "claude-haiku-4-5", provider: "anthropic", api: "anthropic-messages" } as unknown as Model<"openai-codex-responses">;
@@ -241,7 +236,7 @@ it("continues the same transcript on the latest Anthropic Haiku after Luna fails
 	const result = await start().run;
 	expect(models).toEqual(["gpt-6-luna", "gpt-6-luna", "claude-haiku-4-5"]);
 	expect(requests[2]!.messages).toEqual(requests[1]!.messages);
-	expect(result.details).toMatchObject({ model: "anthropic/claude-haiku-4-5:low" });
+	expect(result.model).toBe("anthropic/claude-haiku-4-5:low");
 	expect(commits).toEqual(["child commit"]);
 });
 
@@ -249,7 +244,7 @@ it("uses Haiku when no Luna model is available", async () => {
 	doubles.getAvailable.mockImplementation(async provider => provider === "anthropic" ? [haiku] : []);
 	responses.push({ message: done() });
 	const result = await start().run;
-	expect(result.details).toMatchObject({ model: "anthropic/claude-haiku-4-5:low" });
+	expect(result.model).toBe("anthropic/claude-haiku-4-5:low");
 });
 
 it("does not fall back again when Haiku also fails", async () => {

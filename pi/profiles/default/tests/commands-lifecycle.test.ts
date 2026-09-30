@@ -1,21 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { Agent } from "@earendil-works/pi-agent-core";
-import { createAssistantMessageEventStream, type AssistantMessageEventStream } from "@earendil-works/pi-ai";
-import { Type } from "typebox";
-import { CommandInvocationAuthority } from "../lib/command-invocations.ts";
 
-vi.mock("../commands/commit/reviewer.ts", () => ({
-	commitReviewerTool: (_pi: unknown, resolve: (id: string) => boolean | undefined) => ({
-		name: "commit_run",
-		label: "Commit",
-		description: "fixture",
-		parameters: {},
-		execute: async (id: string) => ({
-			content: [{ type: "text", text: "fixture" }],
-			details: { push: resolve(id) === true },
-		}),
-	}),
-}));
+const reviewer = vi.hoisted(() => ({ run: vi.fn() }));
+vi.mock("../commands/commit/reviewer.ts", () => ({ runCommitReviewer: reviewer.run }));
 
 import profileCommands from "../extensions/commands.ts";
 import promptTemplateCommands from "../extensions/prompt-template-commands.ts";
@@ -23,79 +9,181 @@ import registerToolVisibility from "../extensions/tool-visibility.ts";
 
 type Hook = (event: any, ctx?: any) => unknown;
 
+function deferred() {
+	let resolve!: () => void;
+	const promise = new Promise<void>((done) => { resolve = done; });
+	return { promise, resolve };
+}
+
 function fixture() {
 	const hooks = new Map<string, Hook[]>();
 	const commands = new Map<string, { handler: (args: string, ctx: any) => Promise<void> }>();
 	const shortcuts = new Map<string, { description?: string; handler: (ctx: any) => Promise<void> | void }>();
 	const tools = new Map<string, any>();
 	const sent: Array<{ message: any; options?: any }> = [];
+	const entries: Array<{ name: string; data: any }> = [];
+	const terminal = new Set<(data: string) => unknown>();
 	let activeTools = ["read", "unrelated_tool"];
+	let idle = true;
+	const ctx = {
+		hasUI: true, mode: "tui", isIdle: () => idle,
+		ui: { notify: vi.fn(), setStatus: vi.fn(), onTerminalInput: vi.fn((handler: (data: string) => unknown) => {
+			terminal.add(handler);
+			return () => { terminal.delete(handler); };
+		}) },
+		waitForIdle: vi.fn(async () => {}),
+	};
 	const pi: any = {
+		registerEntryRenderer: vi.fn(),
 		registerMessageRenderer: vi.fn(),
 		registerTool: (tool: any) => tools.set(tool.name, tool),
 		registerCommand: (name: string, definition: any) => commands.set(name, definition),
 		registerShortcut: (key: string, definition: any) => shortcuts.set(key, definition),
-		on: (event: string, handler: Hook) => hooks.set(event, [...(hooks.get(event) ?? []), handler]),
+		on: (event: string, handler: Hook) => {
+			hooks.set(event, [...(hooks.get(event) ?? []), handler]);
+			return () => hooks.set(event, (hooks.get(event) ?? []).filter(item => item !== handler));
+		},
+		appendEntry: (name: string, data: any) => entries.push({ name, data }),
 		sendMessage: (message: any, options?: any) => sent.push({ message, options }),
 		getActiveTools: () => [...activeTools],
 		setActiveTools: (names: string[]) => { activeTools = [...names]; },
 	};
-	const ctx = { hasUI: true, ui: { notify: vi.fn() } };
 	profileCommands(pi);
 	const emit = async (name: string, event: any) => {
-		let result: unknown;
-		for (const handler of hooks.get(name) ?? []) result = await handler(event, ctx);
-		return result;
+		for (const handler of [...hooks.get(name) ?? []]) await handler(event, ctx);
 	};
-	return { pi, commands, shortcuts, tools, sent, ctx, emit, active: () => activeTools };
+	return { pi, commands, shortcuts, tools, sent, entries, terminal, hooks, ctx, emit, active: () => activeTools,
+		setIdle: (value: boolean) => { idle = value; }, input: (data: string) => [...terminal].map(handler => handler(data)) };
 }
 
-function promptMessages(f: ReturnType<typeof fixture>) {
-	return f.sent.filter((entry) => entry.message.customType === "profile-command-prompt");
-}
-
-const runtimeModel = {
-	id: "runtime-fixture", name: "Runtime fixture", api: "fixture", provider: "fixture", baseUrl: "fixture://offline",
-	reasoning: false, input: ["text"], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 16_000, maxTokens: 256,
-};
-
-function runtimeToolResponse(stream: AssistantMessageEventStream, name: string, id: string): void {
-	const call = { type: "toolCall" as const, id, name, arguments: {} };
-	const base = {
-		role: "assistant" as const, content: [], api: "fixture", provider: "fixture", model: "runtime-fixture",
-		usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, totalTokens: 2, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
-		stopReason: "toolUse" as const, timestamp: Date.now(),
-	};
-	const message = { ...base, content: [call] };
-	stream.push({ type: "start", partial: base });
-	stream.push({ type: "toolcall_start", contentIndex: 0, partial: base });
-	stream.push({ type: "toolcall_end", contentIndex: 0, toolCall: call, partial: message });
-	stream.push({ type: "done", reason: "toolUse", message });
-	stream.end(message);
-}
+beforeEach(() => {
+	vi.clearAllMocks();
+	reviewer.run.mockReset().mockResolvedValue({ text: "abc123 committed", elapsedMs: 12, model: "offline", usage: {} });
+});
 
 describe("profile command lifecycle", () => {
-	beforeEach(() => vi.clearAllMocks());
-
 	it.each([
 		["f9", true, "Commit changes and push to origin"],
 		["f10", false, "Commit changes"],
-	] as const)("maps %s to the commit workflow with push=%s", async (key, push, description) => {
+	] as const)("maps %s to direct commit with push=%s", async (key, push, description) => {
 		const f = fixture();
-		const shortcut = f.shortcuts.get(key)!;
-		expect(shortcut.description).toBe(description);
-
-		await shortcut.handler(f.ctx);
-		const prompt = promptMessages(f).at(-1)!;
-		await f.emit("message_start", { message: prompt.message });
-		await f.emit("tool_call", { toolName: "commit_run", toolCallId: `call-${key}` });
-		const result = await f.tools.get("commit_run").execute(`call-${key}`);
-
-		expect(result.details.push).toBe(push);
-		expect(prompt.options).toMatchObject({ deliverAs: "steer", triggerTurn: true });
+		expect(f.shortcuts.get(key)?.description).toBe(description);
+		await f.shortcuts.get(key)!.handler(f.ctx);
+		expect(reviewer.run).toHaveBeenCalledWith(f.pi, f.ctx, push, expect.any(AbortSignal), expect.any(Function));
+		expect(f.entries.at(-1)).toEqual({ name: "profile-commit-result", data: { text: "abc123 committed", error: false } });
+		expect(f.tools.size).toBe(0);
+		expect(f.active()).toEqual(["read", "unrelated_tool"]);
+		expect(f.terminal.size).toBe(0);
+		expect(f.sent).toEqual([]);
 	});
 
-	it("activates /yt tools before submission and retains them for callback turns until session reset", async () => {
+	it("keeps slash idle waiting and immutable push choice", async () => {
+		const f = fixture();
+		const gate = deferred();
+		f.ctx.waitForIdle.mockReturnValueOnce(gate.promise);
+		const run = f.commands.get("commit")!.handler("push", f.ctx);
+		await vi.waitFor(() => expect(f.ctx.waitForIdle).toHaveBeenCalledOnce());
+		expect(reviewer.run).not.toHaveBeenCalled();
+		gate.resolve();
+		await run;
+		expect(reviewer.run.mock.calls[0]![2]).toBe(true);
+		await f.commands.get("commit")!.handler("", f.ctx);
+		expect(reviewer.run.mock.calls[1]![2]).toBe(false);
+	});
+
+	it("cancels a slash command during its idle wait on shutdown", async () => {
+		const f = fixture();
+		const gate = deferred();
+		f.ctx.waitForIdle.mockReturnValueOnce(gate.promise);
+		const run = f.commands.get("commit")!.handler("push", f.ctx);
+		await vi.waitFor(() => expect(f.ctx.waitForIdle).toHaveBeenCalledOnce());
+		await f.emit("session_shutdown", { reason: "quit" });
+		await run;
+		expect(reviewer.run).not.toHaveBeenCalled();
+		expect(f.entries.at(-1)?.data).toMatchObject({ error: true, text: expect.stringContaining("Cancelled") });
+		expect(f.terminal.size).toBe(0);
+		gate.resolve();
+	});
+
+	it("waits for final settlement rather than refusing busy shortcuts", async () => {
+		const f = fixture();
+		f.setIdle(false);
+		const run = f.shortcuts.get("f9")!.handler(f.ctx);
+		expect(reviewer.run).not.toHaveBeenCalled();
+		await f.emit("agent_settled", {});
+		expect(reviewer.run).not.toHaveBeenCalled();
+		f.setIdle(true);
+		await f.emit("agent_settled", {});
+		await run;
+		expect(reviewer.run.mock.calls[0]![2]).toBe(true);
+		expect(f.hooks.get("agent_settled")).toEqual([]);
+	});
+
+	it("interrupts a waiting shortcut without starting Git and releases listeners", async () => {
+		const f = fixture();
+		f.setIdle(false);
+		const run = f.shortcuts.get("f10")!.handler(f.ctx);
+		expect(f.input("\x1b")).toEqual([undefined]);
+		await run;
+		expect(reviewer.run).not.toHaveBeenCalled();
+		expect(f.entries.at(-1)?.data).toMatchObject({ error: true, text: expect.stringContaining("Cancelled") });
+		expect(f.terminal.size).toBe(0);
+		expect(f.hooks.get("agent_settled")).toEqual([]);
+	});
+
+	it("interrupts running work, preserving result/error presentation and dialog Escape", async () => {
+		const f = fixture();
+		const gate = deferred();
+		reviewer.run.mockImplementationOnce(async (_pi, _ctx, _push, signal: AbortSignal, progress: (text: string) => void) => {
+			progress("Waiting for ignore-file decision…");
+			f.input("\x1b"); // Native dialog receives this key; it is not consumed here.
+			expect(signal.aborted).toBe(false);
+			progress("Committing…");
+			await gate.promise;
+			throw new Error("Cancelled\nabc123 existing commit\nStopped; existing commits and changes were not undone.");
+		});
+		const run = f.commands.get("commit")!.handler("", f.ctx);
+		await vi.waitFor(() => expect(reviewer.run).toHaveBeenCalledOnce());
+		expect(f.input("\x1b")).toEqual([undefined]);
+		expect(reviewer.run.mock.calls[0]![3].aborted).toBe(true);
+		gate.resolve();
+		await run;
+		expect(f.entries.at(-1)?.data).toMatchObject({ error: true, text: expect.stringContaining("abc123 existing commit") });
+		expect(f.ctx.ui.notify).toHaveBeenCalledWith("/commit failed; see result above", "error");
+		expect(f.terminal.size).toBe(0);
+		expect(f.ctx.ui.setStatus).toHaveBeenLastCalledWith("profile-commit", undefined);
+	});
+
+	it("shutdown aborts active runner and clears terminal input", async () => {
+		const f = fixture();
+		reviewer.run.mockImplementationOnce((_pi, _ctx, _push, signal: AbortSignal) => new Promise((_resolve, reject) => {
+			signal.addEventListener("abort", () => reject(new Error("Cancelled\nNo commits created.\nStopped; existing commits and changes were not undone.")), { once: true });
+		}));
+		const run = f.shortcuts.get("f9")!.handler(f.ctx);
+		await vi.waitFor(() => expect(reviewer.run).toHaveBeenCalledOnce());
+		await f.emit("session_shutdown", { reason: "quit" });
+		await run;
+		expect(f.entries.at(-1)?.data.text).toContain("No commits created.");
+		expect(f.terminal.size).toBe(0);
+	});
+
+	it("rejects invalid and overlapping invocations without disturbing the active run", async () => {
+		const f = fixture();
+		const gate = deferred();
+		reviewer.run.mockImplementationOnce(async () => { await gate.promise; return { text: "done" }; });
+		const run = f.commands.get("commit")!.handler("", f.ctx);
+		await vi.waitFor(() => expect(reviewer.run).toHaveBeenCalledOnce());
+		await f.commands.get("commit")!.handler("not-push", f.ctx);
+		await f.shortcuts.get("f9")!.handler(f.ctx);
+		expect(f.entries.filter(entry => entry.name === "profile-commit-result").map(entry => entry.data.text)).toEqual([
+			"/commit failed: Usage: /commit [push]", "/commit failed: A commit is already running.",
+		]);
+		gate.resolve();
+		await run;
+		expect(reviewer.run).toHaveBeenCalledOnce();
+	});
+
+	it("preserves /bro and unrelated /yt activation without registering commit tools", async () => {
 		const f = fixture();
 		const vaultTools = ["onclave_vault_search", "onclave_vault_content", "onclave_vault_ingest", "onclave_vault_jobs"];
 		registerToolVisibility(f.pi);
@@ -103,159 +191,20 @@ describe("profile command lifecycle", () => {
 		f.pi.setActiveTools([...f.active(), ...vaultTools]);
 		await f.emit("session_start", { reason: "startup" });
 		expect(f.active()).toEqual(["read", "unrelated_tool"]);
-
-		// Unrelated templates, including the explicit local workflow, do not activate vault tools.
 		await f.commands.get("yt-local")!.handler("fixture-video", f.ctx);
 		expect(f.active()).toEqual(["read", "unrelated_tool"]);
-
 		await f.commands.get("commit")!.handler("", f.ctx);
-		const expected = ["read", "unrelated_tool", "commit_run", ...vaultTools];
-		const originalSend = f.pi.sendMessage;
-		f.pi.sendMessage = (...args: Parameters<typeof originalSend>) => {
-			expect(f.active()).toEqual(expected);
-			return originalSend(...args);
-		};
-		const request = "https://www.youtube.com/watch?v=fixture";
-		await f.commands.get("yt")!.handler(request, f.ctx);
-		const prompt = f.sent.at(-1)!;
-		expect(prompt.message.customType).toBe("prompt-template-command");
-		expect(prompt.message.details.invocation).toBe(`/yt ${request}`);
-		expect(prompt.message.content).toContain(`YouTube request: ${request}`);
-		expect(prompt.message.content).not.toContain("tool_search");
-		expect(prompt.message.content).not.toContain("$ARGUMENTS");
-		expect(prompt.options).toMatchObject({ triggerTurn: true });
-		// Repeating /yt must not duplicate tools or replace an in-flight command's tools.
-		await f.commands.get("yt")!.handler("search context management", f.ctx);
-		f.pi.sendMessage = originalSend;
-
-		await f.emit("agent_end", { messages: [], willRetry: true });
-		await f.emit("session_compact", { reason: "threshold" });
-		expect(f.active()).toEqual(expected);
-		await f.emit("agent_settled", {});
+		expect(f.active()).toEqual(["read", "unrelated_tool"]);
+		expect(f.tools.size).toBe(0);
+		await f.commands.get("bro")!.handler("", f.ctx);
+		expect(f.sent.at(-1)).toMatchObject({ message: { customType: "profile-command-prompt", display: false }, options: { deliverAs: "steer", triggerTurn: true } });
+		await f.commands.get("yt")!.handler("https://www.youtube.com/watch?v=fixture", f.ctx);
 		expect(f.active()).toEqual(["read", "unrelated_tool", ...vaultTools]);
-		// A later terminal notification starts another turn without tool discovery.
-		await f.emit("message_start", { message: { role: "custom", customType: "onclave-notification", content: "job_terminal" } });
+		expect(f.sent.at(-1)!.message.content).toContain("YouTube request: https://www.youtube.com/watch?v=fixture");
+		await f.emit("agent_settled", {});
 		expect(f.active()).toEqual(["read", "unrelated_tool", ...vaultTools]);
 		await f.emit("session_shutdown", { reason: "new" });
 		await f.emit("session_start", { reason: "new" });
 		expect(f.active()).toEqual(["read", "unrelated_tool"]);
-	});
-
-	it("allows a direct commit tool call without granting push authority", async () => {
-		const f = fixture();
-		await f.emit("session_start", { reason: "startup" });
-		expect(await f.emit("tool_call", { toolCallId: "direct", toolName: "commit_run", input: {} })).toBeUndefined();
-		const result = await f.tools.get("commit_run")!.execute("direct", {}, undefined, undefined, f.ctx);
-		expect(result.details.push).toBe(false);
-	});
-
-	it("uses native steering, binds calls at delivery, and preserves old options", async () => {
-		const f = fixture();
-		await f.emit("session_start", { reason: "startup" });
-
-		await f.commands.get("commit")!.handler("", f.ctx);
-		const bare = promptMessages(f)[0]!;
-		expect(bare.options).toMatchObject({ deliverAs: "steer", triggerTurn: true });
-		expect(f.active()).toContain("commit_run");
-		await f.emit("message_start", { message: { customType: "profile-command-prompt", details: bare.message.details } });
-		await f.emit("tool_call", { toolCallId: "bare-call", toolName: "commit_run", input: {} });
-
-		// The second submission is accepted while the first call is still active.
-		await f.commands.get("commit")!.handler("push", f.ctx);
-		const push = promptMessages(f)[1]!;
-		const oldResult = await f.tools.get("commit_run")!.execute("bare-call", {}, undefined, undefined, f.ctx);
-		expect(oldResult.details.push).toBe(false);
-		// Ordinary user steering and retries do not replace the delivered owner.
-		await f.emit("message_start", { message: { role: "user", content: "ordinary steering" } });
-		await f.emit("agent_end", { messages: [], willRetry: true });
-		await f.emit("session_compact", { reason: "threshold" });
-		const retryResult = await f.tools.get("commit_run")!.execute("bare-call", {}, undefined, undefined, f.ctx);
-		expect(retryResult.details.push).toBe(false);
-
-		await f.emit("message_start", { message: { customType: "profile-command-prompt", details: push.message.details } });
-		await f.emit("tool_call", { toolCallId: "push-call", toolName: "commit_run", input: {} });
-		const pushResult = await f.tools.get("commit_run")!.execute("push-call", {}, undefined, undefined, f.ctx);
-		expect(pushResult.details.push).toBe(true);
-
-		// /bro is also accepted as native steering and does not mutate the bound call.
-		await f.commands.get("bro")!.handler("", f.ctx);
-		const bro = promptMessages(f)[2]!;
-		expect(bro.options).toMatchObject({ deliverAs: "steer", triggerTurn: true });
-		await f.emit("message_start", { message: { customType: "profile-command-prompt", details: bro.message.details } });
-		const stillPush = await f.tools.get("commit_run")!.execute("push-call", {}, undefined, undefined, f.ctx);
-		expect(stillPush.details.push).toBe(true);
-	});
-
-	it("does not let invalid invocations deactivate active work or remove unrelated tools", async () => {
-		const f = fixture();
-		await f.emit("session_start", { reason: "startup" });
-		await f.commands.get("commit")!.handler("", f.ctx);
-		const prompt = promptMessages(f)[0]!;
-		await f.emit("message_start", { message: { customType: "profile-command-prompt", details: prompt.message.details } });
-		await f.emit("tool_call", { toolCallId: "active", toolName: "commit_run", input: {} });
-
-		await f.commands.get("commit")!.handler("not-push", f.ctx);
-		expect(f.active()).toContain("commit_run");
-		const stillActive = await f.tools.get("commit_run")!.execute("active", {}, undefined, undefined, f.ctx);
-		expect(stillActive.details.push).toBe(false);
-
-		await f.emit("tool_result", { toolCallId: "active" });
-		await f.emit("agent_settled", {});
-		expect(f.active()).toEqual(["read", "unrelated_tool"]);
-		await f.emit("session_shutdown", { reason: "quit" });
-		expect(f.active()).toEqual(["read", "unrelated_tool"]);
-	});
-
-	it("proves native steering sees prepared schemas before the earlier tool settles", async () => {
-		const authority = new CommandInvocationAuthority();
-		const requests: Array<{ tools: string[]; messages: any[] }> = [];
-		let requestNumber = 0;
-		let releaseHold!: () => void;
-		let holdStarted!: () => void;
-		const holdReady = new Promise<void>((resolve) => { holdStarted = resolve; });
-		const holdRelease = new Promise<void>((resolve) => { releaseHold = resolve; });
-		const empty = Type.Object({});
-		const holdTool = { name: "hold_tool", label: "Hold", description: "Inert fixture tool", parameters: empty,
-			execute: async () => { holdStarted(); await holdRelease; return { content: [{ type: "text" as const, text: "released" }], details: {} }; } };
-		const commitTool = { name: "commit_run", label: "Commit", description: "Inert fixture command tool", parameters: empty,
-			execute: async (id: string) => { const invocation = authority.getToolCall(id); if (!invocation) throw new Error("unbound fixture call"); return { content: [{ type: "text" as const, text: "read" }], details: { push: invocation.options.push } }; } };
-		let preparedTools: any[] = [holdTool as any];
-		const agent = new Agent({
-			initialState: { model: runtimeModel as any, thinkingLevel: "off", systemPrompt: "fixture", tools: [holdTool as any] },
-			convertToLlm: (messages) => messages.flatMap((message: any) => message.role === "custom" ? [{ role: "user", content: [{ type: "text", text: message.content }], timestamp: message.timestamp }] : [message]),
-			streamFn: (_model, context) => {
-				const tools = context.messages.flatMap((message) => message.role === "system" ? (message.toolsAdded ?? []) : []);
-				requests.push({ tools: tools.map((tool) => tool.name), messages: context.messages });
-				const stream = createAssistantMessageEventStream();
-				if (requestNumber++ < 2) runtimeToolResponse(stream, requestNumber === 1 ? "hold_tool" : "commit_run", requestNumber === 1 ? "hold-call" : "commit-call");
-				else {
-					const message = { role: "assistant" as const, content: [{ type: "text" as const, text: "done" }], api: "fixture", provider: "fixture", model: "runtime-fixture",
-						usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, totalTokens: 2, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, stopReason: "stop" as const, timestamp: Date.now() };
-					stream.push({ type: "start", partial: message }); stream.push({ type: "text_start", contentIndex: 0, partial: message }); stream.push({ type: "text_delta", contentIndex: 0, delta: "done", partial: message }); stream.push({ type: "done", reason: "stop", message }); stream.end(message);
-				}
-				return stream;
-			},
-			prepareNextTurnWithContext: (turn) => ({ context: { ...turn.context, tools: preparedTools } }),
-			beforeToolCall: async ({ toolCall }) => { if (toolCall.name === "commit_run") authority.bindToolCall(toolCall.id, toolCall.name, "commit", new Map([["commit", new Set(["commit_run"])]])); return undefined; },
-			afterToolCall: async ({ toolCall }) => { if (toolCall.name === "commit_run") authority.releaseToolCall(toolCall.id); return undefined; },
-			toolExecution: "sequential",
-		});
-		let delivered = false;
-		agent.subscribe((event) => { if (event.type === "message_start" && (event.message as any).role === "custom") delivered = authority.deliver((event.message as any).details); });
-
-		const run = agent.prompt("begin");
-		await holdReady;
-		const invocation = authority.create("commit", { push: true });
-		preparedTools = [holdTool as any, commitTool as any];
-		agent.state.tools = preparedTools;
-		agent.steer({ role: "custom", customType: "profile-command-prompt", content: "run commit", details: { invocationId: invocation.id }, timestamp: Date.now() } as any);
-		releaseHold();
-		await run;
-		expect(requests[0]!.tools).toEqual(["hold_tool"]);
-		expect(requests[1]!.tools).toContain("commit_run");
-		expect(delivered).toBe(true);
-		expect(requests[1]!.messages.some((message) => (message as any).role === "user" && (message as any).content?.[0]?.text === "run commit")).toBe(true);
-		const result = agent.state.messages.find((message: any) => message.role === "toolResult" && message.toolCallId === "commit-call") as any;
-		expect(result.details.push).toBe(true);
 	});
 });

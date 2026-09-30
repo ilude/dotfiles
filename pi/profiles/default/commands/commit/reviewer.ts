@@ -4,11 +4,10 @@ import { fileURLToPath } from "node:url";
 import timers from "node:timers/promises";
 import { Agent } from "@earendil-works/pi-agent-core";
 import { isContextOverflow, isRetryableAssistantError, type Api, type ImageContent, type Model, type TextContent, type Usage } from "@earendil-works/pi-ai";
-import { createBashTool, createReadTool, type ExtensionAPI, type ModelRuntime, type ToolDefinition, withFileMutationQueue } from "@earendil-works/pi-coding-agent";
+import { createBashTool, createReadTool, type ExtensionAPI, type ExtensionContext, type ModelRuntime, withFileMutationQueue } from "@earendil-works/pi-coding-agent";
 import { createProfileModelRuntime } from "../../lib/model-runtime.ts";
 import { resolveLatestCodexModelFromRuntime } from "../../lib/model-selection.ts";
 import { compareModelVersions, modelFamilyVersion } from "../../lib/model-family.ts";
-import { Container, Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { formatStatus, gitReviewTool, page } from "./tools.ts";
 
@@ -92,14 +91,16 @@ Repository inventory (initial status already collected; use commit_git_review fo
 ${inventory.join("\n\n")}`;
 }
 
-export function commitReviewerTool(pi: ExtensionAPI, pushRequested: (toolCallId: string) => boolean | undefined): ToolDefinition {
-	return {
-		name: "commit_run",
-		label: "Commit",
-		description: "Let Luna quietly review, stage, and commit using ordinary Git. Handles ignore-file questions directly. Returns actual commit hashes/messages and status. Call once when the operator requests a commit or invokes /commit; do not perform Git work again afterward. Only an explicit /commit push invocation grants push permission.",
-		parameters: Type.Object({}),
-		async execute(id, _params, signal, onUpdate, ctx) {
-			const push = pushRequested(id) === true;
+export interface CommitRunResult {
+	readonly text: string;
+	readonly elapsedMs: number;
+	readonly model: string;
+	readonly usage: Usage;
+}
+
+/** Run the private Git reviewer for an operator command, not a model-facing tool. */
+export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext, push: boolean, signal?: AbortSignal, onProgress?: (text: string) => void): Promise<CommitRunResult> {
+
 			const deadline = new AbortController();
 			const combined = signal ? AbortSignal.any([signal, deadline.signal]) : deadline.signal;
 			let remaining = WORKFLOW_TIMEOUT_MS;
@@ -113,7 +114,7 @@ export function commitReviewerTool(pi: ExtensionAPI, pushRequested: (toolCallId:
 			let unsubscribe: (() => void) | undefined;
 			const abort = () => agent?.abort();
 			combined.addEventListener("abort", abort, { once: true });
-			const progress = (text: string) => onUpdate?.({ content: [{ type: "text", text }], details: {} });
+			const progress = (text: string) => onProgress?.(text);
 			let root: string | undefined;
 			const baselines = new Map<string, string>();
 			let failure: string | undefined;
@@ -317,14 +318,5 @@ export function commitReviewerTool(pi: ExtensionAPI, pushRequested: (toolCallId:
 			const publication = push && publicationTargets > 0 ? (/^Pushed\.?$/i.test(outcome) ? "Pushed." : "Push completion not confirmed.") : "";
 			const report = [summary, leftOut.length ? `Left out: ${leftOut.join(", ")}` : "", publication].filter(Boolean).join("\n");
 			if (failure) throw new Error(`${failure}\n${report}\nStopped; existing commits and changes were not undone.`);
-			return { content: [{ type: "text", text: report }], details: { elapsedMs: WORKFLOW_TIMEOUT_MS - remaining, model: `${selectedModel?.provider}/${selectedModel?.id}:low` }, usage };
-		},
-		renderCall: () => new Container(),
-		renderResult(result, { isPartial }, theme, context) {
-			const text = result.content.filter((part) => part.type === "text").map((part) => part.text).join("\n");
-			if (context.isError) return new Text(theme.fg("error", text), 0, 0);
-			// The final reply owns successful completion output, even with tools expanded.
-			return isPartial ? new Text(text, 0, 0) : new Container();
-		},
-	};
+			return { text: report, elapsedMs: WORKFLOW_TIMEOUT_MS - remaining, model: `${selectedModel?.provider}/${selectedModel?.id}:low`, usage };
 }

@@ -2,16 +2,11 @@ import { describe, expect, it, vi } from "vitest";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import profileCommands from "../extensions/commands.ts";
 
-// Completion registration uses the real command registry, without initializing
-// the private Git/model workflow that is unrelated to editor suggestions.
-vi.mock("../commands/commit/reviewer.ts", () => ({
-	commitReviewerTool: () => ({ name: "commit_run", execute: vi.fn() }),
-}));
-
+// Completion registration uses the real command registry without running Git.
 function completions() {
 	const registered = new Map<string, Parameters<ExtensionAPI["registerCommand"]>[1]>();
 	profileCommands({
-		registerMessageRenderer: vi.fn(),
+		registerEntryRenderer: vi.fn(),
 		registerTool: vi.fn(),
 		registerCommand: (name: string, options: Parameters<ExtensionAPI["registerCommand"]>[1]) => registered.set(name, options),
 		registerShortcut: vi.fn(),

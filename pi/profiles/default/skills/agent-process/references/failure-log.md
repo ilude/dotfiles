@@ -1,5 +1,14 @@
 # Agent process failure log
 
+## APR-081 - Helper push mode was mistaken for the operator's authorization boundary
+
+- **Reference:** gcc_automation commit-and-push closeout, 2026-09-30; AIF-100.
+- **Observed:** Despite an explicit request to commit and push, the orchestrator called commit_run directly, received a commit-only result, then told the operator a slash command was required rather than completing the authorized push using ordinary Git.
+- **Finding:** The helper's tool description says only `/commit push` grants push permission and prohibits subsequent Git work. Its documentation distinguishes this invocation-bound option from normal shell permissions. The assistant applied the tool-specific mode as a global authorization rule.
+- **Remediation:** Rechecked source instructions and actual outgoing state, then completed a normal non-force push of the single requested commit. Proposed a narrow tool-description/documentation correction instead of adding a global rule or changing helper runtime authority.
+- **Follow-up:** Operator rejected automatic routing of ordinary commit requests through the helper and approved removing the main-agent tool. `/commit` will call the private runner directly, while ordinary Git requests remain ordinary Bash work.
+- **Status:** Resolved in default-profile source: private runner is called directly by `/commit` and existing shortcuts, with no main-agent commit tool. Busy shortcuts wait instead of refusing; Escape/shutdown cancellation and listener cleanup are covered. 47 focused offline tests, typecheck, and diff check passed. Reload/live UI validation remains outstanding; no live Git mutation smoke was run.
+
 ## APR-080 - Transient GitLab API files were written into the worktree root
 
 - **Reference:** EISA all-pipeline Podman pipeline monitoring, 2026-09-29; AIF-098.
