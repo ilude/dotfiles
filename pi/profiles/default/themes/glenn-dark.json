@@ -23,7 +23,7 @@
 		"muted": "muted",
 		"dim": "okhsl(229 8% 56%)",
 		"text": "text",
-		"thinkingText": "okhsl(226 7% 65%)",
+		"thinkingText": "okhsl(226 7% 40%)",
 		"selectedBg": "blueBg",
 		"scrollbarTrack": "okhsl(237 7% 33%)",
 		"scrollbarThumb": "okhsl(232 7% 65%)",

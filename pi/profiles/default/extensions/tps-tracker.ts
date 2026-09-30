@@ -87,7 +87,7 @@ export default function tpsTracker(pi: ExtensionAPI): void {
     const text = `${interrupted ? "stopped: " : ""}${rate} | first ${first} avg | ${output} tok / ${seconds.toFixed(1)}s streaming`;
     if (ctx.hasUI) {
       ctx.ui.setStatus("tps", undefined);
-      ctx.ui.notify(`${text}\ncompleted ${new Date().toLocaleString()}`, "info");
+      ctx.ui.notify(ctx.ui.theme.fg("thinkingText", `${text}\ncompleted ${new Date().toLocaleString()}`), "info");
     }
   });
 }
