@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { SessionManager } from "../node_modules/@earendil-works/pi-coding-agent/dist/core/session-manager.js";
+import { Check } from "typebox/value";
+import { piSessionOutputSchema, sessionMessagesOutputSchema } from "../extensions/session-profile.ts";
 import sessionProfile, { SESSION_PROFILE_ENTRY } from "../extensions/session-profile.ts";
 
 afterEach(() => vi.unstubAllEnvs());
@@ -42,10 +44,12 @@ describe("session profile logging", () => {
 			parameters: { type: "object", properties: {}, additionalProperties: false },
 		});
 
-		const execute = tool?.execute as ((...args: unknown[]) => Promise<{ content: Array<{ text: string }>; details: unknown }>) | undefined;
+		const execute = tool?.execute as ((...args: unknown[]) => Promise<{ content: Array<{ text: string }>; details: unknown; structuredContent?: unknown }>) | undefined;
 		const result = await execute?.("call", {}, undefined, undefined, { sessionManager });
 		const expected = { session_id: sessionManager.getSessionId(), profile: "work" };
 		expect(result?.details).toEqual(expected);
+		expect(Check(piSessionOutputSchema, result?.structuredContent)).toBe(true);
+		expect(Check(sessionMessagesOutputSchema, { local_path: "/tmp/messages.jsonl", session_id: expected.session_id, profile: "work", user_messages: 1, assistant_messages: 2 })).toBe(true);
 		expect(JSON.parse(result?.content[0]?.text ?? "null")).toEqual(expected);
 		expect(Object.keys(result?.details as object)).toEqual(["session_id", "profile"]);
 		const theme = { fg: (_color: string, value: string) => value, bold: (value: string) => value };

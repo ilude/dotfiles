@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { registerLogAnalytics } from "../extensions/log-analytics-tool.js";
-import registerToolSearch from "../extensions/tool-search.js";
-import registerToolVisibility from "../extensions/tool-visibility.js";
+import { analyticsOutputSchema, registerLogAnalytics } from "../extensions/log-analytics-tool.js";
+import { Check } from "typebox/value";
 import { createMockPi } from "./helpers/mock-pi.js";
 import { analyticsFixture, recentMessage } from "./helpers/analytics-fixture.js";
 let fixture: Awaited<ReturnType<typeof analyticsFixture>>;
@@ -13,18 +12,20 @@ function tool() {
 	registerLogAnalytics(pi as never, resolver);
 	return { pi, resolver, execute: (params: unknown, signal?: AbortSignal) => pi._getTool("log_analytics")!.execute("id", params, signal) };
 }
+function expectStructured(result: { structuredContent?: unknown }) {
+	expect(Check(analyticsOutputSchema, result.structuredContent)).toBe(true);
+	expect(result.structuredContent).toMatchObject({ operation: expect.any(String) });
+}
 
 describe("log_analytics registered tool", () => {
-	it("catalog is filesystem-independent and deferred search activates analytics", async () => {
+	it("catalog is filesystem-independent and analytics is registered deferred", async () => {
 		const { pi, resolver, execute } = tool();
 		const result = await execute({ operation: "catalog" });
+		expectStructured(result);
+		expect(pi._getTool("log_analytics")?.exposure).toBe("deferred");
+		expect(pi.getActiveTools()).not.toContain("log_analytics");
 		expect(result.details.sources.map((item: { source: string }) => item.source)).toEqual(["session_entries", "bedrock_usage", "codex_cache_observations"]);
 		expect(resolver).not.toHaveBeenCalled();
-		registerToolSearch(pi as never); registerToolVisibility(pi as never);
-		await pi._getHook("session_start")[0].handler({}, {});
-		expect(pi.getActiveTools()).not.toContain("log_analytics");
-		await pi._getTool("tool_search")!.execute("search", { query: "session analytics" });
-		expect(pi.getActiveTools()).toContain("log_analytics");
 	});
 
 	it("supports search, exact follow-up, and explicit large SQL through the registered boundary", async () => {
@@ -34,18 +35,37 @@ describe("log_analytics registered tool", () => {
 		const { execute } = tool();
 		const request = { operation: "search" as const, profiles: ["default", "legacy"] as const, interval: { since: "2026-09-01T00:00:00Z", until: "2026-09-08T00:00:00Z" }, filters: { messageRoles: ["toolResult"], isError: true }, maxResults: 1 };
 		const first = await execute(request);
+		expectStructured(first);
 		expect(first.details.matches).toHaveLength(1);
 		const all = [...first.details.matches];
 		let page = first.details;
-		while (page.nextCursor) { page = (await execute({ ...request, cursor: page.nextCursor })).details; all.push(...page.matches); }
+		while (page.nextCursor) {
+			const continued = await execute({ ...request, cursor: page.nextCursor });
+			expectStructured(continued); page = continued.details; all.push(...page.matches);
+		}
 		expect(all.map((match: { occurrence: { session: { sessionId: string } } }) => match.occurrence.session.sessionId)).toEqual(["last-week", "last-week-legacy"]);
 		expect(all.every((match: { isError: boolean }) => match.isError)).toBe(true);
 		const context = await execute({ operation: "follow_up", occurrence: all[0].occurrence, before: 1, after: 1 });
+		expectStructured(context);
 		expect(context.details.match.record.message.content[0].text).toBe("read failed");
 		const large = await execute({ operation: "query", profiles: ["default"], sources: ["session_entries"], execution: "large", sql: "SELECT count(*) AS records FROM session_entries" });
+		expectStructured(large);
 		expect(large.details.cost).toMatchObject({ requestedExecution: "large", execution: "large", selectionReason: "explicit_large" });
 		expect(large.details.cost.selectedBytes).toBe(large.details.cost.bytesScanned);
 		expect(large.details.cost.diskBudgetBytes).toBe(8 * 1024 ** 3);
+	});
+
+	it("exposes bounded dynamic SQL rows with matching typed coverage and cost metadata", async () => {
+		const { execute } = tool();
+		const result = await execute({ operation: "query", profiles: ["default"], sources: ["session_entries"], maxRows: 1,
+			sql: "SELECT i AS ordinal, {'label': 'row-' || CAST(i AS VARCHAR)} AS payload FROM range(3) t(i)" });
+		expectStructured(result);
+		expect(result.structuredContent).toMatchObject({
+			operation: "query", columns: ["ordinal", "payload"], rows: [{ ordinal: "0", payload: { label: "row-0" } }], truncated: true,
+			cost: { requestedExecution: "automatic", execution: "large", selectionReason: "non_exact_scope_below_256_mib", filesScanned: 0, bytesScanned: 0 },
+			coverage: { files: "all selected files staged", records: "valid JSON only; malformed lines excluded; live files are not a snapshot" },
+		});
+		expect(result.structuredContent.coverage).toHaveProperty("discovery");
 	});
 
 	it("supports default, legacy, combined and exact-session queries through the tool", async () => {
@@ -60,9 +80,14 @@ describe("log_analytics registered tool", () => {
 			expect(result.cost.selectedBytes).toBe(result.cost.bytesScanned);
 		}
 		const page = await execute({ operation: "sessions", profiles: ["default", "legacy"], maxRows: 1 });
+		expectStructured(page);
 		expect(page.details.nextCursor).toBeTruthy();
 		const next = await execute({ operation: "sessions", profiles: ["default", "legacy"], maxRows: 1, cursor: page.details.nextCursor });
+		expectStructured(next);
 		expect(next.details.sessions[0].ref.profile).toBe("legacy");
+		const lineage = await execute({ operation: "session_lineage", profiles: ["default"], sessionId: "one" });
+		expectStructured(lineage);
+		expect(lineage.structuredContent).toMatchObject({ operation: "session_lineage", sessionId: "one", target: null, coverage: { historicalSessions: 1 } });
 		const selectedRequest = { operation: "query", profiles: ["default", "legacy"], sources: ["session_entries"], sessionRefs: [page.details.sessions[0].ref], sql: "SELECT session_id FROM session_entries LIMIT 1" };
 		const selected = await execute(selectedRequest);
 		expect(selected.details.rows).toEqual([{ session_id: "one" }]);

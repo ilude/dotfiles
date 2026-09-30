@@ -34,7 +34,18 @@ async function handle(command){
    }
    if(command.message.includes('[activity]')){
     process.stdout.write(JSON.stringify({type:'agent_start'})+'\n');
-    process.stdout.write(JSON.stringify({type:'tool_execution_start',toolName:'bash',args:{private:'must not appear in progress'}})+'\n');
+    process.stdout.write(JSON.stringify({type:'tool_execution_start',toolCallId:'outer-bash',toolName:'bash',args:{private:'must not appear in progress'}})+'\n');
+   }
+   if(command.message.includes('[nested]')){
+    process.stdout.write(JSON.stringify({type:'agent_start'})+'\n');
+    process.stdout.write(JSON.stringify({type:'tool_execution_start',toolCallId:'outer-script',toolName:'codemode'})+'\n');
+    process.stdout.write(JSON.stringify({type:'tool_execution_start',toolCallId:'inner-read',parentToolCallId:'outer-script',toolName:'read'})+'\n');
+    process.stdout.write(JSON.stringify({type:'tool_execution_start',toolCallId:'inner-grep',parentToolCallId:'outer-script',toolName:'grep'})+'\n');
+    process.stdout.write(JSON.stringify({type:'tool_execution_end',toolCallId:'inner-read',parentToolCallId:'outer-script',toolName:'read',isError:true,result:{content:[{type:'text',text:'handled nested failure'}]}})+'\n');
+    process.stdout.write(JSON.stringify({type:'tool_execution_end',toolCallId:'inner-grep',parentToolCallId:'outer-script',toolName:'grep',isError:false})+'\n');
+    if(command.message.includes('[hold]'))return;
+    process.stdout.write(JSON.stringify({type:'tool_execution_end',toolCallId:'outer-script',toolName:'codemode',isError:command.message.includes('[outer-error]'),result:{content:[{type:'text',text:'outer failure'}]}})+'\n');
+    if(command.message.includes('[outer-error]')){process.stdout.write('{"type":"agent_settled"}\n');return}
    }
    if(command.message.includes('[provider-error]')){process.stdout.write(JSON.stringify({type:'message_end',message:{role:'assistant',stopReason:'error',errorMessage:'fixture provider unavailable'}})+'\n');return}
    if(command.message.includes('[tool-error]')){

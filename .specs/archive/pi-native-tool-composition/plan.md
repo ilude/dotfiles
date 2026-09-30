@@ -1,6 +1,6 @@
 ---
 created: 2026-09-30
-status: ready
+status: in-progress
 completed: null
 ---
 
@@ -99,98 +99,106 @@ Create dedicated task worktrees and record actual branches/targets before editin
 
 Tasks below have disjoint primary write ownership. Avoid assigning shared mocks, settings, and integration tests to multiple writers. Continue independent work around blockers. Adapt mechanisms within settled intent, but ask before changing scope, permissions, accepted defaults, or completion criteria. Do not expand the deferred subagent/commit review into acceptance requirements.
 
+## Execution record
+
+- Invocation: `--no-merge .specs/pi-native-tool-composition/plan.md`, 2026-09-30, verified default profile, session `01a0f45a-6d00-75c0-a763-12e00924a8e0`. Task dependencies link installed Pi 0.99.1.
+- Dotfiles task: `C:/Users/mglenn/dotfiles-pi-native-tool-composition`, branch `task/pi-native-tool-composition`; integration target `C:/Users/mglenn/.dotfiles`, branch `main`, starting commit `12ed41afa33584f08a7bb51052ec96fe064989fb`.
+- Onclave task: `C:/Users/mglenn/dotfiles-pi-native-tool-composition/modules/onclave` (created at sibling `C:/Users/mglenn/onclave-pi-native-tool-composition`, relocated after T8 settled for actual loader/gitlink wiring), branch `task/pi-native-tool-composition`; canonical target `C:/Users/mglenn/.dotfiles/modules/onclave`, branch `feature/v2-broker-core`, starting commit `89411c61ad75a9239452df753f76e928ebb7bc3c`.
+- Both originating checkouts were clean. Dedicated worktrees created. T1 through T8 assigned to disjoint implementation owners, including separate T5a/T5b and T6a/T6b.
+- Integration and task-worktree cleanup are intentionally pending under `--no-merge`; publish task branches only. Do not advance canonical targets.
+
 ## Tasks
 
-- [ ] **T1: Preserve scoped instructions across structured and nested results**
+- [x] **T1: Preserve scoped instructions across structured and nested results**
   - Depends on: none. Parallel with T2-T8 in their owned files.
   - Owns: `extensions/scoped-instructions.ts` and its focused tests.
   - Change: preserve structured payloads when augmenting direct results; deliver nested-discovered instructions through the outer persisted result, with existing trust/deduplication/branch behavior.
   - Complexity: nested results are not persisted; handle successful/error outer completion and shared source reservations without silently marking undelivered guidance consumed.
   - Verify: scoped-instruction tests including the real runner's structured-content replacement behavior and nested outer-result delivery.
   - Done when: scripts receive structured data and the model receives relevant guidance without duplication or changed trust semantics.
-  - Evidence: Not started.
+  - Evidence: 2026-09-30 default task worktree, scoped-instructions tests passed (18), focused TypeScript and diff checks passed. Includes real extension-runner structured preservation and persisted outer delivery/error/deduplication coverage. Integrated typecheck remains T9.
 
-- [ ] **T2: Migrate native loading, exposure, and frozen role authority**
+- [x] **T2: Migrate native loading, exposure, and frozen role authority**
   - Depends on: none for implementation; consumes T1 before integrated acceptance.
   - Owns: settings, custom search/visibility removal, child registration/loading, Team Lead definition, explicit-only registrations, activation helper cleanup, shared mock adjustments, and discovery/authority tests. T5a/T5b/T7/T8 own native exposure changes in their tool files, keeping this task's write ownership separate.
   - Change: implement the exposure/loading contract and remove competing native-tool replacements. Leave RPC input disposition work intact.
   - Verify: native search/visibility/child-loader/launch tests and command lifecycle tests. Use an actual installed CLI/bundle child load to verify native built-ins and permitted callable tools; ordinary children do not receive codemode or unauthorized deferred tools.
   - Done when: orchestrator and Team Lead can discover/compose permitted tools, ordinary roles retain search without codemode, and explicit-only tools are not script-callable.
-  - Evidence: Not started.
+  - Evidence: 2026-09-30 default task worktree, loader/launch/command focused tests passed (27 initial); final loader tests passed (10), related loader/child-outcome/launch tests passed (24), default typecheck and diff check passed. Actual installed CLI Team Lead and ordinary-child checks verify native loading, ordinary no-codemode, permitted optional registrations initially inactive, and unauthorized deferred/codemode-only exclusions. Frozen authority and command behavior preserved.
 
-- [ ] **T3: Make nested activity and failure tracking accurate**
+- [x] **T3: Make nested activity and failure tracking accurate**
   - Depends on: none; coordinate `rpc.ts` with the other instance before editing.
   - Owns: `lib/subagents/child-surface.ts`, task-related `lib/subagents/rpc.ts` tracking changes, relevant activity/provenance tests; any needed provenance parent linkage.
   - Change: account for outer/nested calls and script-handled inner failures without altering delegation, ownership, steering, handoff, or commit behavior.
   - Verify: focused visible/headless tracking tests for overlapping nested calls, cancellation, handled inner error, and unhandled outer error; preserve current disposition tests.
   - Done when: an inner completion cannot prematurely report model phase or falsely mark an otherwise successful outer script as an assignment failure.
-  - Evidence: Not started.
+  - Evidence: 2026-09-30 default task worktree, visible/headless tracking, RPC and provenance focused checks passed (4 files, 27 tests), default typecheck and changed-file diff check passed. Overlap/cancellation/handled-inner/unhandled-outer cases covered. RPC was clean before edits and disposition commit `3aede8cf` was inspected and preserved.
 
-- [ ] **T4: Add structured web results without bypassing screening or bounds**
+- [x] **T4: Add structured web results without bypassing screening or bounds**
   - Depends on: none. Parallel with other result tasks.
   - Owns: web-tool implementations and web result/screening tests.
   - Change: typed search items and fetched content/metadata; expose only material consistent with existing screening and bounds. Keep these tools directly declared and script-callable.
   - Verify: focused offline web tests with stubbed acquisition/reviewer boundaries; cover no results, screened/unavailable-review content, flagged failures, fallback metadata, and bounded structured payloads.
   - Done when: search-to-fetch scripts use typed results without recovering blocked/unbounded raw data.
-  - Evidence: Not started.
+  - Evidence: 2026-09-30 default task worktree, web-tool/screening checks passed (45 tests, 6 skipped), web TypeScript check passed. Structured screened/bounded fields and selected backend/review metadata preserve fallback semantics. Local redirect subprocess timeout was intermittent (three passing reruns before change); unused redirect body cancellation now starts without waiting for stream teardown, and full checks passed afterward. This does not prove the original timeout's cause.
 
-- [ ] **T5a: Add native deferred image/Jev tools and structured results**
+- [x] **T5a: Add native deferred image/Jev tools and structured results**
   - Depends on: none. Parallel with other result tasks.
   - Owns: image/Jev tool exposure and result definitions, nearby result-schema helpers if needed, and their focused tests. Do not redesign underlying providers.
   - Change: use native deferred exposure; expose existing image metadata/destination data and typed Jev answers/errors.
   - Verify: focused image and Jev tests; schema checks on successful and existing data-bearing error results.
   - Done when: scripts consume image/Jev results without parsing display text and existing limits/provider behavior remain unchanged.
-  - Evidence: Not started.
+  - Evidence: 2026-09-30 default task worktree, image/Jev focused tests passed (2 files, 13 tests), success and existing data-bearing error schemas checked; diff check passed. Native deferred exposure implemented without provider changes.
 
-- [ ] **T5b: Add native deferred analytics and structured operation results**
+- [x] **T5b: Add native deferred analytics and structured operation results**
   - Depends on: none. Parallel with other result tasks.
   - Owns: analytics tool exposure/result definitions, nearby schema helpers if needed, and focused tool tests. Do not redesign the worker or database.
   - Change: native deferred exposure and analytics operation shapes with bounded rows, coverage, costs, and cursors.
   - Complexity: several dynamic result variants; type useful composition fields without turning arbitrary SQL rows into a fixed domain schema. No broad database test phase.
   - Verify: focused analytics tool tests and schema checks including pagination/truncation/coverage metadata.
   - Done when: analytics pipelines consume operation data without text parsing or lost bounds/evidence.
-  - Evidence: Not started.
+  - Evidence: 2026-09-30 default task worktree, analytics focused tests passed (5), output schema checks cover all six operations including dynamic rows, pagination, coverage, costs and truncation; diff check passed. No worker/database redesign.
 
-- [ ] **T6a: Add structured browser action results**
+- [x] **T6a: Add structured browser action results**
   - Depends on: none. Parallel with other result tasks.
   - Owns: `browser-control.ts` result definitions and related helpers/tests.
   - Change: typed public session, discovery candidate, target, snapshot, and action data. Keep direct/script availability and existing redaction, ownership, protected-surface, and lifecycle semantics.
   - Verify: focused offline browser tests with schema fixtures for action variants and absent/error cases. No real browser launch needed for schema fixtures.
   - Done when: browser list/select/act pipelines consume useful sanitized data without new authority.
-  - Evidence: Not started.
+  - Evidence: 2026-09-30 default task worktree, `pnpm test browser-control.test.ts`: 16 tests passed. Structured discovery candidates, sanitized exact page targets and redacted snapshots validated against output schemas. No real browser launched.
 
-- [ ] **T6b: Add structured session and scheduler results**
+- [x] **T6b: Add structured session and scheduler results**
   - Depends on: none. Parallel with other result tasks.
   - Owns: `session-profile.ts`, `session-launch.ts`, `scheduler.ts`, related result helpers/tests.
   - Change: typed session identity/projections, launch receipts, and full scheduler identifiers/times. Preserve direct/script availability and process/session lifetime rules.
   - Verify: focused session/launch/scheduler tests and result schema checks; no real process launch needed for schema fixtures.
   - Done when: session lookups and schedule list/cancel/create pipelines have usable data without lifetime changes.
-  - Evidence: Not started.
+  - Evidence: 2026-09-30 default task worktree, focused session/launch/scheduler tests passed (3 files, 33 tests), output schema checks and diff check passed. Full schedule IDs/times and launch receipts preserved; no process launched.
 
-- [ ] **T7: Add structured Herdr results**
+- [x] **T7: Add structured Herdr results**
   - Depends on: none. Parallel with other result tasks.
   - Owns: Herdr native exposure/reset removal, result contracts/rendering-compatible changes, and focused Herdr tool tests.
   - Change: native deferred exposure for all three tools, removal of the redundant startup reset, and typed layout/agent/pane results, receipts and bounded text. Preserve shell checks, caller-pane protection, and submitted-versus-completed distinctions.
   - Verify: existing focused Herdr tool tests plus schema assertions for list/read/submit/wait operations and task-relevant failures.
   - Done when: scripts can select exact targets and consume results without bypassing existing controls or implying delivery/completion guarantees.
-  - Evidence: Not started.
+  - Evidence: 2026-09-30 default task worktree, Herdr focused tests passed (21) and default typecheck passed. Typed projected layout/agent lists, pane reads, agent prompt/wait and pane run/wait schemas validated; safety, caller protection and submitted receipt checks retained. Native deferred registrations replace startup deactivation.
 
-- [ ] **T8: Migrate Onclave adapter exposure and structured results in its repository**
+- [x] **T8: Migrate Onclave adapter exposure and structured results in its repository**
   - Depends on: none for implementation; its committed/published module revision is required by T10.
   - Owns: module adapter source/tests, relevant package manifests/lockfile, and material module-owned documentation. Do not duplicate adapter code in dotfiles.
   - Change: vault tools use native deferred exposure; all six approved adapter tools provide structured contracts. Update development/type compatibility for Pi 0.99.1 as needed. Preserve existing content/details consumers and direct connection-dependent activation of communication tools; do not replace connection readiness with deferral.
   - Verify: from module root, `pnpm typecheck` and focused adapter Vitest tests for vault operations/projection, communication, connection/extension registration, presentation, and schemas. Exercise the host 0.99.1 registration contract offline. Do not inspect or run the legacy profile.
   - Done when: native host search/composition reaches projected adapter data while old conversational/renderer contracts remain compatible and module checks pass.
-  - Evidence: Not started.
+  - Evidence: 2026-09-30 independent module task worktree, module typecheck passed; adapter Vitest suite passed (11 files, 92 tests), changed-file diff check passed. Installed Pi 0.99.1 CLI loaded adapter offline and displayed registered flags. Six structured contracts and deferred vault exposure implemented; legacy runtime not inspected or validated. Candidate remains uncommitted until T9.
 
-- [ ] **T9: Integrate native runtime checks and operator guidance**
+- [x] **T9: Integrate native runtime checks and operator guidance**
   - Depends on: T1, T2, T3, T4, T5a, T5b, T6a, T6b, T7, and T8 provide exposed tools, structured contracts, and nested compatibility.
   - Owns: proposed focused native-composition integration test/smoke files under default `tests/` or `scripts/`, affected guidance/skills, `pi/README.md`, and root `CHANGELOG.md`.
   - Change: remove stale custom-search guidance; document native direct/script use, permitted roles, explicit-only tools, meaningful structured errors, and native store/side-effect semantics. Record native defaults rather than duplicating the entire codemode manual.
   - Verify: bounded offline actual QuickJS/installed-runtime checks for search/compose, model-only exclusion, role authority, hook blocking, screened/projected data, nested instructions, parallel independent calls, cancellation, store restoration and branch isolation. Mock external services/models only, not native search/codemode behavior.
   - Run from default: `pnpm run typecheck`, task-relevant Vitest files, and the focused native-runtime smoke if separate. Run module checks against the candidate T8 revision. Fix demonstrated task defects; stop after finite checks pass.
   - Done when: integrated native behavior is exercised, documentation matches implemented behavior, and remaining live/provider checks are accurately described as non-blocking limits.
-  - Evidence: Not started.
+  - Evidence: 2026-09-30 verified default task profile/path, `node scripts/native-composition-smoke.mjs` passed on installed Pi 0.99.1. Actual native search/QuickJS, native host callable projection/model-only exclusion, real scheduler executor, ExtensionRunner permission blocking, structured nested data with persisted outer scoped guidance, parallel calls, cancellation/partial output, failed-store-write discard and branch-local store restoration exercised offline. Default `pnpm run typecheck` passed; final focused Vitest checks passed (4 files, 42 tests), following per-task passing checks above. Relocated module candidate typecheck passed and focused adapter checks passed (3 files, 39 tests), following T8's full 92-test adapter run. `just check` wrapper could not start due non-TTY pnpm reinstall/removal request; agreed direct module commands passed. Guidance and root changelog updated; no live/provider claim.
 
 - [ ] **T10: Commit, publish the module revision, archive, integrate, and publish dotfiles**
   - Depends on: T9 passes. Task commits and pushes are already authorized.
@@ -198,16 +206,23 @@ Tasks below have disjoint primary write ownership. Avoid assigning shared mocks,
   - Archive the entire spec and commit implementation/archive on the dotfiles task branch. Follow the closeout contract below for authorized local integration and cleanup. After integration and completion metadata, the orchestrator pushes the dotfiles integration branch to its configured remote. `--no-merge` preserves committed task worktrees intentionally; if selected, publish only task branches without merging or advancing integration targets, and still publish the module task revision before the parent gitlink.
   - Done when: module delivery ordering is satisfied, dotfiles implementation and archive are committed, authorized integration/metadata and both repository pushes are recorded, and owned worktree cleanup is verified or intentionally skipped under `--no-merge`.
   - If publication fails or the user later withdraws permission: retain owned module/task work as needed, do not commit an unpublished parent gitlink, and report exact blocker, next action, and owner. Continue independent approved work first.
-  - Evidence: Not started.
+  - Evidence: Module task commit `a4b7dd9dde3e972cf696dc76e85d8fa8d4263d93` published to `origin/task/pi-native-tool-composition` on 2026-09-30 before parent gitlink staging. Canonical module target remains on `feature/v2-broker-core`; origin target was fetched and matched the task starting commit. `--no-merge` overrides target integration/pull advancement and cleanup. Dotfiles archive/task commit and task-branch publication are next, owned by orchestrator.
+  - [x] Implementation and agreed checks passed.
+  - [x] Module task revision committed and published before parent gitlink.
+  - [ ] Whole spec archived and dotfiles task changes committed.
+  - [ ] Dotfiles task branch published.
+  - [ ] Integration into recorded canonical targets, intentionally skipped under `--no-merge`.
+  - [ ] Task-worktree cleanup, intentionally skipped under `--no-merge`.
 
 Concurrent implementation groups: T1/T2/T3 and the disjoint result tasks T4/T5a/T5b/T6a/T6b/T7/T8 may proceed independently after assignment boundaries are confirmed. T2 owns shared mock changes; integrate that supporting interface before dependent tests use it. T9 consumes all implementation results. T10 handles delivery only after checks and the publication prerequisite.
 
 ## Agreed validation and current handoff
 
-- Status: ready; behavior, scope, and task commit/push authorization are settled.
-- Completed: investigation, pre-migration baseline, and plan authoring only. No implementation task is complete.
-- Next: begin T1-T8 under a subsequent execution instruction, respecting disjoint ownership and supporting-interface dependencies.
-- Blockers/open decisions: none. Commits and pushes in both owning repositories are authorized; deployment is excluded and unnecessary.
+- Status: execution in progress; settled behavior, scope, and task commit/push authorization remain unchanged.
+- Completed: T1 through T9 implementation and agreed checks. Module task revision is committed and published. See per-task dated evidence above.
+- Next: archive/commit dotfiles with the published module gitlink, then publish its task branch and record delivery receipts.
+- Blockers/open decisions: no user decision pending. Integration/cleanup are intentionally pending under `--no-merge`. Commits and task-branch pushes in both repositories remain authorized; deployment is excluded.
+- Existing unrelated check limit: `pnpm test subagent-coordinator-control.test.ts` reproduced 7 failures/5 passes in unchanged canonical default at `12ed41af` on 2026-09-30 (expected accepted dispatch receipt, actual undefined at lines 81/110). This predates task changes; T3's agreed RPC disposition/tracking tests pass. No unrelated disposition redesign is included.
 - Verification limits: no live service, authenticated provider, attached browser, or operator UI acceptance run. Those checks do not block agent-owned completion. Actual future runs must record date, active profile/path, scope, and result separately from these planning probes.
 
 ## Closeout

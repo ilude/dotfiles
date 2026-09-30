@@ -151,7 +151,9 @@ async function fetchText(targetUrl, allowCurl = true) {
 		if (nativeCurl) response = await curlResponse(currentUrl, signal, Math.min(10000, remaining()));
 		const nextUrl = redirectTarget(currentUrl, response);
 		if (nextUrl) {
-			await response.body?.cancel();
+			// A redirect body is irrelevant. Start cancelling it without waiting for
+			// the stream teardown before following the next URL.
+			void response.body?.cancel().catch(() => {});
 			currentUrl = nextUrl;
 			continue;
 		}

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { Value } from "typebox/value";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import tools, { checkedCommand } from "../extensions/herdr-tools.ts";
 import { resumeHerdrSession } from "../lib/herdr-resume.ts";
@@ -104,6 +105,9 @@ describe("structured Herdr agent control", () => {
     const tool = setup(cli);
     const answer = await tool.execute("id", { action: "list" }, undefined, undefined, ctx);
     expect(cli).toHaveBeenCalledWith(["agent", "list"], { signal: undefined });
+    expect(tool.exposure).toBe("deferred");
+    expect(Value.Check(tool.outputSchema, answer.structuredContent)).toBe(true);
+    expect(answer.structuredContent).toMatchObject({ action: "list", total: 82, truncated: true });
     const output = JSON.parse(answer.content[0].text);
     expect(output).toMatchObject({ total: 82, truncated: true });
     expect(output.agents[0]).toMatchObject({ name: "agent-0", pane_id: "w1:p1", status: "idle" });
@@ -134,9 +138,11 @@ describe("structured Herdr agent control", () => {
     const cli = vi.fn<HerdrCli>().mockResolvedValueOnce(json({ status: "idle" })).mockResolvedValueOnce("");
     const tool = setup(cli);
     const signal = new AbortController().signal;
-    await tool.execute("id", { action: "prompt", target: "reviewer", message: "Check the fixture", wait: true, timeoutSeconds: 15 }, signal, undefined, ctx);
+    const waitedPrompt = await tool.execute("id", { action: "prompt", target: "reviewer", message: "Check the fixture", wait: true, timeoutSeconds: 15 }, signal, undefined, ctx);
+    expect(Value.Check(tool.outputSchema, waitedPrompt.structuredContent)).toBe(true);
     expect(cli).toHaveBeenNthCalledWith(1, ["agent", "prompt", "reviewer", "Check the fixture", "--wait", "--timeout", "15000"], { timeoutMs: 17000, signal });
     const submitted = await tool.execute("id", { action: "prompt", target: "w1:p4", message: "hello" }, undefined, undefined, ctx);
+    expect(Value.Check(tool.outputSchema, submitted.structuredContent)).toBe(true);
     expect(cli).toHaveBeenNthCalledWith(2, ["agent", "prompt", "w1:p4", "hello"], { signal: undefined });
     expect(JSON.parse(submitted.content[0].text)).toEqual({ target: "w1:p4", submitted: true, waited: false });
     await expect(tool.execute("id", { action: "prompt", target: "reviewer", message: "hello", wait: true, timeoutSeconds: 121 }, undefined, undefined, ctx)).rejects.toThrow("between 1 and 120");
@@ -148,6 +154,7 @@ describe("structured Herdr agent control", () => {
     const tool = setup(cli);
     const signal = new AbortController().signal;
     const answer = await tool.execute("id", { action: "wait", target: "w1:p5", until: "blocked", timeoutSeconds: 9 }, signal, undefined, ctx);
+    expect(Value.Check(tool.outputSchema, answer.structuredContent)).toBe(true);
     expect(cli).toHaveBeenCalledWith(["agent", "wait", "w1:p5", "--until", "blocked", "--timeout", "9000"], { timeoutMs: 11000, signal });
     expect(JSON.parse(answer.content[0].text)).toEqual({ target: "w1:p5", response: "blocked" });
   });
@@ -189,6 +196,9 @@ it("shows a bounded complete connected-layout inventory", async () => {
   tools({ registerTool(t: any) { registered[t.name] = t; }, on() {} } as unknown as ExtensionAPI, cli);
   const answer = await registered.herdr_layout.execute("id", { action: "list" }, undefined, undefined, ctx);
   expect(cli).toHaveBeenCalledWith(["pane", "list"], { signal: undefined });
+  expect(registered.herdr_layout.exposure).toBe("deferred");
+  expect(Value.Check(registered.herdr_layout.outputSchema, answer.structuredContent)).toBe(true);
+  expect(answer.structuredContent).toMatchObject({ action: "list", total: 83, truncated: true });
   const output = JSON.parse(answer.content[0].text);
   expect(output).toMatchObject({ total: 83, truncated: true });
   expect(output.panes[0]).toMatchObject({ pane: "w1:p1", tab: "w1:t1", workspace: "w1", agent: "validator", kind: "pi", state: "working", process: "pi.exe" });
@@ -286,6 +296,23 @@ it("renders human-readable collapsed Herdr results and keeps internal IDs in exp
   expect(lines(registered.herdr_pane.renderResult(error, { expanded: true }, theme, context({ action: "wait", pane: "w27:pKR" }, true)))).toContain("cli:pane:wait-output");
 });
 
+it("validates pane wait and run output against the declared schema", async () => {
+  vi.stubEnv("HERDR_ENV", "1"); vi.stubEnv("HERDR_SOCKET_PATH", "fixture"); vi.stubEnv("HERDR_PANE_ID", "p1"); vi.stubEnv("HERDR_WORKSPACE_ID", "w1");
+  const registered: Record<string, any> = {};
+  const cli = vi.fn<HerdrCli>(async args => {
+    if (args[0] === "pane" && args[1] === "get") return json({ pane: { pane_id: args[2] } });
+    if (args[0] === "pane" && args[1] === "wait-output") return json({ matched_line: "ready>", read: { text: "ready>" } });
+    if (args[0] === "pane" && args[1] === "process-info") return shell();
+    return "";
+  });
+  tools({ registerTool(t: any) { registered[t.name] = t; }, events: { emit(_name: string, request: any) { request.accept(Promise.resolve(undefined)); } } } as unknown as ExtensionAPI, cli);
+  const pane = registered.herdr_pane;
+  const waited = await pane.execute("id", { action: "wait", pane: "p2", match: "ready>" }, undefined, undefined, ctx);
+  expect(Value.Check(pane.outputSchema, waited.structuredContent)).toBe(true);
+  const ran = await pane.execute("id", { action: "run", pane: "p2", command: "echo ready" }, undefined, undefined, ctx);
+  expect(Value.Check(pane.outputSchema, ran.structuredContent)).toBe(true);
+});
+
 it("requires an existing exact pane but permits non-caller interrupt/close without confirmation", async () => {
   vi.stubEnv("HERDR_ENV", "1"); vi.stubEnv("HERDR_SOCKET_PATH", "fixture"); vi.stubEnv("HERDR_PANE_ID", "p1"); vi.stubEnv("HERDR_WORKSPACE_ID", "w1");
   const registered: Record<string, any> = {};
@@ -304,5 +331,7 @@ it("requires an existing exact pane but permits non-caller interrupt/close witho
   await expect(pane({ action: "interrupt", pane: "older-session-pane" })).resolves.toBeDefined();
   expect(cli).toHaveBeenCalledWith(["pane", "close", "older-session-pane"], { signal: undefined });
   expect(cli).toHaveBeenCalledWith(["pane", "send-keys", "older-session-pane", "ctrl+c"], { signal: undefined });
-  expect((await pane({ action: "read", pane: "older-session-pane" })).content[0].text.length).toBe(16000);
+  const readResult = await pane({ action: "read", pane: "older-session-pane" });
+  expect(readResult.structuredContent.output).toHaveLength(16000);
+  expect(Value.Check(registered.herdr_pane.outputSchema, readResult.structuredContent)).toBe(true);
 });

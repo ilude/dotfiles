@@ -38,6 +38,20 @@ describe("subagent RPC lifecycle",()=>{
   const result=await child(input,false).start();
   expect(result.outcome).toBe("failed");expect(result.error).toMatch(error);expect(result.processState).toBe("exited");
  });
+ it("keeps the outer script active after a nested tool error",async()=>{
+  const instance=child("[nested] [hold]"),activities:string[]=[];instance.onProgress=record=>{if(record.phase==="tool")activities.push(record.toolName??"")};void instance.start();
+  await vi.waitFor(()=>expect(instance.snapshot()).toMatchObject({status:"running",phase:"tool",toolName:"codemode"}));
+  expect(activities).toContain("grep");expect(activities.at(-1)).toBe("codemode");
+  expect((instance as any).toolFailure).toBeUndefined();
+  await instance.cancel();
+  expect(instance.snapshot()).toMatchObject({status:"settled",outcome:"cancelled"});
+ });
+ it("does not fail for a handled nested error but retains an unhandled outer tool error",async()=>{
+  const handled=child("[nested]",false);
+  await expect(handled.start()).resolves.toMatchObject({status:"settled",outcome:"complete",result:"first answer"});
+  const outer=child("[nested] [outer-error]",false);
+  await expect(outer.start()).resolves.toMatchObject({status:"settled",outcome:"failed",error:expect.stringContaining("codemode failed: outer failure")});
+ });
  it("separates actual tool activity from contact and excludes tool arguments",async()=>{
   const instance=child("[activity] [hold]");void instance.start();
   await vi.waitFor(()=>expect(instance.record.phase).toBe("tool"));

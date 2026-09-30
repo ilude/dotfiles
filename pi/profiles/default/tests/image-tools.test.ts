@@ -4,9 +4,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { Value } from "typebox/value";
 import sharp from "sharp";
-import imageTools, { inspectImage, transformImage } from "../extensions/image-tools.js";
-import toolSearch from "../extensions/tool-search.js";
-import toolVisibility from "../extensions/tool-visibility.js";
+import imageTools, { imagePropertiesOutputSchema, imageTransformOutputSchema, inspectImage, transformImage } from "../extensions/image-tools.js";
 import { createMockPi } from "./helpers/mock-pi.js";
 
 const temporaryDirectories: string[] = [];
@@ -45,24 +43,17 @@ async function expectMissing(file: string): Promise<void> {
 }
 
 describe("image tools", () => {
-	it("runs the registered deferred workflow and resets it for a new session", async () => {
+	it("runs the registered image workflow", async () => {
 		const source = await fixture();
 		const directory = path.dirname(source);
 		const destination = path.join(directory, "registered-output.webp");
 		const before = await fs.readFile(source);
 		const pi = createMockPi();
-		imageTools(pi as never); toolSearch(pi as never); toolVisibility(pi as never);
-		const start = pi._getHook("session_start")[0]!.handler;
-		await start({}, {});
-		expect(pi.getActiveTools()).not.toContain("image_transform");
-		await pi._getTool("tool_search")!.execute("id", { query: "image resize convert metadata" }, undefined, undefined, {});
-		expect(pi.getActiveTools()).toEqual(expect.arrayContaining(["image_properties", "image_transform"]));
+		imageTools(pi as never);
 		await pi._getTool("image_properties")!.execute("id", { source }, undefined, undefined, { cwd: directory });
 		await pi._getTool("image_transform")!.execute("id", { source, destination, resize: { width: 4, height: 3 }, format: "webp" }, undefined, undefined, { cwd: directory });
 		expect(await fs.readFile(source)).toEqual(before);
 		expect(await sharp(await fs.readFile(destination)).metadata()).toMatchObject({ width: 4, height: 3, format: "webp" });
-		await start({}, {});
-		expect(pi.getActiveTools()).not.toContain("image_transform");
 	});
 
 	it("registers both tools and rejects failures instead of returning error results", async () => {
@@ -70,6 +61,8 @@ describe("image tools", () => {
 		imageTools(pi as never);
 		const inspect = pi._getTool("image_properties")!;
 		const transform = pi._getTool("image_transform")!;
+		expect(inspect.exposure).toBe("deferred");
+		expect(transform.exposure).toBe("deferred");
 		expect(inspect).toBeDefined();
 		expect(transform).toBeDefined();
 		// Deferred tools must not change the system prompt when activated.
@@ -101,7 +94,9 @@ describe("image tools", () => {
 		const destination = path.join(path.dirname(source), "output.png");
 		const result = await inspectImage(source, path.dirname(source));
 		expect(result.details).toMatchObject({ width: 8, height: 6, format: "png" });
-		await transformImage({ source, destination, resize: { width: 4, height: 3 } }, undefined, path.dirname(source));
+		expect(Value.Check(imagePropertiesOutputSchema, result.structuredContent)).toBe(true);
+		const transformed = await transformImage({ source, destination, resize: { width: 4, height: 3 } }, undefined, path.dirname(source));
+		expect(Value.Check(imageTransformOutputSchema, transformed.structuredContent)).toBe(true);
 		const metadata = await sharp(destination).metadata();
 		expect(metadata).toMatchObject({ width: 4, height: 3, format: "png" });
 		expect(metadata.exif).toBeUndefined();
@@ -121,6 +116,7 @@ describe("image tools", () => {
 			directory,
 		);
 		expect(result.details).toMatchObject({ width: 6, height: 8, format: "jpeg" });
+		expect(Value.Check(imageTransformOutputSchema, result.structuredContent)).toBe(true);
 		expect((await sharp(destination).metadata()).orientation).toBeUndefined();
 	});
 

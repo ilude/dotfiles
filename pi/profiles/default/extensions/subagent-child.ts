@@ -1,4 +1,5 @@
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ToolDefinition } from "@earendil-works/pi-coding-agent";
+import type { TSchema } from "typebox";
 import { Type } from "typebox";
 import { EFFORTS } from "../lib/subagents/options.ts";
 import { bindChildSurface } from "../lib/subagents/child-surface.ts";
@@ -9,7 +10,6 @@ import { parentVisibleRecord, progressResult, renderSubagentCall, renderSubagent
 import { registerProfileCommand } from "../lib/profile-command.ts";
 import type { ChildRecord } from "../lib/subagents/rpc.ts";
 import { writeSubagentLineage } from "../lib/subagents/lineage.ts";
-import { activateTools } from "../lib/tool-activation.js";
 import type { CloseoutManifest } from "../lib/plan-integration/contracts.ts";
 import { samePlatformPath } from "../lib/path-identity.ts";
 interface CloseoutHandoff { manifest:CloseoutManifest; provenance:{source:"subagent-runtime";version:1;childId:string;agent:"integrator";parentSessionId:string;targetCheckout:string} }
@@ -47,6 +47,10 @@ export default function childAuthority(pi:ExtensionAPI){
  if(authority.closeout&&!process.env.PI_SUBAGENT_ENDPOINT)throw new Error("Integrator requires an authenticated parent endpoint");
  workspaceRoot(authority.cwd);
  const allowed=new Set(authority.tools);
+ const registerTool=pi.registerTool.bind(pi);
+ pi.registerTool=function registerAuthorizedChildTool<TParams extends TSchema=TSchema,TDetails=unknown,TState=unknown>(tool:ToolDefinition<TParams,TDetails,TState>):void{
+  registerTool(allowed.has(tool.name)?tool:{...tool,exposure:"hidden"});
+ };
  registerProfileCommand(pi,"exit",{description:"Exit this restricted child",handler:async(_args,ctx)=>ctx.shutdown()});
  const parentEndpoint=()=>{
   const endpoint=JSON.parse(process.env.PI_SUBAGENT_ENDPOINT||"null") as ChildEndpoint|null;
@@ -55,7 +59,7 @@ export default function childAuthority(pi:ExtensionAPI){
   return endpoint;
  };
  pi.on("session_start",async(_event,ctx)=>{
-  pi.setActiveTools(pi.getAllTools().map(t=>t.name).filter(t=>allowed.has(t)));
+  pi.setActiveTools(pi.getAllTools().filter(tool=>allowed.has(tool.name)&&tool.exposure!=="deferred"&&tool.exposure!=="codemode").map(tool=>tool.name));
   if(!process.env.PI_SUBAGENT_ENDPOINT)return;
   const sessionId=ctx.sessionManager.getSessionId(),sessionFile=ctx.sessionManager.getSessionFile();
   if(!sessionId.trim()||!sessionFile)throw new Error("Child session is not durable");
@@ -81,7 +85,7 @@ export default function childAuthority(pi:ExtensionAPI){
   onUpdate?.(progressResult(record));
   return record;
  };
- pi.registerTool({name:"subagent",label:"Delegate to subagent",description:"Commission a permitted subagent under the frozen coordinator authority. Results expose subagentId (with legacy id alias) and, after child registration, sessionId for session_messages/native analytics. Background completion returns to the coordinator automatically, so continue independent work instead of polling. Strategist always runs in the foreground and is never retained, regardless of background or retain. For any other foreground launch, blockingReason is required and must explain why no useful independent work remains and why automatic result delivery is unsuitable; a downstream dependency alone is insufficient. Omit surface for normal delegation to inherit the coordinator's surface. Inside Herdr, select headless only when the user requests it, not merely because work is parallel, unattended, or in a worktree.",parameters:Type.Object({agent:Type.String(),instructions:Type.String(),retain:Type.Optional(Type.Boolean()),background:Type.Optional(Type.Boolean()),blockingReason:Type.Optional(Type.String({description:"Required for non-Strategist foreground launches. Explain why no useful independent work remains and why automatic result delivery is unsuitable; a downstream dependency alone is insufficient."})),cwd:Type.Optional(Type.String()),model:Type.Optional(Type.String()),effort:Type.Optional(Type.Union(EFFORTS.map(value=>Type.Literal(value)))),skills:Type.Optional(Type.Array(Type.String())),surface:Type.Optional(Type.Union([Type.Literal("visible"),Type.Literal("headless")]))}),async execute(_id,p,signal,onUpdate){
+ pi.registerTool({name:"subagent",exposure:"model-only",label:"Delegate to subagent",description:"Commission a permitted subagent under the frozen coordinator authority. Results expose subagentId (with legacy id alias) and, after child registration, sessionId for session_messages/native analytics. Background completion returns to the coordinator automatically, so continue independent work instead of polling. Strategist always runs in the foreground and is never retained, regardless of background or retain. For any other foreground launch, blockingReason is required and must explain why no useful independent work remains and why automatic result delivery is unsuitable; a downstream dependency alone is insufficient. Omit surface for normal delegation to inherit the coordinator's surface. Inside Herdr, select headless only when the user requests it, not merely because work is parallel, unattended, or in a worktree.",parameters:Type.Object({agent:Type.String(),instructions:Type.String(),retain:Type.Optional(Type.Boolean()),background:Type.Optional(Type.Boolean()),blockingReason:Type.Optional(Type.String({description:"Required for non-Strategist foreground launches. Explain why no useful independent work remains and why automatic result delivery is unsuitable; a downstream dependency alone is insufficient."})),cwd:Type.Optional(Type.String()),model:Type.Optional(Type.String()),effort:Type.Optional(Type.Union(EFFORTS.map(value=>Type.Literal(value)))),skills:Type.Optional(Type.Array(Type.String())),surface:Type.Optional(Type.Union([Type.Literal("visible"),Type.Literal("headless")]))}),async execute(_id,p,signal,onUpdate){
   if(!allowed.has("subagent")||!authority.delegates.includes(p.agent))throw new Error("Delegation is outside frozen authority");
   const strategist=p.agent==="strategist";
   const background=strategist?false:p.background??false;
@@ -91,20 +95,13 @@ export default function childAuthority(pi:ExtensionAPI){
   const visible=parentVisibleRecord(result as ChildRecord);
   return{content:[{type:"text",text:JSON.stringify(visible)}],details:visible};
  },renderCall:renderSubagentCall,renderResult:renderSubagentResult});
- pi.registerTool({name:"subagent_control",label:"Control direct subagent",description:"Inspect, message, request an answer, or cancel a directly commissioned subagent. id accepts a returned subagentId (legacy id is also accepted), not sessionId. Messages use native queued steering by default; immediate is an intentional redirect.",parameters:Type.Object({id:Type.String({description:"A returned subagentId (legacy id is also accepted), display name, or unique prefix. This is not the native sessionId."}),action:Type.Union([Type.Literal("inspect"),Type.Literal("message"),Type.Literal("answer"),Type.Literal("finish"),Type.Literal("cancel")]),message:Type.Optional(Type.String()),delivery:Type.Optional(Type.Union([Type.Literal("queued"),Type.Literal("immediate")])),interaction:Type.Optional(Type.Union([Type.Literal("notify"),Type.Literal("request")])),protocol:Type.Optional(Type.Literal("question-answer")),replyTo:Type.Optional(Type.String()),background:Type.Optional(Type.Boolean())}),async execute(_id,p,signal,onUpdate){
+ pi.registerTool({name:"subagent_control",exposure:"model-only",label:"Control direct subagent",description:"Inspect, message, request an answer, or cancel a directly commissioned subagent. id accepts a returned subagentId (legacy id is also accepted), not sessionId. Messages use native queued steering by default; immediate is an intentional redirect.",parameters:Type.Object({id:Type.String({description:"A returned subagentId (legacy id is also accepted), display name, or unique prefix. This is not the native sessionId."}),action:Type.Union([Type.Literal("inspect"),Type.Literal("message"),Type.Literal("answer"),Type.Literal("finish"),Type.Literal("cancel")]),message:Type.Optional(Type.String()),delivery:Type.Optional(Type.Union([Type.Literal("queued"),Type.Literal("immediate")])),interaction:Type.Optional(Type.Union([Type.Literal("notify"),Type.Literal("request")])),protocol:Type.Optional(Type.Literal("question-answer")),replyTo:Type.Optional(Type.String()),background:Type.Optional(Type.Boolean())}),async execute(_id,p,signal,onUpdate){
   if(!allowed.has("subagent_control"))throw new Error("Control is outside frozen authority");
   let result=await requestParent(parentEndpoint(),{type:"control",payload:p});
   const visible=parentVisibleRecord(result as ChildRecord);
   return{content:[{type:"text",text:JSON.stringify(visible)}],details:visible};
  },renderCall:renderSubagentControlCall,renderResult:renderSubagentResult});
- pi.registerTool({name:"tool_search",label:"Search permitted tools",description:"Inspect only the tools in this conversation's frozen authority. Cannot activate additional tools.",parameters:Type.Object({query:Type.Optional(Type.String())}),async execute(_id,p){
-  const terms=p.query?.toLowerCase().split(/\s+/).filter(Boolean)??[];
-  const matches=pi.getAllTools().filter(t=>allowed.has(t.name)&&(!terms.length||terms.some(term=>`${t.name} ${t.description}`.toLowerCase().includes(term))));
-  if(p.query?.trim())activateTools(pi,matches.map(t=>t.name));
-  const tools=matches.map(t=>({name:t.name,description:t.description}));
-  return{content:[{type:"text",text:JSON.stringify(tools)}],details:{tools}};
- }});
- pi.registerTool({name:"subagent_parent",label:"Report to parent",description:"Ask the originating parent a factual question or report genuinely unfinished/blocked work. A question yields cleanly and returns a request ID; do not poll for the answer. Keep the request pending during ordinary user discussion. When you decide the discussion answered your question, use cancel-question with that request ID. Do not use this tool for successful completion; give a normal final reply instead.",parameters:Type.Object({action:Type.Union([Type.Literal("question"),Type.Literal("cancel-question"),Type.Literal("partial"),Type.Literal("blocked")]),message:Type.Optional(Type.String()),requestId:Type.Optional(Type.String())}),async execute(_id,p,signal): Promise<any>{
+ pi.registerTool({name:"subagent_parent",exposure:"model-only",label:"Report to parent",description:"Ask the originating parent a factual question or report genuinely unfinished/blocked work. A question yields cleanly and returns a request ID; do not poll for the answer. Keep the request pending during ordinary user discussion. When you decide the discussion answered your question, use cancel-question with that request ID. Do not use this tool for successful completion; give a normal final reply instead.",parameters:Type.Object({action:Type.Union([Type.Literal("question"),Type.Literal("cancel-question"),Type.Literal("partial"),Type.Literal("blocked")]),message:Type.Optional(Type.String()),requestId:Type.Optional(Type.String())}),async execute(_id,p,signal): Promise<any>{
   if(p.action==="question"&&!p.message)throw new Error("Question requires message");
   if(p.action==="cancel-question"&&!p.requestId)throw new Error("cancel-question requires requestId");
   if (!allowed.has("subagent_parent")) throw new Error("Parent helper is outside frozen authority");

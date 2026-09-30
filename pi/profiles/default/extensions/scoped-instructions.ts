@@ -23,6 +23,7 @@ type RuntimeState = {
   trusted: boolean;
   delivered: Set<string>;
   pending: Map<string, InstructionSource[]>;
+  parents: Map<string, string>;
   warnings: Set<string>;
 };
 
@@ -63,6 +64,7 @@ export default function scopedInstructions(pi: ExtensionAPI): void {
     trusted: true,
     delivered: new Set(),
     pending: new Map(),
+    parents: new Map(),
     warnings: new Set(),
   });
 
@@ -97,7 +99,10 @@ export default function scopedInstructions(pi: ExtensionAPI): void {
         state = createState(ctx);
         rebuildDelivered(ctx, state);
       } else {
-        if (clearPending) state.pending.clear();
+        if (clearPending) {
+          state.pending.clear();
+          state.parents.clear();
+        }
         rebuildDelivered(ctx, state);
       }
       return state;
@@ -115,6 +120,7 @@ export default function scopedInstructions(pi: ExtensionAPI): void {
     const current = syncActiveContext(ctx, false);
     if (!current) return;
     try {
+      if (event.parentToolCallId) current.parents.set(event.toolCallId, event.parentToolCallId);
       const targets = extractScopedInstructionTargets(event.toolName, event.input, ctx.cwd);
       if (!targets.length) return;
       const discovery = discoverScopedInstructions(ctx.cwd, targets);
@@ -134,9 +140,11 @@ export default function scopedInstructions(pi: ExtensionAPI): void {
   pi.on("tool_result", (event: ToolResultEvent, ctx) => {
     const current = syncActiveContext(ctx, false);
     if (!current) return;
-    const reserved = current.pending.get(event.toolCallId);
-    if (!reserved) return;
+    const reserved = current.pending.get(event.toolCallId) ?? [];
     current.pending.delete(event.toolCallId);
+    const parentToolCallId = event.parentToolCallId ?? current.parents.get(event.toolCallId);
+    current.parents.delete(event.toolCallId);
+    if (!reserved.length) return;
 
     const warnings: string[] = [];
     const sources: InstructionSource[] = [];
@@ -152,9 +160,19 @@ export default function scopedInstructions(pi: ExtensionAPI): void {
     notifyWarnings(ctx, current, warnings);
     if (!sources.length) return;
 
+    if (parentToolCallId) {
+      const parentSources = current.pending.get(parentToolCallId) ?? [];
+      const known = new Set(parentSources.map(source => source.id));
+      current.pending.set(parentToolCallId, [...parentSources, ...sources.filter(source => !known.has(source.id))]);
+      return;
+    }
+
     const text = formatScopedInstructions(sources);
     if (!text) return;
     for (const source of sources) current.delivered.add(source.id);
-    return { content: [...event.content, { type: "text", text }] };
+    return {
+      content: [...event.content, { type: "text", text }],
+      ...(event.structuredContent === undefined ? {} : { structuredContent: event.structuredContent }),
+    };
   });
 }

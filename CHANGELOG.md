@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-09-30: Adopt native Pi discovery and JavaScript tool composition
+
+- Default Pi uses native 0.99.1 `tool_search` and `codemode` in mode `on`, replacing custom discovery and visibility resets. The orchestrator enables `grep`, `find`, `ls`, and `powershell`; only Team Lead also receives composition, restricted to its existing frozen authority. Lifecycle and commit tools remain model-only.
+- Approved work tools provide typed structured results while preserving screened/bounded web content, sanitized browser state, projected vault data, process-local scheduling, and existing conversational/rendering contracts. Optional tools use native deferred exposure; command-scoped activation and connection-dependent communication retain their existing rules.
+- Nested operations retain permission and Damage Control hooks. Scoped guidance is delivered through persisted outer results without losing structured data, and nested activity/error accounting distinguishes handled inner failures from unhandled outer failures. Native store and external side-effect semantics remain unchanged. No classifier-provider migration, legacy-profile validation, service deployment, or new telemetry is included.
+
 ## 2026-09-30: Add /pi as a new-instance alias
 
 - Default Pi now accepts `/pi [title]` and `/pi --resume <session-uuid> [title]` through the same launcher as `/new-instance`. The existing command and F7 shortcut remain unchanged.

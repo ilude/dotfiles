@@ -1,4 +1,5 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { JsonValue } from "@earendil-works/pi-ai";
 import type { EntryType, Questions } from "@typesafe-ai/sdk";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
@@ -29,6 +30,16 @@ const jevParameters = Type.Object({
 	model: Type.Optional(Type.String({ minLength: 1 })),
 }, { additionalProperties: false });
 
+const answerSchema = Type.Union([
+	Type.Object({ type: Type.Literal("noul"), noul: Type.Number({ minimum: 0, maximum: 1 }) }, { additionalProperties: false }),
+	Type.Object({ type: Type.Literal("choice"), choice: Type.String(), confidence: Type.Number({ minimum: 0, maximum: 1 }), probabilities: Type.Record(Type.String(), Type.Number({ minimum: 0, maximum: 1 })) }, { additionalProperties: false }),
+	Type.Object({ type: Type.Literal("score"), score: Type.Number({ minimum: 0 }), confidence: Type.Number({ minimum: 0, maximum: 1 }), legend: Type.Record(Type.String(), entrySchema), probabilities: Type.Record(Type.String(), Type.Number({ minimum: 0, maximum: 1 })) }, { additionalProperties: false }),
+]);
+const jevOutputSchema = Type.Union([
+	Type.Object({ ok: Type.Literal(true), answers: Type.Record(Type.String({ minLength: 1 }), answerSchema), model: Type.String({ minLength: 1 }), usage: Type.Object({ input_tokens: Type.Integer({ minimum: 0 }), output_tokens: Type.Integer({ minimum: 0 }) }, { additionalProperties: false }), elapsed_ms: Type.Integer({ minimum: 0 }) }, { additionalProperties: false }),
+	Type.Object({ ok: Type.Literal(false), error: Type.Object({ code: Type.Union([Type.Literal("credential"), Type.Literal("request"), Type.Literal("response"), Type.Literal("cancelled"), Type.Literal("timeout")]), message: Type.String() }, { additionalProperties: false }) }, { additionalProperties: false }),
+]);
+
 type JevToolDetails = {
 	model?: string;
 	usage?: { input_tokens: number; output_tokens: number };
@@ -43,6 +54,14 @@ function toolDetails(value: JevToolDetails): JevToolDetails {
 	return value;
 }
 
+function structuredResult(value: unknown): JsonValue {
+	const serialized = JSON.stringify(value);
+	if (serialized === undefined) throw new Error("Jev result is not JSON serializable");
+	const parsed: unknown = JSON.parse(serialized);
+	if (!Value.Check(jevOutputSchema, parsed)) throw new Error("Jev result does not match its output schema");
+	return parsed as JsonValue;
+}
+
 function safeError(error: unknown): { text: string; details: JevToolDetails } {
 	if (error instanceof JevClientError) return { text: `Jev evaluation failed: ${error.message}`, details: { code: error.code } };
 	return { text: "Jev evaluation failed", details: { code: "request" } };
@@ -51,6 +70,8 @@ function safeError(error: unknown): { text: string; details: JevToolDetails } {
 export default function registerJev(pi: ExtensionAPI, client: JevClient = createJevClient()): void {
 	pi.registerTool({
 		name: "jev_evaluate",
+		exposure: "deferred",
+		outputSchema: jevOutputSchema,
 		label: "Jev Evaluate",
 		description: "Evaluate supplied state against typed Jev questions without reading files or taking actions.",
 		promptSnippet: "Run a bounded Jev evaluation on explicitly supplied evidence",
@@ -61,22 +82,26 @@ export default function registerJev(pi: ExtensionAPI, client: JevClient = create
 		parameters: jevParameters,
 		execute: async (_id, params, signal) => {
 			if (!Value.Check(jevParameters, params)) {
-				return { content: [{ type: "text", text: "Jev evaluation failed: invalid state, questions, or model" }], details: toolDetails({ code: "request" }), isError: true };
+				const structuredContent = { ok: false as const, error: { code: "request" as const, message: "Invalid state, questions, or model" } };
+				return { content: [{ type: "text", text: "Jev evaluation failed: invalid state, questions, or model" }], details: toolDetails({ code: "request" }), structuredContent, isError: true };
 			}
 			const started = performance.now();
 			try {
 				const result = await client.evaluate(params.state as EntryType, params.questions as Questions, { model: params.model, signal });
 				const elapsed_ms = Math.round(performance.now() - started);
+				const structuredContent = structuredResult({ ok: true, answers: result.answers, model: result.model, usage: result.usage, elapsed_ms });
 				return {
 					content: [{ type: "text", text: JSON.stringify({ answers: result.answers, model: result.model, usage: result.usage, elapsed_ms }) }],
 					details: toolDetails({ model: result.model, usage: result.usage, elapsed_ms }),
+					structuredContent,
 				};
 			} catch (error) {
 				const failure = safeError(error);
-				return { content: [{ type: "text", text: failure.text }], details: toolDetails(failure.details), isError: true };
+				const structuredContent = structuredResult({ ok: false, error: { code: failure.details.code ?? "request", message: failure.text } });
+				return { content: [{ type: "text", text: failure.text }], details: toolDetails(failure.details), structuredContent, isError: true };
 			}
 		},
 	});
 }
 
-export { jevParameters, validQuestions };
+export { jevParameters, validQuestions, jevOutputSchema };

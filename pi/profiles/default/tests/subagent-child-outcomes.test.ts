@@ -52,6 +52,34 @@ it("keeps permission input local and reports ordinary interactive input without 
  }
 });
 
+it("keeps visible nested activity under its running outer tool and filters handled failures",async()=>{
+ vi.useFakeTimers();report.mockReset();report.mockResolvedValue(undefined);request.mockReset();
+ const before=process.env.PI_SUBAGENT_ENDPOINT;process.env.PI_SUBAGENT_ENDPOINT=JSON.stringify({child:"visible-nested",origin:"origin",run:"run",port:1,token:"inert"});
+ const handlers:Record<string,Function[]>={};const pi:any={on:(name:string,handler:Function)=>(handlers[name]??=[]).push(handler),registerCommand:()=>{},sendMessage:vi.fn()};
+ const ctx:any={isIdle:()=>true,ui:{setStatus:()=>{},notify:()=>{}},abort:vi.fn(),shutdown:vi.fn()};
+ const emit=async(name:string,event:any={})=>{for(const handler of handlers[name]??[])await handler(event,ctx)};
+ request.mockResolvedValue({accepted:true});
+ try{
+  bindChildSurface(pi,true);await emit("session_start");
+  await emit("tool_execution_start",{toolCallId:"outer",toolName:"codemode"});
+  await emit("tool_execution_start",{toolCallId:"inner",parentToolCallId:"outer",toolName:"read"});
+  await emit("tool_execution_start",{toolCallId:"sibling",parentToolCallId:"outer",toolName:"grep"});
+  await emit("tool_execution_end",{toolCallId:"inner",parentToolCallId:"outer",toolName:"read",isError:true,result:{content:[{type:"text",text:"handled inner error"}]}});
+  expect(report).toHaveBeenLastCalledWith(expect.anything(),{phase:"tool",toolName:"grep"});
+  await emit("tool_execution_end",{toolCallId:"sibling",parentToolCallId:"outer",toolName:"grep",isError:false});
+  expect(report).toHaveBeenLastCalledWith(expect.anything(),{phase:"tool",toolName:"codemode"});
+  await emit("tool_execution_end",{toolCallId:"outer",toolName:"codemode",isError:false});
+  const state=(globalThis as any)[Symbol.for("dotfiles.pi.subagent.surface.v1")];
+  expect(state.toolError).toBeUndefined();
+  await emit("tool_execution_start",{toolCallId:"outer-error",toolName:"codemode"});
+  await emit("tool_execution_end",{toolCallId:"outer-error",toolName:"codemode",isError:true,result:{content:[{type:"text",text:"outer failed"}]}});
+  expect(state.toolError).toContain("codemode failed: outer failed");
+ }finally{
+  await emit("session_shutdown");vi.useRealTimers();
+  if(before===undefined)delete process.env.PI_SUBAGENT_ENDPOINT;else process.env.PI_SUBAGENT_ENDPOINT=before;
+ }
+});
+
 it("acknowledges original and follow-up deliveries by their existing delivery IDs",async()=>{
  vi.useFakeTimers();
  const before=process.env.PI_SUBAGENT_ENDPOINT;

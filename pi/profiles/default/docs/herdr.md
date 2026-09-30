@@ -82,7 +82,7 @@ There is no additional bell or desktop-notification layer and no sound/desktop s
 From `pi/profiles/default/`:
 
 ```sh
-pnpm test herdr-tools.test.ts herdr-resume.test.ts herdr-launch.test.ts session-launch.test.ts herdr-ui-prompt-state.test.ts tool-visibility.test.ts tool-search.test.ts
+pnpm test herdr-tools.test.ts herdr-resume.test.ts herdr-launch.test.ts session-launch.test.ts herdr-ui-prompt-state.test.ts
 pnpm run typecheck
 pnpm run check:runtime
 ```

@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import registerScheduler from "../extensions/scheduler.ts";
 import { formatScheduleFooterStatus, getProcessScheduler, parseAtTime, ProcessScheduler } from "../lib/process-scheduler.ts";
+import { Check } from "typebox/value";
+import { scheduleOutputSchema } from "../extensions/scheduler.ts";
 
 const schedulers: ProcessScheduler[] = [];
 function scheduler() {
@@ -146,7 +148,11 @@ describe("schedule tool", () => {
     await h.call({ action: "create_at", when: "1m", prompt: "earlier" });
     const [first] = getProcessScheduler().list();
     expect(h.ctx.ui.setStatus).toHaveBeenLastCalledWith("schedule", formatScheduleFooterStatus([first]));
-    expect((await h.call({ action: "list" })).content[0].text).toContain(first.id.slice(0, 8));
+    const listed = await h.call({ action: "list" });
+    expect(listed.content[0].text).toContain(first.id.slice(0, 8));
+    expect(Check(scheduleOutputSchema, listed.structuredContent)).toBe(true);
+    expect(listed.structuredContent.jobs[0].id).toBe(first.id);
+    expect(listed.structuredContent.jobs[0].runAt).toBe(first.runAt);
     await h.call({ action: "cancel", id: first.id });
     expect(h.ctx.ui.setStatus).toHaveBeenLastCalledWith("schedule", formatScheduleFooterStatus(getProcessScheduler().list()));
     h.event("session_shutdown", "quit");
@@ -158,6 +164,7 @@ describe("schedule tool", () => {
   it("shows concise local times, short cancellation ids, and marked previews", async () => {
     const h = harness();
     const result = await h.call({ action: "create_at", when: "1m", prompt: "Check pipeline\n" + "x".repeat(90) });
+    expect(Check(scheduleOutputSchema, result.structuredContent)).toBe(true);
     const [job] = getProcessScheduler().list();
     const localTime = new Intl.DateTimeFormat(undefined, {
       year: "numeric", month: "short", day: "numeric",
@@ -169,7 +176,10 @@ describe("schedule tool", () => {
     }).format(new Date());
     expect(result.content[0].text).toBe(`Schedule create [${job.id.slice(0, 8)}] ${localTime} 1m\n   Check pipeline ${"x".repeat(64)}…\n\ncreated at ${createdAt}`);
     expect((await h.call({ action: "list" })).content[0].text).toBe(`${localTime} [${job.id.slice(0, 8)}]`);
-    expect((await h.call({ action: "cancel", id: job.id.slice(0, 8) })).content[0].text).toBe(`Cancelled: [${job.id.slice(0, 8)}]`);
+    const cancelled = await h.call({ action: "cancel", id: job.id.slice(0, 8) });
+    expect(cancelled.content[0].text).toBe(`Cancelled: [${job.id.slice(0, 8)}]`);
+    expect(Check(scheduleOutputSchema, cancelled.structuredContent)).toBe(true);
+    expect(cancelled.structuredContent.cancelled.id).toBe(job.id);
     expect((await h.call({ action: "list" })).content[0].text).toBe("No scheduled reminders.");
   });
 

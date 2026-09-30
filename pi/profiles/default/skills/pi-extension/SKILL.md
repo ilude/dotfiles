@@ -12,6 +12,8 @@ The active Pi profile is the configuration directory used by the running Pi proc
 - Read the installed Pi documentation and examples for the affected API. Resolve uncertainty against installed source/types, not assumptions from other extension systems.
 - Follow comparable active-profile extensions, matching purpose and operating environment. Reuse their helpers where applicable.
 - Keep tool descriptions, schemas, and model guidance with the owning tool. Enforce required behavior in code, not prompt instructions alone.
+- For native `tool_search` and `codemode`, treat discovery as availability, not authority: deferred tools are searchable, direct tools are not, and the active role's registered callable set still limits scripts. Scripted calls pass through normal validation and `tool_call`/`tool_result` hooks. Do not infer that a structured error value means success or that a completed external side effect is rolled back when a script fails.
+- Use typed `outputSchema` plus matching `structuredContent` for composable data, while keeping model-facing content and rendered details compatible. Screen and project results before returning structured data; native codemode does not validate tool outputs against their schemas.
 
 ## Runtime lessons
 
@@ -44,4 +46,4 @@ When editing model-visible instructions, load [prompting](../prompting/SKILL.md)
 
 ## Validation
 
-Run checks for the changed behavior using the active profile's existing test setup. Tests that need a resource loader may use the package's self-contained bundle rather than traversing unrelated unbundled exports. Distinguish automated coverage from live lifecycle/UI checks; do not require a full runtime audit for every extension change.
+Run checks for the changed behavior using the active profile's existing test setup. The default profile's bounded native-composition smoke is `node scripts/native-composition-smoke.mjs` from `pi/profiles/default/`; it exercises installed Pi's actual native search and QuickJS codemode with offline nested-tool fixtures, not a model or live service. Tests that need a resource loader may use the package's self-contained bundle rather than traversing unrelated unbundled exports. Distinguish automated coverage from live lifecycle/UI checks; do not require a full runtime audit for every extension change.

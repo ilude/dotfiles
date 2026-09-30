@@ -1,15 +1,16 @@
 import { vi } from "vitest";
+import type { TSchema } from "typebox";
 
 export function createMockPi() {
 	const hooks: Array<{ event: string; handler: Function }> = [];
 	const commands: Array<{ name: string; handler: Function }> = [];
-	const tools: Array<{ name: string; description: string; parameters: any; execute: Function; sourceInfo?: { source: string; origin: string } }> = [];
+	const tools: Array<{ name: string; description: string; parameters: any; execute: Function; exposure?: string; outputSchema?: TSchema; sourceInfo?: { source: string; origin: string } }> = [];
 	let activeTools: string[] = [];
 	const mockPi = {
 		events: { emit: vi.fn(), on: vi.fn(() => () => {}) },
-		registerTool: vi.fn((tool: { name: string; description: string; parameters: any; execute: Function }) => {
+		registerTool: vi.fn((tool: { name: string; description: string; parameters: any; execute: Function; exposure?: string; outputSchema?: TSchema }) => {
 			tools.push({ ...tool, sourceInfo: { source: "extension", origin: "top-level" } });
-			if (!activeTools.includes(tool.name)) activeTools.push(tool.name);
+			if ((!tool.exposure || tool.exposure === "direct" || tool.exposure === "model-only") && !activeTools.includes(tool.name)) activeTools.push(tool.name);
 		}),
 		on: vi.fn((event: string, handler: Function) => hooks.push({ event, handler })),
 		exec: vi.fn(async () => ({ code: 0, stdout: "", stderr: "" })),

@@ -5,7 +5,7 @@ import { outcomeText } from "./status.ts";
 import { presentationDetails } from "./presentation.ts";
 import type { Delivery } from "./runtime.ts";
 import { registerProfileCommand } from "../profile-command.ts";
-interface State { generation:number;seen:Set<string>;ctx?:ExtensionContext;userOwned:boolean;parentGone:boolean;turn:number;last:string;error?:string;toolError?:string;prompt:boolean;redirectMessage?:string;unbind?:()=>void;activity?:{phase:"model"|"tool";toolName?:string};delivered?:Set<string>;queuedDelivery?:string;deliveryAck?:()=>void }
+interface State { generation:number;seen:Set<string>;ctx?:ExtensionContext;userOwned:boolean;parentGone:boolean;turn:number;last:string;error?:string;toolError?:string;prompt:boolean;redirectMessage?:string;unbind?:()=>void;activity?:{phase:"model"|"tool";toolName?:string};activeTools?:Map<string,{toolName:string;parentToolCallId?:string;order:number}>;toolCallOrder?:number;delivered?:Set<string>;queuedDelivery?:string;deliveryAck?:()=>void }
 const key=Symbol.for("dotfiles.pi.subagent.surface.v1");
 export function bindChildSurface(pi:ExtensionAPI,visible:boolean){
  const raw=process.env.PI_SUBAGENT_ENDPOINT;
@@ -42,7 +42,7 @@ export function bindChildSurface(pi:ExtensionAPI,visible:boolean){
   await requestParent(endpoint,{type:"handback"});mark(false);
  };
  pi.on("session_start",async(_event,ctx)=>{
-  state.ctx=ctx;state.userOwned=false;state.parentGone=false;state.prompt=false;state.redirectMessage=undefined;state.error=undefined;state.toolError=undefined;state.last="";state.queuedDelivery=undefined;
+  state.ctx=ctx;state.userOwned=false;state.parentGone=false;state.prompt=false;state.redirectMessage=undefined;state.error=undefined;state.toolError=undefined;state.last="";state.queuedDelivery=undefined;state.activeTools=new Map();state.toolCallOrder=0;
   const generation=++state.generation;
   state.unbind?.();
   const controller=new AbortController();
@@ -108,13 +108,31 @@ export function bindChildSurface(pi:ExtensionAPI,visible:boolean){
    state.activity=value;
    void reportParentActivity(endpoint,value).catch(()=>unavailable());
   };
+  const reportActiveTool=(fallback?:string)=>{
+   const calls=[...(state.activeTools??new Map())];
+   if(!calls.length){activity(fallback?{phase:"tool",toolName:fallback}:{phase:"model"});return}
+   const depth=(id:string,seen=new Set<string>()):number=>{
+    if(seen.has(id))return 0;seen.add(id);
+    const parent=state.activeTools?.get(id)?.parentToolCallId;
+    return parent&&state.activeTools?.has(parent)?1+depth(parent,seen):0;
+   };
+   calls.sort(([a,left],[b,right])=>depth(a)-depth(b)||left.order-right.order);
+   activity({phase:"tool",toolName:calls.at(-1)![1].toolName});
+  };
   pi.on("turn_start",()=>activity({phase:"model"}));
   pi.on("message_update",()=>activity({phase:"model"}));
-  pi.on("tool_execution_start",event=>activity({phase:"tool",toolName:event.toolName}));
-  pi.on("tool_execution_update",event=>activity({phase:"tool",toolName:event.toolName}));
+  pi.on("tool_execution_start",event=>{
+   if(typeof event.toolCallId==="string")state.activeTools!.set(event.toolCallId,{toolName:event.toolName,parentToolCallId:event.parentToolCallId,order:state.toolCallOrder!++});
+   reportActiveTool(event.toolName);
+  });
+  pi.on("tool_execution_update",event=>{
+   if(typeof event.toolCallId==="string")state.activeTools!.set(event.toolCallId,{toolName:event.toolName,parentToolCallId:event.parentToolCallId,order:state.toolCallOrder!++});
+   reportActiveTool(event.toolName);
+  });
   pi.on("tool_execution_end",event=>{
-   activity({phase:"model"});
-   if((event as any).isError)state.toolError=(event as any).toolName?`${(event as any).toolName} failed: ${String((event as any).result?.content?.filter?.((part:any)=>part.type==="text").map?.((part:any)=>part.text).join?.("\n")||"tool returned an error")}`:"Tool failed";
+   if(event.isError&&!event.parentToolCallId)state.toolError=event.toolName?`${event.toolName} failed: ${String(event.result?.content?.filter?.((part:any)=>part.type==="text").map?.((part:any)=>part.text).join?.("\n")||"tool returned an error")}`:"Tool failed";
+   if(typeof event.toolCallId==="string")state.activeTools!.delete(event.toolCallId);
+   reportActiveTool();
   });
  }
  pi.on("message_end",event=>{if(event.message.role==="assistant"){

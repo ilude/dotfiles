@@ -7,7 +7,7 @@ import type { CloseoutManifest } from "../lib/plan-integration/contracts.ts";
 
 const definition: AgentDefinition = { name: "probe", description: "Probe", tools: ["read"], delegates: [], model: "provider/model", effort: "low", skills: [], prompt: "definition body", source: "profile", filePath: "probe.md" };
 function spec(surface: "headless" | "visible"): LaunchSpec {
-  return { definition, prompt: "frozen composed prompt", instructions: "check", cwd: process.cwd(), model: "provider/model", effort: "low", skills: [], origin: "origin", retained: false, surface };
+  return { definition: { ...definition, tools: ["read", "session_messages"] }, prompt: "frozen composed prompt", instructions: "check", cwd: process.cwd(), model: "provider/model", effort: "low", skills: [], origin: "origin", retained: false, surface };
 }
 const closeoutManifest: CloseoutManifest = {
   repositoryRoot: process.cwd(), targetCheckout: process.cwd(), targetBranch: "main", taskWorktree: join(process.cwd(), ".worktrees", "task"), taskBranch: "feature/task",
@@ -34,7 +34,7 @@ describe("subagent launch prompt", () => {
     const ordinary = childLaunch(spec("headless"), "ordinary", process.cwd());
     const teamlead = childLaunch({
       ...spec("headless"),
-      definition: { ...definition, name: "teamlead", delegates: ["probe"] },
+      definition: { ...definition, name: "teamlead", tools: ["read", "tool_search", "herdr_agent", "herdr_layout", "herdr_pane"], delegates: ["probe"] },
     }, "teamlead", process.cwd());
 
     expect(ordinary.args).not.toContain("--no-context-files");
@@ -44,14 +44,25 @@ describe("subagent launch prompt", () => {
     expect(teamlead.args).toContain("--no-extensions");
     expect(teamlead.args).toEqual(expect.arrayContaining(["--no-prompt-templates", "--no-themes"]));
     expect(teamlead.args).toContain(join(process.cwd(), "extensions", "herdr-tools.ts"));
-    expect(teamlead.args).toContain(join(process.cwd(), "extensions", "tool-visibility.ts"));
+    expect(teamlead.args).toContain("builtin:tool-search");
+    expect(teamlead.args).toContain("builtin:codemode");
     expect(teamlead.args).toContain(join(process.cwd(), "extensions", "scoped-instructions.ts"));
   });
 
   it("does not load Herdr tools for ordinary roles", () => {
     const ordinary = childLaunch(spec("headless"), "ordinary", process.cwd());
     expect(ordinary.args).not.toContain(join(process.cwd(), "extensions", "herdr-tools.ts"));
-    expect(ordinary.args).not.toContain(join(process.cwd(), "extensions", "tool-visibility.ts"));
+    expect(ordinary.args).not.toContain("builtin:tool-search");
+    expect(ordinary.args).not.toContain("builtin:codemode");
+  });
+
+  it("loads permitted deferred tools but leaves child activation to native search", () => {
+    const launch = childLaunch({ ...spec("headless"), definition: { ...definition, tools: ["read", "tool_search", "image_transform"] } }, "child", process.cwd());
+    const selection = launch.args[launch.args.indexOf("--tools") + 1]!.split(",");
+    const authority = JSON.parse(launch.env.PI_SUBAGENT_AUTHORITY);
+    expect(selection).toEqual(["read", "tool_search", "image_transform"]);
+    expect(authority.tools).toEqual(selection);
+    expect(launch.args).toContain(join(process.cwd(), "extensions", "image-tools.ts"));
   });
 
   it("keeps the system prompt independent of assignments and runtime launch values", () => {
