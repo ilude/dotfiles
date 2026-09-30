@@ -1,7 +1,7 @@
 ---
 created: 2026-09-30
-status: in-progress
-completed: null
+status: completed
+completed: 2026-09-30
 ---
 
 # Report native RPC input disposition accurately
@@ -120,3 +120,7 @@ Final response begins with one explicit outcome:
 - 🟡 **CLEANUP PENDING**.
 
 For blocked outcomes give Reason and Action needed, with owner, before passed checks. Then summarize checks, archived spec path, branch/commits, merge result, and any retained worktree. Do not imply automatic resumption.
+
+## Integration evidence
+
+T1/T2 complete; typecheck passed; six focused suites 64 tests passed including installed public bundled CLI handled input; git diff --check passed. No paid provider or manual Herdr required. Implementation commit 3aede8cf, relocation metadata 4f49ccf9.
