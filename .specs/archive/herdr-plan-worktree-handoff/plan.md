@@ -1,7 +1,7 @@
 ---
 created: 2026-09-30
-status: in progress
-completed: null
+status: completed
+completed: 2026-09-30
 ---
 
 # Run plans in Herdr worktree workspaces with an Integrator closeout handoff
@@ -242,3 +242,7 @@ Start the final response with one overall outcome, using symbol and explicit tex
 - 🟡 **CLEANUP PENDING**: delivered changes and completion metadata are committed, but cleanup remains unfinished.
 
 For blocked or cleanup-pending outcomes, immediately give **Reason** and **Action needed**, naming the concrete state, owner, and exact next action before listing successes. Then concisely report checks, archive location, branches/commits, merge result, retained artifacts, and verification limits. Do not lead a blocked outcome with a success summary, imply automatic resumption, or create rollback/recovery work outside this plan.
+
+## Integration evidence
+
+Agreed finite unit selection and affected reruns passed; final preparation/closeout/authority 47 tests, actual-process lifetime 3, guidance 7; typecheck, runtime smoke and whitespace checks passed. Real installed-Pi native launch 1 and corrected isolated closeout 3 scenarios passed without source-receipt deletion. Attached-client visual experience and provider reasoning are non-blocking manual limits. No push/deployment authorized.
