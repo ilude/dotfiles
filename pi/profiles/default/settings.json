@@ -40,5 +40,6 @@
   "treeFilterMode": "default",
   "extensions": [
     "-builtin:tool-search"
-  ]
+  ],
+  "theme": "glenn-dark"
 }
