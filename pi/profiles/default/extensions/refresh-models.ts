@@ -3,6 +3,7 @@ import { loadProviderCache, writeProviderCache } from "../lib/models/cache.ts";
 import { buildProviderModelDefinitions, buildCachedProviderModelDefinitions } from "../lib/models/reconcile.ts";
 import type { ModelLike, ProviderModelDef } from "../lib/models/types.ts";
 import { registerProfileCommand } from "../lib/profile-command.ts";
+import { PINNED_SOL_MODEL } from "../lib/model-selection.ts";
 import {
 	getConfiguredBedrockModelIds,
 	shouldHideModel,
@@ -304,7 +305,7 @@ export async function syncCuratedModelScope(
 			)).map((model) => `${provider}/${model.id}`),
 		);
 		scope = [...new Set([...codex, ...bedrock, ...remaining])];
-		const latestSol = availableCodex.find((id) => id === "openai-codex/gpt-5.6-sol");
+		const latestSol = availableCodex.find((id) => id === `openai-codex/${PINNED_SOL_MODEL}`);
 		const next = {
 			...settings,
 			...(latestSol ? { defaultProvider: "openai-codex", defaultModel: latestSol.split("/")[1] } : {}),

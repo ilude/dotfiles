@@ -41,9 +41,10 @@ describe("subagent definitions",()=>{
   const source=registry([model("openai-codex",`gpt-6-${family}`),model("openai-codex",`gpt-7-${family}`)],["openai-codex"]);
   expect(resolveModel(undefined,family,source)).toEqual({provider:"openai-codex",id:`gpt-7-${family}`});
  });
- it("keeps the repository-pinned Sol model when newer Sol models are available",()=>{
-  const source=registry([model("openai-codex","gpt-5.6-sol"),model("openai-codex","gpt-6.1-sol")],["openai-codex"]);
-  expect(resolveModel(undefined,"sol",source)).toEqual({provider:"openai-codex",id:"gpt-5.6-sol"});
+ it("routes the Sol role default to 6.1 while preserving explicit 5.6 selection",()=>{
+  const source=registry([model("openai-codex","gpt-5.6-sol"),model("openai-codex","gpt-6-sol"),model("openai-codex","gpt-6.1-sol"),model("openai-codex","gpt-7-sol")],["openai-codex"]);
+  expect(resolveModel(undefined,"sol",source)).toEqual({provider:"openai-codex",id:"gpt-6.1-sol"});
+  expect(resolveModel("openai-codex/gpt-5.6-sol","sol",source)).toEqual({provider:"openai-codex",id:"gpt-5.6-sol"});
  });
  it("uses the canonical bare model before effort restrictions",()=>{
   const resolved=resolveModel("luna",undefined,registry([model("openai-codex","gpt-5.6-luna")],["openai-codex"]));

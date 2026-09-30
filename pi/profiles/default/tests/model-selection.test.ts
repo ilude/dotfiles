@@ -31,12 +31,20 @@ describe("latest authenticated Codex family resolution", () => {
 
 	it.each(["astra", "sol", "terra", "luna"] as const)("resolves %s synchronously with Pi's actual registry API", family => {
 		const latest = modelFixture("openai-codex", `gpt-7-${family}`);
-		const pinned = modelFixture("openai-codex", "gpt-5.6-sol");
+		const pinned = modelFixture("openai-codex", "gpt-6.1-sol");
 		const registry = registryFixture([modelFixture("openai-codex", `gpt-6-${family}`), latest, pinned], ["openai-codex"]);
 		// This real method was missing from the original mock, hiding the crash.
 		expect(Array.isArray(registry.getAvailable())).toBe(true);
 		expect(resolveLatestCodexModelFromRegistry(family, registry)).toBe(family === "sol" ? pinned : latest);
 		expect(resolvePreferredModel(family, registry)).toBe(family === "sol" ? pinned : latest);
+	});
+
+	it("does not substitute Sol 5.6 or Sol 6 when pinned Sol 6.1 is unavailable", async () => {
+		const older = [modelFixture("openai-codex", "gpt-5.6-sol"), modelFixture("openai-codex", "gpt-6-sol")];
+		const registry = registryFixture(older, ["openai-codex"]);
+		const runtime = { getAvailable: vi.fn<ModelRuntime["getAvailable"]>().mockResolvedValue(older) };
+		expect(() => resolvePreferredModel("sol", registry)).toThrow(/No authenticated openai-codex sol model/);
+		await expect(resolveLatestCodexModelFromRuntime("sol", runtime)).rejects.toThrow(/No authenticated openai-codex sol model/);
 	});
 
 	it("rejects missing families and never falls back to another provider", async () => {

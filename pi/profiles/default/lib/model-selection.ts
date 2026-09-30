@@ -16,7 +16,7 @@ const MODEL_ALIASES: Readonly<Record<string, string>> = {
 	terra: "terra",
 };
 const CODEX_PROVIDER = "openai-codex";
-export const PINNED_SOL_MODEL = "gpt-5.6-sol";
+export const PINNED_SOL_MODEL = "gpt-6.1-sol";
 type OpenAIFamily = "astra" | "sol" | "terra" | "luna";
 
 type Candidate = {

@@ -23,7 +23,7 @@ function setup(models: Array<{ provider: string; id: string; name?: string; cost
 describe("model shortcuts", () => {
 	it.each([
 		["astra", "openai-codex", "gpt-6-astra"],
-		["sol", "openai-codex", "gpt-5.6-sol"],
+		["sol", "openai-codex", "gpt-6.1-sol"],
 		["terra", "openai-codex", "gpt-5.6-terra"],
 		["luna", "openai-codex", "gpt-5.6-luna"],
 	] as const)("/%s selects its Codex subscription model", async (command, provider, id) => {
@@ -36,7 +36,7 @@ describe("model shortcuts", () => {
 		expect(ctx.ui.notify).toHaveBeenCalledWith(`Switched to ${provider}/${id}.`, "info");
 	});
 
-	it("selects the newest version in each family without changing the provider ladder", async () => {
+	it("selects pinned Sol 6.1 and latest Luna without changing the provider ladder", async () => {
 		const models = [
 			{ provider: "bedrock-mantle", id: "openai.gpt-7-sol" },
 			{ provider: "bedrock-mantle", id: "openai.gpt-7-terra" },
@@ -44,10 +44,11 @@ describe("model shortcuts", () => {
 			{ provider: "openai-codex", id: "gpt-6-luna" },
 			{ provider: "openai-codex", id: "gpt-6-sol" },
 			{ provider: "openai-codex", id: "gpt-5.6-luna" },
+			{ provider: "openai-codex", id: "gpt-6.1-sol" },
 		];
 		const { commands, pi, ctx } = setup(models);
 		await commands.get("sol")!.handler("", ctx);
-		expect(pi.setModel).toHaveBeenLastCalledWith(models[2]);
+		expect(pi.setModel).toHaveBeenLastCalledWith(models[6]);
 		await commands.get("luna")!.handler("", ctx);
 		expect(pi.setModel).toHaveBeenLastCalledWith(models[3]);
 	});
@@ -80,8 +81,8 @@ describe("model shortcuts", () => {
 	});
 
 	it("does not select a variant when pinned Sol is unavailable", async () => {
-		const expensive = { provider: "openai-codex", id: "gpt-5.6-sol-preview", cost: { input: 5, output: 20 } };
-		const cheap = { provider: "openai-codex", id: "gpt-5.6-sol-stable", cost: { input: 1, output: 4 } };
+		const expensive = { provider: "openai-codex", id: "gpt-6.1-sol-preview", cost: { input: 5, output: 20 } };
+		const cheap = { provider: "openai-codex", id: "gpt-6.1-sol-stable", cost: { input: 1, output: 4 } };
 		const { commands, pi, ctx } = setup([expensive, cheap]);
 
 		await commands.get("sol")!.handler("", ctx);
@@ -107,13 +108,13 @@ describe("model shortcuts", () => {
 	});
 
 	it("sets an optional effort after switching models", async () => {
-		const { commands, pi, ctx } = setup([{ provider: "openai-codex", id: "gpt-5.6-sol" }]);
+		const { commands, pi, ctx } = setup([{ provider: "openai-codex", id: "gpt-6.1-sol" }]);
 
 		await commands.get("sol")!.handler("high", ctx);
 
 		expect(pi.setModel).toHaveBeenCalled();
 		expect(pi.setThinkingLevel).toHaveBeenCalledWith("high");
-		expect(ctx.ui.notify).toHaveBeenCalledWith("Switched to openai-codex/gpt-5.6-sol at high effort.", "info");
+		expect(ctx.ui.notify).toHaveBeenCalledWith("Switched to openai-codex/gpt-6.1-sol at high effort.", "info");
 	});
 
 	it.each(["astra", "sol", "terra", "luna", "fable", "opus"])("/%s only autocompletes partial effort levels", (command) => {
@@ -126,7 +127,7 @@ describe("model shortcuts", () => {
 	});
 
 	it("rejects unsupported effort levels", async () => {
-		const { commands, pi, ctx } = setup([{ provider: "openai-codex", id: "gpt-5.6-sol" }]);
+		const { commands, pi, ctx } = setup([{ provider: "openai-codex", id: "gpt-6.1-sol" }]);
 
 		await commands.get("sol")!.handler("max", ctx);
 

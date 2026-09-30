@@ -5,15 +5,18 @@ type Candidate = { provider: string; id: string };
 const model = (provider: string, id: string): Candidate => ({ provider, id });
 
 describe("resumed model upgrades", () => {
-  it("keeps provider and tier, choosing only newer versions", () => {
+  it("keeps provider and tier, choosing pinned Sol 6.1 and newer versions of other families", () => {
     const available = [
       model("openai-codex", "gpt-5.6-sol"), model("openai-codex", "gpt-6-sol"),
       model("openai-codex", "gpt-6-luna"), model("bedrock-mantle", "openai.gpt-6-sol"),
       model("bedrock-mantle", "anthropic.claude-opus-5"), model("bedrock-mantle", "anthropic.claude-opus-5-5"),
+      model("openai-codex", "gpt-6.1-sol"),
     ];
-    expect(latestSameFamily(model("openai-codex", "gpt-5.6-sol"), available)).toBeUndefined();
+    expect(latestSameFamily(model("openai-codex", "gpt-5.6-sol"), available)).toEqual(available[6]);
+    expect(latestSameFamily(model("openai-codex", "gpt-6.1-sol"), available)).toBeUndefined();
+    expect(latestSameFamily(model("bedrock-mantle", "openai.gpt-5.6-sol"), available)).toBeUndefined();
     expect(latestSameFamily(model("bedrock-mantle", "anthropic.claude-opus-5"), available)).toEqual(available[5]);
-    expect(latestSameFamily(model("openai-codex", "gpt-6-sol"), available)).toEqual(available[0]);
+    expect(latestSameFamily(model("openai-codex", "gpt-6-sol"), available)).toEqual(available[6]);
     expect(latestSameFamily(model("openai-codex", "gpt-5.5"), available)).toBeUndefined();
   });
 
@@ -22,7 +25,7 @@ describe("resumed model upgrades", () => {
     const setModel = vi.fn(async () => true);
     resumeLatestModel({ on: (name: string, handler: any) => handlers.set(name, handler), setModel } as never);
     const saved = model("openai-codex", "gpt-6-sol");
-    const newer = model("openai-codex", "gpt-5.6-sol");
+    const newer = model("openai-codex", "gpt-6.1-sol");
     const ctx = {
       model: saved,
       sessionManager: { getBranch: () => [{ type: "message" }] },

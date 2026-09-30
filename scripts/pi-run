@@ -29,8 +29,8 @@ shift
 extra=()
 case "$mode" in
     dig)    model="openai-codex/gpt-5.6-luna"; extra+=(--no-session) ;;
-    work)   model="openai-codex/gpt-5.6-sol" ;;
-    review) model="openai-codex/gpt-5.6-sol:high"; extra+=(--no-session) ;;
+    work)   model="openai-codex/gpt-6.1-sol" ;;
+    review) model="openai-codex/gpt-6.1-sol:high"; extra+=(--no-session) ;;
     *)      usage ;;
 esac
 
