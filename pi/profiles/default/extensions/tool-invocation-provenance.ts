@@ -5,6 +5,7 @@ export const TOOL_INVOCATION_PROVENANCE_ENTRY = "tool-invocation-provenance";
 export interface ToolInvocationProvenance {
 	toolCallId: string;
 	toolName: string;
+	parentToolCallId?: string;
 	sourceInfo: ToolInfo["sourceInfo"] | "unknown";
 }
 
@@ -22,6 +23,7 @@ export default function toolInvocationProvenance(pi: ExtensionAPI): void {
 		const entry: ToolInvocationProvenance = {
 			toolCallId: event.toolCallId,
 			toolName: event.toolName,
+			...(event.parentToolCallId ? { parentToolCallId: event.parentToolCallId } : {}),
 			sourceInfo: resolveToolSourceInfo(pi, event.toolName),
 		};
 		pi.appendEntry(TOOL_INVOCATION_PROVENANCE_ENTRY, entry);

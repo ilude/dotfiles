@@ -17,6 +17,16 @@ interface LaunchPlan {
 }
 
 const BRANCH_EVIDENCE_TYPE = "session-branch";
+export const sessionLaunchOutputSchema = Type.Object({
+	launched: Type.Optional(Type.Boolean()),
+	session: Type.Optional(Type.String()),
+	cwd: Type.Optional(Type.String()),
+	title: Type.Optional(Type.String()),
+	tabId: Type.Optional(Type.String()),
+	paneId: Type.Optional(Type.String()),
+	ready: Type.Optional(Type.Boolean()),
+	state: Type.Optional(Type.String()),
+}, { additionalProperties: false });
 
 interface BranchEvidence {
 	schemaVersion: 1;
@@ -474,6 +484,7 @@ export default function sessionLaunchCommands(pi: ExtensionAPI): void {
 		name: "session_launch",
 		label: "Launch Pi session",
 		description: "Open a fresh Pi instance or resume an existing active-profile session UUID in a new tab. Resumed sessions use their saved cwd.",
+		outputSchema: sessionLaunchOutputSchema,
 		parameters: Type.Object({
 			session: Type.Optional(Type.String({ description: "Existing session UUID; omit for a fresh instance" })),
 			title: Type.Optional(Type.String({ description: "Optional tab title", maxLength: 80 })),
@@ -493,7 +504,17 @@ export default function sessionLaunchCommands(pi: ExtensionAPI): void {
 		},
 		async execute(_id, params, signal, _onUpdate, ctx) {
 			const receipt = await launchNewInstance({ cwd: ctx.cwd, session: params.session, title: params.title?.trim() || undefined, signal });
-			return { content: [{ type: "text", text: JSON.stringify(receipt) }], details: receipt };
+			const structuredContent = {
+				...(typeof receipt.session === "string" ? { session: receipt.session } : {}),
+				...(typeof receipt.cwd === "string" ? { cwd: receipt.cwd } : {}),
+				...(typeof receipt.title === "string" ? { title: receipt.title } : {}),
+				...(typeof receipt.tabId === "string" ? { tabId: receipt.tabId } : {}),
+				...(typeof receipt.paneId === "string" ? { paneId: receipt.paneId } : {}),
+				...(typeof receipt.ready === "boolean" ? { ready: receipt.ready } : {}),
+				...(typeof receipt.state === "string" ? { state: receipt.state } : {}),
+				...(typeof receipt.launched === "boolean" ? { launched: receipt.launched } : {}),
+			};
+			return { content: [{ type: "text", text: JSON.stringify(receipt) }], details: receipt, structuredContent };
 		},
 	});
 	registerProfileCommand(pi, "branch", {

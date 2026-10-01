@@ -5,7 +5,6 @@ vi.mock("../commands/commit/reviewer.ts", () => ({ runCommitReviewer: reviewer.r
 
 import profileCommands from "../extensions/commands.ts";
 import promptTemplateCommands from "../extensions/prompt-template-commands.ts";
-import registerToolVisibility from "../extensions/tool-visibility.ts";
 
 type Hook = (event: any, ctx?: any) => unknown;
 
@@ -183,18 +182,15 @@ describe("profile command lifecycle", () => {
 		expect(reviewer.run).toHaveBeenCalledOnce();
 	});
 
-	it("preserves /bro and unrelated /yt activation without registering commit tools", async () => {
+	it("preserves /bro and additive /yt activation without registering commit tools", async () => {
 		const f = fixture();
 		const vaultTools = ["onclave_vault_search", "onclave_vault_content", "onclave_vault_ingest", "onclave_vault_jobs"];
-		registerToolVisibility(f.pi);
 		promptTemplateCommands(f.pi);
 		f.pi.setActiveTools([...f.active(), ...vaultTools]);
-		await f.emit("session_start", { reason: "startup" });
-		expect(f.active()).toEqual(["read", "unrelated_tool"]);
 		await f.commands.get("yt-local")!.handler("fixture-video", f.ctx);
-		expect(f.active()).toEqual(["read", "unrelated_tool"]);
+		expect(f.active()).toEqual(["read", "unrelated_tool", ...vaultTools]);
 		await f.commands.get("commit")!.handler("", f.ctx);
-		expect(f.active()).toEqual(["read", "unrelated_tool"]);
+		expect(f.active()).toEqual(["read", "unrelated_tool", ...vaultTools]);
 		expect(f.tools.size).toBe(0);
 		await f.commands.get("bro")!.handler("", f.ctx);
 		expect(f.sent.at(-1)).toMatchObject({ message: { customType: "profile-command-prompt", display: false }, options: { deliverAs: "steer", triggerTurn: true } });
@@ -203,8 +199,5 @@ describe("profile command lifecycle", () => {
 		expect(f.sent.at(-1)!.message.content).toContain("YouTube request: https://www.youtube.com/watch?v=fixture");
 		await f.emit("agent_settled", {});
 		expect(f.active()).toEqual(["read", "unrelated_tool", ...vaultTools]);
-		await f.emit("session_shutdown", { reason: "new" });
-		await f.emit("session_start", { reason: "new" });
-		expect(f.active()).toEqual(["read", "unrelated_tool"]);
 	});
 });

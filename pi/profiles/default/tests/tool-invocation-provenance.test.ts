@@ -3,10 +3,10 @@ import provenance, { TOOL_INVOCATION_PROVENANCE_ENTRY, resolveToolSourceInfo } f
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 function fixture(tools: Array<{ name: string; sourceInfo: unknown }>) {
-	const hooks = new Map<string, (event: { toolCallId: string; toolName: string; args: unknown }) => void>();
+	const hooks = new Map<string, (event: { toolCallId: string; toolName: string; args: unknown; parentToolCallId?: string }) => void>();
 	const appendEntry = vi.fn();
 	const pi = {
-		on: vi.fn((name: string, handler: (event: { toolCallId: string; toolName: string; args: unknown }) => void) => hooks.set(name, handler)),
+		on: vi.fn((name: string, handler: (event: { toolCallId: string; toolName: string; args: unknown; parentToolCallId?: string }) => void) => hooks.set(name, handler)),
 		getAllTools: vi.fn(() => tools),
 		appendEntry,
 	};
@@ -30,12 +30,14 @@ describe("tool invocation provenance", () => {
 		hooks.get("tool_execution_start")!({ toolCallId: "b", toolName: "custom", args: { secret: "not recorded" } });
 		hooks.get("tool_execution_start")!({ toolCallId: "c", toolName: "overridden", args: { secret: "not recorded" } });
 		hooks.get("tool_execution_start")!({ toolCallId: "d", toolName: "missing", args: { secret: "not recorded" } });
+		hooks.get("tool_execution_start")!({ toolCallId: "nested", toolName: "read", parentToolCallId: "outer", args: { secret: "not recorded" } });
 
-		expect(appendEntry).toHaveBeenCalledTimes(4);
+		expect(appendEntry).toHaveBeenCalledTimes(5);
 		expect(appendEntry).toHaveBeenNthCalledWith(1, TOOL_INVOCATION_PROVENANCE_ENTRY, { toolCallId: "a", toolName: "read", sourceInfo: builtin });
 		expect(appendEntry).toHaveBeenNthCalledWith(2, TOOL_INVOCATION_PROVENANCE_ENTRY, { toolCallId: "b", toolName: "custom", sourceInfo: extension });
 		expect(appendEntry).toHaveBeenNthCalledWith(3, TOOL_INVOCATION_PROVENANCE_ENTRY, { toolCallId: "c", toolName: "overridden", sourceInfo: override });
 		expect(appendEntry).toHaveBeenNthCalledWith(4, TOOL_INVOCATION_PROVENANCE_ENTRY, { toolCallId: "d", toolName: "missing", sourceInfo: "unknown" });
+		expect(appendEntry).toHaveBeenNthCalledWith(5, TOOL_INVOCATION_PROVENANCE_ENTRY, { toolCallId: "nested", toolName: "read", parentToolCallId: "outer", sourceInfo: builtin });
 		expect(JSON.stringify(appendEntry.mock.calls)).not.toContain("secret");
 	});
 

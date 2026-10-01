@@ -1,7 +1,7 @@
 import path from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { StringEnum } from "@earendil-works/pi-ai";
-import { Type } from "typebox";
+import { Type, type Static } from "typebox";
 import { registerProfileCommand } from "../lib/profile-command.ts";
 import {
 	BrowserControlError,
@@ -69,9 +69,24 @@ type PageInput = {
 	output_path?: string;
 };
 
-function toolResult(text: string, details: Record<string, unknown> = {}) {
-	return { content: [{ type: "text" as const, text: redactOutput(text) }], details };
+function toolResult(text: string, details: Static<typeof BrowserResultSchema> = {}) {
+	const structuredContent = { ...details };
+	return { content: [{ type: "text" as const, text: redactOutput(text) }], details, structuredContent };
 }
+
+const BrowserResultSchema = Type.Object({
+	state: Type.Optional(Type.Object({
+		session: Type.Optional(Type.String()), sessionId: Type.Optional(Type.String()), profileMode: Type.Optional(Type.String()),
+		sessionMode: Type.Optional(Type.String()), profileAlias: Type.Optional(Type.String()), extensionMode: Type.Optional(Type.String()),
+		targetId: Type.Optional(Type.String()), comparisonGeneration: Type.Optional(Type.Number()), comparisonInvalidated: Type.Optional(Type.Boolean()),
+		restartAuthorizationRequired: Type.Optional(Type.Boolean()),
+	}, { additionalProperties: false })),
+	status: Type.Optional(Type.Object({ online: Type.Optional(Type.Boolean()), ownershipVerified: Type.Optional(Type.Boolean()), outcome: Type.Optional(Type.String()) })),
+	candidates: Type.Optional(Type.Array(Type.Object({ userDataDir: Type.String(), profileDirectory: Type.String(), displayName: Type.String(), configuredAliases: Type.Array(Type.String()) }))),
+	candidateCount: Type.Optional(Type.Number()), targets: Type.Optional(Type.Array(Type.Object({ id: Type.String(), url: Type.String(), type: Type.Optional(Type.String()) }))),
+	count: Type.Optional(Type.Number()), targetId: Type.Optional(Type.String()), url: Type.Optional(Type.String()),
+	snapshot: Type.Optional(Type.String()),
+}, { additionalProperties: false });
 
 function safeUrl(value: string): string {
 	try {
@@ -82,7 +97,7 @@ function safeUrl(value: string): string {
 	}
 }
 
-function publicState(state: BrowserSessionState | undefined): Record<string, unknown> {
+function publicState(state: BrowserSessionState | undefined): NonNullable<Static<typeof BrowserResultSchema>["state"]> {
 	if (!state) return { session: "absent" };
 	return {
 		sessionId: state.sessionId,
@@ -162,6 +177,7 @@ export default function registerBrowserControl(pi: ExtensionAPI) {
 		description: "Discover, inspect, start, attach, restart, or stop one ownership-verified Brave session. Attach connects only to an operator-launched real alias on loopback CDP; restart requires an owned session.",
 		promptSnippet: "Control one profile-aware Brave session without guessing or broad process termination",
 		parameters: SessionParameters,
+		outputSchema: BrowserResultSchema,
 		async execute(_id, rawParams, signal) {
 			const input = rawParams as SessionInput;
 			if (input.action === "discover") {
@@ -172,7 +188,7 @@ export default function registerBrowserControl(pi: ExtensionAPI) {
 					displayName: candidate.displayName,
 					configuredAliases: Object.entries(config.profiles).filter(([, profile]) => profile.profileDirectory === candidate.profileDirectory && (!profile.userDataDir || path.resolve(profile.userDataDir) === candidate.userDataDir)).map(([alias]) => alias),
 				}));
-				return toolResult(`${JSON.stringify({ candidates }, null, 2)}\nUse /browser-setup with one exact candidate; no profile is guessed.`, { candidateCount: candidates.length });
+				return toolResult(`${JSON.stringify({ candidates }, null, 2)}\nUse /browser-setup with one exact candidate; no profile is guessed.`, { candidates, candidateCount: candidates.length });
 			}
 
 			if (input.action === "status") {
@@ -235,6 +251,7 @@ export default function registerBrowserControl(pi: ExtensionAPI) {
 		description: "Operate on exact raw CDP page targets. Credential, CAPTCHA, cookie, storage, and arbitrary evaluation surfaces are unavailable.",
 		promptSnippet: "Use one exact session ID and raw CDP target ID for bounded page actions",
 		parameters: PageParameters,
+		outputSchema: BrowserResultSchema,
 		async execute(_id, rawParams, signal, _onUpdate, ctx) {
 			const input = rawParams as PageInput;
 			state = loadBrowserState();
@@ -242,14 +259,14 @@ export default function registerBrowserControl(pi: ExtensionAPI) {
 			try {
 				if (input.action === "list") {
 					const targets = (await pages.list(state)).map((target) => ({ id: target.id, url: safeUrl(target.url), type: target.type }));
-					return toolResult(JSON.stringify({ targets }, null, 2), { count: targets.length, state: publicState(state) });
+					return toolResult(JSON.stringify({ targets }, null, 2), { targets, count: targets.length, state: publicState(state) });
 				}
 				if (input.action === "open") {
 					if (!input.url) throw new BrowserControlError("url_required", "Open requires a URL.");
 					const target = await pages.open(state, input.url, signal);
 					state = { ...state, targetId: target.id };
 					await saveBrowserState(state);
-					return toolResult(JSON.stringify({ targetId: target.id, url: safeUrl(target.url) }), { state: publicState(state) });
+					return toolResult(JSON.stringify({ targetId: target.id, url: safeUrl(target.url) }), { state: publicState(state), targetId: target.id, url: safeUrl(target.url) });
 				}
 				const targetId = requireTarget(input);
 				if (input.action === "select") {
@@ -258,7 +275,10 @@ export default function registerBrowserControl(pi: ExtensionAPI) {
 					await saveBrowserState(state);
 					return toolResult(`Selected raw CDP target ${targetId}.`, { state: publicState(state) });
 				}
-				if (input.action === "snapshot") return toolResult(await pages.snapshot(state, targetId, signal), { state: publicState(state), targetId });
+				if (input.action === "snapshot") {
+					const snapshot = redactOutput(await pages.snapshot(state, targetId, signal));
+					return toolResult(snapshot, { state: publicState(state), targetId, snapshot });
+				}
 				if (input.action === "screenshot") {
 					if (!input.output_path) throw new BrowserControlError("output_required", "Screenshot requires an output path.");
 					const outputPath = path.resolve(ctx.cwd, input.output_path);

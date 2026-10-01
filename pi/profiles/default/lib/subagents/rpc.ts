@@ -88,6 +88,8 @@ export class RpcChild {
   private questionResolutions = new Map<string, { outcome: "answered" | "cancelled"; by: "parent" | "child" | "assignment" }>();
   private intentionalRedirect = false;
   private toolFailure?: { toolName: string; reason: string };
+  private activeToolCalls = new Map<string, { toolName: string; parentToolCallId?: string; order: number }>();
+  private toolCallOrder = 0;
   protected spec: LaunchSpec; protected profileDir: string;
   constructor(spec: LaunchSpec, childExtension: string, profileDir: string) {
     this.spec = spec; void childExtension; this.profileDir = profileDir;
@@ -153,15 +155,34 @@ export class RpcChild {
     }
     if(this.record.status === "settled") return;
     if(this.record.status === "waiting" && (this.record.phase === "waiting-parent" || this.record.phase === "waiting-user")) return;
-    if(e.type === "tool_execution_start" || e.type === "tool_execution_update") this.activity("tool", typeof e.toolName === "string" ? e.toolName : this.record.toolName);
-    else if(e.type === "tool_execution_end") {
-      if(e.isError) {
+    if(e.type === "tool_execution_start" || e.type === "tool_execution_update") {
+      if(typeof e.toolCallId === "string") this.activeToolCalls.set(e.toolCallId, {
+        toolName: typeof e.toolName === "string" ? e.toolName : "unknown tool",
+        parentToolCallId: typeof e.parentToolCallId === "string" ? e.parentToolCallId : undefined,
+        order: this.toolCallOrder++,
+      });
+      this.reportToolActivity(typeof e.toolName === "string" ? e.toolName : undefined);
+    } else if(e.type === "tool_execution_end") {
+      if(e.isError && !e.parentToolCallId) {
         const content = text(e.result);
         this.toolFailure = { toolName: typeof e.toolName === "string" ? e.toolName : "unknown tool", reason: content || "tool returned an error" };
       }
-      this.activity("model");
+      if(typeof e.toolCallId === "string") this.activeToolCalls.delete(e.toolCallId);
+      this.reportToolActivity();
     } else if(e.type === "agent_start" || e.type === "turn_start") this.activity("model");
     else if(e.type === "message_update" || (e.type === "message_start" && e.message?.role === "assistant")) this.activity("model");
+  }
+  private reportToolActivity(fallback?: string) {
+    const calls = [...this.activeToolCalls.entries()];
+    if (!calls.length) { this.activity(fallback ? "tool" : "model", fallback); return; }
+    const depth = (id: string, seen = new Set<string>()): number => {
+      if (seen.has(id)) return 0;
+      seen.add(id);
+      const parent = this.activeToolCalls.get(id)?.parentToolCallId;
+      return parent && this.activeToolCalls.has(parent) ? 1 + depth(parent, seen) : 0;
+    };
+    calls.sort(([a, left], [b, right]) => depth(a) - depth(b) || left.order - right.order);
+    this.activity("tool", calls.at(-1)![1].toolName);
   }
   start(endpoint?: ChildEndpoint): Promise<ChildRecord> {
     const config=childLaunch(this.spec,this.record.id,this.profileDir,endpoint);

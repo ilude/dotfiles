@@ -47,6 +47,49 @@ const commonQuery = {
 	maxBytes: Type.Optional(Type.Integer({ minimum: 1, maximum: 256 * 1024 })),
 };
 
+const profileId = StringEnum(PROFILE_IDS);
+// SQL result values and native follow-up records are JSON-shaped but data-dependent. Keep
+// the operation envelope and row/object boundaries typed without inventing domain columns.
+const jsonValue = Type.Union([
+	Type.Null(), Type.Boolean(), Type.Number(), Type.String(), Type.Array(Type.Unknown()), Type.Record(Type.String(), Type.Unknown()),
+]);
+const discoveryResult = Type.Object({
+	excludedFiles: Type.Integer({ minimum: 0 }),
+	diagnostics: Type.Array(Type.Object({ profile: profileId, file: Type.String(), fileKey: Type.String(), reason: Type.String() }, { additionalProperties: false })),
+	diagnosticsTruncated: Type.Boolean(),
+}, { additionalProperties: false });
+const sessionRefResult = Type.Object({ profile: profileId, sessionId: Type.String(), fileKey: Type.Optional(Type.String()) }, { additionalProperties: false });
+const costResult = Type.Object({
+	requestedExecution: StringEnum(["automatic", "standard", "large"] as const),
+	execution: StringEnum(["standard", "large"] as const),
+	selectedBytes: Type.Number({ minimum: 0 }),
+	selectionReason: StringEnum(["explicit_standard", "explicit_large", "selected_bytes_at_or_above_256_mib", "exact_session_below_256_mib", "non_exact_scope_below_256_mib"] as const),
+	filesScanned: Type.Integer({ minimum: 0 }), bytesScanned: Type.Number({ minimum: 0 }),
+	discoveryMs: Type.Number({ minimum: 0 }), stagingMs: Type.Number({ minimum: 0 }), queryMs: Type.Number({ minimum: 0 }),
+	memoryLimit: Type.Optional(Type.String()), threads: Type.Optional(Type.Integer({ minimum: 1 })),
+	recordsStaged: Type.Optional(Type.Integer({ minimum: 0 })), malformedRecords: Type.Optional(Type.Integer({ minimum: 0 })),
+	peakOwnedDiskBytes: Type.Optional(Type.Number({ minimum: 0 })), diskBudgetBytes: Type.Optional(Type.Number({ minimum: 0 })),
+}, { additionalProperties: false });
+const sessionResult = Type.Object({
+	ref: sessionRefResult, cwd: Type.Union([Type.String(), Type.Null()]), created: Type.Union([Type.String(), Type.Null()]),
+	modified: Type.String(), bytes: Type.Number({ minimum: 0 }),
+}, { additionalProperties: false });
+const occurrenceResult = Type.Object({
+	profile: profileId, session: sessionRefResult, fileKey: Type.String(), byteOffset: Type.Integer({ minimum: 0 }),
+	byteLength: Type.Integer({ minimum: 1 }), recordOrdinal: Type.Integer({ minimum: 0 }), recordKey: Type.Union([Type.String(), Type.Null()]),
+}, { additionalProperties: false });
+const coverageResult = Type.Object({
+	selectedFiles: Type.Integer({ minimum: 0 }), selectedBytes: Type.Number({ minimum: 0 }),
+	examinedFiles: Type.Integer({ minimum: 0 }), examinedRecords: Type.Integer({ minimum: 0 }), examinedBytes: Type.Number({ minimum: 0 }),
+	safelyPrunedFiles: Type.Integer({ minimum: 0 }), malformedRecords: Type.Integer({ minimum: 0 }), oversizedRecords: Type.Integer({ minimum: 0 }),
+	timestampGaps: Type.Integer({ minimum: 0 }), diagnostics: Type.Array(Type.String()), diagnosticsTruncated: Type.Boolean(),
+	inventoryChanges: Type.Array(Type.String()),
+	page: Type.Object({ examinedFiles: Type.Integer(), examinedRecords: Type.Integer(), examinedBytes: Type.Number(), malformedRecords: Type.Integer(), oversizedRecords: Type.Integer() }, { additionalProperties: false }),
+	cumulative: Type.Object({ examinedFiles: Type.Integer(), examinedRecords: Type.Integer(), examinedBytes: Type.Number(), malformedRecords: Type.Integer(), oversizedRecords: Type.Integer() }, { additionalProperties: false }),
+	remainingFiles: Type.Integer({ minimum: 0 }), capturedHorizons: Type.Array(Type.Object({ fileKey: Type.String(), bytes: Type.Number() }, { additionalProperties: false })),
+	exclusions: discoveryResult,
+}, { additionalProperties: false });
+
 /** Operation-specific schemas keep model-generated fields from crossing operation boundaries. */
 export const analyticsSchema = Type.Union([
 	Type.Object({ operation: Type.Literal("catalog") }, { additionalProperties: false }),
@@ -58,6 +101,57 @@ export const analyticsSchema = Type.Union([
 ]);
 export type LogAnalyticsInput = Static<typeof analyticsSchema>;
 
+/** Per-operation contracts preserve the dynamic SQL row shape without leaking unbounded internals. */
+export const analyticsOutputSchema = Type.Union([
+	Type.Object({ operation: Type.Literal("catalog"), sources: Type.Array(Type.Object({
+		source: StringEnum(SOURCE_IDS), view: Type.String(), profiles: Type.Array(profileId),
+		columns: Type.Array(Type.Object({ name: Type.String(), type: Type.String() }, { additionalProperties: false })), hint: Type.String(),
+	}, { additionalProperties: false })), defaults: Type.Object({
+		execution: Type.String(), profiles: Type.String(), threads: Type.Integer(), memoryLimit: Type.String(), maxRows: Type.Integer(), maxRowBytes: Type.Integer(),
+		searchMaxResults: Type.Integer(), largeDiskBudgetBytes: Type.Number(),
+	}, { additionalProperties: false }), limits: Type.String() }, { additionalProperties: false }),
+	Type.Object({ operation: Type.Literal("sessions"), profiles: Type.Array(profileId), sessions: Type.Array(sessionResult), truncated: Type.Boolean(),
+		nextCursor: Type.Union([Type.String(), Type.Null()]), coverage: Type.Object({ listing: Type.String(), discovery: discoveryResult }, { additionalProperties: false }),
+	}, { additionalProperties: false }),
+	Type.Object({ operation: Type.Literal("query"), columns: Type.Array(Type.String()), rows: Type.Array(Type.Record(Type.String(), jsonValue)), truncated: Type.Boolean(),
+		cost: costResult, profiles: Type.Array(profileId), sources: Type.Array(StringEnum(SOURCE_IDS)), coverage: Type.Object({
+			discovery: Type.Optional(discoveryResult), files: Type.String(), records: Type.String(),
+		}, { additionalProperties: false }),
+	}, { additionalProperties: false }),
+	Type.Object({ operation: Type.Literal("search"), profiles: Type.Array(profileId), matches: Type.Array(Type.Object({
+		occurrence: occurrenceResult, timestamp: Type.Union([Type.String(), Type.Null()]), entryType: Type.Union([Type.String(), Type.Null()]),
+		messageRole: Type.Union([Type.String(), Type.Null()]), toolName: Type.Union([Type.String(), Type.Null()]), isError: Type.Union([Type.Boolean(), Type.Null()]),
+		snippet: Type.String(), blockingDecisions: Type.Optional(Type.Array(Type.Object({
+			toolName: StringEnum(["subagent", "subagent_control"] as const), agent: Type.Union([Type.String(), Type.Null()]), action: Type.String(),
+			background: Type.Union([Type.Boolean(), Type.Null()]), blocking: Type.Boolean(), reason: Type.Union([Type.String(), Type.Null()]),
+			reasonSource: Type.Union([StringEnum(["model", "role-contract", "missing"] as const), Type.Null()]),
+			subagentExtensionVersion: Type.Union([Type.String(), Type.Null()]),
+		}, { additionalProperties: false }))),
+	}, { additionalProperties: false })), nextCursor: Type.Union([Type.String(), Type.Null()]), complete: Type.Boolean(), stopReason: Type.String(), coverage: coverageResult,
+	}, { additionalProperties: false }),
+	Type.Object({ operation: Type.Literal("follow_up"), occurrence: occurrenceResult,
+		before: Type.Array(Type.Object({ occurrence: occurrenceResult, record: jsonValue, timestamp: Type.Union([Type.String(), Type.Null()]) }, { additionalProperties: false })),
+		match: Type.Object({ occurrence: occurrenceResult, record: jsonValue, timestamp: Type.Union([Type.String(), Type.Null()]) }, { additionalProperties: false }),
+		after: Type.Array(Type.Object({ occurrence: occurrenceResult, record: jsonValue, timestamp: Type.Union([Type.String(), Type.Null()]) }, { additionalProperties: false })),
+	}, { additionalProperties: false }),
+	Type.Object({ operation: Type.Literal("session_lineage"), profiles: Type.Array(profileId), sessionId: Type.String(),
+		target: Type.Union([Type.Object({ profile: profileId, sessionId: Type.String(), role: Type.Union([Type.String(), Type.Null()]),
+			parentSessionId: Type.Union([Type.String(), Type.Null()]), rootSessionId: Type.Union([Type.String(), Type.Null()]), fileKey: Type.String(),
+		}, { additionalProperties: false }), Type.Null()]),
+		ancestors: Type.Array(Type.Object({ profile: profileId, sessionId: Type.String(), role: Type.Union([Type.String(), Type.Null()]),
+			parentSessionId: Type.Union([Type.String(), Type.Null()]), rootSessionId: Type.Union([Type.String(), Type.Null()]), fileKey: Type.String(),
+		}, { additionalProperties: false })),
+		descendants: Type.Array(Type.Object({ profile: profileId, sessionId: Type.String(), role: Type.Union([Type.String(), Type.Null()]),
+			parentSessionId: Type.Union([Type.String(), Type.Null()]), rootSessionId: Type.Union([Type.String(), Type.Null()]), fileKey: Type.String(),
+		}, { additionalProperties: false })), truncated: Type.Boolean(), coverage: Type.Object({
+			selectedFiles: Type.Integer(), examinedFiles: Type.Integer(), selectedBytes: Type.Number(), examinedBytes: Type.Number(), malformedRecords: Type.Integer(),
+			classifiedSessions: Type.Integer(), historicalSessions: Type.Integer(), unclassifiedSessions: Type.Array(sessionRefResult), unclassifiedSessionCount: Type.Integer(),
+			unclassifiedSessionsTruncated: Type.Boolean(), missingParents: Type.Array(Type.String()), missingParentCount: Type.Integer(), missingParentsTruncated: Type.Boolean(),
+			ancestorCount: Type.Integer(), ancestorsTruncated: Type.Boolean(), absence: Type.Union([Type.String(), Type.Null()]), discovery: discoveryResult,
+		}, { additionalProperties: false }),
+	}, { additionalProperties: false }),
+]);
+
 const DESCRIPTION = `Read-only Pi history analytics. Choose catalog for source schemas; sessions for cheap metadata-only listing; search for bounded literal/native-field lookup without DuckDB, including subagentBlocking decisions, reasons, and active extension versions; follow_up for bounded context around a search occurrence; session_lineage for historical parent/child subagent lineage by native session ID (recorded ancestors and descendants, not live status); query for one SELECT with joins/aggregates. Targeted recipe: retain every operator-supplied bound across retries and cursor pages; use cwd for one exact checkout or repository to include that Git checkout and its linked worktrees, combine it with a fixed event-time interval when supplied, and stop when enough examples answer the question. cwd/repository normalize platform-equivalent path spellings and are mutually exclusive. Then follow_up only returned occurrences. Last-week tool-call failures: freeze a seven-day [since,until) interval, search messageRoles=["toolResult"] and isError=true across the required profiles, follow nextCursor with identical scope until complete, retain profile/session/file/occurrence coordinates, then follow_up relevant calls; recorded error flags are not automatically product defects. Complete three-month reviews require paging exhaustive search/traversal over both profiles and disclosing exclusions and gaps. Queries automatically use large execution for selections at least 256 MiB or scopes without an exact-session selection; below 256 MiB, exact-session scope is eligible for standard. Explicit execution="standard" or execution="large" overrides that choice. Results report selected/examined coverage, exclusions, truncation, resource costs, and temporary-storage cleanup. Expansion only renders returned bounded details; it never fetches more.`;
 
 /** Injection is extension-owned and used by offline fixtures, never a tool argument. */
@@ -65,8 +159,8 @@ export function registerLogAnalytics(pi: ExtensionAPI, resolveProfiles: () => Pr
 	const worker = new AnalyticsWorker();
 	pi.on("session_shutdown", () => worker.close());
 	pi.registerTool({
-		name: "log_analytics", label: "Log Analytics", description: DESCRIPTION, parameters: analyticsSchema,
-		renderCall: renderAnalyticsCall, renderResult: renderAnalyticsResult,
+		name: "log_analytics", label: "Log Analytics", description: DESCRIPTION, parameters: analyticsSchema, outputSchema: analyticsOutputSchema,
+		exposure: "deferred", renderCall: renderAnalyticsCall, renderResult: renderAnalyticsResult,
 		async execute(_id, params, signal) {
 			// Hooks may mutate tool arguments after Pi validation.
 			if (!Check(analyticsSchema, params)) throw new Error("invalid log_analytics arguments");
@@ -76,7 +170,8 @@ export function registerLogAnalytics(pi: ExtensionAPI, resolveProfiles: () => Pr
 					searchMaxResults: 100, largeDiskBudgetBytes: 8589934592 },
 				limits: "Analytics filesystem and native database work runs in a session-owned child process so a worker crash returns exit evidence without terminating Pi. Queries, discovery, and search have no internal deadline or selected-input ceiling and remain caller-cancellable. Omitted execution uses large for non-exact-session scope or selections at least 256 MiB, and standard for smaller exact-session selections; explicit standard/large overrides are honored. Standard uses an invocation-local in-memory database with bounded repository-local spill; large uses invocation-owned disk staging and bounded spill. Both retain the 2 GB DuckDB, two-thread, and 8 GiB owned-disk budgets (PI_ANALYTICS_LARGE_DISK_BUDGET_BYTES). Per-invocation paths under ignored profile analytics state are cleaned on settlement. Spill does not prevent every DuckDB OOM; standard resource failures advise an explicit large retry. Costs report requested/effective execution, selected bytes, reason, and disk high-water/budget. Search cursors are process-local and bounded by retained metadata size; cache state is disposable metadata only. SQL remains read-only over registered sources, with extension loading and arbitrary filesystem access disabled. Results and follow-up context remain bounded for model context." };
 			else details = await worker.execute(await resolveProfiles(), params, signal);
-			return { content: [{ type: "text", text: JSON.stringify(details) }], details };
+			const structuredContent = { operation: params.operation, ...(details as Record<string, unknown>) };
+			return { content: [{ type: "text", text: JSON.stringify(details) }], details, structuredContent };
 		},
 	});
 }

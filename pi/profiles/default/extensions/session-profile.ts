@@ -8,6 +8,11 @@ import { createSessionMessages, type SessionMessagesInput } from "../lib/session
 import { PROFILE_IDS, runtimeProfiles, type ProfileRegistry } from "../lib/log-analytics/profiles.ts";
 
 export const SESSION_PROFILE_ENTRY = "session-profile";
+export const sessionMessagesOutputSchema = Type.Object({
+	local_path: Type.String(), session_id: Type.String(), profile: Type.String(),
+	user_messages: Type.Integer({ minimum: 0 }), assistant_messages: Type.Integer({ minimum: 0 }),
+}, { additionalProperties: false });
+export const piSessionOutputSchema = Type.Object({ session_id: Type.String(), profile: Type.String() }, { additionalProperties: false });
 export const sessionMessagesSchema = Type.Object({
 	session_id: Type.String({ minLength: 1, maxLength: 256, description: "Native Pi sessionId, including the sessionId returned for a subagent. Do not use subagentId here." }),
 	profile: Type.Optional(StringEnum(PROFILE_IDS)),
@@ -24,6 +29,7 @@ export function registerSessionMessages(
 		label: "Session Messages",
 		description: "Project one registered Pi session to an extension-owned temporary JSONL file containing user and assistant/model messages only. session_id is the native Pi sessionId, not a subagentId. Omit profile to use the active registered profile. Malformed body lines are skipped; the operation is cancellable.",
 		parameters: sessionMessagesSchema,
+		outputSchema: sessionMessagesOutputSchema,
 		renderCall(args, theme) {
 			return new Text(`${theme.fg("toolTitle", theme.bold("session messages"))}${args.profile ? ` ${theme.fg("muted", `· ${args.profile}`)}` : ""}`, 0, 0);
 		},
@@ -38,7 +44,7 @@ export function registerSessionMessages(
 		async execute(_id, params, signal) {
 			if (!Check(sessionMessagesSchema, params)) throw new Error("invalid session_messages arguments");
 			const result = await createSessionMessages(await resolveProfiles(), params as SessionMessagesInput, signal);
-			return { content: [{ type: "text", text: JSON.stringify(result) }], details: result };
+			return { content: [{ type: "text", text: JSON.stringify(result) }], details: result, structuredContent: result };
 		},
 	});
 }
@@ -51,6 +57,7 @@ export default function sessionProfile(pi: ExtensionAPI): void {
 		description: "Return the current Pi session ID and active profile.",
 		promptSnippet: "Report the current Pi session ID and active profile",
 		parameters: Type.Object({}, { additionalProperties: false }),
+		outputSchema: piSessionOutputSchema,
 		renderCall(_args, theme) { return new Text(theme.fg("toolTitle", theme.bold("Pi session")), 0, 0); },
 		renderResult(result, { expanded }, theme) {
 			const raw = result.content.filter(part => part.type === "text").map(part => part.text).join("\n");
@@ -66,6 +73,7 @@ export default function sessionProfile(pi: ExtensionAPI): void {
 			return {
 				content: [{ type: "text", text: JSON.stringify(result) }],
 				details: result,
+				structuredContent: result,
 			};
 		},
 	});

@@ -6,8 +6,9 @@ import { join } from "node:path";
 import type { BeforeAgentStartEvent, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { buildSystemPrompt, normalizeBuildSystemPromptOptions } from "../node_modules/@earendil-works/pi-coding-agent/dist/core/system-prompt.js";
 import { SessionManager } from "../node_modules/@earendil-works/pi-coding-agent/dist/core/session-manager.js";
-import register, { createHerdrPiTab, launchPreparedHerdrPlan, HerdrPiTabLaunchError, parseNewInstanceArgs } from "../extensions/session-launch.ts";
+import register, { createHerdrPiTab, launchPreparedHerdrPlan, HerdrPiTabLaunchError, parseNewInstanceArgs, sessionLaunchOutputSchema } from "../extensions/session-launch.ts";
 import { preparePlanRun } from "../lib/plan-run.ts";
+import { Check } from "typebox/value";
 
 vi.mock("node:child_process", () => ({ execFile: vi.fn(), spawnSync: vi.fn() }));
 vi.mock("../lib/plan-run.ts", () => ({ preparePlanRun: vi.fn() }));
@@ -171,6 +172,8 @@ it("launches an exact active-profile session from the tool using its saved cwd",
 	const result = await tools.session_launch.execute("call", { session, title: "resumed" }, undefined, undefined, { cwd: process.cwd() });
 
 	expect(result.details).toMatchObject({ session, cwd: savedCwd, title: "resumed", launched: true });
+	expect(Check(sessionLaunchOutputSchema, result.structuredContent)).toBe(true);
+	expect(result.structuredContent.session).toBe(session);
 	const theme = { fg: (_color: string, value: string) => value, bold: (value: string) => value };
 	const collapsed = tools.session_launch.renderResult(result, { expanded: false }, theme).render(120).join("\n").trimEnd();
 	expect(collapsed).toBe("resumed · resumed · launched");

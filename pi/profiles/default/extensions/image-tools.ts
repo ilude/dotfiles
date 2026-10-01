@@ -40,6 +40,21 @@ const resizeSchema = Type.Object(
 	{ additionalProperties: false },
 );
 
+const imagePropertiesOutputSchema = Type.Object({
+	width: Type.Integer({ minimum: 1, maximum: MAX_INPUT_DIMENSION }),
+	height: Type.Integer({ minimum: 1, maximum: MAX_INPUT_DIMENSION }),
+	format: Type.Optional(Type.String()),
+	pages: Type.Optional(Type.Integer({ minimum: 1 })),
+	channels: Type.Optional(Type.Integer({ minimum: 1 })),
+	space: Type.Optional(Type.String()),
+	depth: Type.Optional(Type.String()),
+	orientation: Type.Optional(Type.Integer({ minimum: 1, maximum: 8 })),
+}, { additionalProperties: false });
+const imageTransformOutputSchema = Type.Object({
+	path: Type.String(), width: Type.Integer({ minimum: 1, maximum: MAX_OUTPUT_DIMENSION }),
+	height: Type.Integer({ minimum: 1, maximum: MAX_OUTPUT_DIMENSION }), format: Type.String(),
+}, { additionalProperties: false });
+
 const imageTransformSchema = Type.Object(
 	{
 		source: Type.String(),
@@ -217,9 +232,20 @@ function validateOutput(width: number, height: number): void {
 async function inspectImage(sourceValue: string, cwd: string) {
 	const source = await canonicalSource(resolveRequestedPath(sourceValue, cwd));
 	const { metadata } = await readImage(source);
+	const structuredContent = {
+		width: metadata.width,
+		height: metadata.height,
+		...(metadata.format === undefined ? {} : { format: metadata.format }),
+		...(metadata.pages === undefined ? {} : { pages: metadata.pages }),
+		...(metadata.channels === undefined ? {} : { channels: metadata.channels }),
+		...(metadata.space === undefined ? {} : { space: metadata.space }),
+		...(metadata.depth === undefined ? {} : { depth: metadata.depth }),
+		...(metadata.orientation === undefined ? {} : { orientation: metadata.orientation }),
+	};
 	return {
 		content: [{ type: "text" as const, text: JSON.stringify(metadata) }],
 		details: metadata,
+		structuredContent,
 	};
 }
 
@@ -295,9 +321,11 @@ async function transformImage(params: TransformParams, signal: AbortSignal | und
 				throw new Error("Transformed image metadata was not stripped");
 			if (signal?.aborted) throw new Error("Image transform aborted");
 			await fs.link(temporary, destination);
+			const result = { path: destination, width: reopened.width, height: reopened.height, format: reopened.format };
 			return {
 				content: [{ type: "text" as const, text: `${destination}: ${reopened.width}x${reopened.height} ${reopened.format}` }],
-				details: { path: destination, width: reopened.width, height: reopened.height, format: reopened.format },
+				details: result,
+				structuredContent: result,
 			};
 		} finally {
 			await fs.rm(temporary, { force: true });
@@ -308,6 +336,8 @@ async function transformImage(params: TransformParams, signal: AbortSignal | und
 export default function registerImageTools(pi: ExtensionAPI): void {
 	pi.registerTool({
 		name: "image_properties",
+		exposure: "deferred",
+		outputSchema: imagePropertiesOutputSchema,
 		label: "Image Properties",
 		description: "Read image dimensions, format, orientation, and metadata.",
 		parameters: Type.Object({ source: Type.String() }, { additionalProperties: false }),
@@ -317,6 +347,8 @@ export default function registerImageTools(pi: ExtensionAPI): void {
 	});
 	pi.registerTool({
 		name: "image_transform",
+		exposure: "deferred",
+		outputSchema: imageTransformOutputSchema,
 		label: "Transform Image",
 		description: "Safely crop, resize, rotate, convert, or compress a local image with metadata stripped by default.",
 		parameters: imageTransformSchema,
@@ -334,4 +366,6 @@ export {
 	MAX_BYTES,
 	MAX_INPUT_PIXELS,
 	MAX_OUTPUT_PIXELS,
+	imagePropertiesOutputSchema,
+	imageTransformOutputSchema,
 };

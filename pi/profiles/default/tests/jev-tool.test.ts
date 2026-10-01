@@ -1,8 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { Value } from "typebox/value";
-import registerJev, { jevParameters, validQuestions } from "../extensions/jev.ts";
-import registerToolSearch from "../extensions/tool-search.ts";
-import registerToolVisibility from "../extensions/tool-visibility.ts";
+import registerJev, { jevOutputSchema, jevParameters, validQuestions } from "../extensions/jev.ts";
 import { createMockPi } from "./helpers/mock-pi.ts";
 import { JevClientError } from "../lib/jev/client.ts";
 
@@ -15,18 +13,15 @@ function client() {
 }
 
 describe("jev_evaluate", () => {
-	it("is deferred, discoverable, activates without disturbing other tools, and maps results", async () => {
+	it("registers as deferred and maps success to a schema-valid result", async () => {
 		const pi = createMockPi();
-		pi.registerTool({ name: "read", description: "Read", parameters: {}, execute: async () => ({ content: [] }) });
-		registerJev(pi as never, client() as never); registerToolSearch(pi as never); registerToolVisibility(pi as never);
-		await pi._getHook("session_start")[0]!.handler({}, {});
-		expect(pi.getActiveTools()).toEqual(["read", "tool_search"]);
-		const discovered = await pi._getTool("tool_search")!.execute("id", { query: "Jev evaluation" }, undefined, undefined, {});
-		expect(discovered.details.activated).toEqual(["jev_evaluate"]);
+		registerJev(pi as never, client() as never);
 		const result = await pi._getTool("jev_evaluate")!.execute("id", { state: "synthetic", questions, model: "jev-test" }, undefined, undefined, {});
+		expect(pi._getTool("jev_evaluate")!.exposure).toBe("deferred");
+		expect(Value.Check(jevOutputSchema, result.structuredContent)).toBe(true);
+		expect(result.structuredContent).toMatchObject({ ok: true });
 		expect(result.isError).not.toBe(true);
 		expect(JSON.parse(result.content[0].text)).toMatchObject({ model: "jev-test", answers: { urgent: { noul: 0.25 } }, elapsed_ms: expect.any(Number) });
-		expect(pi.getActiveTools()).toEqual(["read", "tool_search", "jev_evaluate"]);
 	});
 
 	it("validates inputs and preserves cancellation through the client boundary", async () => {
@@ -43,6 +38,8 @@ describe("jev_evaluate", () => {
 		registerJev(pi as never, jev as never);
 		const invalidResult = await pi._getTool("jev_evaluate")!.execute("id", { state: "synthetic", questions: {} }, undefined, undefined, {});
 		expect(invalidResult.details).toEqual({ code: "request" });
+		expect(Value.Check(jevOutputSchema, invalidResult.structuredContent)).toBe(true);
+		expect(invalidResult.structuredContent).toMatchObject({ ok: false, error: { code: "request" } });
 		expect(invalidResult.isError).toBe(true);
 		expect(jev.evaluate).not.toHaveBeenCalled();
 		const invalidStateResult = await pi._getTool("jev_evaluate")!.execute("id", { state: 42 as never, questions }, undefined, undefined, {});
@@ -58,6 +55,8 @@ describe("jev_evaluate", () => {
 		controller.abort();
 		const result = await cancelledPi._getTool("jev_evaluate")!.execute("id", { state: "synthetic", questions }, controller.signal, undefined, {});
 		expect(result.details).toEqual({ code: "cancelled" });
+		expect(Value.Check(jevOutputSchema, result.structuredContent)).toBe(true);
+		expect(result.structuredContent).toMatchObject({ ok: false, error: { code: "cancelled" } });
 		expect(result.isError).toBe(true);
 		expect(result.content[0].text).toBe("Jev evaluation failed: Jev request was cancelled");
 		expect(result.content[0].text).not.toContain("synthetic");

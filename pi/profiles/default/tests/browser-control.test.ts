@@ -3,6 +3,8 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createMockPi } from "./helpers/mock-pi";
+import * as browserControl from "../lib/browser-control";
+import { Value } from "typebox/value";
 import registerBrowserControl, { parseSetupArgs, publicState, safeUrl } from "../extensions/browser-control";
 import {
 	BrowserControlError,
@@ -114,6 +116,34 @@ describe("profile configuration", () => {
 });
 
 describe("session and page boundaries", () => {
+	it("returns schema-valid discovery candidates rather than only a count", async () => {
+		vi.spyOn(browserControl, "readBrowserConfig").mockReturnValue({ version: 1, profiles: {} });
+		vi.spyOn(browserControl, "discoverBraveProfiles").mockReturnValue([{ userDataDir: "/public/brave", profileDirectory: "Default", displayName: "Personal" }]);
+		const pi = createMockPi();
+		registerBrowserControl(pi as never);
+		const tool = pi._getTool("browser_session")!;
+		if (!tool.outputSchema) throw new Error("Missing browser session output schema");
+		const result = await tool.execute("discover", { action: "discover" });
+		expect(result.structuredContent.candidates).toEqual([{ userDataDir: "/public/brave", profileDirectory: "Default", displayName: "Personal", configuredAliases: [] }]);
+		expect(Value.Check(tool.outputSchema, result.structuredContent)).toBe(true);
+	});
+
+	it("returns sanitized exact page targets and redacted snapshots matching its schema", async () => {
+		vi.spyOn(browserControl, "loadBrowserState").mockReturnValue(state());
+		vi.spyOn(browserControl.BrowserPageProtocol.prototype, "list").mockResolvedValue([{ id: "exact-id", type: "page", url: "https://example.test/path?token=secret#private" }]);
+		vi.spyOn(browserControl.BrowserPageProtocol.prototype, "snapshot").mockResolvedValue("button: public");
+		const pi = createMockPi();
+		registerBrowserControl(pi as never);
+		const tool = pi._getTool("browser_page")!;
+		if (!tool.outputSchema) throw new Error("Missing browser page output schema");
+		const list = await tool.execute("list", { action: "list", session_id: "session-1" });
+		expect(list.structuredContent.targets).toEqual([{ id: "exact-id", type: "page", url: "https://example.test/path" }]);
+		expect(Value.Check(tool.outputSchema, list.structuredContent)).toBe(true);
+		const snapshot = await tool.execute("snapshot", { action: "snapshot", session_id: "session-1", target_id: "exact-id" });
+		expect(snapshot.structuredContent.snapshot).toBe(snapshot.content[0].text);
+		expect(Value.Check(tool.outputSchema, snapshot.structuredContent)).toBe(true);
+	});
+
 	it("slows CDP startup polling at the configured elapsed-time thresholds", () => {
 		expect(cdpRetryDelay(0)).toBe(250);
 		expect(cdpRetryDelay(14_999)).toBe(250);
@@ -173,6 +203,9 @@ describe("session and page boundaries", () => {
 		const page = pi._getTool("browser_page");
 		expect(page).toBeDefined();
 		expect(page?.parameters.properties.action.enum).toEqual(["list", "open", "select", "snapshot", "screenshot", "click", "fill", "close"]);
+		expect(page?.outputSchema).toHaveProperty("properties.targets");
+		expect(page?.outputSchema).toHaveProperty("properties.targetId");
+		expect(pi._getTool("browser_session")?.outputSchema).toHaveProperty("properties.candidates");
 		expect(pi._commands.map((command) => command.name)).toContain("browser-setup");
 	});
 

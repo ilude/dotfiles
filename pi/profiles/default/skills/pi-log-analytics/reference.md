@@ -166,7 +166,7 @@ The default profile owns `@duckdb/node-api@1.5.5-r.4` through pnpm. From the rep
 From `pi/profiles/default/`:
 
 ```sh
-pnpm test log-analytics-sessions.test.ts log-analytics-store.test.ts log-analytics-boundary.test.ts log-analytics-tool.test.ts tool-search.test.ts tool-visibility.test.ts
+pnpm test log-analytics-sessions.test.ts log-analytics-store.test.ts log-analytics-boundary.test.ts log-analytics-tool.test.ts
 node scripts/log-analytics-smoke.mjs
 node scripts/log-analytics-perf.mjs
 pnpm run typecheck

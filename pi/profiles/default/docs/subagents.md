@@ -31,7 +31,7 @@ Required fields are `name`, `description`, and `tools`; the other fields above a
 
 All roles use native context-file discovery for the active profile and the assigned working directory's ancestor instructions. This loads applicable `AGENTS.md` files (or native fallback names), not the parent's conversation. Team Leads retain automatic skill discovery; other roles load only explicitly selected skills. Extension, prompt-template, theme, and tool restrictions are unchanged.
 
-Authority is frozen for the conversation, including retained turns, reload, and direct user help. Call arguments cannot widen tools or delegation. Native file tools use the assigned working directory as context, not a filesystem boundary; outside paths and symlink targets are allowed subject to normal tool behavior and Damage Control. Child workspaces cannot widen a coordinator's workspace. The restricted `tool_search` only describes already-permitted tools; it cannot activate more. Write authority follows each role's declared tools: developer implements software and can edit/write, while writer can edit/write prose-oriented artifacts. Reviewer and validator are read-only roles; they return findings through their normal results, not filesystem output.
+Authority is frozen for the conversation, including retained turns, reload, and direct user help. Call arguments cannot widen tools or delegation. Native file tools use the assigned working directory as context, not a filesystem boundary; outside paths and symlink targets are allowed subject to normal tool behavior and Damage Control. Child workspaces cannot widen a coordinator's workspace. Native `tool_search` discovers and activates only registered, already-permitted deferred tools; loading does not widen frozen authority. Only Team Lead receives `codemode`, and its scripts remain limited to its existing tool list. Ordinary roles receive permitted native search without composition. Lifecycle tools remain model-only. Write authority follows each role's declared tools: developer implements software and can edit/write, while writer can edit/write prose-oriented artifacts. Reviewer and validator are read-only roles; they return findings through their normal results, not filesystem output.
 
 Damage Control and session-profile metadata remain loaded. Bedrock children load accounting, with Mantle provider registration added only for Mantle models. Direct operator `!` and `!!` input uses Pi's native shell path even when the role has no model-callable shell tool. This does not add `bash` to the role, and model-issued shell calls remain subject to the frozen tool ceiling and Damage Control. These tool ceilings are **not an OS sandbox**. A shell-enabled role can mutate files. Ordinary child roles do not load Onclave or Herdr process/layout tools. Team Leads have deferred `herdr_agent`, `herdr_layout`, and `herdr_pane` tools in their frozen authority; they must activate them through `tool_search` and cannot widen that authority.
 
@@ -103,7 +103,7 @@ Assign at most one named plan task per leaf worker; a Team Lead may coordinate s
 From the default profile:
 
 ```sh
-pnpm test subagent herdr-launch.test.ts session-launch.test.ts tool-visibility.test.ts herdr-ui-prompt-state.test.ts
+pnpm test subagent herdr-launch.test.ts session-launch.test.ts herdr-ui-prompt-state.test.ts
 pnpm run typecheck
 pnpm run check:runtime
 ```

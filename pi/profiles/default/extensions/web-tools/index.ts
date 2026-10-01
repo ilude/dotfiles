@@ -19,6 +19,23 @@ const BRAVE_SEARCH_URL = "https://api.search.brave.com/res/v1/web/search";
 type SearchResult = { title: string; url: string; content?: string; publishedDate?: string; engine: string };
 type SearchResponse = { results: SearchResult[]; warning?: string; backend: "searxng" | "serper" | "brave" };
 
+const SearchItemSchema = Type.Object({
+	title: Type.String(), url: Type.String(), content: Type.Optional(Type.String()),
+	publishedDate: Type.Optional(Type.String()), engine: Type.String(),
+});
+const ScreeningSchema = Type.Union([Type.Literal("screened"), Type.Literal("not-screened"), Type.Literal("no-results")]);
+const WebSearchOutputSchema = Type.Object({
+	query: Type.String(), items: Type.Array(SearchItemSchema), screening: ScreeningSchema,
+	backend: Type.Union([Type.Literal("searxng"), Type.Literal("serper"), Type.Literal("brave")]),
+	warning: Type.Optional(Type.String()),
+});
+const WebFetchOutputSchema = Type.Object({
+	url: Type.String(), content: Type.String(), screening: Type.Union([Type.Literal("screened"), Type.Literal("not-screened")]),
+	backend: Type.Union([Type.Literal("local"), Type.Literal("direct"), Type.Literal("trawl"), Type.Literal("jina")]),
+	quality: Type.Optional(Type.String()), finalUrl: Type.Union([Type.String(), Type.Null()]),
+	recovery: Type.Optional(Type.String()),
+});
+
 function record(value: unknown): Record<string, unknown> | undefined {
 	return typeof value === "object" && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
 }
@@ -141,6 +158,7 @@ export default function webTools(pi: ExtensionAPI) {
 		name: "web_search", label: "Web Search",
 		description: "Search SearXNG for titles, URLs, snippets, and dates, with Serper then Brave Search fallback when general SearXNG search is rate limited. Uses server engine defaults; explicit engines remain SearXNG-only. Backend failures are reported. Results receive best-effort Luna prompt-injection screening without blocking or rewriting content. Output is limited to 45KB/1800 lines.",
 		promptSnippet: "Search the web for current information and documentation",
+		outputSchema: WebSearchOutputSchema,
 		parameters: Type.Object({
 			query: Type.String({ minLength: 1, description: "Base search query" }),
 			exact_phrases: Type.Optional(Type.Array(Type.String())),
@@ -173,21 +191,49 @@ export default function webTools(pi: ExtensionAPI) {
 			if (!search) search = await requestBrave(query, count, await searchApiKey(pi.exec.bind(pi), "BRAVE_SEARCH_API_KEY", requestSignal), requestSignal);
 			if (!search) throw new Error("SearXNG was rate limited and no configured fallback search provider was available");
 			const results = search.results.slice(0, count);
-			const resultText = results.map((item, index) => [
+			const header = `websearch: ${query}\n`;
+			if (!results.length) return {
+				content: [{ type: "text" as const, text: `${header}No results found.` }],
+				details: { screening: "no-results", backend: search.backend },
+				structuredContent: { query, items: [], screening: "no-results", backend: search.backend },
+			};
+			const structuredItems: SearchResult[] = [];
+			let remaining = 10_000;
+			for (const item of results) {
+				if (remaining <= 0) break;
+				const allowance = Math.min(2000, remaining);
+				let itemBudget = allowance;
+				const take = (value: string | undefined, max: number) => {
+					if (value === undefined || itemBudget <= 0) return undefined;
+					const field = value.slice(0, Math.min(max, itemBudget)); itemBudget -= field.length; return field;
+				};
+				const title = take(item.title, 1000) ?? "";
+				const url = take(item.url, 1000) ?? "";
+				const engine = take(item.engine, 100) ?? "";
+				const content = take(item.content, allowance);
+				const publishedDate = take(item.publishedDate, 100);
+				remaining -= allowance - itemBudget;
+				structuredItems.push({ title, url, engine, ...(content === undefined ? {} : { content }), ...(publishedDate === undefined ? {} : { publishedDate }) });
+			}
+			const resultText = structuredItems.map((item, index) => [
 				`--- Result ${index + 1} ---`, `Title: ${item.title}`, `URL: ${item.url}`,
 				item.publishedDate ? `Date: ${item.publishedDate}` : "",
 				`Engine: ${item.engine}`, `Snippet: ${item.content ?? "(no snippet)"}`,
 			].filter(Boolean).join("\n")).join("\n\n");
-			const header = `websearch: ${query}\n`;
-			if (!results.length) return { content: [{ type: "text" as const, text: `${header}No results found.` }], details: { screening: "no-results", backend: search.backend } };
-			const finished = await finish(bounded([search.warning, resultText].filter(Boolean).join("\n\n")), signal, header);
-			return { ...finished, details: { ...finished.details, backend: search.backend } };
+			const warning = search.warning?.slice(0, 2000);
+			const finished = await finish(bounded([warning, resultText].filter(Boolean).join("\n\n")), signal, header);
+			return {
+				...finished,
+				details: { ...finished.details, backend: search.backend },
+				structuredContent: { query, items: structuredItems, screening: finished.details.screening, backend: search.backend, ...(warning ? { warning } : {}) },
+			};
 		},
 	});
 	pi.registerTool({
 		name: "web_fetch", label: "Web Fetch",
 		description: "Fetch readable HTTP(S) content through the optional adaptive gateway, or locally with public Jina fallback. Local/private URLs stay local. Auto mode recovers locally on gateway outages; explicit backends stay strict. Luna blocks content it flags as prompt injection. Default 8000 chars; max 50000 chars and 45KB/1800 lines.",
 		promptSnippet: "Fetch a web page as readable text",
+		outputSchema: WebFetchOutputSchema,
 		parameters: Type.Object({
 			url: Type.String({ description: "HTTP or HTTPS URL" }),
 			max_chars: Type.Optional(Type.Integer({ minimum: 1, maximum: 50_000 })),
@@ -232,7 +278,9 @@ export default function webTools(pi: ExtensionAPI) {
 							const reply = await requestGateway(endpoint, token, { url: params.url, max_chars: params.max_chars ?? 8000, backend }, acquisition);
 							circuit.reachable();
 							const result = await finish(bounded(gatewayText(reply)), signal, fetchHeader(params.url));
-							return { ...result, details: { ...result.details, backend: reply.backend, quality: reply.quality, finalUrl: reply.final_url, recovery } };
+							if (reply.backend !== "direct" && reply.backend !== "trawl" && reply.backend !== "jina") throw new Error("Gateway returned an unsupported backend");
+							const metadata = { ...result.details, backend: reply.backend, quality: reply.quality, finalUrl: reply.final_url, recovery };
+							return { ...result, details: metadata, structuredContent: { url: params.url, content: bounded(result.content[0].text.slice(fetchHeader(params.url).length)), screening: result.details.screening, backend: reply.backend, ...(reply.quality ? { quality: reply.quality } : {}), finalUrl: reply.final_url, ...(recovery ? { recovery } : {}) } };
 						} catch (error) {
 							if (signal?.aborted) { circuit.cancelled(); signal.throwIfAborted(); }
 							if (!(error instanceof GatewayError) || error.kind !== "availability") { circuit.reachable(); throw error; }
@@ -250,7 +298,12 @@ export default function webTools(pi: ExtensionAPI) {
 			if (result.killed || result.code !== 0) throw new Error(result.killed ? "Web fetch timed out" : result.stderr.trim() || `Web fetch failed (${result.code})`);
 			if (!result.stdout.trim()) throw new Error("No content extracted");
 			const finished = await finish(bounded(localContent(result.stdout.trim())), signal, fetchHeader(params.url));
-			return { ...finished, details: { ...finished.details, backend: "local", quality: undefined, finalUrl: null, recovery } };
+			const metadata = { ...finished.details, backend: "local", quality: undefined, finalUrl: null, recovery };
+			return {
+				...finished,
+				details: metadata,
+				structuredContent: { url: params.url, content: bounded(finished.content[0].text.slice(fetchHeader(params.url).length)), screening: finished.details.screening, backend: "local", finalUrl: null, ...(recovery ? { recovery } : {}) },
+			};
 		},
 	});
 }

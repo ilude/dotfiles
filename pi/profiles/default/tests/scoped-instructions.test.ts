@@ -144,10 +144,11 @@ function lifecycleHarness(cwd: string, sessionManager = SessionManager.inMemory(
   };
 }
 
-function toolCall(toolCallId: string, target: string, toolName = "custom_fixture"): ToolCallEvent {
+function toolCall(toolCallId: string, target: string, toolName = "custom_fixture", parentToolCallId?: string): ToolCallEvent {
   return {
     type: "tool_call",
     toolCallId,
+    ...(parentToolCallId ? { parentToolCallId } : {}),
     toolName,
     input: toolName === "bash" ? { command: `cat ${target}` } : { path: target },
   } as unknown as ToolCallEvent;
@@ -158,13 +159,15 @@ const fixtureUsage: NonNullable<ToolResultEvent["usage"]> = {
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 };
 
-function toolResult(toolCallId: string, isError = true): ToolResultEvent {
+function toolResult(toolCallId: string, isError = true, parentToolCallId?: string): ToolResultEvent {
   return {
     type: "tool_result",
     toolCallId,
+    ...(parentToolCallId ? { parentToolCallId } : {}),
     toolName: "custom_fixture",
     input: { path: "src/file.ts" },
     content: [{ type: "text", text: "operation output" }, { type: "text", text: "second original block" }],
+    structuredContent: { rows: [{ value: 42 }] },
     isError,
     details: { retained: true },
     usage: fixtureUsage,
@@ -177,12 +180,43 @@ function persistToolResult(sessionManager: SessionManager, event: ToolResultEven
     toolCallId: event.toolCallId,
     toolName: event.toolName,
     content: patch?.content ?? event.content,
+    ...(patch?.structuredContent === undefined ? {} : { structuredContent: patch.structuredContent }),
     isError: event.isError,
     timestamp: Date.now(),
   });
 }
 
 describe("scoped instruction delivery lifecycle", () => {
+  it("retains structured content through Pi's real extension runner", async () => {
+    const root = fixture();
+    const target = put(root, "src/file.ts", "body");
+    put(root, ".pi/instructions/guide.md", "runner guidance");
+    const manager = SessionManager.inMemory(root);
+    const handlers = new Map<string, ((event: unknown, ctx: ExtensionContext) => unknown)[]>();
+    scopedInstructions({ on: (name: string, handler: unknown) => handlers.set(name, [...(handlers.get(name) ?? []), handler as (event: unknown, ctx: ExtensionContext) => unknown]) } as unknown as ExtensionAPI);
+    const runtimePackagePath = "../node_modules/@earendil-works/pi-coding-agent/dist/bundle/index.js";
+    const runtimePackage = await import(runtimePackagePath) as unknown as {
+      ExtensionRunner: new (...args: unknown[]) => {
+        setUIContext(ui: unknown, mode: string): void;
+        emit(event: unknown): Promise<unknown>;
+        emitToolCall(event: ToolCallEvent): Promise<unknown>;
+        emitToolResult(event: ToolResultEvent): Promise<ToolResultEventResult | undefined>;
+      };
+    };
+    const runner = new runtimePackage.ExtensionRunner([], {}, root, manager, {});
+    Object.assign(runner, {
+      extensions: [{ path: "scoped-instructions-fixture", handlers }],
+      isProjectTrustedFn: () => true,
+    });
+    runner.setUIContext({ notify: vi.fn() } as never, "json");
+
+    await runner.emit({ type: "session_start", reason: "startup" });
+    await runner.emitToolCall(toolCall("runner-call", target));
+    const original = toolResult("runner-call");
+    const merged = await runner.emitToolResult(original);
+    expect(merged?.content).toHaveLength(3);
+    expect(merged?.structuredContent).toBe(original.structuredContent);
+  });
   it("appends current instruction text after an errored tool result without changing other result fields", async () => {
     const root = fixture();
     const instruction = put(root, ".pi/instructions/guide.md", "before action");
@@ -205,6 +239,7 @@ describe("scoped instruction delivery lifecycle", () => {
     const merged = { ...original, ...patch };
     expect(merged.isError).toBe(true);
     expect(merged.details).toBe(original.details);
+    expect(merged.structuredContent).toBe(original.structuredContent);
     expect(merged.usage).toBe(fixtureUsage);
     persistToolResult(runtime.sessionManager, original, patch);
 
@@ -224,7 +259,7 @@ describe("scoped instruction delivery lifecycle", () => {
     const original = toolResult("successful", false);
     const patch = await runtime.invoke<ToolResultEventResult>("tool_result", original);
     expect(JSON.stringify(patch?.content)).toContain("success path");
-    expect({ ...original, ...patch }).toMatchObject({ isError: false, details: original.details, usage: fixtureUsage });
+    expect({ ...original, ...patch }).toMatchObject({ isError: false, details: original.details, structuredContent: original.structuredContent, usage: fixtureUsage });
 
     for (const toolName of ["read", "grep", "edit", "write", "bash"]) {
       const toolRuntime = lifecycleHarness(root);
@@ -234,6 +269,37 @@ describe("scoped instruction delivery lifecycle", () => {
       expect(await toolRuntime.invoke("tool_call", builtIn)).toBeUndefined();
       expect(JSON.stringify(builtIn.input)).toBe(originalInput);
     }
+  });
+
+  it("delivers nested guidance only through the outer persisted result, including outer errors", async () => {
+    const root = fixture();
+    const instruction = put(root, ".pi/instructions/nested.md", "guidance discovered inside the script");
+    const target = put(root, "src/file.ts", "body");
+    const runtime = lifecycleHarness(root);
+    await runtime.invoke("session_start", { type: "session_start", reason: "startup" });
+
+    const outer = toolCall("script", "", "codemode");
+    await runtime.invoke("tool_call", outer);
+    const nested = toolCall("script/0", target, "read", "script");
+    await runtime.invoke("tool_call", nested);
+    const nestedResult = toolResult("script/0", false, "script");
+    expect(await runtime.invoke("tool_result", nestedResult)).toBeUndefined();
+    fs.writeFileSync(instruction, "updated before outer completion");
+
+    const outerResult = toolResult("script", true);
+    const patch = await runtime.invoke<ToolResultEventResult>("tool_result", outerResult);
+    expect(patch?.content).toHaveLength(3);
+    expect(JSON.stringify(patch?.content)).toContain("updated before outer completion");
+    expect(patch?.structuredContent).toBe(outerResult.structuredContent);
+    persistToolResult(runtime.sessionManager, outerResult, patch);
+
+    const repeatOuter = toolCall("script-again", "", "codemode");
+    await runtime.invoke("tool_call", repeatOuter);
+    const repeatNested = toolCall("script-again/0", target, "read", "script-again");
+    await runtime.invoke("tool_call", repeatNested);
+    await runtime.invoke("tool_result", toolResult("script-again/0", false, "script-again"));
+    expect(await runtime.invoke("tool_result", toolResult("script-again", false))).toBeUndefined();
+    expect(runtime.sessionManager.buildContextEntries()).toHaveLength(1);
   });
 
   it("clears pending reservations on shutdown so a replacement session can activate them", async () => {

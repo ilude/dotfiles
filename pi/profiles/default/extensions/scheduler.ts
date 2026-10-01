@@ -4,6 +4,13 @@ import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { formatScheduleFooterStatus, getProcessScheduler } from "../lib/process-scheduler.ts";
 
+const scheduledPromptSchema = Type.Object({ id: Type.String(), runAt: Type.String({ format: "date-time" }), prompt: Type.String(), error: Type.Optional(Type.String()) }, { additionalProperties: false });
+export const scheduleOutputSchema = Type.Union([
+  Type.Object({ action: Type.Literal("create_at"), job: scheduledPromptSchema }, { additionalProperties: false }),
+  Type.Object({ action: Type.Literal("list"), jobs: Type.Array(scheduledPromptSchema), limit: Type.Integer() }, { additionalProperties: false }),
+  Type.Object({ action: Type.Literal("cancel"), cancelled: scheduledPromptSchema }, { additionalProperties: false }),
+]);
+
 function localDateTime(date: Date): string {
   return new Intl.DateTimeFormat(undefined, {
     year: "numeric", month: "short", day: "numeric",
@@ -42,6 +49,7 @@ export default function schedulerExtension(pi: ExtensionAPI): void {
       "Include enough context to identify the external event. Scheduled prompts run as follow-ups, never steering, and disappear when their Pi process exits.",
       "Do available work before scheduling when practical. If wrapping up, make schedule your last tool call. Cancel unneeded schedules; to change one, cancel and reschedule.",
     ],
+    outputSchema: scheduleOutputSchema,
     parameters: Type.Object({
       action: StringEnum(["create_at", "list", "cancel"] as const),
       when: Type.Optional(Type.String({ description: "Positive duration (30s, 15m, 2h, 1d) or future ISO timestamp; timestamps without an offset use local time." })),
@@ -71,6 +79,7 @@ export default function schedulerExtension(pi: ExtensionAPI): void {
       signal?.throwIfAborted();
       const scheduler = getProcessScheduler();
       let text: string;
+      let structuredContent: { action: "create_at"; job: { id: string; runAt: string; prompt: string } } | { action: "list"; jobs: { id: string; runAt: string; prompt: string; error?: string }[]; limit: number } | { action: "cancel"; cancelled: { id: string; runAt: string; prompt: string; error?: string } };
       if (params.action === "create_at") {
         if (!params.when || !params.prompt) throw new Error("create_at requires when and prompt");
         const job = scheduler.create(params.when, params.prompt);
@@ -79,16 +88,20 @@ export default function schedulerExtension(pi: ExtensionAPI): void {
         const prompt = job.prompt.replace(/\s+/g, " ");
         const preview = prompt.length > 80 ? `${prompt.slice(0, 79)}…` : prompt;
         text = `Schedule create [${job.id.slice(0, 8)}] ${localDateTime(new Date(job.runAt))} ${minutesUntilRun}m\n   ${preview}\n\ncreated at ${localDateTime(createdAt)}`;
+        structuredContent = { action: "create_at", job: { id: job.id, runAt: job.runAt, prompt: job.prompt } };
       } else if (params.action === "cancel") {
         if (!params.id) throw new Error("cancel requires id");
         const cancelled = scheduler.cancel(params.id);
         text = `Cancelled: [${cancelled.id.slice(0, 8)}]`;
+        structuredContent = { action: "cancel", cancelled: { id: cancelled.id, runAt: cancelled.runAt, prompt: cancelled.prompt, ...(cancelled.error === undefined ? {} : { error: cancelled.error }) } };
       } else if (params.action === "list") {
-        text = scheduler.list().map(job => `${localDateTime(new Date(job.runAt))} [${job.id.slice(0, 8)}]`).join("\n") || "No scheduled reminders.";
+        const jobs = scheduler.list();
+        text = jobs.map(job => `${localDateTime(new Date(job.runAt))} [${job.id.slice(0, 8)}]`).join("\n") || "No scheduled reminders.";
+        structuredContent = { action: "list", jobs: jobs.map(job => ({ id: job.id, runAt: job.runAt, prompt: job.prompt, ...(job.error === undefined ? {} : { error: job.error }) })), limit: 64 };
       } else {
         throw new Error(`Unknown schedule action: ${params.action}`);
       }
-      return { content: [{ type: "text", text }], details: {} };
+      return { content: [{ type: "text", text }], details: structuredContent, structuredContent };
     },
   });
 }

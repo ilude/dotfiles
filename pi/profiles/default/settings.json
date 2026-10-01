@@ -38,8 +38,7 @@
   "defaultProjectTrust": "always",
   "doubleEscapeAction": "none",
   "treeFilterMode": "default",
-  "extensions": [
-    "-builtin:tool-search"
-  ],
+  "defaultTools": ["+tool_search", "+codemode", "+grep", "+find", "+ls", "+powershell"],
+  "codemode": { "mode": "on" },
   "theme": "glenn-dark"
 }
