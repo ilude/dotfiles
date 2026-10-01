@@ -1,7 +1,7 @@
 ---
 created: 2026-09-30
-status: in-progress
-completed: null
+status: completed
+completed: 2026-10-01
 ---
 
 # Adopt native Pi tool discovery and composition
@@ -105,7 +105,7 @@ Tasks below have disjoint primary write ownership. Avoid assigning shared mocks,
 - Dotfiles task: `C:/Users/mglenn/dotfiles-pi-native-tool-composition`, branch `task/pi-native-tool-composition`; integration target `C:/Users/mglenn/.dotfiles`, branch `main`, starting commit `12ed41afa33584f08a7bb51052ec96fe064989fb`.
 - Onclave task: `C:/Users/mglenn/dotfiles-pi-native-tool-composition/modules/onclave` (created at sibling `C:/Users/mglenn/onclave-pi-native-tool-composition`, relocated after T8 settled for actual loader/gitlink wiring), branch `task/pi-native-tool-composition`; canonical target `C:/Users/mglenn/.dotfiles/modules/onclave`, branch `feature/v2-broker-core`, starting commit `89411c61ad75a9239452df753f76e928ebb7bc3c`.
 - Both originating checkouts were clean. Dedicated worktrees created. T1 through T8 assigned to disjoint implementation owners, including separate T5a/T5b and T6a/T6b.
-- Integration and task-worktree cleanup are intentionally pending under `--no-merge`; publish task branches only. Do not advance canonical targets.
+- At the end of the original `--no-merge` invocation, integration and task-worktree cleanup were intentionally pending. That historical state was superseded by the user's 2026-10-01 explicit authorization to merge into `main` and complete normal local closeout; see T10 evidence and Integration evidence below.
 
 ## Tasks
 
@@ -206,24 +206,29 @@ Tasks below have disjoint primary write ownership. Avoid assigning shared mocks,
   - Archive the entire spec and commit implementation/archive on the dotfiles task branch. Follow the closeout contract below for authorized local integration and cleanup. After integration and completion metadata, the orchestrator pushes the dotfiles integration branch to its configured remote. `--no-merge` preserves committed task worktrees intentionally; if selected, publish only task branches without merging or advancing integration targets, and still publish the module task revision before the parent gitlink.
   - Done when: module delivery ordering is satisfied, dotfiles implementation and archive are committed, authorized integration/metadata and both repository pushes are recorded, and owned worktree cleanup is verified or intentionally skipped under `--no-merge`.
   - If publication fails or the user later withdraws permission: retain owned module/task work as needed, do not commit an unpublished parent gitlink, and report exact blocker, next action, and owner. Continue independent approved work first.
-  - Evidence: Module task commit `a4b7dd9dde3e972cf696dc76e85d8fa8d4263d93` published to `origin/task/pi-native-tool-composition` on 2026-09-30 before parent gitlink staging. Canonical module target remains on `feature/v2-broker-core`; origin target was fetched and matched the task starting commit. `--no-merge` overrides target integration/pull advancement and cleanup. Dotfiles implementation/archive commit `e787307a2195a137f2f5810804c0afc0d0c9cadb` published to `origin/task/pi-native-tool-composition` after module publication. Whole spec moved to `.specs/archive/pi-native-tool-composition/`; operator guidance links to the archive. Delivery evidence is committed separately on the same task branch. No Integrator was dispatched, no canonical target was advanced, and both owned worktrees are intentionally retained.
+  - Historical evidence: Module task commit `a4b7dd9dde3e972cf696dc76e85d8fa8d4263d93` published to `origin/task/pi-native-tool-composition` on 2026-09-30 before parent gitlink staging. Canonical module target remains on `feature/v2-broker-core`; origin target was fetched and matched the task starting commit. The original `--no-merge` invocation overrode target integration and cleanup. Dotfiles implementation/archive commit `e787307a2195a137f2f5810804c0afc0d0c9cadb` published to `origin/task/pi-native-tool-composition` after module publication. Whole spec moved to `.specs/archive/pi-native-tool-composition/`; operator guidance links to the archive. Delivery evidence is committed separately on the same task branch. At that time no Integrator was dispatched and both worktrees were retained.
+  - Current closeout evidence: On 2026-10-01, the user explicitly authorized the previously skipped local integration and normal closeout. Module commit `a4b7dd9dde3e972cf696dc76e85d8fa8d4263d93` was already published on canonical `feature/v2-broker-core`; the root task gitlink matches it. Root task `6202dd2fa39f302a417db01a60c2967121601bfb` was merged locally into `main` as merge commit `c134526d87b258ce6fa4b39b2a483602df871e6b`. Resolved additive `CHANGELOG.md`, `subagents.ts`, and `session-launch.test.ts` conflicts by retaining both sides' distinct updates, including concurrent Herdr prepared-closeout behavior and this task's native exposure/schema changes. Existing user changes to `instruction-feedback.md`, `glenn-dark.json`, untracked usage-ranked-command-autocomplete spec, and plain-edit-diff extension/test were preserved. No push or deployment was performed; the orchestrator owns publication.
   - [x] Implementation and agreed checks passed.
   - [x] Module task revision committed and published before parent gitlink.
   - [x] Whole spec archived and dotfiles task changes committed.
   - [x] Dotfiles task branch published.
-  - [ ] Integration into recorded canonical targets, intentionally skipped under `--no-merge`.
-  - [ ] Task-worktree cleanup, intentionally skipped under `--no-merge`.
+  - [x] Integration into recorded canonical target `main`.
+  - [x] Task-worktree cleanup verified.
 
 Concurrent implementation groups: T1/T2/T3 and the disjoint result tasks T4/T5a/T5b/T6a/T6b/T7/T8 may proceed independently after assignment boundaries are confirmed. T2 owns shared mock changes; integrate that supporting interface before dependent tests use it. T9 consumes all implementation results. T10 handles delivery only after checks and the publication prerequisite.
 
 ## Agreed validation and current handoff
 
-- Status: execution in progress; settled behavior, scope, and task commit/push authorization remain unchanged.
-- Implemented and delivered: T1 through T9 and T10 task-only commit/archive/publication. Module `a4b7dd9` published first; dotfiles `e787307a` publishes that gitlink and the archive. Whole-plan completion is not claimed.
-- Next: none for this `--no-merge` invocation. Integration and cleanup remain intentionally pending; the operator must authorize a later integration invocation if desired. No automatic resumption, deployment or further tests are scheduled.
-- Blockers/open decisions: none. Integration/cleanup are intentionally pending under `--no-merge`; dedicated root/module task worktrees remain in place. Both task branches are published without advancing canonical targets.
+- Status: local integration, completion metadata, and task-worktree cleanup completed on 2026-10-01 after explicit user authorization superseded the original `--no-merge` invocation.
+- Implemented and delivered: T1 through T9 and task-only commits/publications; module `a4b7dd9` was published first and dotfiles `e787307a` publishes that gitlink and the archive. Root task commit `6202dd2` is integrated into `main` by merge commit `c134526d`; completion metadata records 2026-10-01.
+- Next: the orchestrator owns publication of updated `main`. No push or deployment was performed by Integrator. No additional tests were run during this closeout; prior T1-T9 agreed checks and the actual Pi 0.99.1 native smoke remain the validation evidence.
+- Blockers/open decisions: none for local integration or cleanup. The root task worktree was removed; the task branch is retained. The canonical Onclave target remains `feature/v2-broker-core` at published commit `a4b7dd9`.
 - Existing unrelated check limit: `pnpm test subagent-coordinator-control.test.ts` reproduced 7 failures/5 passes in unchanged canonical default at `12ed41af` on 2026-09-30 (expected accepted dispatch receipt, actual undefined at lines 81/110). This predates task changes; T3's agreed RPC disposition/tracking tests pass. No unrelated disposition redesign is included.
 - Verification limits: no live service, authenticated provider, attached browser, or operator UI acceptance run. Those checks do not block agent-owned completion. Actual future runs must record date, active profile/path, scope, and result separately from these planning probes.
+
+## Integration evidence
+
+On 2026-10-01, following explicit user authorization superseding the original `--no-merge` invocation, root task commit `6202dd2fa39f302a417db01a60c2967121601bfb` was merged into `main` as `c134526d87b258ce6fa4b39b2a483602df871e6b`; completion metadata and task-worktree cleanup were completed. Onclave commit `a4b7dd9dde3e972cf696dc76e85d8fa8d4263d93` remains published on canonical `feature/v2-broker-core`, and the integrated parent gitlink matches it. Prior T1-T9 agreed checks and the actual Pi 0.99.1 native smoke passed as documented above. No push or deployment was performed; the orchestrator owns publication.
 
 ## Closeout
 
