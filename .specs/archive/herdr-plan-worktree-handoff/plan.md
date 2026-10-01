@@ -1,7 +1,7 @@
 ---
 created: 2026-09-30
-status: in progress
-completed: null
+status: completed
+completed: 2026-10-01
 ---
 
 # Run plans in Herdr worktree workspaces with an Integrator closeout handoff
@@ -286,3 +286,7 @@ For blocked or cleanup-pending outcomes, immediately give **Reason** and **Actio
 ## Historical integration evidence, not corrected production acceptance
 
 Agreed finite unit selection and affected reruns passed; final preparation/closeout/authority 47 tests, actual-process lifetime 3, guidance 7; typecheck, runtime smoke and whitespace checks passed. Original installed-Pi launch fixture 1 and isolated controller-based closeout 3 scenarios passed without source-receipt deletion. Those fixtures bypassed native template/prepared admission or production origin facade/lifecycle and did not establish complete workflow acceptance. Attached-client visual experience and provider reasoning are non-blocking manual limits. No push/deployment authorized.
+
+## Integration evidence
+
+Approved correction:72 affected tests,1 installed-Pi native launch,4 production closeout scenarios with unchanged blocker serial retry; final typecheck/runtime/whitespace and SDK mixed/nested release checks pass. Prior completion withdrawn; historical delivery retained. No push/deployment/production replay.
