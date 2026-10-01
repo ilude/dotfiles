@@ -1,6 +1,6 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { StringEnum } from "@earendil-works/pi-ai";
-import { Text } from "@earendil-works/pi-tui";
+import { Container, Text } from "@earendil-works/pi-tui";
 import { Type, type Static } from "typebox";
 import { Check } from "typebox/value";
 import { activeProfileName } from "../lib/profile.ts";
@@ -58,12 +58,10 @@ export default function sessionProfile(pi: ExtensionAPI): void {
 		promptSnippet: "Report the current Pi session ID and active profile",
 		parameters: Type.Object({}, { additionalProperties: false }),
 		outputSchema: piSessionOutputSchema,
-		renderCall(_args, theme) { return new Text(theme.fg("toolTitle", theme.bold("Pi session")), 0, 0); },
-		renderResult(result, { expanded }, theme) {
-			const raw = result.content.filter(part => part.type === "text").map(part => part.text).join("\n");
-			if (expanded) return new Text(raw, 0, 0);
-			const profile = (result.details as { profile?: string } | undefined)?.profile;
-			return new Text(theme.fg("toolOutput", profile ? `profile · ${profile}` : "current session"), 0, 0);
+		renderCall() { return new Container(); },
+		renderResult(result, _options, theme) {
+			const details = result.details as { session_id: string; profile: string };
+			return new Text(theme.fg("toolOutput", `Pi Session: ${details.session_id}  profile: ${details.profile}`), 0, 0);
 		},
 		async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
 			const result = {

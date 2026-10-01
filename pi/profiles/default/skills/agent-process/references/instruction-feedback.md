@@ -982,3 +982,12 @@ Factual history for refining agent instructions. This log is not executable poli
 - **Decision:** Preserve partial edits. Limit the replacement worker to two effects specs; orchestrator handles remaining service fixtures and directory integration. Future notices/admin dispatches should use independently verifiable repair seams, not whole-directory names as sizing evidence.
 - **Related:** AIF-091, AIF-083, AIF-061/AIF-062. This is a recurrence of assignment-sizing non-adherence, not missing instructions.
 - **Status:** Feedback recorded; no instruction changes. Repair remains active.
+
+## AIF-093 - Scheduler prompts duplicated conversation context
+
+- **Reference:** EISA pipeline follow-up, 2026-09-30.
+- **Feedback:** Operator challenged repeated dense scheduler prompts.
+- **Facts:** Prompts repeated authorization, implementation details, and historical checks already in the active conversation. One exceeded the tool's 4,000-character limit.
+- **Decision:** Replace the pending prompt with the pipeline, revision, required check, and next action. Same-process reminders are not fresh-context handoffs.
+- **Related:** AIF-025 establishes scheduler use for CI waits, not extensive prompt summaries.
+- **Status:** Feedback recorded; no instruction changes.
