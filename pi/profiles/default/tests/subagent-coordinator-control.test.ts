@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { ChildRecord } from "../lib/subagents/rpc.ts";
+import type { DispatchControlResult, InputDisposition } from "../lib/subagents/control-result.ts";
 
 const request = vi.hoisted(() => vi.fn());
 vi.mock("../lib/subagents/transport.ts", async () => {
@@ -22,6 +23,12 @@ function record(id = "held-child"): ChildRecord {
     status: "running", retained: true, userOwned: false, processState: "running",
     transportState: "connected", phase: "model", turns: 1, createdAt: now, updatedAt: now,
   };
+}
+
+// The parent runtime now owns receipt creation. These fixtures model its wire response,
+// not a receipt synthesized by the child wrapper.
+function acceptedRecord(operation: "message" | "answer", disposition: InputDisposition = "queued"): DispatchControlResult {
+  return { ...record(), dispatch: { accepted: true, operation, disposition, completion: "not-reported" } };
 }
 
 function childTool(): Map<string, ToolDefinition> {
@@ -62,7 +69,7 @@ afterEach(async () => {
 
 describe("nonblocking subagent control dispatch", () => {
   beforeEach(() => {
-    request.mockResolvedValue({ ...record(), status: "running" });
+    request.mockResolvedValue(acceptedRecord("message"));
   });
 
   it.each([
@@ -73,6 +80,8 @@ describe("nonblocking subagent control dispatch", () => {
     { action: "answer", background: false, delivery: "immediate", replyTo: "question-id" },
     { action: "answer", background: true, delivery: "queued", replyTo: "question-id" },
   ] as const)("returns accepted metadata for $action with background=$background and $delivery delivery", async input => {
+    const operation = input.action === "answer" || input.replyTo !== undefined ? "answer" : "message";
+    request.mockResolvedValueOnce(acceptedRecord(operation));
     const tools = childTool();
     const result = await tools.get("subagent_control")!.execute("control", {
       ...input, id: "held-child", message: "continue the assignment",
@@ -88,12 +97,26 @@ describe("nonblocking subagent control dispatch", () => {
     } });
   });
 
+  it.each(["started", "queued", "handled"] as const)("preserves the parent's %s disposition without synthesizing a receipt", async disposition => {
+    const parentResponse = acceptedRecord("message", disposition);
+    request.mockResolvedValueOnce(parentResponse);
+    const tools = childTool();
+    const result = await tools.get("subagent_control")!.execute("control", {
+      action: "message", id: "held-child", message: "continue the assignment",
+    }, undefined, undefined, {} as never);
+
+    expect(result.details).toMatchObject({ dispatch: parentResponse.dispatch });
+    const text = result.content.find(part => part.type === "text");
+    if (!text || text.type !== "text") throw new Error("Missing control response text");
+    expect(JSON.parse(text.text)).toMatchObject({ dispatch: parentResponse.dispatch });
+  });
+
   it("resolves before a held coordinator child settles", async () => {
     let calls = 0;
     request.mockReset();
     request.mockImplementation(async () => {
       calls++;
-      if (calls === 1) return { ...record(), status: "running" };
+      if (calls === 1) return acceptedRecord("message");
       throw new Error("unexpected settlement wait");
     });
     const tools = childTool();

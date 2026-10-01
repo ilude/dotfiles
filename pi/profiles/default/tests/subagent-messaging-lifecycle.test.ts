@@ -142,6 +142,18 @@ describe("combined subagent messaging lifecycle", () => {
       expect(afterAck.delivery).toBeUndefined();
       expect(runtime.get(b.id).snapshot()).toMatchObject({ status: "settled", retained: true, processState: "running" });
 
+      // A handled steer crosses the real child wrapper, authenticated socket,
+      // parent runtime and RPC child. The parent supplies the native disposition;
+      // background=false must still return acceptance while A's assignment is held.
+      const handled = await controls.subagent_control.execute("handled-message", {
+        action: "message", id: a.id, message: "[handled]", background: false,
+      });
+      expect(handled.details).toMatchObject({
+        id: a.id, status: "running",
+        dispatch: { accepted: true, operation: "message", disposition: "handled", completion: "not-reported" },
+      });
+      expect(runtime.get(a.id).snapshot().status).toBe("running");
+
       // A asks through its real child-side parent protocol, then the coordinator
       // answers by request ID. The answer intentionally contains [hold], proving
       // control acceptance is not a completion or read receipt.
