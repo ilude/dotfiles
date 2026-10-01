@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-10-01: Correct prepared-plan admission and closeout acceptance
+
+- Preserve the admitted preparation receipt through Pi startup, then consume it in its owning session so ordinary Pi launches cannot inherit prepared-run status. Reload restores the owning session's persisted metadata rather than reusing an environment capability.
+- Successful release cancels further originating-model continuation, including mixed tool batches and nested codemode calls, while retaining exact graceful settlement shutdown and observed retirement before cleanup. The successor-only extension stays inert during ordinary discovery; its admitted authority checks remain unchanged.
+- Acceptance uses native `/do-it` expansion and production prepared admission, closeout tool routing and lifecycle handlers. Deterministic providers replace external reasoning/network, not the workflow under test. Earlier controller/process/Git checks remain component evidence; the original whole-workflow completion claim was withdrawn and the plan reopened for bounded correction.
+
 ## 2026-09-30: Run Herdr plans in prepared worktrees with successor closeout
 
 - Default Pi `/plans` action `d` prepares or verifies the task checkout and whole selected spec before opening Pi in Herdr's native worktree workspace. The run carries its actual task coordinates and originating integration target, preserving uncommitted spec content and newer resumed progress without copying unrelated work. Closeout retires only unchanged prepared source proven by the raw record in the archived task commit; concurrent source edits remain intact and block integration. Picker controls, explicit plan titles, and the lasting runtime profile remain unchanged.

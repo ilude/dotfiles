@@ -163,7 +163,8 @@ export async function main() {
   delete process.env.PI_HERDR_PROFILE_DIR;
   delete process.env.PI_HERDR_SESSION_FILE;
   delete process.env.PI_HERDR_PLAN_PATH;
-  delete process.env.PI_HERDR_PLAN_RUN;
+  // The admitted receipt is consumed by Pi's session-scoped preparation hook.
+  // Ordinary launches already clear inherited receipts before admission above.
   if (process.platform !== "win32") process.env.TMPDIR = "/tmp";
   // Register the plugin pane immediately. Fresh Pi sessions may not have a
   // session reference when the generated lifecycle extension first runs.

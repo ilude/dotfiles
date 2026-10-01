@@ -1,5 +1,16 @@
 # Agent process failure log
 
+## APR-082 - Plan-launch completion exceeded the runtime evidence
+
+- **Reference:** Herdr worktree handoff execution and operator launch of `usage-ranked-command-autocomplete`, 2026-09-30.
+- **Observed:** After the orchestrator reported completion, the operator reported a new Pi session in another workspace without the selected `/do-it` command and doubted worktree creation. The orchestrator initially asked the operator to identify the launch instead of tracing its own native events.
+- **Evidence:** The source session records the selected plan and target pane at 23:16 UTC. Git and the raw preparation record confirm the task worktree was created. The recorded pane/workspace is now absent, and no saved task-cwd session was found; these facts do not establish why the operator saw no command.
+- **Confirmed defect:** The bootstrap validated then deleted `PI_HERDR_PLAN_RUN` before spawning Pi, preventing its session-scoped preparation hook from receiving the target/worktree coordinates. A subprocess regression reproduced the lost receipt while preserving the `/do-it` argv. The earlier live launch test replaced `/do-it` with an extension command, bypassing native template expansion, authentication and prepared runtime context.
+- **Correction:** Preserve the admitted receipt for the selected Pi process while clearing inherited receipts on ordinary launches. Replace the test-only command with the repository's real `/do-it` template, production preparation hook and a deterministic provider that forbids network and performs no plan work. Trace existing events before requesting operator reconstruction.
+- **Related:** APR-074 and APR-075 distinguish source/isolated checks from actual launch behavior; APR-073 covers available investigation.
+- **Review:** Four adversarial reviews and Steward triage retained the bounded architecture/component evidence, identified inherited receipt eligibility and mixed-tool-batch release continuation as further source-established defects, and confirmed the production closeout facade/lifecycle acceptance gap. A speculative older-coordinate compatibility choice was withdrawn rather than added to scope.
+- **Status:** The operator authorized completing the bounded correction on 2026-10-01. Corrected bootstrap/admission, exact-session release cancellation and ordinary-discovery activation guard are implemented. Final affected unit selection passes 72 tests, native launch one, all four real-Pi production closeout scenarios have passing evidence, and typecheck/runtime/whitespace checks pass. The combined closeout run stalled once during blocker integration; unchanged isolated blocker rerun passed, without a timeout widening or production workaround. Corrective local delivery/metadata/cleanup remain pending. Original functional completion is withdrawn; historical Git delivery and component results remain recorded. The vanished operator pane's missing-command cause and attached-client/external reasoning remain unverified. No replacement production task was launched or user's worktree removed.
+
 ## APR-081 - Helper push mode was mistaken for the operator's authorization boundary
 
 - **Reference:** gcc_automation commit-and-push closeout, 2026-09-30; AIF-100.

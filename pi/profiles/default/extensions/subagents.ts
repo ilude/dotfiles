@@ -49,8 +49,9 @@ export default function subagents(pi:ExtensionAPI){
  const profile=resolve(getAgentDir()),childExt=join(dirname(fileURLToPath(import.meta.url)),"subagent-child.ts");
  let origin="",catalog=loadDefinitions(process.cwd(),false),current:ExtensionContext|undefined;
  let prepared:PreparedPlanRun|undefined,preparedOrigin="";
+ let releasedOrigin:{owner:string;shutdown:()=>void}|undefined;
  const deliver=(r:Delivery)=>{
-  if(r.origin!==origin||!current||current.sessionManager.getSessionId()!==origin)return false;
+  if(r.origin===releasedOrigin?.owner||r.origin!==origin||!current||current.sessionManager.getSessionId()!==origin)return false;
   pi.sendMessage({customType:"subagent-result",details:{deliveryId:r.deliveryId,origin:r.origin,...presentationDetails(r)},content:outcomeText(r),display:true},{triggerTurn:true,deliverAs:current.isIdle()?"followUp":"steer"});
   return true;
  };
@@ -63,6 +64,7 @@ export default function subagents(pi:ExtensionAPI){
   for(let index=0;index<successorNotices.length;){
    const notice=successorNotices[index]!;
    if(notice.origin!==origin){index++;continue;}
+   if(notice.origin===releasedOrigin?.owner){successorNotices.splice(index,1);continue;}
    pi.sendMessage({customType:"closeout-successor",content:JSON.stringify({kind:notice.kind,evidence:notice.evidence}),display:true},{triggerTurn:true,deliverAs:current.isIdle()?"followUp":"steer"});
    successorNotices.splice(index,1);
   }
@@ -80,9 +82,15 @@ export default function subagents(pi:ExtensionAPI){
    if(data?.origin===origin){prepared=preparedReceipt(data.receipt,ctx.cwd);if(prepared)preparedOrigin=origin;}
   }
   const processOwner=globalThis as PreparedOwnerGlobal;
-  if(!processOwner[preparedOwnerKey]&&process.env.PI_HERDR_PLAN_RUN){
+  const launchReceipt=process.env.PI_HERDR_PLAN_RUN;
+  // Admission owns this one-shot bootstrap input. Never pass it to a shell or
+  // another Pi process; reload restores only this exact session's metadata.
+  delete process.env.PI_HERDR_PLAN_RUN;
+  if(!processOwner[preparedOwnerKey]&&launchReceipt){
    processOwner[preparedOwnerKey]=origin;
-   const receipt=preparedReceipt(JSON.parse(process.env.PI_HERDR_PLAN_RUN),ctx.cwd);
+   let value:unknown;
+   try{value=JSON.parse(launchReceipt);}catch{/* Invalid launch input grants no prepared status. */}
+   const receipt=preparedReceipt(value,ctx.cwd);
    if(receipt){prepared=receipt;preparedOrigin=origin;pi.appendEntry("prepared-plan-run",{origin,receipt});}
   }
   pi.appendEntry(SUBAGENT_EXTENSION_VERSION_ENTRY,{version:SUBAGENT_EXTENSION_VERSION});
@@ -103,7 +111,7 @@ export default function subagents(pi:ExtensionAPI){
   if(message.role==="custom"&&message.customType==="subagent-result"&&message.details?.origin===ctx.sessionManager.getSessionId())runtime?.acknowledge(message.details.origin,message.details.deliveryId);
  });
  pi.on("agent_settled",(_event,ctx)=>{
-  if(successor.retirementRequested(ctx.sessionManager.getSessionId())){ctx.shutdown();return;}
+  if(releasedOrigin?.owner===ctx.sessionManager.getSessionId()){releasedOrigin.shutdown();return;}
   runtime?.flush(origin);
  });
  pi.on("before_agent_start",(event,ctx)=>({systemPrompt:composeCallerSystemPrompt(event.systemPrompt,catalog.agents)+(prepared&&preparedOrigin===ctx.sessionManager.getSessionId()?`\n\n${preparedPlanRunContext(prepared)}`:"")}));
@@ -174,6 +182,11 @@ export default function subagents(pi:ExtensionAPI){
    return output(await successor.message(owner,p.message));
   }
   await successor.release(owner);
+  releasedOrigin={owner,shutdown:()=>ctx.shutdown()};
+  // terminate is unanimous per completed batch, and nested callers need not
+  // propagate it. Abort the owning operation instead, without exiting before
+  // agent_settled. The context API cancels the loop and queued continuations.
+  if(current?.sessionManager.getSessionId()===owner)ctx.abort();
   return {...output({handoff:"released",finalReportOwner:"Integrator",originRetirement:"requested"}),terminate:true};
  }});
  registerProfileCommand(pi,"subagents",{description:"Inspect, wait for, or cancel subagents without relaunching",handler:async(args,ctx)=>{

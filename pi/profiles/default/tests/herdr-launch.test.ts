@@ -82,6 +82,18 @@ it("validates prepared plan receipts against the launched plan and cwd", () => {
   expect(() => launchArguments({ PI_HERDR_PROFILE_DIR: profile, PI_HERDR_PLAN_RUN: JSON.stringify(receipt), PI_HERDR_CWD: root })).toThrow("does not match");
 });
 
+it.each([true, false])("delivers the prepared receipt only to the selected plan process (prepared=%s)", prepared => {
+  const root = mkdtempSync(join(tmpdir(), "herdr prepared process ")); roots.push(root);
+  const profile = join(root, "fixture"); mkdirSync(profile);
+  mkdirSync(join(root, ".specs/demo"), { recursive: true }); writeFileSync(join(root, ".specs/demo/plan.md"), "# Plan");
+  const receipt = { version: 1, specRelativePath: ".specs/demo/plan.md", specStub: "demo", taskWorktreePath: root, taskBranch: "task/demo", originCheckoutPath: root, originBranch: "feature/target", startingTargetCommit: "a".repeat(40) };
+  const entry = join(root, "entry.mjs");
+  writeFileSync(entry, "console.log(JSON.stringify({args:process.argv.slice(2),receipt:process.env.PI_HERDR_PLAN_RUN?JSON.parse(process.env.PI_HERDR_PLAN_RUN):null}))");
+  const run = spawnSync(process.execPath, [resolve("../../../scripts/pi-herdr-launch.mjs"), entry], { cwd: root, env: { ...process.env, PI_HERDR_PROFILE_DIR: profile, PI_HERDR_SESSION_FILE: "", PI_HERDR_PLAN_PATH: prepared ? receipt.specRelativePath : "", PI_HERDR_PLAN_RUN: JSON.stringify(receipt), HERDR_PLUGIN_ID: "" }, encoding: "utf8" });
+  expect(run.status, run.stderr).toBe(0);
+  expect(JSON.parse(run.stdout)).toEqual({ args: prepared ? ["/do-it .specs/demo/plan.md"] : [], receipt: prepared ? receipt : null });
+});
+
 it("validates the dedicated successor endpoint and excludes other launch modes", () => {
   const endpoint = JSON.stringify({ port: 1234, token: "a".repeat(64), child: "child", run: "run", origin: "origin" });
   expect(successorAdmission({ PI_HERDR_CLOSEOUT_SUCCESSOR: "1", PI_HERDR_SUCCESSOR_ADMISSION_ENDPOINT: endpoint })).toBe(endpoint);
