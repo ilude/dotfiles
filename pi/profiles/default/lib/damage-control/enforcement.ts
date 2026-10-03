@@ -106,8 +106,6 @@ export function registerGate(pi: ExtensionAPI, profile: string, repo: string, de
     setBypass: value => { bypassed = value; },
     setMode: value => { mode = value; },
     async handle(event, ctx) {
-      // Only the actual command-scoped tool is exempt, not arbitrary names containing commit.
-      if (event.toolName === "commit_git_review") return;
       const watchdogCall = { tool: event.toolName, input: event.input, cwd: ctx.cwd };
       const stop = breaker.before(watchdogCall);
       if (stop) {

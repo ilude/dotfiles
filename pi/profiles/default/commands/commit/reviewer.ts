@@ -9,7 +9,7 @@ import { createProfileModelRuntime } from "../../lib/model-runtime.ts";
 import { resolveLatestCodexModelFromRuntime } from "../../lib/model-selection.ts";
 import { compareModelVersions, modelFamilyVersion } from "../../lib/model-family.ts";
 import { Type } from "typebox";
-import { formatStatus, gitReviewTool, page } from "./tools.ts";
+import { formatStatus } from "./tools.ts";
 
 const MODEL_FAMILY = "luna";
 const FALLBACK_PROVIDER = "anthropic";
@@ -28,10 +28,11 @@ export async function resolveFallbackModel(runtime: Pick<ModelRuntime, "getAvail
 	return model;
 }
 
-export function isBroadDiscoveryCommand(command: string): boolean {
-	return /(^|(?:&&|\|\||[;|])\s*)(?:command\s+)?find(?:\.exe)?\s/i.test(command)
-		|| /(^|(?:&&|\|\||[;|])\s*)rg\s+--files\b/i.test(command)
-		|| /(^|(?:&&|\|\||[;|])\s*)ls\s+[^;&|]*-[^;&|]*R/i.test(command);
+// Only recognize the inspection commands used by this workflow. Unknown shell
+// failures remain terminal; this is not a shell permission or safety classifier.
+export function isCommitInspection(command: string): boolean {
+	if (/[;\n|<>]|&&|\$\(|`/.test(command)) return false;
+	return /^\s*(?:git(?:\s+(?:--no-pager|--literal-pathspecs)|\s+(?:-C|-c)\s+(?:"[^"]*"|'[^']*'|\S+))*\s+(?:status|diff|show|log|ls-files|rev-parse|check-ignore)\b|(?:grep|rg|find|ls|pwd|head|tail|wc)\b)/.test(command);
 }
 
 export function validateGitignorePattern(pattern: string): string {
@@ -68,7 +69,6 @@ export function describeCommitTool(name: string, args: unknown): string {
 		const command = String(input.command ?? "").replace(/\s+/g, " ").trim();
 		return `shell command${command ? `: ${command.slice(0, 300)}${command.length > 300 ? "…" : ""}` : ""}`;
 	}
-	if (name === "commit_git_review") return `Git review action=${String(input.action ?? "unknown")} repo=${String(input.repo ?? ".")}`;
 	if (name === "read") return `file read: ${String(input.path ?? "unknown")}`;
 	if (name === "ask_ignore") return `ignore decision: ${String(input.repo ?? ".")}/${String(input.candidate ?? input.path ?? "unknown")}`;
 	return `tool ${name}`;
@@ -87,7 +87,7 @@ export function buildCommitTask(push: boolean, root: string, inventory: readonly
 Location (JSON-quoted absolute path; decode and shell-quote as data):
 Repository root: ${JSON.stringify(root)}
 
-Repository inventory (initial status already collected; use commit_git_review for status refreshes, not shell git status; commit dirty initialized submodules deepest-first, then parent gitlinks):
+Repository inventory (boundaries and initial state, not a candidate list; work deepest-first, running git add -A in each repository before staged review, then shape commits; stage parent gitlinks after child commits):
 ${inventory.join("\n\n")}`;
 }
 
@@ -119,7 +119,7 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 			const baselines = new Map<string, string>();
 			let failure: string | undefined;
 			let outcome = "";
-			const activeTools = new Map<string, { description: string; startedAt: number }>();
+			const activeTools = new Map<string, { description: string; startedAt: number; terminal: boolean }>();
 			const leftOut: string[] = [];
 			let publicationTargets = 0;
 			const usage: Usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
@@ -163,7 +163,6 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 					usedFallback = true;
 				}
 				selectedModel = model;
-				const review = gitReviewTool(pi, repositories);
 				const read = createReadTool(root);
 				const shell = createBashTool(root);
 				agent = new Agent({
@@ -171,7 +170,6 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 						model, thinkingLevel: "low",
 						systemPrompt: readFileSync(join(dirname(fileURLToPath(import.meta.url)), "reviewer.md"), "utf8"),
 						tools: [
-							{ ...review, execute: (id, args, toolSignal, update) => review.execute(id, args as Parameters<typeof review.execute>[1], toolSignal, update, { cwd: root! }) },
 							{ ...shell, execute: (id, args, toolSignal, update) => shell.execute(id, { ...(args as Parameters<typeof shell.execute>[1]), timeout: 15 }, toolSignal, update) },
 							{ ...read, execute: async (id, input, toolSignal, update) => {
 								const args = input as Parameters<typeof read.execute>[1];
@@ -185,7 +183,7 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 							} },
 							{
 								name: "ask_ignore", label: "Ignore decision",
-								description: "Ask whether a new file likely to belong in .gitignore should be included, added to that repository's .gitignore, or left untracked. Only use before staging it.",
+								description: "After staging, ask whether an uncertain new file should be included, added to that repository's .gitignore, or left untracked. Exclusions are unstaged without deleting working contents; ignore changes are staged.",
 								parameters: Type.Object({ repo: Type.String(), candidate: Type.String(), reason: Type.String(), pattern: Type.String() }),
 								execute: async (_id, input) => {
 									const { repo, candidate, reason, pattern } = input as { repo: string; candidate: string; reason: string; pattern: string };
@@ -200,11 +198,13 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 									try {
 										const answer = await ctx.ui.select(`Candidate: ${candidate}\nReason: ${reason}\nProposed rule: ${rule}`, ["Include in commit", "Add to .gitignore", "Leave untracked"], { signal: combined });
 										if (!answer) throw new Error("Ignore-file decision cancelled.");
-										if (answer === "Leave untracked") leftOut.push(`${repo === "." ? "" : `${repo}/`}${candidate}`);
-										if (answer === "Add to .gitignore") {
+										if (answer !== "Include in commit") {
 											combined.throwIfAborted();
-											const added = await appendGitignoreRule(repository, rule, combined);
-											return { content: [{ type: "text" as const, text: `Added proposed rule to ${repo}/.gitignore: ${rule}. Refresh status and stage .gitignore; do not stage ${candidate}.` }], details: { repo, candidate, pattern: rule, added } };
+											if (answer === "Add to .gitignore") await appendGitignoreRule(repository, rule, combined);
+											// rm --cached also works before the repository's first commit.
+											await git(["--literal-pathspecs", "rm", "--cached", "--", candidate], combined, repository);
+											if (answer === "Add to .gitignore") await git(["add", "--", ".gitignore"], combined, repository);
+											leftOut.push(`${repo === "." ? "" : `${repo}/`}${candidate}`);
 										}
 										return { content: [{ type: "text" as const, text: `${answer}: ${repo}/${candidate}` }], details: {} };
 									} finally { resumeTimer(); progress("Committing…"); }
@@ -215,22 +215,20 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 					// Response-level recovery below owns the retry budget, including stream failures.
 					streamFn: (model, context, options) => runtime.streamSimple(model, context, { ...options, maxRetries: 0 }),
 					toolExecution: "sequential",
-					beforeToolCall: async ({ toolCall, args }) => {
+					beforeToolCall: async () => {
 						if (failure) return { block: true, reason: failure, terminate: true };
-						if (toolCall.name === "bash" && isBroadDiscoveryCommand(String((args as { command?: unknown }).command ?? "")))
-							return { block: true, reason: "Broad recursive discovery is disabled. Use the supplied repository and instruction inventory.", terminate: true };
 						return undefined;
 					},
 					finishTurn: () => failure ? { action: "end" } : undefined,
 				});
 				unsubscribe = agent.subscribe((event) => {
 					if (event.type === "tool_execution_start") {
-						activeTools.set(event.toolCallId, { description: describeCommitTool(event.toolName, event.args), startedAt: Date.now() });
+						activeTools.set(event.toolCallId, { description: describeCommitTool(event.toolName, event.args), startedAt: Date.now(), terminal: event.toolName === "ask_ignore" || (event.toolName === "bash" && !isCommitInspection(String((event.args as { command?: unknown }).command ?? ""))) });
 					}
 					if (event.type === "tool_execution_end") {
 						const active = activeTools.get(event.toolCallId);
 						activeTools.delete(event.toolCallId);
-						if (event.isError && !failure) {
+						if (event.isError && active?.terminal && !failure) {
 							const text = (event.result.content as (TextContent | ImageContent)[]).filter((part) => part.type === "text").map((part) => part.text).join("\n");
 							failure = `${active?.description ?? `tool ${event.toolName}`} failed after ${active ? Date.now() - active.startedAt : "unknown"}ms\n${text}`;
 						}
@@ -315,8 +313,9 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 					summary = [commits.join("\n") || "No commits created.", remaining.length ? `Remaining changes:\n${remaining.join("\n")}` : ""].filter(Boolean).join("\n");
 				} catch (error) { failure = [failure, `Status reporting failed: ${error instanceof Error ? error.message : String(error)}`].filter(Boolean).join("\n"); }
 			}
-			const publication = push && publicationTargets > 0 ? (/^Pushed\.?$/i.test(outcome) ? "Pushed." : "Push completion not confirmed.") : "";
-			const report = [summary, leftOut.length ? `Left out: ${leftOut.join(", ")}` : "", publication].filter(Boolean).join("\n");
+			const publication = push && publicationTargets > 0 ? (/^Pushed\.?$/i.test(outcome.split("\n")[0] ?? "") ? "Pushed." : "Push completion not confirmed.") : "";
+			const preserved = outcome.split("\n").filter(line => line.startsWith("Preserved index content: ")).join("\n");
+			const report = [summary, preserved, leftOut.length ? `Left out: ${leftOut.join(", ")}` : "", publication].filter(Boolean).join("\n");
 			if (failure) throw new Error(`${failure}\n${report}\nStopped; existing commits and changes were not undone.`);
 			return { text: report, elapsedMs: WORKFLOW_TIMEOUT_MS - remaining, model: `${selectedModel?.provider}/${selectedModel?.id}:low`, usage };
 }

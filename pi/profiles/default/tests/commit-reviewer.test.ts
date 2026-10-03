@@ -1,77 +1,59 @@
 import { expect, it } from "vitest";
-import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { appendGitignoreRule, buildCommitTask, describeCommitTool, formatPublicationEligibility, isBroadDiscoveryCommand, validateGitignorePattern } from "../commands/commit/reviewer.ts";
+import { appendGitignoreRule, buildCommitTask, describeCommitTool, formatPublicationEligibility, isCommitInspection, validateGitignorePattern } from "../commands/commit/reviewer.ts";
 
-it("supplies exact workflow locations and routes status refreshes to the existing tool", () => {
-	const root = "C:/work/repository with spaces";
-	const inventory = ['Repository: .\n M "first.txt"', 'Repository: modules/example\n?? "new.txt"'];
-	const task = buildCommitTask(false, root, inventory);
-	expect(task).toContain(`Repository root: ${JSON.stringify(root)}`);
-	expect(task).not.toContain("Whitespace utility");
+it("supplies boundaries, stage-first ordering, and captured publication permission", () => {
+	const inventory = ['Repository: .\n M "first.txt"', 'Repository: child\n?? "new.txt"'];
+	const task = buildCommitTask(false, "C:/work/repo with spaces", inventory);
+	expect(task).toContain('Repository root: "C:/work/repo with spaces"');
 	expect(task).toContain(inventory.join("\n\n"));
-	expect(task).toContain("use commit_git_review for status refreshes, not shell git status");
-	expect(task).toContain("Push was NOT requested. Do not run publication-related branch, upstream, outgoing, remote, or push checks or commands");
-	const pushTask = buildCommitTask(true, root, inventory);
-	expect(pushTask).toContain("--recurse-submodules=no origin HEAD:refs/heads/<own-branch>");
-	expect(pushTask).toContain("clean initialized submodules with outgoing referenced commits");
-	expect(pushTask).toContain("Silently skip detached entries without branch, outgoing, upstream, remote, or push checks or output");
-	expect(task).toContain("Do not run publication-related branch, upstream, outgoing, remote, or push checks or commands");
-	expect(task).not.toContain("Publication:");
+	expect(task).toContain("running git add -A in each repository before staged review");
+	expect(task).toContain("Push was NOT requested");
+	expect(task).not.toContain("commit_git_review");
+	expect(buildCommitTask(true, ".", inventory)).toContain("clean initialized submodules with outgoing referenced commits");
+	expect(buildCommitTask(true, ".", inventory)).toContain("--recurse-submodules=no origin HEAD:refs/heads/<own-branch>");
 });
 
-it("uses deterministic publication annotations without changing local review eligibility", () => {
+it("retains deterministic attached and detached publication behavior", () => {
 	expect(formatPublicationEligibility(false, "main")).toBe("");
-	expect(formatPublicationEligibility(true, "main")).toContain('Publication: eligible; attached branch "main"');
-	const detached = formatPublicationEligibility(true, "");
-	expect(detached).toContain("Publication: ineligible; detached HEAD");
-	expect(detached).toContain("do not re-check its branch, outgoing commits, upstream, remotes, or push");
+	expect(formatPublicationEligibility(true, "main")).toContain('attached branch "main"');
+	expect(formatPublicationEligibility(true, "")).toContain("do not re-check its branch, outgoing commits, upstream, remotes, or push");
 });
 
-it("specifies usable inspection and publication examples without a whitespace gate", () => {
+it("composes stage-first instructions without obsolete gates", () => {
 	const prompt = readFileSync(new URL("../commands/commit/reviewer.md", import.meta.url), "utf8");
-	const examples = [...prompt.matchAll(/commit_git_review\((\{[^\n]+?\})\)/g)].map(match => JSON.parse(match[1]));
-	expect(examples).toContainEqual({ action: "status", repo: "." });
-	expect(examples).toContainEqual({ action: "status", repo: "modules/example" });
-	expect(examples).toContainEqual({ action: "diff", repo: ".", staged: true });
-	expect(prompt).toContain("Do not run `git diff --check` or any other optional whitespace gate");
-	expect(prompt).not.toContain("whitespace utility");
-	expect(prompt).toContain("--recurse-submodules=no origin");
-	expect(prompt).toContain("clean submodules whose outgoing commits are referenced");
-	expect(prompt).toContain("refresh the parent status");
-	expect(prompt).toContain("Stop on any actual tool, Git, hook, cancellation, or timeout failure");
+	expect(prompt).toContain('add -A` before reviewing');
+	expect(prompt).toContain("Unstage and selectively restage");
+	expect(prompt).toContain("`.local` alone is not a reason");
+	expect(prompt).toContain("Correct routine read/search/Git inspection errors and continue");
+	expect(prompt).toContain("git stash create");
+	expect(prompt).toContain("Local parent gitlink commits do not require publication or pulling");
+	expect(prompt).not.toContain("commit_git_review");
+	expect(prompt).not.toContain("before staging them");
 });
 
-it("validates and appends one conservative ignore rule without duplicates", async () => {
+it("validates and appends one ignore rule without duplicates", async () => {
 	const repo = mkdtempSync(join(tmpdir(), "commit-ignore-"));
-	await appendGitignoreRule(repo, "cache/");
-	await appendGitignoreRule(repo, "cache/");
-	expect(readFileSync(join(repo, ".gitignore"), "utf8")).toBe("cache/\n");
-	expect(() => validateGitignorePattern("!cache/")).toThrow(/Negated/);
-	expect(() => validateGitignorePattern("C:\\\\temp")).toThrow(/Absolute/);
-	expect(() => validateGitignorePattern("*")).toThrow(/Blanket/);
-	expect(() => validateGitignorePattern("**/*")).toThrow(/Blanket/);
-	const aborted = new AbortController();
-	aborted.abort();
-	await expect(appendGitignoreRule(repo, "other/", aborted.signal)).rejects.toThrow();
-	expect(readFileSync(join(repo, ".gitignore"), "utf8")).toBe("cache/\n");
+	try {
+		await appendGitignoreRule(repo, "cache/");
+		await appendGitignoreRule(repo, "cache/");
+		expect(readFileSync(join(repo, ".gitignore"), "utf8")).toBe("cache/\n");
+		expect(() => validateGitignorePattern("!cache/")).toThrow(/Negated/);
+		expect(() => validateGitignorePattern("C:\\temp")).toThrow(/Absolute/);
+		expect(() => validateGitignorePattern("**/*")).toThrow(/Blanket/);
+		const aborted = AbortSignal.abort();
+		await expect(appendGitignoreRule(repo, "other/", aborted)).rejects.toThrow();
+	} finally { rmSync(repo, { recursive: true, force: true }); }
 });
 
-it("blocks broad discovery without blocking ordinary Git commands", () => {
-	expect(isBroadDiscoveryCommand("find .. -name AGENTS.md")).toBe(true);
-	expect(isBroadDiscoveryCommand("git status && rg --files")).toBe(true);
-	expect(isBroadDiscoveryCommand("ls -laR .")).toBe(true);
-	expect(isBroadDiscoveryCommand("git -C modules/example status --short")).toBe(false);
+it("recognizes recoverable inspections, not mixed/unknown mutation failures", () => {
+	for (const command of ['git -C "child" diff --bad-option', 'git status', 'rg missing .', 'find . -name AGENTS.md', 'ls -R']) expect(isCommitInspection(command)).toBe(true);
+	for (const command of ['git add -A', 'git commit', 'git restore --staged .', 'git push', 'echo rule >> .gitignore', 'git diff && git add -A', 'unknown']) expect(isCommitInspection(command)).toBe(false);
 });
 
-it("describes failed commit tools without dumping unbounded commands", () => {
-	expect(describeCommitTool("commit_git_review", { action: "diff", repo: "modules/example" }))
-		.toBe("Git review action=diff repo=modules/example");
-	expect(describeCommitTool("read", { path: "modules/example/AGENTS.md" }))
-		.toBe("file read: modules/example/AGENTS.md");
-	const description = describeCommitTool("bash", { command: `git   commit -m "${"x".repeat(400)}"` });
-	expect(description).toMatch(/^shell command: git commit/);
-	expect(description.length).toBeLessThan(330);
-	expect(description.endsWith("…")).toBe(true);
+it("bounds failure descriptions", () => {
+	expect(describeCommitTool("read", { path: "AGENTS.md" })).toBe("file read: AGENTS.md");
+	expect(describeCommitTool("bash", { command: `git commit -m "${"x".repeat(400)}"` }).length).toBeLessThan(330);
 });
