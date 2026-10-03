@@ -86,8 +86,6 @@ export class VisibleChild extends RpcChild {
    return{accepted:true};
   }
   if(message.type==="app-ready"){
-   const tools=(message.payload as {tools?:unknown})?.tools;
-   if(!Array.isArray(tools)||JSON.stringify([...tools].sort())!==JSON.stringify([...this.spec.definition.tools].sort())){this.fail("Visible child tool ceiling mismatch");throw new Error("Tool ceiling mismatch")}
    this.record.readyCount=(this.record.readyCount??0)+1;this.appReady=true;this.record.processState="running";if(this.startup)clearTimeout(this.startup);return{accepted:true};
   }
   if(message.type==="app-poll"){

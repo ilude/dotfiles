@@ -1,5 +1,13 @@
 # Tool-call analysis log
 
+## TCA-014 - Visible developer tool ceiling mismatch
+
+- **Review date/profile/interval:** 2026-10-02, default only, exact root `01a0fcd3-4d56-7407-b929-fee4aea57ff8`, `[2026-10-02T00:00:00Z,2026-10-03T00:00:00Z)`.
+- **Method/coverage:** Exact-session literal search traversed 649 records / 1,210,590 examined bytes, with no malformed, oversized, timestamp-gap or excluded records. Exact SQL recovered both custom settlement records; an initially clipped full-record query was replaced by an untruncated details projection. Message projection and bounded current source inspection supplemented evidence. No legacy, cross-session scan, child-body review, or live reproduction.
+- **Finding:** Two visible developer startup mechanism failures in one parent session: Sol child `01a0fd1b-3ab9-7773-8f97-53016c8b0430` failed after 6.541 seconds, Luna retry `01a0fd1b-7f54-74c4-b06d-2e1683cc2f18` after 4.655 seconds. Parent records `f7a080f1` and `a7e4778e` report the identical error and connected transport; cleanup completed. A preceding visible Strategist completed successfully.
+- **Mechanism/status:** `lib/subagents/visible.ts:90` rejects app-ready when the reported tools are not an array or do not exactly match the sorted role tool list; child-surface reports `pi.getActiveTools()`. Historical expected/actual lists were not recovered, so the specific difference and cause remain unresolved. Model switching did not recover the launch. The operator directed the parent to work directly. Two occurrences do not establish cross-session recurrence. No runtime edits, test runs, or launches performed in the initial review.
+- **Authorized remediation:** User requested removal after discussing the redundant gate. Child authority already hides unauthorized registrations and blocks unauthorized tool calls; its session-start activation deliberately excludes deferred tools. This proves exact active/permitted equality is invalid for normal deferred-tool operation, though the exact historical lists remain unavailable. Removed ordinary visible startup comparison and tool-list transmission, preserving existing permission enforcement. Both new readiness regression cases failed against the old gate, then passed after removal. Four focused files passed 25 tests, including real bundled CLI authority/deferred-tool probes; typecheck passed. No live visible launch, commit, push, or active-session reload performed.
+
 ## TCA-013 - ICP Integrator rejected malformed closeout manifest
 
 - **Review date/profile:** 2026-09-28, default. Bounded review of the supplied Integrator launch/error plus current closeout contract and validation path; no session transcript or recurrence scan was available.

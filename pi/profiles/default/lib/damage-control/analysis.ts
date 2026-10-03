@@ -52,8 +52,14 @@ export async function analyzeRequest(request: ToolRequest, facts: PathFacts, _co
         || !isScratchPath(identity.path, dependencies.policy.paths, { ...facts, cwd: effect.context.cwd })
       )) scoped = false;
       if (request.tool === "edit" && !analysis.matches.some(m => m.action === "block" && m.applicability === "confirmed")) {
-        const original = await readFile(identity.path, "utf8");
-        if (editTruncates(original, request.input.edits)) analysis.matches.push(...pathMatches(identity.path, "truncate", dependencies.policy.paths, facts, effect.id));
+        const truncationMatches = pathMatches(identity.path, "truncate", dependencies.policy.paths, facts, effect.id)
+          .filter(match => !analysis.matches.some(existing => existing.ruleId === match.ruleId && existing.effects.includes(effect.id)));
+        // Ordinary edit matching belongs to Pi. Only simulate when emptying
+        // this target would add a restriction beyond its existing write rules.
+        if (truncationMatches.length) {
+          const original = await readFile(identity.path, "utf8");
+          if (editTruncates(original, request.input.edits)) analysis.matches.push(...truncationMatches);
+        }
       }
     }
     if (scoped && !analysis.matches.some(match => match.effects.includes(effect.id) && match.action === "block")) scopedDeletes.add(effect.id);

@@ -1,5 +1,14 @@
 # Agent process failure log
 
+## APR-083 - Repeated environment sourcing instead of existing GitLab CLI authentication
+
+- **Reference:** Operator correction during EISA deployment monitoring, 2026-10-02.
+- **Observed:** Repeated pipeline checks sourced the platform environment file to obtain an API token. Damage Control denied the latest entire call at `source .env`; nothing in that call executed. The operator reported repeated approval prompts.
+- **Finding:** The orchestrator did not check the existing authenticated `glab` path before choosing broad shell environment loading for status-only requests. Installed `glab api` successfully returned the pipeline status without environment-file access or printing credentials.
+- **Correction:** Use existing CLI authentication and stream filtered API responses for further GitLab monitoring. Do not retry the denied environment-sourcing operation or bypass its guard.
+- **Related:** APR-080 / AIF-098 cover direct streaming of transient GitLab responses, not this credential-loading choice.
+- **Status:** Native authenticated status check succeeded; pipeline remains running. No guard, credential store, or instruction changes made.
+
 ## APR-082 - Plan-launch completion exceeded the runtime evidence
 
 - **Reference:** Herdr worktree handoff execution and operator launch of `usage-ranked-command-autocomplete`, 2026-09-30.

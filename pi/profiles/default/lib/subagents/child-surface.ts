@@ -48,7 +48,7 @@ export function bindChildSurface(pi:ExtensionAPI,visible:boolean){
   const controller=new AbortController();
   state.unbind=()=>controller.abort();
   if(visible){
-   try{await requestParent(endpoint,{type:"app-ready",payload:{tools:pi.getActiveTools()}})}catch{unavailable();return}
+   try{await requestParent(endpoint,{type:"app-ready"})}catch{unavailable();return}
   }
   const consume=async()=>{
    try{

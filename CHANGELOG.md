@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-10-03: Leave ordinary edit matching to Pi
+
+- Damage Control no longer reads and simulates edits when emptying the target would add no restriction beyond its existing write rules. This removes an exact-match prerequisite that rejected ordinary edits Pi can resolve using its native matching.
+- Existing protected-file truncation checks remain. No Git-state checks, new approval gates, or upload-policy changes are added.
+
+## 2026-10-02: Remove redundant visible-subagent startup tool gate
+
+- Visible subagents no longer shut down because their active tools differ from the role's permitted tools. Deferred tools intentionally remain inactive until needed, making the old exact-list comparison reject valid developer launches.
+- Startup now reports readiness without a tool-list comparison. Existing child tool registration restrictions and per-call permission enforcement remain unchanged; no replacement startup gate is added.
+
 ## 2026-10-01: Correct prepared-plan admission and closeout acceptance
 
 - Preserve the admitted preparation receipt through Pi startup, then consume it in its owning session so ordinary Pi launches cannot inherit prepared-run status. Reload restores the owning session's persisted metadata rather than reusing an environment capability.
