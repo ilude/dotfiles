@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-10-03: Compact default Pi branch output
+
+- `/branch` now shows one persistent role, timestamp, and title record instead of a command echo plus opening/opened notifications. Both parent and child keep reciprocal linkage metadata; older records still render without a title. Launch errors remain visible, and legacy behavior is unchanged.
+
+## 2026-10-02: Test Herdr session paths by behavior instead of source wording
+
+- Herdr setup no longer refuses plugin configuration because the generated integration lacks a particular source expression. Equivalent upstream refactoring does not imply broken path handling.
+- Unit tests execute the actual integration's session-start handler and inspect its outgoing session and state reports for POSIX, Windows drive and UNC absolute paths, plus relative-path fallback to the session ID. Only socket transport is mocked; existing integration behavior and plugin setup remain unchanged.
+
 ## 2026-10-03: Leave ordinary edit matching to Pi
 
 - Damage Control no longer reads and simulates edits when emptying the target would add no restriction beyond its existing write rules. This removes an exact-match prerequisite that rejected ordinary edits Pi can resolve using its native matching.

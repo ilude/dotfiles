@@ -40,6 +40,35 @@ it("reports the supported session payload and preserves reload", async () => {
   } });
 });
 
+it.each([
+  { file: "/home/operator/sessions/current.jsonl", absolute: true },
+  { file: "C:\\Users\\operator\\sessions\\current.jsonl", absolute: true },
+  { file: "\\\\server\\share\\sessions\\current.jsonl", absolute: true },
+  { file: "sessions/current.jsonl", absolute: false },
+  { file: "C:sessions\\current.jsonl", absolute: false },
+])("reports the correct session reference for $file", async ({ file, absolute }) => {
+  vi.resetModules();
+  const { default: register } = await import("../extensions/herdr-agent-state.ts");
+  const handlers: Record<string, (...args: any[]) => any> = {};
+  register({ on(name: string, handler: any) { handlers[name] = handler; }, events: { on: vi.fn() } } as any);
+  await handlers.session_start({ reason: "startup" }, {
+    mode: "tui", isIdle: () => true,
+    sessionManager: { getSessionFile: () => file, getSessionId: () => "session-id" },
+  });
+  await vi.waitFor(() => expect(requests.length).toBeGreaterThanOrEqual(2));
+  for (const method of ["pane.report_agent_session", "pane.report_agent"]) {
+    const request = requests.find(request => request.method === method);
+    expect(request).toBeDefined();
+    if (absolute) {
+      expect(request.params.agent_session_path).toBe(file);
+      expect(request.params).not.toHaveProperty("agent_session_id");
+    } else {
+      expect(request.params.agent_session_id).toBe("session-id");
+      expect(request.params).not.toHaveProperty("agent_session_path");
+    }
+  }
+});
+
 it("keeps the local quiet-subagent override across Herdr integration refreshes", async () => {
   vi.stubEnv("PI_SUBAGENT_AUTHORITY", "fixture");
   vi.resetModules();

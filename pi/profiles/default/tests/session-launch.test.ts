@@ -244,9 +244,11 @@ it("branches through an independent real manager and persists reciprocal visible
 	const { commands, ctx, parent, renderers } = realBranchFixture();
 	const parentId = parent.getSessionId();
 	const parentFile = parent.getSessionFile()!;
-	const pendingBranch = commands.branch.handler("branch", ctx);
 	const branchPoint = parent.getLeafEntry()!;
-	await pendingBranch;
+	await commands.branch.handler("branch", ctx);
+	expect(ctx.ui.notify).not.toHaveBeenCalled();
+	expect(parent.getEntries().filter(entry => entry.type === "custom" && entry.customType === "profile-command")).toHaveLength(0);
+	expect(parent.getEntries().filter(entry => entry.type === "custom" && entry.customType === "session-branch")).toHaveLength(1);
 	const branchOpen = vi.mocked(execFile).mock.calls.find(call => (call[1] as string[])[0] === "plugin")![1] as string[];
 
 	expect(parent.getSessionId()).toBe(parentId);
@@ -288,7 +290,12 @@ it("branches through an independent real manager and persists reciprocal visible
 	expect(reopenedChild.buildSessionContext().messages.map(message => (message as any).content?.[0]?.text)).toContain("child subsequent");
 
 	const theme = { fg: (_color: string, text: string) => text };
-	const expected = `[branch child] ${new Date(branchPoint.timestamp).toLocaleString().replaceAll(",", "")}`;
+	const timestamp = new Date(branchPoint.timestamp).toLocaleString().replaceAll(",", "");
+	const expected = `[branch child] ${timestamp} · Branched from parent: branch`;
+	const parentRendered = renderers["session-branch"](parentMarker, { expanded: false }, theme).render(240).join("\n").trimEnd();
+	expect(parentRendered).toBe(`[branch parent] ${timestamp} · Branched to child: branch`);
+	const { title: _title, ...oldData } = (childMarker as any).data;
+	expect(renderers["session-branch"]({ ...childMarker, data: oldData }, { expanded: false }, theme).render(240).join("\n").trimEnd()).toBe(`[branch child] ${timestamp}`);
 	const rendered = renderers["session-branch"](childMarker, { expanded: false }, theme).render(240).join("\n").trimEnd();
 	expect(rendered).toBe(expected);
 	expect(rendered).not.toContain(parentFile);

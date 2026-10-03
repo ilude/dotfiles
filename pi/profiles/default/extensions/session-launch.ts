@@ -37,6 +37,7 @@ interface BranchEvidence {
 	childSessionFile: string;
 	branchPointEntryId: string;
 	branchPointTimestamp: string;
+	title?: string;
 }
 
 interface CommandContext {
@@ -171,7 +172,9 @@ function branchEvidence(data: unknown): BranchEvidence | undefined {
 	const branchPointEntryId = typeof value.branchPointEntryId === "string" && value.branchPointEntryId ? value.branchPointEntryId : undefined;
 	const branchPointTimestamp = typeof value.branchPointTimestamp === "string" && value.branchPointTimestamp ? value.branchPointTimestamp : undefined;
 	if (value.schemaVersion !== 1 || !role || !parentSessionId || !parentSessionFile || !childSessionId || !childSessionFile || !branchPointEntryId || !branchPointTimestamp) return undefined;
-	return { schemaVersion: 1, role, parentSessionId, parentSessionFile, childSessionId, childSessionFile, branchPointEntryId, branchPointTimestamp };
+	return { schemaVersion: 1, role, parentSessionId, parentSessionFile, childSessionId, childSessionFile, branchPointEntryId, branchPointTimestamp,
+		...(typeof value.title === "string" && value.title ? { title: value.title } : {}),
+	};
 }
 
 function branchPointTime(timestamp: string): string {
@@ -182,7 +185,8 @@ function branchPointTime(timestamp: string): string {
 function renderBranchEvidence(entry: CustomEntry<BranchEvidence>, _options: { expanded: boolean }, theme: Theme): Text {
 	const data = branchEvidence(entry.data);
 	if (!data) return new Text(theme.fg("error", "[branch] Invalid branch evidence"), 0, 0);
-	return new Text(`${theme.fg("accent", `[branch ${data.role}]`)} ${branchPointTime(data.branchPointTimestamp)}`, 0, 0);
+	const context = data.title ? ` · ${data.role === "parent" ? "Branched to child" : "Branched from parent"}: ${data.title}` : "";
+	return new Text(`${theme.fg("accent", `[branch ${data.role}]`)} ${branchPointTime(data.branchPointTimestamp)}${context}`, 0, 0);
 }
 
 const execFileAsync = promisify(execFile);
@@ -425,7 +429,6 @@ async function executeBranch(args: string, ctx: CommandContext, pi: ExtensionAPI
 	if (!branchPoint) throw new Error(`Entry ${leafId} not found`);
 	const cwd = ctx.cwd ?? process.cwd();
 	const title = args.trim() || defaultTitle(cwd);
-	ctx.ui.notify(isHerdr() ? `Opening branched Pi session in a Herdr tab: ${title}` : `Opening branched Pi session in a new terminal tab: ${title}`, "info");
 
 	// createBranchedSession changes the manager it is called on. Open a separate
 	// manager from the persisted parent so the live session remains the parent.
@@ -443,20 +446,19 @@ async function executeBranch(args: string, ctx: CommandContext, pi: ExtensionAPI
 		childSessionFile: branchSessionFile,
 		branchPointEntryId: branchPoint.id,
 		branchPointTimestamp: branchPoint.timestamp,
+		title,
 	};
 	childManager.appendCustomEntry(BRANCH_EVIDENCE_TYPE, { ...evidence, role: "child" });
 	pi.appendEntry(BRANCH_EVIDENCE_TYPE, evidence);
 	if (isHerdr()) {
 		try { await createHerdrPiTab(cwd, title, branchSessionFile, undefined, Boolean(args.trim())); }
 		catch (error) { throw new Error(`${String(error)}\nBranch retained: ${branchSessionFile}\nResume with pp --session ${quotePowerShell(branchSessionFile)}`); }
-		ctx.ui.notify(`Opened branched Pi session in a Herdr tab: ${title}`, "info");
 		return;
 	}
 	const command = ppCommand(buildPiArgsForSession(branchSessionFile));
 	const plan = process.platform === "darwin" ? buildGhosttyPlan({ cwd, initialInput: command }) : buildWindowsTerminalPlan({ cwd, title, command });
 	const result = launch(plan);
-	if (result.launched) ctx.ui.notify(`Opened branched Pi session in a new terminal tab: ${title}`, "info");
-	else ctx.ui.notify(result.error ? `Terminal launch failed: ${result.error}` : plan.reason ?? "Terminal launch failed.", "error");
+	if (!result.launched) ctx.ui.notify(result.error ? `Terminal launch failed: ${result.error}` : plan.reason ?? "Terminal launch failed.", "error");
 }
 
 export default function sessionLaunchCommands(pi: ExtensionAPI): void {
@@ -517,7 +519,7 @@ export default function sessionLaunchCommands(pi: ExtensionAPI): void {
 			return { content: [{ type: "text", text: JSON.stringify(receipt) }], details: receipt, structuredContent };
 		},
 	});
-	registerProfileCommand(pi, "branch", {
+	pi.registerCommand("branch", {
 		description: "Open a branched copy of this Pi session in a new terminal tab",
 		handler: async (args, ctx) => executeBranch(args, ctx, pi),
 	});

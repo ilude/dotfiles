@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "specRelativePath": ".specs/usage-ranked-command-autocomplete/plan.md",
+  "specStub": "usage-ranked-command-autocomplete",
+  "taskWorktreePath": "C:\\Users\\mglenn\\.dotfiles\\.worktrees\\usage-ranked-command-autocomplete",
+  "taskBranch": "task/usage-ranked-command-autocomplete",
+  "originCheckoutPath": "C:\\Users\\mglenn\\.dotfiles",
+  "originBranch": "main",
+  "startingTargetCommit": "879055df2d7262ff721d7b790a814f285cc1e5aa",
+  "sourceSpecSnapshot": {
+    "version": 1,
+    "files": [
+      {
+        "path": "plan.md",
+        "sha256": "73fa0205f0ad3c4302f9a335cd84ee29d8bdd19b6f418199da5c1939633107cf"
+      }
+    ]
+  }
+}
