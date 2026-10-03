@@ -1,7 +1,7 @@
 ---
 created: 2026-10-02
-status: ready
-completed: null
+status: completed
+completed: 2026-10-03
 ---
 
 # Simplify /commit around Git staging
@@ -121,3 +121,7 @@ For authorized `/do-it`, dispatch the Integrator from the recorded target checko
 Routine conflicts are agent-owned. If blocked, retain necessary work and report the exact blocker, next action, and owner; passed checks alone are not completion. No implementation push or deployment is authorized. Manual/live checks do not block archival or integration.
 
 Final reporting starts with explicit outcome: 🟢 COMPLETED; 🔴 NOT COMPLETE: MERGE BLOCKED or USER INPUT REQUIRED; 🔵 IMPLEMENTED: MERGE SKIPPED AS REQUESTED; or 🟡 CLEANUP PENDING. For unfinished outcomes, foreground reason and action needed before passed checks. Include concise checks, archive path, commits, integration result, and any retained worktree.
+
+## Integration evidence
+
+55 focused commit/staging/retry/lifecycle tests passed; typecheck and check:runtime passed; task-only diff checks passed; normal commit hook passed. Live model/UI unverified, non-blocking.
