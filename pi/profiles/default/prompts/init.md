@@ -3,13 +3,13 @@ description: Create or update a project-local AGENTS.md with concise coding-agen
 argument-hint: "[focus, e.g. package, stack, or path]"
 ---
 
-Create or update the project-local `AGENTS.md` for this repository. Treat any arguments as optional focus/context:
+Create or update the project-local `AGENTS.md`. A supplied package, path, or other focus defines the scope; without a focus, work at repository scope:
 
 $ARGUMENTS
 
 Follow this workflow:
 
-1. **Inspect first, then write.** Gather deterministic repo evidence before drafting:
+1. **Inspect first, then write.** Read applicable parent instructions, existing guidance in the requested scope, and relevant docs/tooling before drafting. Expand discovery only to resolve a concrete question needed for that scope, not to inventory unrelated packages or clients. At repository scope, inspect the main project structure and relevant nested guidance. Evidence sources include:
    - existing instruction files: `AGENTS.md`, `AGENTS.override.md`, `CLAUDE.md`, `.claude/CLAUDE.md`, `.cursorrules`, `.windsurfrules`, `.github/copilot-instructions.md`, `GEMINI.md`, `.cursor/rules/`, `.github/instructions/`
    - project docs: `README*`, `CONTRIBUTING*`, `docs/`, architecture notes when obvious
    - package/tooling files: `package.json`, lockfiles, `pyproject.toml`, `Cargo.toml`, `go.mod`, `Makefile`, `justfile`, CI workflows, test/lint configs
@@ -33,13 +33,7 @@ Follow this workflow:
    - `Security / Secrets`
    - `Agent Notes`
 
-5. **Cross-tool compatibility.** If the project has `CLAUDE.md` but no `AGENTS.md`, migrate reusable project guidance into `AGENTS.md` and leave Claude-specific guidance in `CLAUDE.md` when appropriate. If creating a new `CLAUDE.md` is useful, prefer a tiny import file:
-
-   ```markdown
-   @AGENTS.md
-   ```
-
-   On Windows, prefer this import over symlinks.
+5. **Use other client guidance as evidence.** Copy relevant shared guidance into `AGENTS.md` without removing the original or copying client-specific behavior. Preserve other clients' files. Ask before migrating content or creating/modifying another client's instructions; those changes are outside `/init`'s default scope.
 
 6. **Safety rules.** Never read or copy secrets from `.env` files or credential stores. Do not modify generated dependency directories such as `node_modules/`, `.venv/`, `target/`, `dist/`, or `build/`.
 

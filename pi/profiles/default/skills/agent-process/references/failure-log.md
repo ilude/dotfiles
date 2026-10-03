@@ -1,5 +1,16 @@
 # Agent process failure log
 
+## APR-084 - Prepared closeout recovered but returned stale cleanup state and contradictory plan progress
+
+- **Reference:** Default orchestrator `01a10244-393e-70fb-a73d-b88eeb6f36e6` and Integrator successor `01a10270-4f7e-75aa-b307-3cc4fdd53b98`, reviewed 2026-10-03; TCA-015.
+- **Observed:** The task was committed, integrated, and cleaned up locally. After Git's Windows long-path removal error, the handoff returned `worktree: registered` (record `acd6df92`) although subsequent registration inspection showed it absent. The Integrator removed the exact remnant and received COMPLETED (`5fe73e32`). Cleanup already models deregistered remnants and can remove them on retry; its removal-error catch returns before refreshing registration.
+- **Execution:** Initial task-state probes actually queried the target checkout. A later explicit task-directory probe after deregistration discovered the enclosing repository, printing its ignored inventory and target HEAD. Full changelog dumps and repeated state probes added noise. These are caller execution errors, not reasons to add a new inspection framework.
+- **Delegation:** The parent framed a combined T1/T2 worker before consulting Strategist (`ab0d457b`), which recommended that combination as a proposed task-boundary adjustment (`495ad320`). Parent dispatched both named tasks plus T3 checks (`a8b72b89`) despite the existing one-task ceiling and without a stated context-conservation exception. The worker succeeded; elapsed time alone does not prove excessive sizing or model mismatch. Related AIF-061/AIF-099 cover task boundaries; AIF-033 covers direct work.
+- **Archive:** Frontmatter is completed, but T3 remains unchecked and present-tense progress says integration/cleanup are pending. The helper updates frontmatter and integration evidence, not task/progress prose.
+- **Proposals:** Refresh state after failed removal and reuse existing contained-remnant cleanup; reuse existing inspection for compact preflight; expose already-observed release/retirement facts in successor results; reconcile final archive progress. Additive changelog merge/resume guidance already exists and worked. Discuss delegation adherence separately rather than adding generic sizing rules or runtime gates.
+- **Status:** Review only. No executable instructions, runtime, plan, Git history, or live processes changed. These logs record evidence, not approval to implement.
+
+
 ## APR-083 - Repeated environment sourcing instead of existing GitLab CLI authentication
 
 - **Reference:** Operator correction during EISA deployment monitoring, 2026-10-02.

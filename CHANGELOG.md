@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-10-03: Keep focused Pi initialization within its requested scope
+
+- `/init` treats a supplied package/path/focus as its scope, reads applicable parent guidance and relevant evidence first, and expands discovery only for concrete unresolved questions. Unfocused use remains repository-wide.
+- Other clients' instructions may supply shared guidance for `AGENTS.md`, but their original files remain unchanged unless the operator approves migration or cross-client edits. Evidence-backed drafting, preservation, and final verification remain unchanged.
+
 ## 2026-10-03: Compact default Pi branch output
 
 - `/branch` now shows one persistent role, timestamp, and title record instead of a command echo plus opening/opened notifications. Both parent and child keep reciprocal linkage metadata; older records still render without a title. Launch errors remain visible, and legacy behavior is unchanged.

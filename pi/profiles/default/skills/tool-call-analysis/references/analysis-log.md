@@ -1,5 +1,15 @@
 # Tool-call analysis log
 
+## TCA-015 - Stage-first prepared plan execution and successor closeout
+
+- **Review date/profile/interval:** 2026-10-03, default only; exact supplied sessions `01a10244-393e-70fb-a73d-b88eeb6f36e6` and `01a10270-4f7e-75aa-b307-3cc4fdd53b98`, fixed interval `[2026-10-03T14:56:27Z,2026-10-03T16:13:15Z)`.
+- **Method/coverage:** Analytics metadata discovery and exact-session SQL staged both files, 494,317 bytes / 180 valid records (73 orchestrator, 107 successor). No discovery exclusions. Final aggregate and narrowed message projections returned untruncated; early full-record/output rendering was clipped, and decisive clipped content was recovered through narrower projections. User/assistant message projection, historical/current guidance, archive, relevant feedback, and closeout source supplemented evidence. Reviewed workflow-relevant messages/calls/results, not every provenance or usage record. SQL accepts valid JSON only; its returned cost did not provide a malformed-record count. No legacy, original planning-session body, implementation-child body, live reproduction, or independent-session recurrence scan.
+- **Mechanism finding:** One stale cleanup-result incident in the successor: record `acd6df92` reports registered after removal failed with Filename too long; registration was actually gone. Source `cleanupWorktree` returns its pre-attempt state from the removal catch. Git/Bash faithfully reported the filesystem outcome; this is closeout state reporting, not a Bash mechanism failure. The exact remnant was removed and `5fe73e32` verified COMPLETED.
+- **Caller findings:** Two wrong-checkout inspection episodes in one successor session: initial supposed task-state probes omitted task cwd; post-deregistration task-directory Git discovered the parent repository (`1c4cd867`, `d8f98656`). One combined-plan-task assignment in the orchestrator (`a8b72b89`) followed Strategist's proposed T1/T2 combination despite existing named-task/direct-work guidance. These are tool/subagent-use and instruction-adherence findings, not dispatch/transport defects. Worker completion was delivered automatically and consumed.
+- **Ordinary outcomes:** Additive changelog merge conflict, successful resolution/resume, and Git long-path deletion failure are command/application outcomes. Zero selected results were flagged isError, showing that error-only retrieval would miss the workflow findings.
+- **Other limits/status:** Final archive contradicts its completed frontmatter through unchecked T3 and pending progress prose. Successor runtime observes retirement, but its returned final result omits that evidence. APR-084 records proposed narrow changes. No systemic recurrence or model-causality claim, instruction/runtime edits, tests, commit, or push.
+
+
 ## TCA-014 - Visible developer tool ceiling mismatch
 
 - **Review date/profile/interval:** 2026-10-02, default only, exact root `01a0fcd3-4d56-7407-b929-fee4aea57ff8`, `[2026-10-02T00:00:00Z,2026-10-03T00:00:00Z)`.
