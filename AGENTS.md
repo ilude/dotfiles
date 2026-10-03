@@ -19,7 +19,7 @@ Claude hooks, commands, settings, runtime workarounds, and content ingestion are
 - This dotfiles repository owns workstation setup and Pi runtime integration. `pi/extensions/onclave-pi.ts` is only a loader for the implementation in `modules/onclave/`.
 - Treat each module as an independent repository with its own instructions, branch, validation, commit, and remote. Make changes in the owning repository rather than duplicating source across repositories.
 - For coordinated changes, preserve the boundary: Onclave publishes application contracts, homelab-infra consumes them for deployment, and dotfiles wires local clients to them. Do not move live inventory or site secrets out of `modules/homelab-infra/values/`.
-- Commit and push module changes from the module first, then commit the updated gitlink in dotfiles. Never include a module's files directly in a dotfiles commit.
+- Commit module changes from the module first, then commit the updated gitlink in dotfiles. Local parent pin commits do not require pulling or publication. When push is requested, publish relevant module commits before the parent that references them. Never include a module's files directly in a dotfiles commit.
 
 ## Command index
 
@@ -53,7 +53,7 @@ The installer entrypoints and supporting paths are indexed in [`README.md#struct
 - Git identity switches by directory and remote URL; see the [Git identity system](README.md#git-identity-system), and keep machine-specific SSH config in gitignored local files managed by [`scripts/git-ssh-setup`](scripts/git-ssh-setup).
 - Personal SSH key priority is `id_ed25519-personal`, then generic `id_ed25519`.
 - Work SSH key priority is `id_ed25519-work`, then `id_ed25519-eagletg`; work must not fall back to generic `id_ed25519`.
-- Never force-push a submodule repository. Never amend or rebase an already-pushed submodule commit. Pull inside the submodule before updating the parent repository's pinned reference.
+- Never force-push a submodule repository. Never amend or rebase an already-pushed submodule commit. For publication, pull inside a submodule when needed to reconcile its remote before publishing the parent reference; do not automatically merge or rebase. This is not a prerequisite for a local parent pin commit.
 - If `git pull` fails on a submodule fetch, recover with:
 
 ```bash

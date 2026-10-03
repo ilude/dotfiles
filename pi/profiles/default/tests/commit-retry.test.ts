@@ -219,6 +219,12 @@ it("retains captured push permission and annotations through recovery", async ()
 	expect(result.text).toBe("No commits created.\nPushed.");
 });
 
+it("reports a retained index reference without losing confirmed publication", async () => {
+	responses.push({ message: message([{ type: "text", text: "Pushed\nPreserved index content: stash@{0}" }]) });
+	const result = await start(undefined, true).run;
+	expect(result.text).toBe("No commits created.\nPreserved index content: stash@{0}\nPushed.");
+});
+
 const haiku = { ...model, id: "claude-haiku-4-5", provider: "anthropic", api: "anthropic-messages" } as unknown as Model<"openai-codex-responses">;
 const withHaiku = () => doubles.getAvailable.mockImplementation(async provider => provider === "anthropic"
 	? [{ ...haiku, id: "claude-haiku-4-5-20251001" }, { ...haiku, id: "claude-haiku-4-4" }, haiku]

@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "specRelativePath": ".specs/stage-first-commit-workflow/plan.md",
+  "specStub": "stage-first-commit-workflow",
+  "taskWorktreePath": "C:\\Users\\mglenn\\.dotfiles\\.worktrees\\stage-first-commit-workflow",
+  "taskBranch": "task/stage-first-commit-workflow",
+  "originCheckoutPath": "C:\\Users\\mglenn\\.dotfiles",
+  "originBranch": "main",
+  "startingTargetCommit": "5369c67a881196661795943368801f25f1624c69",
+  "sourceSpecSnapshot": {
+    "version": 1,
+    "files": [
+      {
+        "path": "plan.md",
+        "sha256": "820d48f7066b774010da86206ba9ed895e9f2918ab781348ba7081467f990656"
+      }
+    ]
+  }
+}

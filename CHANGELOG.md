@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-10-03: Make default Pi /commit stage-first
+
+- Each initialized repository stages all eligible changes before index review, deepest-first. The index is the proposed commit; initially staged files may be unstaged and selectively restaged into whole-file groups. Meaningful new-file ignore decisions happen after staging, and exclusions actually leave the index without deleting working contents. Sole index-only content is preserved through ordinary Git when necessary.
+- Ordinary Git inspection replaces the mandatory custom review tool and blanket discovery termination gate. Routine inspection errors can be corrected; failed mutations, hooks, cancellation, and deadlines stop dependent work without undoing completed commits. No tests, lint, builds, scans, group approvals, or new validation gates run inside the command.
+- Local child commits and parent gitlink commits do not require pulling or publication. Requested publication remains children-first, including clean outgoing children, with existing attached/detached behavior and recursion override. Command shortcuts, private execution, normal hooks, response retries/fallback, timeouts, and paused question budget are preserved. Legacy and module implementations are unchanged.
+
 ## 2026-10-01: Correct prepared-plan admission and closeout acceptance
 
 - Preserve the admitted preparation receipt through Pi startup, then consume it in its owning session so ordinary Pi launches cannot inherit prepared-run status. Reload restores the owning session's persisted metadata rather than reusing an environment capability.

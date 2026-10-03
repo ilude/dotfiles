@@ -26,8 +26,6 @@ export default async function () {
       let health = "";
       await guard.commands.get("dc").handler("status", { hasUI: true, modelRegistry: { find: () => undefined }, ui: { notify: message => { health = message; } } });
       assert(health.startsWith("damage-control: ready"), health);
-      const handler = guard.handlers.get("tool_call")[0];
-      assert.equal(await handler({ toolName: "commit_git_review" }, {}), undefined);
       assert(!guard.handlers.has("user_bash"), "Direct operator shell remains exempt");
       results.push(`Default ${phase}: discovered guard ready; /commit and footer coexist; direct operator shell exempt`);
     }
