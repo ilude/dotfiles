@@ -1,7 +1,7 @@
 ---
 created: 2026-10-05
-status: ready
-completed: null
+status: completed
+completed: 2026-10-05
 ---
 
 # Make browser automation usable with focused task and data-transfer protection
@@ -266,3 +266,7 @@ For authorized `/do-it`, after T8 dispatch the Integrator from the recorded targ
 When blocked before retirement, retain both panes/worktree. After delivery, report cleanup failures and the exact retained path without rollback or recreating the orchestrator. Keep unfinished integration/cleanup boxes unchecked, with reason, next action, and action owner. Routine merge conflicts are agent-owned. `--no-merge` intentionally retains the committed task checkout and skips Integrator mutation. No push/deployment is authorized. Manual operator testing does not block archive/commit/integration.
 
 Final response starts with one explicit outcome: 🟢 **COMPLETED** (checks, integration, metadata, cleanup verified); 🔴 **NOT COMPLETE: MERGE BLOCKED**; 🔴 **NOT COMPLETE: USER INPUT REQUIRED**; 🔵 **IMPLEMENTED: MERGE SKIPPED AS REQUESTED**; or 🟡 **CLEANUP PENDING**. For blocked/pending outcomes lead with **Reason** and **Action needed**, naming who must act and the exact next action. Then briefly report checks, archived spec, branch/commits, merge result, verification limits, and any retained path. Do not present passed tests or archival alone as plan completion.
+
+## Integration evidence
+
+Implementation T1-T8 complete and archived; initial selected 351 tests across21files passed; final screenshot credential-boundary correction reran51affected tests including4new adversarial cases; default typecheck, native composition smoke and root/staged diff checks passed. No live accounts/BWS/provider/Onclave contact. Task commit clean; copied native-setter fix/tests and removed comparison guidance preserved. No push/deployment authority.
