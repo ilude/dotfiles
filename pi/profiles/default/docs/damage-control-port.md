@@ -10,6 +10,10 @@ Prefer the least intrusive effective response: allow established low-risk work, 
 
 This is the operator's governing design requirement, clarified on 2026-09-08. Legacy parity is historical compatibility evidence, not the philosophical goal. The [risk and proportionality review](../../../../.specs/archive/damage-control-risk-alignment-and-preapproval/damage-control-risk-review.md) records the findings that drove the implemented alignment. Historical decisions remain recorded rather than rewritten.
 
+## Browser and selected outbound effects
+
+Default-profile browser page evidence is untrusted context, not direct operator intent. Deterministic browser boundaries cover represented session/frame/destination checks and local secret bindings; Damage Control uses independently interpreted task intent and bounded contextual review for consequential or inconsistent effects. Screening flags are risk signals, not authority or keyword-based page blocking. These checks are not universal taint tracking or a network sandbox. See the [browser operation and limitations guide](../../../../docs/browser-security.md) for the exact boundaries and operator workflow.
+
 ## Claude Code adapter
 
 `claude/hooks/damage-control/pi-adapter.ts` reuses the default profile policy parser, Bash parser, deterministic request analysis, and decision engine for Claude Code Bash/Edit/Write PreToolUse calls. It intentionally does not invoke Luna: `review` dispositions become Claude `ask`; `user` requires ask and `block` denies. Allows emit no permission decision. Invalid hook data or an adapter/analysis error denies. Claude Edit `replace_all` is denied as unsupported rather than treated as a single replacement. Claude path-normalization and unrelated hooks remain separate. Focused adapter coverage runs with `bun test claude/hooks/damage-control/pi-adapter.test.ts`.

@@ -14,8 +14,11 @@
   "dependencies": {
     "@aws/bedrock-token-generator": "1.1.0",
     "@duckdb/node-api": "1.5.5-r.4",
+    "@mozilla/readability": "0.6.0",
     "@typesafe-ai/sdk": "0.6.0",
+    "ipaddr.js": "2.2.0",
     "jiti": "2.7.0",
+    "jsdom": "26.1.0",
     "proper-lockfile": "4.1.2",
     "sharp": "^0.35.4",
     "tree-sitter-bash": "0.25.1",
@@ -23,6 +26,8 @@
     "tree-sitter-powershell": "0.26.4",
     "tree-sitter-python": "0.25.0",
     "tree-sitter-typescript": "0.23.2",
+    "turndown": "7.2.0",
+    "turndown-plugin-gfm": "1.0.2",
     "web-tree-sitter": "0.26.9",
     "yaml": "2.8.1"
   },

@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-10-05: Replace broad browser blocking with task-scoped controls
+
+- Default Pi browser automation now permits ordinary login, consent handling, and development forms while applying exact session/frame, destination, credential-binding, and consequential-action checks. Stored fills use operator-configured local BWS references; actual CAPTCHA completion and native TLS/Safe Browsing warnings remain manual, with no warning bypass.
+- Fresh default-profile installs now declare the existing web-fetch parsing/address dependencies exposed as missing by the affected integration checks.
+- Browser observations are treated as untrusted evidence and selected transfers reach Damage Control review. This is not universal taint tracking, complete visual screening, or a connection-level network sandbox; bound sites can still be compromised and CDP/DNS limitations remain. Cookie/storage APIs and arbitrary model-callable evaluation remain unavailable. See [browser setup and security boundaries](docs/browser-security.md).
+
 ## 2026-10-03: Keep focused Pi initialization within its requested scope
 
 - `/init` treats a supplied package/path/focus as its scope, reads applicable parent guidance and relevant evidence first, and expands discovery only for concrete unresolved questions. Unfocused use remains repository-wide.

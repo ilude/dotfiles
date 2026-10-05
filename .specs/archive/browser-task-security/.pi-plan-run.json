@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "specRelativePath": ".specs/browser-task-security/plan.md",
+  "specStub": "browser-task-security",
+  "taskWorktreePath": "C:\\Users\\mglenn\\.dotfiles\\.worktrees\\browser-task-security",
+  "taskBranch": "task/browser-task-security",
+  "originCheckoutPath": "C:\\Users\\mglenn\\.dotfiles",
+  "originBranch": "main",
+  "startingTargetCommit": "b926df56192ab0cd2768a19a61730ebaed279da3",
+  "sourceSpecSnapshot": {
+    "version": 1,
+    "files": [
+      {
+        "path": "plan.md",
+        "sha256": "d50460bf3b40db4eb0196d8eed32104202b30b4d93513ebf5f4f1ecd6f9cfcaa"
+      }
+    ]
+  }
+}

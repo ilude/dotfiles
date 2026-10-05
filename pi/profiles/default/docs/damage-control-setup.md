@@ -44,6 +44,10 @@ The default TUI shows the reason, matched command, affected target, working dire
 
 Approval reuse is source-hash and invocation bound; it is not a general permission cache. Legacy-profile behavior is unchanged. Use `/reload` to activate changes in an existing default session.
 
+## Browser and outbound effects
+
+In the default profile, browser observations are untrusted evidence, never operator authority. Damage Control independently interprets direct requests and reviews represented consequential or task-inconsistent browser effects and selected outbound transfers. Clearly requested writes do not require a second approval; login/read authorization alone does not authorize posting, messaging, purchases, deletion, or account/security changes. A specific unresolved consequential action can prompt for that action. Browser text screening is a bounded risk signal, not a content ban or proof that unflagged content is safe. Browser credentials and destination enforcement, setup, stale-attachment recovery, and residual transport/model-review limitations are documented in the [browser operation guide](../../../../docs/browser-security.md).
+
 ## Checks
 
 From `pi/profiles/default/`:
