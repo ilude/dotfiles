@@ -68,9 +68,14 @@ export type DockerMetadataReader = (endpoint: DockerEndpoint, targets: readonly 
 /** Parser internals stay local; only the bounded variable projection is copied into review evidence. */
 // Parser-resolved argv is local metadata input, never serialized for Luna.
 export type ShellSearch = { effectId: string; executable: "rg"; inventoryArgs?: string[] };
-export type ScriptSourceIdentity = { path: string; sha256: string; range: { start: number; end: number }; argv: string[] };
+export type ScriptSourceIdentity = { path: string; sha256: string; range: { start: number; end: number }; argv: string[]; source?: string; sourceOmission?: string };
+/** Inspection-only parser projection. Quoted arguments remain data, not command text. */
+export type InspectionInvocation = { executable: string; args: ({ known: true; value: string } | { known: false; expression: string; reason: string })[]; wrappers: string[]; language: Language; range: { start: number; end: number } };
+export type InspectionSource = { path: string; source?: string; omission?: string };
+export type InspectionRoute = "observation" | "mutation" | "review";
+export type InspectionEvidence = { route: InspectionRoute; reason: string; request: PendingJudgeCall; analysis: Analysis; sources: InspectionSource[] };
 export type VariableEvidence = { name: string; value: string; source: "literal" | "inherited" | "process"; provenance: string };
-export type Analysis = { effects: Effect[]; matches: RuleMatch[]; uncertainties: string[]; health: Health; internal?: { docker: DockerInvocation[]; git?: GitInvocation[]; searches?: ShellSearch[]; scripts?: ScriptSourceIdentity[]; variables?: VariableEvidence[] } };
+export type Analysis = { effects: Effect[]; matches: RuleMatch[]; uncertainties: string[]; health: Health; internal?: { docker: DockerInvocation[]; git?: GitInvocation[]; searches?: ShellSearch[]; scripts?: ScriptSourceIdentity[]; variables?: VariableEvidence[]; inspection?: { invocations: InspectionInvocation[]; sources: InspectionSource[] } } };
 export type EnvironmentEvidence = Readonly<Record<string, string | undefined>>;
 export type SequenceEvidence = { kind: string; category?: string; summary: string; ageMs: number };
 export type JudgeConversationMessage = { role: "user" | "assistant"; text: string };

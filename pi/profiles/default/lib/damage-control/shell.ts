@@ -6,7 +6,7 @@ import { createRequire } from "node:module";
 import * as TreeSitter from "web-tree-sitter";
 import { parseSearchArguments, type SearchArgument } from "./search.ts";
 import { sqlExecutableText } from "./sql.ts";
-import type { Analysis, CompiledRule, DockerEndpoint, DockerEnvironmentKey, DockerInvocation, Effect, GitInvocation, Language, RuleMatch, ShellSearch, ScriptSourceIdentity, Target, ToolRequest, VariableEvidence } from "./types.ts";
+import type { Analysis, CompiledRule, DockerEndpoint, DockerEnvironmentKey, DockerInvocation, Effect, GitInvocation, InspectionInvocation, InspectionSource, Language, RuleMatch, ShellSearch, ScriptSourceIdentity, Target, ToolRequest, VariableEvidence } from "./types.ts";
 
 const SCRIPT_BYTE_LIMIT = 64 * 1024;
 const NESTING_LIMIT = 8;
@@ -29,6 +29,8 @@ export type ShellDependencies = {
   environment?: Readonly<Record<string, string | undefined>>;
   environmentProvenance?: string;
   scriptTrust?: (absolutePath: string, argv: readonly string[], cwd: string) => Promise<boolean>;
+  /** Inspection must analyze source bodies even when ordinary script trust matches. */
+  inspection?: boolean;
 };
 
 const require = createRequire(import.meta.url);
@@ -97,6 +99,7 @@ type State = {
   semanticMatches: RuleMatch[];
   scripts: ScriptSourceIdentity[];
   variables: Map<string, VariableEvidence>;
+  inspection: { invocations: InspectionInvocation[]; sources: InspectionSource[] };
 };
 
 function valueTarget(value: Value, cwd: string, home: string): Target {
@@ -671,10 +674,14 @@ async function analyzeScript(language: Language, fileValue: Value, state: State,
   const loaded = await scriptSource(fileValue, scope, state);
   addEffect(state, "filesystem", "read", scope, language, executable, range, [loaded.file]);
   addEffect(state, "execution", "execute", scope, language, executable, range, [loaded.file]);
+  if (state.dependencies.inspection) state.inspection.sources.push({
+    path: loaded.file.resolution === "static" ? loaded.file.path : loaded.file.expression,
+    ...(loaded.source === undefined ? { omission: loaded.reason ?? "script source is unresolved" } : { source: loaded.source }),
+  });
   if (loaded.source !== undefined && loaded.file.resolution === "static") {
-    const identity: ScriptSourceIdentity = { path: loaded.file.path, sha256: createHash("sha256").update(loaded.source).digest("hex"), range, argv: argv.filter(item => item.known).map(item => item.value) };
+    const identity: ScriptSourceIdentity = { path: loaded.file.path, sha256: createHash("sha256").update(loaded.source).digest("hex"), range, argv: argv.filter(item => item.known).map(item => item.value), ...(state.dependencies.inspection ? { source: loaded.source } : {}) };
     state.scripts.push(identity);
-    const approved = state.dependencies.scriptTrust && await state.dependencies.scriptTrust(loaded.file.path, identity.argv, scope.cwd);
+    const approved = !state.dependencies.inspection && state.dependencies.scriptTrust && await state.dependencies.scriptTrust(loaded.file.path, identity.argv, scope.cwd);
     if (!approved) await analyzeEmbedded(language, loaded.source, state, shareScope ? scope : cloneScope(scope), depth + 1, range);
   } else addUnknown(state, scope, language, executable, range, loaded.reason ?? "script source is unresolved", fileValue.known ? fileValue.value : fileValue.expression);
 }
@@ -688,7 +695,8 @@ async function processRedirection(node: TreeSitter.Node, language: Language, sta
   }
   let destination = node.childForFieldName("destination") ?? node.descendantsOfType(["redirected_file_name", "word", "generic_token"]).at(-1);
   if (destination?.type === "redirected_file_name") destination = destination.namedChildren.find((child) => child.type !== "command_argument_sep") ?? destination;
-  if (!destination || /(?:>&|<&)/.test(text)) return;
+  if (!destination) return;
+  if (/(?:>&|<&)/.test(text) && (!state.dependencies.inspection || /^(?:[0-9]+|-)$/.test(destination.text.trim()))) return;
   const item = valueTarget(decoded(destination, language, scope), scope.cwd, state.home);
   if (/<<<?/.test(text)) return;
   if (/(?:^|\s)<(?!<)/.test(text)) addEffect(state, "filesystem", "read", scope, language, executable, range, [item]);
@@ -731,6 +739,7 @@ async function processInvocation(
     return state.effects.slice(before).map((item) => item.id);
   }
   const { executable, actualArgs, wrappers, environmentAssignments } = normalized;
+  if (state.dependencies.inspection) state.inspection.invocations.push({ executable, args: actualArgs, wrappers, language, range });
   const noEffect = hasKnownNoEffect(executable, actualArgs, language);
   const effectArgs = actualArgs.filter((item, index) => {
     const previous = actualArgs[index - 1];
@@ -786,13 +795,21 @@ async function processInvocation(
       roots.push(root); i++;
     }
     const searchRoots = roots.length ? roots : [{ known: true as const, value: "." }];
-    const deletes = actualArgs.some((item) => item.known && item.value === "-delete");
+    const predicates: Value[] = [];
+    if (state.dependencies.inspection) {
+      for (let at = 0; at < actualArgs.length; at++) {
+        const item = actualArgs[at];
+        predicates.push(item);
+        if (item.known && ["-name", "-iname", "-path", "-ipath", "-type", "-size", "-mtime", "-mmin", "-user", "-group", "-maxdepth", "-mindepth"].includes(item.value)) at++;
+      }
+    }
+    const deletes = (state.dependencies.inspection ? predicates : actualArgs).some((item) => item.known && item.value === "-delete");
     addEffect(state, "filesystem", deletes ? "delete" : "metadata", scope, language, executable, range, targets(searchRoots, scope, state));
     const unresolved = actualArgs.find((item) => !item.known);
     if (unresolved && !unresolved.known) addUnknown(state, scope, language, executable, range, "find path or expression is unresolved", unresolved.expression);
     for (let at = 0; at < actualArgs.length; at++) {
       const predicate = actualArgs[at];
-      if (predicate?.known && ["-exec", "-execdir"].includes(predicate.value)) {
+      if (predicate?.known && (!state.dependencies.inspection || predicates.includes(predicate)) && ["-exec", "-execdir"].includes(predicate.value)) {
         const end = actualArgs.findIndex((item, index) => index > at && item.known && [";", "+"].includes(item.value));
         const body = actualArgs.slice(at + 1, end < 0 ? undefined : end);
         if (!body.length) addUnknown(state, scope, language, "find", range, "find -exec payload is missing", "<missing>");
@@ -1164,6 +1181,7 @@ async function walkBash(node: TreeSitter.Node, state: State, scope: Scope, depth
       if (value.known) assignVariable(scope, name, value.value);
       else { scope.variables.delete(name); scope.inheritedVariables.delete(name); scope.unknownVariables.add(name); }
     }
+    if (state.dependencies.inspection && valueNode) await processEmbeddedNodes(valueNode, "bash", state, scope, depth, offset, forced);
     return;
   }
   if (node.type === "function_definition") {
@@ -1223,6 +1241,7 @@ async function processPowerShellCommand(node: TreeSitter.Node, state: State, sco
   const range = rangeOf(node, offset, forced);
   const name = node.childForFieldName("command_name") ?? node.childForFieldName("name") ?? node.descendantsOfType("command_name")[0];
   if (!name) { addUnknown(state, scope, "powershell", "<dynamic>", range, "PowerShell command name is unresolved", node.text); return; }
+  if (state.dependencies.inspection) await processEmbeddedNodes(name, "powershell", state, scope, depth, offset, forced);
   const invocation = node.descendantsOfType("command_invokation_operator")[0]?.text;
   const commandArgs = commandArguments(node, "powershell");
   const dotSourced = invocation === ".";
@@ -1238,7 +1257,10 @@ async function processPowerShellCommand(node: TreeSitter.Node, state: State, sco
 
 async function walkPowerShell(node: TreeSitter.Node, state: State, scope: Scope, depth: number, offset: number, forced?: { start: number; end: number }): Promise<void> {
   if (depth > NESTING_LIMIT) { addUnknown(state, scope, "powershell", "embedded", rangeOf(node, offset, forced), "nested execution depth exceeded", node.text); return; }
-  if (psAssignment(node, scope)) return;
+  if (psAssignment(node, scope)) {
+    if (state.dependencies.inspection) for (const child of node.namedChildren) await walkPowerShell(child, state, scope, depth, offset, forced);
+    return;
+  }
   if (node.type === "pipeline_chain") {
     const previous = scope.stdinOwner;
     try {
@@ -1345,7 +1367,7 @@ export async function analyzeShell(request: ToolRequest, dependencies: ShellDepe
     home: dependencies.home ?? os.homedir(),
     dependencies,
     repositoryRoot: path.resolve(dependencies.repositoryRoot ?? request.cwd),
-    docker: [], git: [], searches: [], semanticMatches: [], scripts: [], variables: new Map(),
+    docker: [], git: [], searches: [], semanticMatches: [], scripts: [], variables: new Map(), inspection: { invocations: [], sources: [] },
   };
   try {
     const parsed = await parse(request.language, request.input.command, state);
@@ -1389,7 +1411,7 @@ export async function analyzeShell(request: ToolRequest, dependencies: ShellDepe
     }] : []));
     const directCreation = state.docker.length === 1 && state.records.length === 1 && state.effects.length === 1 && !parseHadError;
     for (const invocation of state.docker) invocation.directCreation &&= directCreation;
-    return { effects: state.effects, matches: [...matches, ...state.semanticMatches], uncertainties: [...new Set(state.uncertainties)], health: { status: "ready" }, internal: { docker: state.docker, git: state.git, searches: state.searches, scripts: state.scripts, variables: [...state.variables.values()] } };
+    return { effects: state.effects, matches: [...matches, ...state.semanticMatches], uncertainties: [...new Set(state.uncertainties)], health: { status: "ready" }, internal: { docker: state.docker, git: state.git, searches: state.searches, scripts: state.scripts, variables: [...state.variables.values()], ...(dependencies.inspection ? { inspection: state.inspection } : {}) } };
   } catch (error) {
     return { effects: [], matches: [], uncertainties: [], health: { status: "failed", reason: error instanceof Error ? error.message : String(error) }, internal: { docker: [], git: state.git, scripts: state.scripts, variables: [...state.variables.values()] } };
   }
