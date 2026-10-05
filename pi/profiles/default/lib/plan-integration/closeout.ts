@@ -138,6 +138,38 @@ function result(manifest: CloseoutManifest, values: Partial<CloseoutResult> = {}
   };
 }
 
+const MAX_EVIDENCE_LENGTH = 2_048;
+const IGNORED_EVIDENCE_PREFIX = "ignored-left-in-place=";
+const EVIDENCE_SAMPLE_COUNT = 8;
+const EVIDENCE_SAMPLE_PATH_LENGTH = 120;
+
+function boundedEvidence(entry: string): string {
+  return entry.length <= MAX_EVIDENCE_LENGTH ? entry : `${entry.slice(0, MAX_EVIDENCE_LENGTH - 14)}…[truncated]`;
+}
+
+export function ignoredPathsEvidence(paths: readonly string[]): string {
+  const sample = paths.slice(0, EVIDENCE_SAMPLE_COUNT).map(path =>
+    path.length <= EVIDENCE_SAMPLE_PATH_LENGTH ? path : `${path.slice(0, EVIDENCE_SAMPLE_PATH_LENGTH - 1)}…`);
+  const more = paths.length > sample.length ? `; ${paths.length - sample.length} more` : "";
+  return boundedEvidence(`${IGNORED_EVIDENCE_PREFIX}${paths.length} paths; sample=${JSON.stringify(sample)}${more}`);
+}
+
+/** Compact legacy path-list evidence too, including on an already-integrated resume. */
+export function normalizeCloseoutResult(value: CloseoutResult): CloseoutResult {
+  const evidence = value.evidence.map(entry => {
+    if (entry.startsWith(IGNORED_EVIDENCE_PREFIX)) {
+      const detail = entry.slice(IGNORED_EVIDENCE_PREFIX.length);
+      if (entry.length <= MAX_EVIDENCE_LENGTH && /^\d+ paths; sample=/.test(detail)) return entry;
+      const legacyParts = detail.split(",");
+      const sample = legacyParts.slice(0, EVIDENCE_SAMPLE_COUNT).map(path =>
+        path.length <= EVIDENCE_SAMPLE_PATH_LENGTH ? path : `${path.slice(0, EVIDENCE_SAMPLE_PATH_LENGTH - 1)}…`);
+      return boundedEvidence(`${IGNORED_EVIDENCE_PREFIX}${legacyParts.length} legacy comma-delimited entries (${detail.length} chars); sample=${JSON.stringify(sample)}${legacyParts.length > sample.length ? `; ${legacyParts.length - sample.length} more` : ""}`);
+    }
+    return boundedEvidence(entry);
+  });
+  return { ...value, evidence };
+}
+
 interface PreparedSourceRetirement {
   paths: string[];
   tracked: string[];
@@ -332,7 +364,7 @@ function cleanupDelivered(manifest: CloseoutManifest): CloseoutResult {
 }
 
 /** Complete an authorized local closeout, or stop at the integration-ready lifetime boundary. */
-export function closeout(input: CloseoutManifest, options: CloseoutOptions = {}): CloseoutResult {
+function closeoutInternal(input: CloseoutManifest, options: CloseoutOptions = {}): CloseoutResult {
   const manifest = normalizeCloseoutManifest(input);
   validateCloseoutManifest(manifest);
   const target = manifest.targetCheckout;
@@ -406,7 +438,7 @@ export function closeout(input: CloseoutManifest, options: CloseoutOptions = {})
       }
       dirty = statusPaths(target);
       const ignored = run(target, ["status", "--short", "--ignored", "--untracked-files=all"]).split(/\r?\n/).filter(line => line.startsWith("!! "));
-      state = { ...state, stashOid, stashState, evidence: [...state.evidence, `overlap=${overlaps.join(",")}`, `ignored-left-in-place=${ignored.map(line => line.slice(3)).join(",") || "none"}`] };
+      state = { ...state, stashOid, stashState, evidence: [...state.evidence, `overlap=${overlaps.join(",")}`, ignoredPathsEvidence(ignored.map(line => line.slice(3)))] };
     }
     let targetHead = run(target, ["rev-parse", "HEAD"]);
     const taskAlreadyMerged = isAncestor(target, manifest.taskCommit, targetHead);
@@ -490,4 +522,8 @@ export function closeout(input: CloseoutManifest, options: CloseoutOptions = {})
     const outcome = state.metadata === "committed" || state.metadata === "already-committed" ? "CLEANUP PENDING" : "MERGE BLOCKED";
     return { ...state, outcome, reason: String(error), action: "Inspect the reported Git/filesystem state and rerun only after confirming the manifest.", targetCommit: head, retainedArtifacts: state.retainedArtifacts };
   }
+}
+
+export function closeout(input: CloseoutManifest, options: CloseoutOptions = {}): CloseoutResult {
+  return normalizeCloseoutResult(closeoutInternal(input, options));
 }

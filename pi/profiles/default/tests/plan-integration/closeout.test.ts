@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, w
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, expect, it } from "vitest";
-import { closeout, inspectCloseout } from "../../lib/plan-integration/closeout.ts";
+import { closeout, ignoredPathsEvidence, inspectCloseout, normalizeCloseoutResult } from "../../lib/plan-integration/closeout.ts";
 import type { CloseoutManifest } from "../../lib/plan-integration/contracts.ts";
 import { preparePlanRun } from "../../lib/plan-run.ts";
 
@@ -219,12 +219,38 @@ it("stashes overlapping tracked and untracked changes without stashing ignored f
   const result = closeout({ ...manifest, taskCommit }, { operation: "integrate" });
   expect(result).toMatchObject({ outcome: "INTEGRATION READY", stashState: "restored", merge: "merged" });
   expect(existsSync(taskPath)).toBe(true);
-  expect(closeout({ ...manifest, taskCommit }, { operation: "cleanup" })).toMatchObject({ outcome: "COMPLETED", targetCommit: result.targetCommit });
+  const diagnostic = result.evidence.find(value => value.startsWith("ignored-left-in-place="))!;
+  expect(diagnostic).toMatch(/ignored-left-in-place=\d+ paths;/);
+  expect(diagnostic).toContain("ignored.tmp");
+  expect(diagnostic.length).toBeLessThan(2_048);
+  expect(JSON.stringify(result).length).toBeLessThan(50_000);
+  const resumed = closeout({ ...manifest, taskCommit }, { operation: "integrate" });
+  expect(resumed).toMatchObject({ outcome: "INTEGRATION READY", merge: "already-merged", metadata: "already-committed" });
+  expect(resumed.evidence.find(value => value.startsWith("ignored-left-in-place="))).toBe(diagnostic);
+  expect(JSON.stringify(resumed).length).toBeLessThan(50_000);
   expect(result.stashOid).toMatch(/^[0-9a-f]{40}$/);
   expect(readFileSync(join(root, "file.txt"), "utf8")).toBe("task-one\ntwo\nthree\nfour\nlocal-five\n");
   expect(readFileSync(join(root, "loose.txt"), "utf8")).toBe("local untracked\n");
   expect(existsSync(join(root, "ignored.tmp"))).toBe(true);
   expect(git(root, "stash", "list")).toBe("");
+}, 60_000);
+
+it("bounds fresh and legacy ignored-path evidence in resumed closeout results", () => {
+  const { manifest } = fixture();
+  const ready = closeout(manifest, { operation: "integrate" });
+  const paths = Array.from({ length: 40_000 }, (_, index) => `stale-profile-${index}-${"x".repeat(120)}`);
+  const fresh = ignoredPathsEvidence(paths);
+  expect(fresh).toContain("40000 paths;");
+  expect(fresh).toContain('"stale-profile-0-');
+  expect(fresh.length).toBeLessThan(2_048);
+
+  const legacy = `ignored-left-in-place=${paths.join(",")}`;
+  const resumed = normalizeCloseoutResult({ ...ready, evidence: [...ready.evidence, legacy] });
+  const normalized = resumed.evidence.at(-1)!;
+  expect(normalized).toContain("legacy comma-delimited entries");
+  expect(normalized).toContain('"stale-profile-0-');
+  expect(normalized.length).toBeLessThan(2_048);
+  expect(JSON.stringify({ ...resumed, evidence: [...resumed.evidence, fresh] }).length).toBeLessThan(50_000);
 });
 
 it("reports a routine merge conflict with exact paths and retains evidence", () => {

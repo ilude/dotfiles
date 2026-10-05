@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-10-05: Bound plan closeout diagnostics
+
+- Plan integration now summarizes ignored-path preservation evidence and compacts legacy oversized diagnostics, keeping resumed closeout results within native tool output limits without touching ignored files or weakening closeout authority.
+
 ## 2026-10-05: Give Explorer guarded shell inspection
 
 - Default-profile Explorer gains Bash and PowerShell for local and live evidence without native edit/write tools. Frozen role-bound Damage Control inspection checks complete calls and supported script bodies, permits established observations, and uses a tool-free inspection judge for unfamiliar operations. Intentional mutation is blocked even when temporary or recoverable; uncertainty and review failures return concrete recoverable denials for alternative inspection or parent reassignment.
