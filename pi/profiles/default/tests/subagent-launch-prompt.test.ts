@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { join } from "node:path";
 import { childLaunch } from "../lib/subagents/launch.ts";
+import { childSystemPrompt } from "../extensions/subagent-child.ts";
 import type { AgentDefinition } from "../lib/subagents/definitions.ts";
 import type { LaunchSpec } from "../lib/subagents/rpc.ts";
 import type { CloseoutManifest } from "../lib/plan-integration/contracts.ts";
@@ -28,6 +29,29 @@ describe("subagent launch prompt", () => {
     expect(launch.args).toContain(join(process.cwd(), "extensions", "compaction.ts"));
     expect(launch.args).toContain(join(process.cwd(), "extensions", "tool-invocation-provenance.ts"));
     expect(launch.args).toContain(join(process.cwd(), "extensions", "scoped-instructions.ts"));
+  });
+
+  it.each(["visible", "headless"] as const)("launches Explorer with frozen inspection authority and shell tools on %s", (surface) => {
+    const explorer = { ...definition, name: "explorer", tools: ["read", "grep", "find", "ls", "bash", "powershell", "tool_search", "log_analytics", "subagent_parent"], delegates: [], prompt: "Investigate local and live evidence. Report blocked changes to your parent.", source: "project" as const };
+    const launch = childLaunch({ ...spec(surface), definition: explorer, prompt: explorer.prompt }, `explorer-${surface}`, process.cwd());
+    const authority = JSON.parse(launch.env.PI_SUBAGENT_AUTHORITY);
+    const selected = launch.args[launch.args.indexOf("--tools") + 1]!.split(",");
+    expect(selected).toEqual(explorer.tools);
+    expect(authority).toMatchObject({ agent: "explorer", tools: selected, delegates: [] });
+    expect(launch.args).toContain(join(process.cwd(), "extensions", "damage-control/index.js"));
+    expect(selected).not.toEqual(expect.arrayContaining(["edit", "write", "codemode", "subagent"]));
+    const composed = childSystemPrompt("base", authority.agent, authority.tools, launch.env.PI_SUBAGENT_PROMPT);
+    expect(composed).toBe(childSystemPrompt("base", authority.agent, authority.tools, launch.env.PI_SUBAGENT_PROMPT));
+    expect(composed).toContain("Report blocked changes to your parent");
+  });
+
+  it("keeps Developer's shell tools under the normal role policy", () => {
+    const developer = { ...definition, name: "developer", tools: ["read", "bash", "powershell", "edit", "write", "subagent_parent"] };
+    const launch = childLaunch({ ...spec("headless"), definition: developer }, "developer", process.cwd());
+    const authority = JSON.parse(launch.env.PI_SUBAGENT_AUTHORITY);
+    expect(authority.agent).toBe("developer");
+    expect(authority.tools).toEqual(developer.tools);
+    expect(launch.args).toContain(join(process.cwd(), "extensions", "damage-control/index.js"));
   });
 
   it("loads context files for all roles while keeping skill discovery exclusive to Team Leads", () => {

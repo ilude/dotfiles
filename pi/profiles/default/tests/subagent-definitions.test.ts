@@ -62,6 +62,13 @@ describe("subagent definitions",()=>{
   expect(resolveAgentEffort("steward","openai-codex/gpt-5.6-sol","low","high")).toBe("low");
   expect(resolveAgentEffort("reviewer","openai-codex/gpt-5.6-luna","low","high")).toBe("low");
  });
+ it("loads Explorer with guarded shells but no native write or delegation authority",()=>{
+  const profile=join(dirname(fileURLToPath(import.meta.url)),"..");
+  const explorer=loadDefinitions(profile,false,profile).agents.get("explorer");
+  expect(explorer).toMatchObject({tools:["read","grep","find","ls","bash","powershell","tool_search","log_analytics","subagent_parent"],delegates:[],skills:[]});
+  expect(explorer?.tools).not.toEqual(expect.arrayContaining(["edit","write","codemode","subagent"]));
+  expect(explorer?.prompt).toContain("report the concrete blocker to your parent");
+ });
  it("loads the bundled read-only Strategist and Steward and grants Team Lead access without changing other defaults",()=>{
   const profile=join(dirname(fileURLToPath(import.meta.url)),"..");
   const catalog=loadDefinitions(profile,false,profile);
