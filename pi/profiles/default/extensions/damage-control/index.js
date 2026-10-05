@@ -5,11 +5,22 @@ import { realpathSync } from "node:fs";
 import { registerProfileCommand } from "../../lib/profile-command.ts";
 
 export default async function (pi) {
+  // Capture role authority before loading dependencies. This handler remains
+  // registered if the loader, policy, or grammar initialization throws.
+  let inspection = false;
+  try { inspection = JSON.parse(process.env.PI_SUBAGENT_AUTHORITY ?? "null")?.agent === "explorer"; } catch { /* child authority validates malformed payloads */ }
+  let gate;
+  pi.on("tool_call", (event, ctx) => {
+    if (gate) return gate.handle(event, ctx);
+    if (inspection && ["bash", "powershell", "write", "edit", "read", "grep", "find", "ls"].includes(event.toolName)) {
+      return { block: true, reason: "Explorer inspection enforcement unavailable: Damage Control initialization did not complete; action not executed" };
+    }
+  });
   const profile = resolve(fileURLToPath(new URL("../../", import.meta.url)));
   const { createJiti } = createRequire(import.meta.url)(realpathSync(resolve(profile, "node_modules/jiti")));
   const loader = createJiti(import.meta.url, { tryNative: false, moduleCache: false, fsCache: false, nativeModules: ["web-tree-sitter", "yaml"] });
   const { initialize } = await loader.import("../../lib/damage-control/enforcement.ts");
-  const gate = await initialize(pi, profile, resolve(profile, "../../.."));
+  gate = await initialize(pi, profile, resolve(profile, "../../.."), inspection);
   const command = {
     description: "Switch session-local Damage Control controls",
     async handler(args, ctx) {
@@ -34,7 +45,6 @@ export default async function (pi) {
   };
   registerProfileCommand(pi, "damage-control", command);
   registerProfileCommand(pi, "dc", command);
-  pi.on("tool_call", (event, ctx) => gate.handle(event, ctx));
   // CLI-backed Herdr commands use the same gate with verified remote-pane
   // shell/cwd, not the orchestrator's cwd or a nested `herdr pane run` string.
   let unsubscribe;

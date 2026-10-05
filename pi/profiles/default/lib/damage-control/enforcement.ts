@@ -8,6 +8,8 @@ import { bypassEligibility } from "./bypass.ts";
 import { authorizedPlanIntegration } from "./plan-integration-authority.ts";
 import { Context, DIRECT_INPUT_LIMIT, processVariableEvidence } from "./context.ts";
 import { decide } from "./engine.ts";
+import { classifyInspection } from "./inspection.ts";
+import { reviewInspection } from "./inspection-judge.ts";
 import { loadPolicy } from "./policy.ts";
 import type { PathFacts } from "./paths.ts";
 import { promptDecision } from "./prompt.ts";
@@ -19,6 +21,7 @@ import type { Effect, PendingCall, ReviewResult, Settings, ToolRequest } from ".
 export type Gate = { handle: (event: ToolCallEvent, ctx: ExtensionContext) => Promise<{ block: true; reason: string; terminate?: true } | undefined>; setBypass: (value: boolean) => void; setMode: (value: "default" | "noshell") => void; scan: (ctx: ExtensionContext) => Promise<unknown> };
 export type GateDependencies = AnalysisDependencies & {
   review: (evidence: ReturnType<Context["buildEvidence"]>, ctx: ExtensionContext, settings: Settings, pending: PendingCall, generation: () => number) => Promise<ReviewResult>;
+  reviewInspection?: typeof reviewInspection;
   scriptReview?: (request: ScriptReviewRequest) => Promise<unknown>;
   scriptScan?: (cwd: string, origin: string, notify: (message: string, level?: "info" | "warning") => void, signal?: AbortSignal) => Promise<unknown>;
   cancelScriptReviews?: () => void;
@@ -27,7 +30,12 @@ const WATCHDOG_STATE = "damage-control-watchdog";
 const JUDGE_REVIEW_LOG = "damage-control-judge-review-v1";
 const blocked = (reason: string, terminate = false) => ({ block: true as const, reason: reason.slice(0, 4000), ...(terminate ? { terminate: true as const } : {}) });
 
-export async function initialize(pi: ExtensionAPI, profile: string, repo: string): Promise<Gate> {
+function explorerAuthority(): boolean {
+  try { return JSON.parse(process.env.PI_SUBAGENT_AUTHORITY ?? "null")?.agent === "explorer"; }
+  catch { return false; }
+}
+
+export async function initialize(pi: ExtensionAPI, profile: string, repo: string, inspection = explorerAuthority()): Promise<Gate> {
   const loaded = await loadPolicy(profile);
   const { review } = await import("./judge.ts");
   const { ScriptReviewCoordinator } = await import("./script-review.ts");
@@ -45,10 +53,10 @@ export async function initialize(pi: ExtensionAPI, profile: string, repo: string
     scriptReview: request => coordinator.review(request),
     scriptScan: (cwd, origin, notify, signal) => coordinator.scan(cwd, origin, notify, signal),
     cancelScriptReviews: () => coordinator.cancel(),
-  });
+  }, inspection);
 }
 
-export function registerGate(pi: ExtensionAPI, profile: string, repo: string, dependencies: GateDependencies): Gate {
+export function registerGate(pi: ExtensionAPI, profile: string, repo: string, dependencies: GateDependencies, inspection = explorerAuthority()): Gate {
   const context = new Context();
   const sequence = new DamageControlSessionState();
   const breaker = new Breaker();
@@ -121,6 +129,7 @@ export function registerGate(pi: ExtensionAPI, profile: string, repo: string, de
       if (normalized.status === "unsupported") return blocked(normalized.reason);
       const request = normalized.request;
       if (mode === "noshell" && (request.tool === "bash" || request.tool === "powershell")) return blocked("Shell tools are disabled by damage-control noshell mode");
+      if (inspection && (request.tool === "edit" || request.tool === "write")) return blocked("Explorer inspection blocks intentional mutation: native edit/write is not inspection");
       if (ctx.signal?.aborted) return blocked("Pending call cancelled; action not executed");
       if (ctx.signal && !abortListeners.has(ctx.signal)) {
         abortListeners.set(ctx.signal, invalidate);
@@ -137,14 +146,28 @@ export function registerGate(pi: ExtensionAPI, profile: string, repo: string, de
       const fresh = () => !signal.aborted && context.generation === call.generation && fingerprint(event.input) === call.fingerprint;
       const facts: PathFacts = { platform: process.platform === "win32" ? "win32" : "posix", home: homedir(), cwd: ctx.cwd, profile, repo, realpath };
       try {
-        const { analysis, createdPaths: created } = await analyzeRequest(request, facts, {
-          wasCreated: target => context.wasCreated(target),
-          wasDockerCreated: (daemonId, containerId) => context.wasDockerCreated(daemonId, containerId),
-        }, dependencies);
+        const creationFacts = {
+          wasCreated: (target: string) => context.wasCreated(target),
+          wasDockerCreated: (daemonId: string, containerId: string) => context.wasDockerCreated(daemonId, containerId),
+        };
+        const inspectionEvidence = inspection ? await classifyInspection(request, facts, creationFacts, dependencies) : undefined;
+        if (!fresh()) return blocked("Pending call cancelled or changed; action not executed");
+        if (inspectionEvidence?.route === "mutation") return blocked(`Explorer inspection blocks intentional mutation: ${inspectionEvidence.reason}`);
+        if (inspectionEvidence?.route === "review") {
+          const result = await (dependencies.reviewInspection ?? reviewInspection)(inspectionEvidence, { ...ctx, signal }, dependencies.settings, call, () => context.generation);
+          if (!fresh()) return blocked("Inspection review is stale or cancelled; action not executed");
+          if (result.status !== "valid") return blocked(`Explorer inspection review ${result.status}: ${result.reason}`);
+          if (result.verdict !== "observation") return blocked(`Explorer inspection ${result.verdict === "mutation" ? "blocks intentional mutation" : "status unresolved"}: ${result.reason}`);
+        }
+        // Reuse the inspection analysis, which retains protected reads and never
+        // skips a source body because of normal script trust.
+        const { analysis, createdPaths: created } = inspectionEvidence
+          ? { analysis: inspectionEvidence.analysis, createdPaths: [] }
+          : await analyzeRequest(request, facts, creationFacts, dependencies);
         if (!fresh()) return blocked("Pending call cancelled or changed; action not executed");
         const sequenceDecision = sequence.check(request.tool, request.text, analysis.effects);
         if (sequenceDecision) analysis.matches.push({ ruleId: sequenceDecision.name, action: sequenceDecision.action === "review" ? "review" : "block", applicability: "confirmed", reason: sequenceDecision.reason, effects: analysis.effects.map(effect => effect.id) });
-        if (!sequenceDecision && authorizedPlanIntegration(request, analysis, profile)) {
+        if (!inspection && !sequenceDecision && authorizedPlanIntegration(request, analysis, profile)) {
           sequence.record(request.tool, request.text);
           completed.set(call.callId, { request, effects: analysis.effects, created, generation: context.generation });
           while (completed.size > 50) completed.delete(completed.keys().next().value!);
@@ -168,11 +191,11 @@ export function registerGate(pi: ExtensionAPI, profile: string, repo: string, de
           decision = decide(analysis, evidence, result);
         }
         if (decision.outcome === "block") return blocked(decision.reason);
-        const localBypass = bypassed && bypassEligibility(request, analysis, decision, facts).eligible;
+        const localBypass = !inspection && bypassed && bypassEligibility(request, analysis, decision, facts).eligible;
         let reviewFuture = false;
         const reviewableScript = analysis.internal?.scripts?.length === 1 ? analysis.internal.scripts[0] : undefined;
         if (decision.outcome === "user" && !localBypass) {
-          const answer = await promptDecision(decision, request, analysis, { ...ctx, signal, allowReview: !!dependencies.scriptReview && !!reviewableScript });
+          const answer = await promptDecision(decision, request, analysis, { ...ctx, signal, allowReview: !inspection && !!dependencies.scriptReview && !!reviewableScript });
           if (answer.status !== "approved") return blocked(answer.reason);
           reviewFuture = answer.review === true;
         }
