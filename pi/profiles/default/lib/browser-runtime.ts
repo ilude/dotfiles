@@ -20,6 +20,7 @@ import {
 	type ProfileMode,
 } from "./browser-control.js";
 import { getAgentDir } from "./settings-file.js";
+import { BrowserCdpTransport, type BrowserCdpOptions } from "./browser-cdp-transport.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -128,9 +129,18 @@ export function createProcessAdapter(platform = process.platform): ProcessAdapte
 	};
 }
 
+function sameSessionTuple(expected: BrowserSessionState, current: BrowserSessionState | undefined): boolean {
+	return Boolean(current && current.sessionId === expected.sessionId
+		&& current.sessionMode === expected.sessionMode && current.pid === expected.pid
+		&& current.processStartTime === expected.processStartTime
+		&& current.executablePath === expected.executablePath && current.userDataDir === expected.userDataDir
+		&& current.profileDirectory === expected.profileDirectory && current.cdpPort === expected.cdpPort
+		&& current.launchMarker === expected.launchMarker);
+}
+
 export function processMatches(state: BrowserSessionState, info: ProcessInfo | undefined): boolean {
 	if (!info) return false;
-	const identityMatches = info.creationTime === state.processStartTime
+	const identityMatches = info.pid === state.pid && info.creationTime === state.processStartTime
 		&& canonical(info.executablePath) === canonical(state.executablePath)
 		&& canonical(info.userDataDir ?? "") === canonical(state.userDataDir)
 		&& info.profileDirectory === state.profileDirectory
@@ -216,7 +226,36 @@ async function waitForCdp(port: number, onProbe: (probe: CdpProbeResult) => void
 
 export class BrowserRuntime {
 	private readonly processes: ProcessAdapter;
-	constructor(processes: ProcessAdapter = createProcessAdapter()) { this.processes = processes; }
+	private transport?: BrowserCdpTransport;
+	private transportGeneration = 0;
+	private readonly stateReader: () => BrowserSessionState | undefined;
+	constructor(processes: ProcessAdapter = createProcessAdapter(), stateReader: () => BrowserSessionState | undefined = loadBrowserState) { this.processes = processes; this.stateReader = stateReader; }
+
+	/** Check saved session identity and current OS tuple before every executor operation. Never recover implicitly. */
+	async revalidateSession(expected: BrowserSessionState, signal?: AbortSignal): Promise<void> {
+		if (signal?.aborted) throw new BrowserControlError("cancelled", "Browser operation was cancelled.");
+		const same = sameSessionTuple(expected, this.stateReader());
+		const observed = same ? await this.processes.inspect(expected.pid) : undefined;
+		if (!same || !processMatches(expected, observed) || !sameSessionTuple(expected, this.stateReader())) {
+			this.disposeTransport();
+			throw new BrowserControlError("session_stale", "Browser process/session identity changed. Use a normal verified attach to reconnect.");
+		}
+		if (signal?.aborted) throw new BrowserControlError("cancelled", "Browser operation was cancelled.");
+	}
+
+	/** The owning extension creates once, retains this instance, and disposes on session invalidation/reload. */
+	async connectTransport(state: BrowserSessionState, options: Omit<BrowserCdpOptions, "revalidate">): Promise<BrowserCdpTransport> {
+		this.disposeTransport();
+		const generation = this.transportGeneration;
+		const snapshot = { ...state };
+		const transport = await BrowserCdpTransport.connect(snapshot, { ...options, revalidate: (signal) => this.revalidateSession(snapshot, signal) });
+		if (generation !== this.transportGeneration) { transport.dispose(); throw new BrowserControlError("cancelled", "Browser transport was invalidated while connecting."); }
+		this.transport = transport;
+		return transport;
+	}
+
+	/** Resource shutdown only. In particular, attached operator browsers and every tab are preserved. */
+	disposeTransport(): void { this.transportGeneration++; this.transport?.dispose(); this.transport = undefined; }
 
 	async status(_signal?: AbortSignal): Promise<BrowserCommandResult> {
 		const state = loadBrowserState();
@@ -230,6 +269,7 @@ export class BrowserRuntime {
 		const statePath = getBrowserStatePath();
 		const old = loadBrowserState();
 		if (old && processMatches(old, await this.processes.inspect(old.pid))) throw new BrowserControlError("session_occupied", "An owned or attached browser session is already connected.");
+		this.disposeTransport();
 		if (old) await fs.promises.rm(statePath, { force: true });
 		const configured = readBrowserConfig().profiles[input.profileAlias];
 		if (!configured) throw new BrowserControlError("profile_unknown", `Unknown profile alias ${input.profileAlias}. Run browser_session discover and /browser-setup.`);
@@ -273,6 +313,7 @@ export class BrowserRuntime {
 		const statePath = getBrowserStatePath();
 		const old = loadBrowserState();
 		if (old && processMatches(old, await this.processes.inspect(old.pid))) throw new BrowserControlError("session_occupied", "An owned browser session is already running.");
+		this.disposeTransport();
 		if (old) await fs.promises.rm(statePath, { force: true });
 		const executable = findBrave();
 		if (!executable) throw new BrowserControlError("brave_missing", "Brave executable not found. Install Brave or set BRAVE_PATH.");
@@ -334,6 +375,7 @@ export class BrowserRuntime {
 	}
 
 	async stop(_signal?: AbortSignal): Promise<BrowserCommandResult> {
+		this.disposeTransport();
 		const state = loadBrowserState();
 		if (!state) return { code: 0, stdout: "close-owned: already_absent", stderr: "" };
 		if (state.sessionMode === "attached") { await fs.promises.rm(getBrowserStatePath(), { force: true }); return { code: 0, stdout: "close-attached: preserved", stderr: "" }; }

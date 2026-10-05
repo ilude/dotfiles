@@ -1,8 +1,13 @@
 // Local enforcement contracts. No I/O, prompts, model calls, or permission cache.
+import type { BrowserEffect, BrowserPolicyEvidence } from "../browser-effect-contract.ts";
+export type { BrowserEffect, BrowserObservation, BrowserPolicyDecision, BrowserPolicyEvidence, IntentBinding, IntentScope, PolicyIdentity, TrustedRequest } from "../browser-effect-contract.ts";
 export type Language = "bash" | "powershell" | "python" | "javascript" | "typescript";
 export type NativeTool = "bash" | "powershell" | "read" | "write" | "edit" | "grep" | "find" | "ls";
 export type Replacement = { oldText: string; newText: string };
+export type CustomToolName = "browser_session" | "browser_page" | "web_fetch" | "web_search" | "onclave_message";
+export type CustomToolRequest = { tool: CustomToolName; callId: string; cwd: string; text: string; input: Record<string, unknown> };
 export type ToolRequest = { callId: string; cwd: string; text: string } & (
+  | CustomToolRequest
   | { tool: "bash" | "powershell"; language: "bash" | "powershell"; input: { command: string; timeout?: number } }
   | { tool: "read"; input: { path: string; offset?: number; limit?: number } }
   | { tool: "write"; input: { path: string; content: string } }
@@ -14,6 +19,8 @@ export type ToolRequest = { callId: string; cwd: string; text: string } & (
 export type Target = { resolution: "static"; path: string } | { resolution: "unknown"; expression: string; reason: string };
 export type Effect = {
   id: string;
+  /** Executor-observed custom-tool metadata. Native request shapes remain intact. */
+  browser?: BrowserEffect;
   kind: "filesystem" | "git" | "docker" | "network" | "execution" | "database";
   operation: "read" | "metadata" | "write" | "delete" | "truncate" | "execute" | "upload" | "mutate" | "unknown";
   sources: Target[];
@@ -87,6 +94,8 @@ export type Evidence = {
   /** Session-native visible text, populated only for the active branch at tool_call. */
   conversation?: JudgeConversationMessage[];
   pendingCall?: PendingJudgeCall;
+  /** Local policy evidence only. Project minimum redacted facts before review. */
+  browser?: BrowserPolicyEvidence;
   untrusted: { effects: Effect[]; priorEffects?: { callId?: string; timestamp: number; effect: Effect }[]; variables?: VariableEvidence[]; sequence?: { priorEvents: SequenceEvidence[]; currentEvent: SequenceEvidence }; matches: RuleMatch[]; uncertainties: string[] };
   omissions: string[];
 };

@@ -15,6 +15,7 @@
 /bedrock-pricing.json
 /codex-cache.jsonl
 /browser-profiles.json
+/browser-credentials.json
 /browser/
 /sessions/
 /.herdr-plugin/

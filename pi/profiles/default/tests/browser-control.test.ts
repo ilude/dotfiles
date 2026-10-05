@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import vm from "node:vm";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createMockPi } from "./helpers/mock-pi";
 import * as browserControl from "../lib/browser-control";
@@ -24,6 +25,7 @@ import { cdpRetryDelay, inspectCdpVersion, processMatches, windowsArgv } from ".
 const temporary: string[] = [];
 afterEach(() => {
 	vi.restoreAllMocks();
+	vi.unstubAllGlobals();
 	for (const directory of temporary.splice(0)) fs.rmSync(directory, { recursive: true, force: true });
 });
 
@@ -115,6 +117,44 @@ describe("profile configuration", () => {
 	});
 });
 
+describe("page form interaction", () => {
+	it.each(["input", "textarea"])("updates application state for a tracked %s value", async (tag) => {
+		// React-style tracking installs an instance setter. Calling it before an
+		// input event makes the framework think the value has not changed.
+		class TextControl extends EventTarget {
+			private currentValue = "";
+			get value() { return this.currentValue; }
+			set value(value: string) { this.currentValue = value; }
+			getAttribute() { return null; }
+			focus() {}
+		}
+		class Input extends TextControl {}
+		class Textarea extends TextControl {}
+		// Native browser prototypes own their value accessor.
+		for (const prototype of [Input.prototype, Textarea.prototype]) {
+			Object.defineProperty(prototype, "value", Object.getOwnPropertyDescriptor(TextControl.prototype, "value")!);
+		}
+		const element = tag === "input" ? new Input() : new Textarea();
+		const native = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(element), "value")!;
+		let tracked = "", application = "";
+		Object.defineProperty(element, "value", {
+			get() { return native.get!.call(element); },
+			set(value: string) { tracked = value; native.set!.call(element, value); },
+		});
+		element.addEventListener("input", () => {
+			if (element.value !== tracked) application = tracked = element.value;
+		});
+		const context = {
+			document: { title: "Public form", body: { innerText: "Message" }, querySelector: (selector: string) => selector === "#message" ? element : null },
+			HTMLInputElement: Input, HTMLTextAreaElement: Textarea, Event,
+		};
+		const value = 'Message with "quotes" and a newline\nnext line';
+		expect(vm.runInNewContext(browserControl.browserFillExpression("#message", value), context)).toEqual({ ok: true });
+		expect(element.value).toBe(value);
+		expect(application).toBe(value);
+	});
+});
+
 describe("session and page boundaries", () => {
 	it("returns schema-valid discovery candidates rather than only a count", async () => {
 		vi.spyOn(browserControl, "readBrowserConfig").mockReturnValue({ version: 1, profiles: {} });
@@ -131,7 +171,8 @@ describe("session and page boundaries", () => {
 	it("returns sanitized exact page targets and redacted snapshots matching its schema", async () => {
 		vi.spyOn(browserControl, "loadBrowserState").mockReturnValue(state());
 		vi.spyOn(browserControl.BrowserPageProtocol.prototype, "list").mockResolvedValue([{ id: "exact-id", type: "page", url: "https://example.test/path?token=secret#private" }]);
-		vi.spyOn(browserControl.BrowserPageProtocol.prototype, "snapshot").mockResolvedValue("button: public");
+		vi.spyOn(browserControl.BrowserPageProtocol.prototype, "snapshot").mockResolvedValue("button: public #field\\\\:name");
+		vi.spyOn(browserControl.BrowserPageProtocol.prototype, "frames").mockResolvedValue([]);
 		const pi = createMockPi();
 		registerBrowserControl(pi as never);
 		const tool = pi._getTool("browser_page")!;
@@ -141,7 +182,27 @@ describe("session and page boundaries", () => {
 		expect(Value.Check(tool.outputSchema, list.structuredContent)).toBe(true);
 		const snapshot = await tool.execute("snapshot", { action: "snapshot", session_id: "session-1", target_id: "exact-id" });
 		expect(snapshot.structuredContent.snapshot).toBe(snapshot.content[0].text);
+		expect(snapshot.structuredContent.snapshot).toContain("#field\\\\:name");
 		expect(Value.Check(tool.outputSchema, snapshot.structuredContent)).toBe(true);
+		vi.spyOn(browserControl.BrowserPageProtocol.prototype, "screenshot").mockResolvedValue({ origin: "https://example.test", classification: "public" });
+		const image = await tool.execute("screenshot", { action: "screenshot", session_id: "session-1", target_id: "exact-id", output_path: "image.png" }, undefined, undefined, { cwd: "/synthetic" } as never);
+		expect(image.structuredContent.observation).toMatchObject({ source: "browser", trust: "untrusted", kind: "image", screening: "not-screened" });
+		expect(image.content[0].text).toContain("Untrusted browser image");
+		expect(Value.Check(tool.outputSchema, image.structuredContent)).toBe(true);
+	});
+
+	it("starts and attaches without an unguarded runtime URL then delegates guarded page initialization", async () => {
+		vi.spyOn(browserControl, "loadBrowserState").mockReturnValue(state());
+		vi.spyOn(browserControl, "resolveConfiguredProfile").mockReturnValue({ userDataDir: "/synthetic", profileDirectory: "Default", displayName: "Synthetic" });
+		const start = vi.spyOn(browserControl.BrowserSessionProtocol.prototype, "start").mockResolvedValue({ code: 0, stdout: "started", stderr: "" });
+		const attach = vi.spyOn(browserControl.BrowserSessionProtocol.prototype, "attach").mockResolvedValue({ code: 0, stdout: "attached", stderr: "" });
+		const open = vi.spyOn(browserControl.BrowserPageProtocol.prototype, "open").mockResolvedValue({ id: "new-exact", url: "https://account.example/login", type: "page" });
+		vi.spyOn(browserControl, "saveBrowserState").mockResolvedValue();
+		const pi = createMockPi(); registerBrowserControl(pi as never); const tool = pi._getTool("browser_session")!;
+		await tool.execute("start", { action: "start", url: "https://account.example/login" });
+		await tool.execute("attach", { action: "attach", profile_alias: "synthetic", url: "https://account.example/login" });
+		expect(start.mock.calls[0]?.[0]).not.toHaveProperty("url"); expect(attach.mock.calls[0]?.[0]).not.toHaveProperty("url");
+		expect(open).toHaveBeenCalledTimes(2);
 	});
 
 	it("slows CDP startup polling at the configured elapsed-time thresholds", () => {
@@ -191,7 +252,8 @@ describe("session and page boundaries", () => {
 		expect(invalidated.comparisonGeneration).toBe(8);
 		expect(invalidated.targetId).toBeUndefined();
 		expect(invalidated.comparisonInvalidatedReason).toBe("CAPTCHA detected");
-		expect(isPasswordField("input[name=credential_token]")).toBe(true);
+		expect(isPasswordField("input[name=credential_token]")).toBe(false);
+		expect(isPasswordField('input[type="password"]')).toBe(true);
 	});
 
 	it("registers bounded tools and excludes cookie, storage, and evaluation actions", () => {

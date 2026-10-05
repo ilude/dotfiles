@@ -244,6 +244,21 @@ it("keeps scoped local cleanup and read-only pipelines quiet", async () => {
   expect(h.select).not.toHaveBeenCalled();
   expect(h.review).not.toHaveBeenCalled();
 });
+it("routes browser and selected outbound tools through candidate review with redacted evidence", async () => {
+  const h = await harness();
+  const result = await h.emit("tool_call", { toolName: "onclave_message", toolCallId: "message", input: { kind: "request", to: ["peer-a"], body: "private account details" } });
+  expect(result).toBeUndefined();
+  expect(h.review).toHaveBeenCalledTimes(1);
+  const evidence = h.review.mock.calls[0][0];
+  expect(JSON.stringify(evidence)).not.toContain("private account details");
+  expect(evidence.untrusted.effects).toContainEqual(expect.objectContaining({ kind: "network", operation: "upload" }));
+  const browser = await h.emit("tool_call", { toolName: "browser_page", toolCallId: "click", input: { action: "click", session_id: "secret-session", target_id: "raw-target", selector: "#submit" } });
+  expect(browser).toBeUndefined();
+  // Selector arguments are not executor-observed effect facts. Actual browser
+  // target/frame actions reach review through the policy event bus.
+  expect(h.review).toHaveBeenCalledTimes(1);
+});
+
 it("leaves unadapted tools uncovered instead of inventing a block", async () => {
   const h = await harness();
   expect(await h.emit("tool_call", { toolName: "glob", toolCallId: "glob", input: { pattern: "*.ts" } })).toBeUndefined();

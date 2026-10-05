@@ -5,7 +5,7 @@ description: "Local browser automation via Brave CDP. Use for logged-in checks, 
 
 # Browser tools
 
-Prefer `web_search`, `web_fetch`, or a source-specific tool unless the task requires JavaScript, logged-in state, screenshots, or visible interaction.
+Prefer `web_search`, `web_fetch`, or a source-specific tool unless the task requires JavaScript, logged-in state, screenshots, or visible interaction. For setup, credential binding, stale-session recovery, and enforcement limits, see the [browser security and operation guide](../../../../../docs/browser-security.md).
 
 ## Start with discovery
 
@@ -34,29 +34,14 @@ Only one automation session may own the machine-local registry. `browser_session
 
 ## Exact page targets
 
-Every `browser_page` call includes the current session ID. Actions other than `list` and `open` also include the exact raw CDP target ID.
+Every `browser_page` call includes the current session ID. Actions other than `list` and `open` also include the exact raw CDP target ID. Supply the exact `frame_id` for iframe controls. Fill takes exactly one of `value` or `secret_ref`; secret references work only with an operator-configured, exact BWS record/origin/frame/field binding and login-purpose policy authorization. Direct disposable development values remain supported.
 
 - `open` returns the newly created raw target ID, even when restored tabs or duplicate URLs exist.
 - `select` binds subsequent operator intent to that exact ID.
 - A closed, replaced, stale, or cross-session target fails. Never substitute the focused tab or a matching URL.
 - Use `snapshot` before `screenshot` when the surface is safe.
-- Password fields, credentials, cookies, tokens, storage, arbitrary evaluation, CAPTCHA controls, and protected screenshots/snapshots are outside the tool surface.
+- Cookie/storage APIs and arbitrary model-callable evaluation are unavailable. Snapshots omit control values; supported sensitive controls are masked for screenshots. This cannot remove arbitrary reflected pixels or guarantee complete visual screening.
 
-Let the operator handle CAPTCHAs or consent interstitials manually. Detection increments the comparison generation, clears the selected target, and invalidates the active comparison unconditionally.
+Actual CAPTCHA challenges require manual completion; challenge words elsewhere do not block ordinary page use. Login/reading authorization does not authorize posting, messaging, purchases, deletion, or security changes. Native TLS/Safe Browsing warnings are not bypassed. Localhost development is supported; other private-network destinations need direct request or local configuration. See the operation guide for recovery and residual network/model-review limits.
 
-## Controlled comparisons
-
-Record one comparison transaction containing:
-
-- Brave profile directory and live display-name match
-- redacted rendered-account alias match
-- raw target ID and sanitized URL
-- extension command-line mode and runtime extension-target mode
-- query and result mode
-- personalization indicator
-- locale and region
-- comparison generation and invalidation events
-
-Accept the second leg only when extension mode is the sole changed invariant. A changed account, CAPTCHA/interstitial handling, locale, query, region, result mode, personalization indicator, experiment state, or comparison generation rejects the comparison. Re-establish the baseline instead of attributing the difference.
-
-Use the default profile's focused Vitest coverage for synthetic validation. The runtime uses direct TypeScript and CDP, with a narrow PowerShell CIM adapter for Windows process inspection; it does not invoke Python, `agent-browser`, or `npx`. Do not run a live Brave smoke unless the operator explicitly authorizes it.
+Use the default profile's focused Vitest coverage for synthetic validation. Browser process/page control uses TypeScript and CDP, with a narrow PowerShell CIM adapter on Windows; it does not use `agent-browser` or `npx`. Local BWS retrieval separately uses the bounded `uv`/Python Bitwarden SDK helper. Do not run a live Brave smoke unless the operator explicitly authorizes it.

@@ -23,6 +23,9 @@ Only an explicit observational verdict can pass review. Mutation, uncertainty, m
 Inspection adds to protected reads, disclosure rules, sequence checks, and the failed-call watchdog. Normal approval can settle an independently approval-gated read, but cannot override inspection denial. `/dc off`, default mode, reload, retained instructions, and user text cannot weaken the frozen restriction; `noshell` may impose a stricter shell block. Initialization failure retains an Explorer blocker rather than allowing unguarded shell calls. Denials are recoverable tool results: Explorer can choose another allowed inspection or report the blocker to its parent for reassignment.
 
 Other roles, the orchestrator, the Claude adapter, and legacy retain their existing policy. Inspection is not a global mode control or a migration of every read-only role.
+## Browser and selected outbound effects
+
+Default-profile browser page evidence is untrusted context, not direct operator intent. Deterministic browser boundaries cover represented session/frame/destination checks and local secret bindings; Damage Control uses independently interpreted task intent and bounded contextual review for consequential or inconsistent effects. Screening flags are risk signals, not authority or keyword-based page blocking. These checks are not universal taint tracking or a network sandbox. See the [browser operation and limitations guide](../../../../docs/browser-security.md) for the exact boundaries and operator workflow.
 
 ## Claude Code adapter
 

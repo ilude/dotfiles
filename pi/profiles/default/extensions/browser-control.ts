@@ -1,4 +1,9 @@
 import path from "node:path";
+import fs from "node:fs";
+import { getAgentDir } from "../lib/settings-file.js";
+import { browserPolicyIdentity, browserPolicyLease, requestBrowserPolicy, requestBrowserLocalFilePolicy, samePolicyIdentity, type PolicyIdentity } from "../lib/browser-effect-contract.js";
+import { browserCredentialConfigPath, parseBrowserCredentialConfig, createBrowserCredentialResolver, type BrowserCredentialConfig } from "../lib/browser-credentials.js";
+import { createBrowserObservationHooks } from "../lib/browser-observations.js";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { StringEnum } from "@earendil-works/pi-ai";
 import { Type, type Static } from "typebox";
@@ -9,7 +14,6 @@ import {
 	BrowserSessionProtocol,
 	discoverBraveProfiles,
 	getBrowserConfigPath,
-	invalidateComparison,
 	loadBrowserState,
 	parseSessionStatus,
 	readBrowserConfig,
@@ -46,6 +50,8 @@ const PageParameters = Type.Object({
 	url: Type.Optional(Type.String()),
 	selector: Type.Optional(Type.String()),
 	value: Type.Optional(Type.String()),
+	secret_ref: Type.Optional(Type.String()),
+	frame_id: Type.Optional(Type.String()),
 	output_path: Type.Optional(Type.String()),
 });
 
@@ -66,6 +72,8 @@ type PageInput = {
 	url?: string;
 	selector?: string;
 	value?: string;
+	secret_ref?: string;
+	frame_id?: string;
 	output_path?: string;
 };
 
@@ -86,12 +94,14 @@ const BrowserResultSchema = Type.Object({
 	candidateCount: Type.Optional(Type.Number()), targets: Type.Optional(Type.Array(Type.Object({ id: Type.String(), url: Type.String(), type: Type.Optional(Type.String()) }))),
 	count: Type.Optional(Type.Number()), targetId: Type.Optional(Type.String()), url: Type.Optional(Type.String()),
 	snapshot: Type.Optional(Type.String()),
+	frames: Type.Optional(Type.Array(Type.Object({ id: Type.String(), targetId: Type.String(), origin: Type.String() }, { additionalProperties: false }))),
+	observation: Type.Optional(Type.Object({ source: Type.Literal("browser"), trust: Type.Literal("untrusted"), kind: Type.Literal("image"), origin: Type.String(), classification: StringEnum(["public", "private"] as const), screening: Type.Literal("not-screened") }, { additionalProperties: false })),
 }, { additionalProperties: false });
 
 function safeUrl(value: string): string {
 	try {
 		const url = new URL(value);
-		return `${url.origin}${url.pathname}`;
+		return url.protocol === "file:" ? `file://${url.host}${url.pathname}` : `${url.origin}${url.pathname}`;
 	} catch {
 		return value === "about:blank" ? value : "<invalid-url>";
 	}
@@ -142,12 +152,49 @@ function requireTarget(input: PageInput): string {
 
 export default function registerBrowserControl(pi: ExtensionAPI) {
 	const sessions = new BrowserSessionProtocol();
-	const pages = new BrowserPageProtocol();
-	let state: BrowserSessionState | undefined;
-
-	pi.on("session_start", () => {
-		state = loadBrowserState();
+	let credentials: ReturnType<typeof createBrowserCredentialResolver> | undefined;
+	let credentialIdentity: PolicyIdentity | undefined;
+	let credentialConfig: BrowserCredentialConfig | undefined;
+	let credentialLifetime = new AbortController();
+	const identity = () => {
+		const current = browserPolicyIdentity(pi.events);
+		if (!current) throw new BrowserControlError("policy_unavailable", "Damage Control browser policy is unavailable; enable it before this action.");
+		return current;
+	};
+	const pages = new BrowserPageProtocol({
+		runtime: sessions, identity,
+		lease: () => { const lease = browserPolicyLease(pi.events); if (!lease) throw new BrowserControlError("policy_unavailable", "Browser policy lifetime is unavailable."); return lease; },
+		policy: (effect, signal) => requestBrowserPolicy(pi.events, effect, signal),
+		localFile: (nativePath, signal) => requestBrowserLocalFilePolicy(pi.events, identity(), nativePath, signal),
+		credentialOrigins: reference => { const binding = credentialConfig?.bindings[reference]; return binding ? [...(binding.form_origins ?? binding.frame_origins ?? binding.origins)] : []; },
+		resolveCredential: async (reference, target, signal) => {
+			const current = identity(), lease = browserPolicyLease(pi.events);
+			if (!lease || !samePolicyIdentity(current, lease.identity)) throw new BrowserControlError("credential_unavailable", "Browser credential lifetime expired.");
+			if (!credentialIdentity || !samePolicyIdentity(current, credentialIdentity)) {
+				credentials?.clear(); credentialLifetime.abort(); credentialLifetime = new AbortController(); credentials = undefined; credentialConfig = undefined;
+				credentialIdentity = { ...current };
+			}
+			if (!credentials) {
+				let config;
+				try { config = parseBrowserCredentialConfig(JSON.parse(fs.readFileSync(browserCredentialConfigPath(getAgentDir()), "utf8"))); }
+				catch { throw new Error("Browser credential configuration unavailable."); }
+				credentialConfig = config;
+				credentials = createBrowserCredentialResolver(config, (command, args, options) => pi.exec(command, args, options), AbortSignal.any([credentialLifetime.signal, lease.signal]));
+			}
+			return await credentials.resolve(reference, target, AbortSignal.any([signal, credentialLifetime.signal, lease.signal]));
+		},
 	});
+	pages.setObservationHooks(createBrowserObservationHooks({ events: pi.events, identity, classify: source => pages.observationClass(source) }));
+	let state: BrowserSessionState | undefined;
+	const dispose = () => { pages.dispose(); credentials?.clear(); credentials = undefined; credentialConfig = undefined; credentialLifetime.abort(); credentialLifetime = new AbortController(); credentialIdentity = undefined; };
+	pi.on("session_start", () => { dispose(); state = loadBrowserState(); });
+	pi.on("session_before_switch", dispose);
+	pi.on("session_tree", dispose);
+	pi.on("input", event => { if ((event.source === "interactive" || event.source === "rpc") && !event.streamingBehavior) dispose(); });
+	const navigateInitial = async (url: string | undefined, signal?: AbortSignal) => {
+		if (!url || !state) return;
+		const target = await pages.open(state, url, signal); state = { ...state, targetId: target.id }; await saveBrowserState(state);
+	};
 
 	registerProfileCommand(pi, "browser-setup", {
 		description: "Validate and save one secret-free local Brave profile alias",
@@ -204,18 +251,22 @@ export default function registerBrowserControl(pi: ExtensionAPI) {
 					if (!input.profile_alias) throw new BrowserControlError("profile_required", "Real-profile start requires a configured alias.");
 					resolveConfiguredProfile(input.profile_alias);
 				}
-				const command = await sessions.start({ profileMode, profileAlias: input.profile_alias, extensionMode: input.extension_mode ?? "enabled", url: input.url, signal });
+				dispose();
+				const command = await sessions.start({ profileMode, profileAlias: input.profile_alias, extensionMode: input.extension_mode ?? "enabled", signal });
 				state = loadBrowserState();
 				if (!state) throw new BrowserControlError("state_missing", "Brave started without a complete ownership record.");
+				await navigateInitial(input.url, signal);
 				return toolResult(command.stdout || "Browser session started.", { state: publicState(state) });
 			}
 
 			if (input.action === "attach") {
 				if (input.profile_mode !== undefined && input.profile_mode !== "real") throw new BrowserControlError("profile_mode_invalid", "Attach requires profile_mode real or no profile_mode.");
 				if (!input.profile_alias) throw new BrowserControlError("profile_required", "Attach requires a configured real-profile alias.");
-				const command = await sessions.attach({ profileAlias: input.profile_alias, cdpPort: input.cdp_port, extensionMode: input.extension_mode ?? "enabled", url: input.url, signal });
+				dispose();
+				const command = await sessions.attach({ profileAlias: input.profile_alias, cdpPort: input.cdp_port, extensionMode: input.extension_mode ?? "enabled", signal });
 				state = loadBrowserState();
 				if (!state) throw new BrowserControlError("state_missing", "Brave attached without a complete session record.");
+				await navigateInitial(input.url, signal);
 				return toolResult(command.stdout || "Attached to the operator-launched Brave browser.", { state: publicState(state) });
 			}
 
@@ -225,19 +276,22 @@ export default function registerBrowserControl(pi: ExtensionAPI) {
 				if (state.sessionMode === "attached") throw new BrowserControlError("restart_not_supported", "Attached browsers are preserved and cannot be restarted by Pi.");
 				if (state.profileMode === "real" && input.restart_authorization !== restartAuthorization(state)) throw new BrowserControlError("authorization_required", "Real-profile restart requires current authorization bound to the resolved profile and occupied process tuple.");
 				const prior = state;
+				dispose();
 				const stopped = await sessions.stop(signal);
 				const outcome = parseSessionStatus(stopped.stdout).outcome;
 				if (outcome !== "stopped" && outcome !== "already_absent") throw new BrowserControlError("restart_not_safe", `Restart stopped before relaunch because close-owned reported ${outcome ?? "no proven outcome"}.`);
 				const profileAlias = prior.profileAlias ?? input.profile_alias;
 				if (prior.profileMode === "real" && profileAlias) resolveConfiguredProfile(profileAlias);
-				const started = await sessions.start({ profileMode: prior.profileMode, profileAlias, extensionMode: input.extension_mode ?? prior.extensionMode, url: input.url, signal });
+				const started = await sessions.start({ profileMode: prior.profileMode, profileAlias, extensionMode: input.extension_mode ?? prior.extensionMode, signal });
 				state = loadBrowserState();
 				if (!state) throw new BrowserControlError("state_missing", "Brave restarted without a complete ownership record.");
+				await navigateInitial(input.url, signal);
 				return toolResult(started.stdout || "Browser session restarted.", { state: publicState(state) });
 			}
 
 			state = loadBrowserState();
 			if (!state) return toolResult("close-owned: already_absent", { state: publicState(undefined), status: { outcome: "already_absent" } });
+			dispose();
 			const command = await sessions.stop(signal);
 			const status = parseSessionStatus(command.stdout);
 			state = loadBrowserState();
@@ -248,7 +302,7 @@ export default function registerBrowserControl(pi: ExtensionAPI) {
 	pi.registerTool({
 		name: "browser_page",
 		label: "Browser Page",
-		description: "Operate on exact raw CDP page targets. Credential, CAPTCHA, cookie, storage, and arbitrary evaluation surfaces are unavailable.",
+		description: "Operate on exact session/target/frame IDs with task and destination policy. Fill uses exactly one value or locally bound secret_ref. Actual CAPTCHA completion is manual; cookies, storage, arbitrary evaluation and security-warning bypass are unavailable.",
 		promptSnippet: "Use one exact session ID and raw CDP target ID for bounded page actions",
 		parameters: PageParameters,
 		outputSchema: BrowserResultSchema,
@@ -258,7 +312,7 @@ export default function registerBrowserControl(pi: ExtensionAPI) {
 			if (!state || input.session_id !== state.sessionId) throw new BrowserControlError("session_mismatch", "The supplied session ID is not the current ownership-verified session.");
 			try {
 				if (input.action === "list") {
-					const targets = (await pages.list(state)).map((target) => ({ id: target.id, url: safeUrl(target.url), type: target.type }));
+					const targets = (await pages.list(state, signal)).map((target) => ({ id: target.id, url: safeUrl(target.url), type: target.type }));
 					return toolResult(JSON.stringify({ targets }, null, 2), { targets, count: targets.length, state: publicState(state) });
 				}
 				if (input.action === "open") {
@@ -276,40 +330,38 @@ export default function registerBrowserControl(pi: ExtensionAPI) {
 					return toolResult(`Selected raw CDP target ${targetId}.`, { state: publicState(state) });
 				}
 				if (input.action === "snapshot") {
-					const snapshot = redactOutput(await pages.snapshot(state, targetId, signal));
-					return toolResult(snapshot, { state: publicState(state), targetId, snapshot });
+					const snapshot = redactOutput(await pages.snapshot(state, targetId, signal, input.frame_id));
+					const frames = await pages.frames(state, targetId, signal);
+					const text = `${snapshot}\nExact frames: ${JSON.stringify(frames)}`;
+					return toolResult(text, { state: publicState(state), targetId, snapshot: text, frames });
 				}
 				if (input.action === "screenshot") {
 					if (!input.output_path) throw new BrowserControlError("output_required", "Screenshot requires an output path.");
 					const outputPath = path.resolve(ctx.cwd, input.output_path);
-					await pages.screenshot(state, targetId, outputPath, signal);
-					return toolResult(`Screenshot saved to ${redactOutput(outputPath)}.`, { state: publicState(state), targetId });
+					const source = await pages.screenshot(state, targetId, outputPath, signal);
+					const observation = { ...source, source: "browser" as const, trust: "untrusted" as const, kind: "image" as const, screening: "not-screened" as const };
+					return toolResult(`Screenshot saved to ${redactOutput(outputPath)}. Untrusted browser image; origin=${source.origin}; classification=${source.classification}; visual screening not performed.`, { state: publicState(state), targetId, observation });
 				}
 				if (input.action === "click") {
 					if (!input.selector) throw new BrowserControlError("selector_required", "Click requires a CSS selector.");
-					await pages.click(state, targetId, input.selector, signal);
+					await pages.click(state, targetId, input.selector, signal, input.frame_id);
 					return toolResult(`Clicked selector on target ${targetId}.`, { state: publicState(state), targetId });
 				}
 				if (input.action === "fill") {
-					if (!input.selector || input.value === undefined) throw new BrowserControlError("value_required", "Fill requires a CSS selector and value.");
-					await pages.fill(state, targetId, input.selector, input.value, signal);
+					if (!input.selector || (input.value === undefined) === (input.secret_ref === undefined)) throw new BrowserControlError("value_required", "Fill requires a selector and exactly one value or secret_ref.");
+					await pages.fill(state, targetId, input.selector, { value: input.value, secret_ref: input.secret_ref, frame_id: input.frame_id }, signal);
 					return toolResult(`Filled selector on target ${targetId}.`, { state: publicState(state), targetId });
 				}
 				await pages.close(state, targetId, signal);
 				if (state.targetId === targetId) state = { ...state, targetId: undefined };
 				await saveBrowserState(state);
 				return toolResult(`Closed raw CDP target ${targetId}.`, { state: publicState(state), targetId });
-			} catch (error) {
-				if (error instanceof BrowserControlError && error.code === "protected_surface") {
-					state = invalidateComparison(state, error.message);
-					await saveBrowserState(state);
-				}
-				throw error;
-			}
+			} catch (error) { throw error; }
 		},
 	});
 
 	pi.on("session_shutdown", async () => {
+		dispose();
 		state = loadBrowserState();
 		if (state?.profileMode !== "isolated") return;
 		await sessions.stop();

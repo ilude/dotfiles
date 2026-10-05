@@ -29,6 +29,19 @@ export async function analyzeRequest(request: ToolRequest, facts: PathFacts, _co
       })
     : { effects: fileEffects(request), matches: [], uncertainties: [], health: { status: "ready" } };
 
+  if (["browser_session", "browser_page", "onclave_message"].includes(request.tool)) {
+    const actionable = request.tool === "onclave_message"
+      || (request.tool === "browser_session" && ["start", "attach", "restart"].includes(String(request.input.action)))
+      || (request.tool === "browser_page" && (["click", "fill", "close"].includes(String(request.input.action)) || (request.input.action === "open" && !(typeof request.input.url === "string" && request.input.url.startsWith("file:")))));
+    if (actionable) analysis.matches.push({
+      ruleId: `custom-effect:${request.tool}`,
+      action: "review",
+      applicability: "candidate",
+      reason: "Custom browser or message effect needs task, source, and destination alignment review.",
+      effects: analysis.effects.map(effect => effect.id),
+    });
+  }
+
   const scopedDeletes = new Set<string>();
   for (const effect of analysis.effects) {
     if (effect.kind !== "filesystem" && effect.operation !== "upload") continue;
