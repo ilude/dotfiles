@@ -10,11 +10,27 @@ Prefer the least intrusive effective response: allow established low-risk work, 
 
 This is the operator's governing design requirement, clarified on 2026-09-08. Legacy parity is historical compatibility evidence, not the philosophical goal. The [risk and proportionality review](../../../../.specs/archive/damage-control-risk-alignment-and-preapproval/damage-control-risk-review.md) records the findings that drove the implemented alignment. Historical decisions remain recorded rather than rewritten.
 
+## Explorer inspection policy
+
+Normal mode retains the meaningful-unrecoverable-harm purpose above. Explorer has an additional role-bound inspection restriction: observation is allowed, but intentional changes to files, managed resources, configuration, or processes are blocked even when temporary or recoverable. Ordinary incidental client-cache updates and server access logs do not disqualify observation. This is best-effort tool-call enforcement, not an OS sandbox or a guarantee of zero side effects.
+
+The gate selects inspection from frozen Explorer child authority on both visible and headless surfaces, including trusted project definitions named `explorer`. The role receives Bash and PowerShell, not native edit/write tools. Existing explicitly operator-issued `!`/`!!` shell input remains outside model-tool enforcement.
+
+Classification checks the complete call, including pipelines, substitutions, redirects, nested execution, and supported script bodies. Established observational forms pass inspection directly; established mutations are denied before approval or judgment. Unfamiliar operations receive a tool-free inspection-specific Luna review of the unchanged pending input and relevant available supported script source through protected, bounded, redacted evidence. Missing source and unresolved execution remain explicit limitations. An executable name, HTTP GET, `kubectl exec`, an AWS `get-*` prefix, or absence of modeled mutations is not proof of observation.
+
+Only an explicit observational verdict can pass review. Mutation, uncertainty, malformed output, unavailable or disabled review, timeout, stale results, and cancellation deny the call with a concrete reason. Inspection verdicts are not saved as script trust. Normal preapproval never skips inspection body analysis, and task authorization or recoverability cannot turn mutation into observation.
+
+Inspection adds to protected reads, disclosure rules, sequence checks, and the failed-call watchdog. Normal approval can settle an independently approval-gated read, but cannot override inspection denial. `/dc off`, default mode, reload, retained instructions, and user text cannot weaken the frozen restriction; `noshell` may impose a stricter shell block. Initialization failure retains an Explorer blocker rather than allowing unguarded shell calls. Denials are recoverable tool results: Explorer can choose another allowed inspection or report the blocker to its parent for reassignment.
+
+Other roles, the orchestrator, the Claude adapter, and legacy retain their existing policy. Inspection is not a global mode control or a migration of every read-only role.
+
 ## Claude Code adapter
 
 `claude/hooks/damage-control/pi-adapter.ts` reuses the default profile policy parser, Bash parser, deterministic request analysis, and decision engine for Claude Code Bash/Edit/Write PreToolUse calls. It intentionally does not invoke Luna: `review` dispositions become Claude `ask`; `user` requires ask and `block` denies. Allows emit no permission decision. Invalid hook data or an adapter/analysis error denies. Claude Edit `replace_all` is denied as unsupported rather than treated as a single replacement. Claude path-normalization and unrelated hooks remain separate. Focused adapter coverage runs with `bun test claude/hooks/damage-control/pi-adapter.test.ts`.
 
-## Current runtime behavior
+## Current normal-policy runtime behavior
+
+Explorer inspection adds the restriction above; the routine mutation allowances and normal approval paths below do not override it.
 
 The historical migration fixture remains evidence, not active policy authority. Runtime IDs name operations and path protections, while the task disposition table records old-to-new identities. Policy actions, not numeric ranges or matching reason text, determine review authority:
 

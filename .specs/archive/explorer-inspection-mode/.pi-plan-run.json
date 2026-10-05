@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "specRelativePath": ".specs/explorer-inspection-mode/plan.md",
+  "specStub": "explorer-inspection-mode",
+  "taskWorktreePath": "C:\\Users\\mglenn\\.dotfiles\\.worktrees\\explorer-inspection-mode",
+  "taskBranch": "task/explorer-inspection-mode",
+  "originCheckoutPath": "C:\\Users\\mglenn\\.dotfiles",
+  "originBranch": "main",
+  "startingTargetCommit": "b926df56192ab0cd2768a19a61730ebaed279da3",
+  "sourceSpecSnapshot": {
+    "version": 1,
+    "files": [
+      {
+        "path": "plan.md",
+        "sha256": "0897802bcc0f3a5ab3023b2d67e815dfdf795940f39e9cb9f63942f4a2bb645b"
+      }
+    ]
+  }
+}

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { execFile } from "node:child_process";
@@ -61,6 +61,13 @@ const scratch = await mkdtemp(path.join(tmpdir(), "pi-dc-loader-"));
 try {
   const extension = path.join(scratch, "fixture.js");
   const marker = path.join(scratch, "loaded.json");
+  const failureProfile = path.join(scratch, "failure-profile");
+  const failureEntry = path.join(failureProfile, "extensions", "damage-control", "index.js");
+  await mkdir(path.dirname(failureEntry), { recursive: true });
+  await copyFile(fileURLToPath(new URL("../extensions/damage-control/index.js", import.meta.url)), failureEntry);
+  await symlink(fileURLToPath(new URL("../lib", import.meta.url)), path.join(failureProfile, "lib"), process.platform === "win32" ? "junction" : "dir");
+  // No jiti dependency in this disposable profile: exercise a real bootstrap
+  // failure through the supported loader, without a production failure switch.
   await writeFile(extension, `
 import {writeFileSync} from 'node:fs';
 import {createBashTool, createPowerShellTool, createReadTool, createWriteTool, createEditTool, createGrepTool, createFindTool, createLsTool} from '@earendil-works/pi-coding-agent';
@@ -78,19 +85,51 @@ export default async function(pi) {
     if (key === 'registerCommand') return (name, command) => target.registerCommand(name, command);
     return target[key];
   }});
+  process.env.PI_SUBAGENT_AUTHORITY = JSON.stringify({agent:'explorer'});
   await bootstrap(wrapped);
-  const ctx = {cwd:${JSON.stringify(scratch)}, hasUI:true, mode:'tui', signal:undefined, modelRegistry:{find:()=>undefined}, ui:{notify(){},setStatus(){},select:async()=> 'Deny',theme:{fg:(_c,t)=>t}}};
+  const ctx = {cwd:${JSON.stringify(scratch)}, hasUI:true, mode:'tui', signal:undefined, sessionManager:{getBranch:()=>[],getSessionId:()=> 'offline-fixture'}, modelRegistry:{find:()=>undefined}, ui:{notify(){},setStatus(){},select:async()=> 'Deny',theme:{fg:(_c,t)=>t}}};
   const denied = await guard({toolName:'bash', toolCallId:'synthetic', input:{command:'rm -rf /'}},ctx);
   if (!denied?.block) throw new Error('Registered safety guard did not reject a legacy hard block');
+  const observed = await guard({toolName:'bash', toolCallId:'explorer-read', input:{command:'git status --short'}},ctx);
+  if (observed?.block) throw new Error('Explorer observation was denied: ' + observed.reason);
+  const mutation = await guard({toolName:'powershell', toolCallId:'explorer-mutation', input:{command:'New-Item fixture.txt'}},ctx);
+  if (!mutation?.block || !mutation.reason.includes('mutation')) throw new Error('Explorer mutation was not denied');
+  const {default: failedBootstrap} = await import(${JSON.stringify(pathToFileURL(failureEntry).href)});
+  let initializationFailed = false;
+  try { await failedBootstrap(wrapped); } catch { initializationFailed = true; }
+  if (!initializationFailed) throw new Error('Missing dependency did not fail initialization');
+  process.env.PI_SUBAGENT_AUTHORITY = JSON.stringify({agent:'developer'});
+  const unavailable = await guard({toolName:'bash', toolCallId:'explorer-unavailable', input:{command:'echo fixture'}},ctx);
+  if (!unavailable?.block || !unavailable.reason.includes('initialization did not complete')) throw new Error('Explorer failure blocker was not retained');
   writeFileSync(${JSON.stringify(marker)}, JSON.stringify(tools));
  } catch(error) { writeFileSync(${JSON.stringify(marker)}, JSON.stringify({error:String(error),stack:error?.stack})); }
 }
 `);
-  const childOutput = await promisify(execFile)(process.execPath, [cli, "--offline", "--no-session", "-e", extension, "--list-models"], {
+  // The installed CLI calls process.exit after --list-models. Windows Node
+  // 25.9 asserts UV_HANDLE_CLOSING during that immediate teardown after this
+  // fixture. Let the CLI unwind and Node drain naturally instead. Preserve
+  // the requested exit code and propagate every unrelated rejection; parent
+  // assertions still require a successful child and a complete fixture marker.
+  const exitPreload = path.join(scratch, "natural-exit.mjs");
+  await writeFile(exitPreload, `
+class CliExit extends Error {
+  constructor(code) { super('CLI requested exit'); this.code = code; }
+}
+process.exit = code => { throw new CliExit(code ?? process.exitCode ?? 0); };
+process.on('unhandledRejection', error => {
+  if (error instanceof CliExit) process.exitCode = error.code;
+  else throw error;
+});
+`);
+  const nodeArgs = ["--import", pathToFileURL(exitPreload).href];
+  const childOutput = await promisify(execFile)(process.execPath, [...nodeArgs, cli, "--offline", "--no-session", "-e", extension, "--list-models"], {
     cwd: scratch,
-    env: { ...process.env, PI_CODING_AGENT_DIR: path.join(scratch, "profile") },
+    env: { ...process.env, PI_SUBAGENT_AUTHORITY: "", PI_CODING_AGENT_DIR: path.join(scratch, "profile") },
     timeout: 20_000,
     maxBuffer: 2_000_000,
+  }).catch(async error => {
+    const evidence = await readFile(marker, "utf8").catch(() => "marker absent");
+    throw new Error(`Supported-loader child failed; fixture evidence: ${evidence}`, { cause: error });
   });
   let markerText;
   try { markerText = await readFile(marker, "utf8"); }
@@ -101,7 +140,7 @@ export default async function(pi) {
   const edit = tools.find(t => t.name === "edit").schema;
   assert.deepEqual(edit.properties.edits.items.required.sort(), ["newText", "oldText"]);
   assert.equal(tools.find(t => t.name === "powershell").schema.properties.command.type, "string");
-  console.log(`Pi ${manifest.version}: supported loader, actual bootstrap guard, policy, grammars, and eight native schemas ready (no tool execution/model call)`);
+  console.log(`Pi ${manifest.version}: supported loader, actual bootstrap guard, Explorer observation/mutation/init-failure checks, policy, grammars, and eight native schemas ready (no tool execution/model call)`);
 } finally {
   await rm(scratch, { recursive: true, force: true });
 }

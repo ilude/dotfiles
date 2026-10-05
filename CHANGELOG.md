@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-10-05: Give Explorer guarded shell inspection
+
+- Default-profile Explorer gains Bash and PowerShell for local and live evidence without native edit/write tools. Frozen role-bound Damage Control inspection checks complete calls and supported script bodies, permits established observations, and uses a tool-free inspection judge for unfamiliar operations. Intentional mutation is blocked even when temporary or recoverable; uncertainty and review failures return concrete recoverable denials for alternative inspection or parent reassignment.
+- `/dc off`, default mode, normal script preapproval, user authorization, retained turns, and reload cannot weaken inspection. Existing protected-read, disclosure, sequence, and watchdog protections remain; initialization failure leaves Explorer blocked. Normal meaningful-unrecoverable-harm policy for the orchestrator and other roles, explicit operator `!`/`!!` shell exemptions, Claude adapter behavior, and legacy are preserved.
+- This is best effort, not an OS sandbox or zero-side-effect guarantee. Incidental client caches and server access logs remain compatible with observation. New Explorer children receive guarded shells after the normal settled-only reload or a fresh session; active children are not retrofitted.
+
 ## 2026-10-03: Keep focused Pi initialization within its requested scope
 
 - `/init` treats a supplied package/path/focus as its scope, reads applicable parent guidance and relevant evidence first, and expands discovery only for concrete unresolved questions. Unfocused use remains repository-wide.
