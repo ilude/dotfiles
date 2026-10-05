@@ -139,13 +139,13 @@ Continue independent work around blockers. Adapt routine mechanisms within settl
   - Done when: newly launched Explorer children have guarded shells on both surfaces without gaining other tools or altering other roles.
   - Evidence: Committed `0f7a3bd`. Actual definitions and launch prompt fixtures cover both surfaces, project Explorer vs Developer, frozen tools, Damage Control loading and deterministic guidance. 38 focused tests and typecheck passed.
 
-- [ ] **T5: Document, validate, and deliver the completed feature**
+- [x] **T5: Document, validate, and deliver the completed feature**
   - Depends on: T1-T4 integrated in the task worktree.
   - Ownership: `pi/README.md`, default `docs/damage-control-{port,setup}.md`, `docs/subagents.md`, root `CHANGELOG.md`, targeted offline bootstrap smoke coverage, and this spec's execution/closeout metadata.
   - Change: document the normal versus role-bound inspection policies, examples, denial behavior, no agent bypass, normal operator-shell exemption, activation boundary, and best-effort limits. Preserve the original meaningful-harm purpose explicitly for normal mode. Extend the existing offline supported-loader check with an Explorer observational input and blocked mutation/init-failure evidence without executing submitted operations or contacting services. Add the task changelog entry without overwriting existing browser work.
   - Verify: the finite checks below; fix demonstrated task-related failures. Review the complete plan once for accurate task states and closeout evidence.
   - Done when: checks pass, implementation/spec are archived and committed, authorized integration is complete, completion metadata is committed, and worktree cleanup is verified; or accurately record the no-merge/blocked exception.
-  - Evidence: Documentation and offline supported-loader smoke completed. Agreed final tests: 29 files passed, 385 tests passed, 1 skipped; typecheck, check:runtime and root diff whitespace passed. Smoke verifies real Explorer observational allowance, mutation denial and retained initialization-failure blocker without executing submitted operations or model calls. Windows Node 25.9 immediate CLI exit crashed after successful assertions; temporary fixture-only preload preserves exit codes and lets Node drain naturally. Integration, completion metadata and cleanup remain pending.
+  - Evidence: Documentation and offline supported-loader smoke completed. Agreed final tests: 29 files passed, 385 tests passed, 1 skipped; typecheck, check:runtime and root diff whitespace passed. Smoke verifies real Explorer observational allowance, mutation denial and retained initialization-failure blocker without executing submitted operations or model calls. Windows Node 25.9 immediate CLI exit crashed after successful assertions; temporary fixture-only preload preserves exit codes and lets Node drain naturally. Integrated into `main`; completion metadata was committed in `409ae7d3`, and the task worktree was removed after exact-origin retirement.
 
 T1 supplies shared prerequisites. T2 then T3 then T4 are dependent outcomes, not parallel assignments. Documentation can be drafted independently against the fixed contract, but T5's validation and closeout wait for integration. Shared files must have sequential ownership.
 
@@ -163,10 +163,10 @@ Also run `git diff --check` from the task root. Add a newly named focused child/
 
 Tests must not execute mutation examples, use real AWS/Kubernetes services, read credentials, or submit private source to live evaluation. Stub only provider/UI boundaries when testing gate decisions; use actual grammars, projections, role definitions, and bootstrap where those are the behavior under test. Automated provider stubs verify wiring and prompt construction, not real model judgment quality. Live judge quality, production cloud diagnostics, and attached-client experience remain non-blocking verification limits, not claimed results.
 
-- Status: Implementation and agreed checks passed; archival/task commit and authorized local integration closeout underway.
+- Status: Implementation, agreed checks, archival, authorized local integration, completion metadata, and task-worktree cleanup completed.
 - Execution coordinates: task `C:/Users/mglenn/.dotfiles/.worktrees/explorer-inspection-mode`, branch `task/explorer-inspection-mode`; recorded target `C:/Users/mglenn/.dotfiles`, branch `main`, starting commit `b926df56192ab0cd2768a19a61730ebaed279da3`. Matching `.pi-plan-run.json` verified. Existing target browser/changelog/failure-log changes remain untouched.
 - Completed: source investigation and approved policy decisions recorded.
-- Next: Archive and commit the whole spec with remaining task changes, then dispatch prepared-run Integrator successor. Integration, completion metadata and cleanup are not yet complete.
+- Next: None. Closeout is complete; no push or deployment was authorized or performed.
 - Blockers/open decisions: None.
 - Actual runs: 2026-10-05, default profile, T1-T4 task commits `6292ac1`, `22ebfd48`, `50de819`, `0f7a3bd`; focused and final agreed automated checks passed as recorded above. No live model judgment, server probes, credentials inspection, push or deployment. Live quality and attached-client experience remain unverified non-blocking limits.
 
@@ -174,9 +174,9 @@ Tests must not execute mutation examples, use real AWS/Kubernetes services, read
 
 - [x] Implementation and agreed checks completed.
 - [x] Entire spec archived and committed with task changes.
-- [ ] Integrated into the recorded target, unless intentionally skipped by `--no-merge`.
-- [ ] Completion metadata reconciled and committed.
-- [ ] Clean task worktree removed and cleanup verified, unless intentionally retained under `--no-merge`.
+- [x] Integrated into the recorded target, unless intentionally skipped by `--no-merge`.
+- [x] Completion metadata reconciled and committed in `409ae7d3`.
+- [x] Clean task worktree removed and cleanup verified after exact-origin retirement.
 
 After implementation and agreed checks pass, record integration pending, confirm `.specs/archive/explorer-inspection-mode/` does not contain another spec, move the whole spec directory there in the task worktree, repair affected links, and commit implementation plus archived spec. Do not archive unfinished implementation. Keep actual task/evidence/handoff state consistent with closeout, not just frontmatter.
 
