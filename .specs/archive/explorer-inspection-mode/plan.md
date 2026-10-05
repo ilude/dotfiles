@@ -1,7 +1,7 @@
 ---
 created: 2026-10-05
-status: in-progress
-completed: null
+status: completed
+completed: 2026-10-05
 ---
 
 # Give Explorer guarded shell inspection
@@ -197,3 +197,7 @@ Lead with one explicit outcome:
 - 🟡 **CLEANUP PENDING**: integration and completion metadata succeeded, cleanup remains.
 
 For a blocked or cleanup-pending outcome, immediately give **Reason** and **Action needed**, including owner and exact next action, before passed-check summaries. Then report concise checks, archived spec path, branch/commits, merge result, and any retained worktree/remnants. Never imply automatic resumption or hand available agent-owned work back to the user.
+
+## Integration evidence
+
+Agreed pnpm tests: 29 files, 385 passed, 1 skipped; typecheck passed; check:runtime supported-loader Explorer observation/mutation/init-failure checks passed; root git diff --check passed. No live model judgment or service probes; no push/deployment authority.
