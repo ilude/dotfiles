@@ -1,5 +1,32 @@
 # Agent process failure log
 
+## APR-087 - Optimized a static test gate before justifying its retention
+
+- **Reference:** Default session `01a0fd31-02fa-77c7-ae11-7e836c2f64a8`, operator correction during test cleanup.
+- **Observed:** Proposed replacing source-text checks with parsed configuration assertions and described them as meaningful protection. On challenge, explained that the checks would compare declared settings with expected constants, not verify product startup or authentication. The operator identified the weak safety-gate rationale.
+- **Finding:** Demonstrating what a check could reject did not establish that preserving the gate was worthwhile. Existing proportionality guidance already requires workflow-specific evidence rather than generic safeguards. This was adherence failure, not missing policy.
+- **Correction:** Withdrew the replacement proposal. Assess removal on its merits and state the loss of static expectations plainly; do not claim executable behavior tests cover the configuration selection they do not exercise.
+- **Related:** AIF-095, AIF-041, AIF-031.
+- **Status:** Feedback recorded. No replacement tests, runtime changes, or instruction changes implemented; test-suite removal remains an operator decision.
+
+## APR-086 - Stopped a requested investigation at an unverified limitation
+
+- **Reference:** Operator correction, 2026-10-05, during a tenant meeting migration investigation.
+- **Observed:** Asked the operator for discoverable information before inspecting existing setup, then reported an unverified feature combination as a stopping point while read-only investigation remained available. The operator had to request continuation.
+- **Finding:** Existing investigation and autonomous read-only discovery instructions already covered the next actions. This was an adherence failure, not a missing rule.
+- **Correction:** Inspected the actual meeting association, live group membership and calendar settings, and documented group-calendar editing behavior. Distinguished the viable client workflow from public API limitations.
+- **Related:** APR-073, APR-072, AIF-092.
+- **Status:** Investigation resumed. No instruction changes or tenant mutations authorized by this record.
+
+## APR-085 - Live inspection assignments exceeded Explorer's tool authority
+
+- **Reference:** Operator-provided delegation excerpt, discussed 2026-10-05. Historical sessions were not independently inspected.
+- **Observed:** Two Explorer assignments needed live CLI investigation but Explorer had no shell. The parent cancelled and reassigned them to Developer, adding an initial tool-access check. No live findings were established in the excerpt.
+- **Verified:** Default `agents/explorer.md` omits shell tools. Developer has shell plus edit/write tools, so a read-only assignment does not enforce shell mutation restrictions. Child launch already loads Damage Control on both surfaces.
+- **Related:** AIF-090, role authority versus requested outcomes. Existing normal Damage Control protects meaningful unrecoverable harm, not all mutation.
+- **Decision:** Operator agreed to best-effort Explorer shell inspection through a distinct Damage Control policy: direct recognition of common observations, inspection-specific judgment for unfamiliar commands/scripts, block unresolved calls, and no agent-controlled bypass. Normal script preapprovals cannot grant inspection permission.
+- **Status:** Planning only. `.specs/explorer-inspection-mode/plan.md` records the approved behavior and implementation work. Runtime changes, tests, commits, and publication are not performed or authorized by this record.
+
 ## APR-084 - Prepared closeout recovered but returned stale cleanup state and contradictory plan progress
 
 - **Reference:** Default orchestrator `01a10244-393e-70fb-a73d-b88eeb6f36e6` and Integrator successor `01a10270-4f7e-75aa-b307-3cc4fdd53b98`, reviewed 2026-10-03; TCA-015.

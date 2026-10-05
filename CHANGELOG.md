@@ -10,6 +10,14 @@
 - Default Pi browser automation now permits ordinary login, consent handling, and development forms while applying exact session/frame, destination, credential-binding, and consequential-action checks. Stored fills use operator-configured local BWS references; actual CAPTCHA completion and native TLS/Safe Browsing warnings remain manual, with no warning bypass.
 - Fresh default-profile installs now declare the existing web-fetch parsing/address dependencies exposed as missing by the affected integration checks.
 - Browser observations are treated as untrusted evidence and selected transfers reach Damage Control review. This is not universal taint tracking, complete visual screening, or a connection-level network sandbox; bound sites can still be compromised and CDP/DNS limitations remain. Cookie/storage APIs and arbitrary model-callable evaluation remain unavailable. See [browser setup and security boundaries](docs/browser-security.md).
+## 2026-10-05: Deliver browser fills to controlled forms
+
+- Browser fill uses native input and textarea value setters before dispatching input/change events. Direct assignment previously updated framework value trackers too early, so the tool reported success while React-style application state remained empty.
+- Regression coverage exercises the actual CDP expression for tracked inputs and textareas. A live disposable Brave form probe reproduced the empty submission before the change and received the submitted value afterward. Credential and CAPTCHA restrictions remain unchanged.
+
+## 2026-10-03: Remove specialized browser-comparison instructions
+
+- Removed the extension-isolation comparison procedure and comparison bookkeeping guidance from the browser skill rather than relocating them. Ordinary browser use retains profile/session ownership, exact page targets, account verification, and manual CAPTCHA handling. Browser runtime behavior is unchanged.
 
 ## 2026-10-03: Keep focused Pi initialization within its requested scope
 

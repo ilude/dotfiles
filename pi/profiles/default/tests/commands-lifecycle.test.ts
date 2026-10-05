@@ -73,7 +73,22 @@ describe("profile command lifecycle", () => {
 		expect(f.tools.size).toBe(0);
 		expect(f.active()).toEqual(["read", "unrelated_tool"]);
 		expect(f.terminal.size).toBe(0);
-		expect(f.sent).toEqual([]);
+		expect(f.sent).toEqual([{
+			message: { customType: "profile-commit-result", content: `/commit${push ? " push" : ""}\nabc123 committed`, display: false },
+			options: { triggerTurn: true },
+		}]);
+	});
+
+	it("delivers slash failure diagnostics to the model and triggers recovery", async () => {
+		const f = fixture();
+		const diagnostics = "shell command failed\ncat: '/C:/repo/AGENTS.md': No such file or directory\nNo commits created.\nPush completion not confirmed.";
+		reviewer.run.mockRejectedValueOnce(new Error(diagnostics));
+		await f.commands.get("commit")!.handler("push", f.ctx);
+		expect(f.sent).toEqual([{
+			message: { customType: "profile-commit-result", content: `/commit push\n/commit failed: ${diagnostics}`, display: false },
+			options: { triggerTurn: true },
+		}]);
+		expect(f.entries.at(-1)?.data.text).toBe(`/commit failed: ${diagnostics}`);
 	});
 
 	it("keeps slash idle waiting and immutable push choice", async () => {

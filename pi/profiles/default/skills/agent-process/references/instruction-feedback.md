@@ -50,7 +50,8 @@
 - **Feedback:** The orchestrator proposed worker-based reload scanning, persistent authenticated signaling, and aggressive resource-monitor refinements before asking whether these low-value safeguards and indicators should exist at all. The operator identified the proposals as over-engineered and gold-plated.
 - **Finding:** Existing Investigation and Proportionality rules already require evidence for factual claims, workflow-specific justification for safeguards, normal-forward optimization, and rejection of speculative machinery. AIF-054 records the same pattern of inventing resource ceilings and safety controls. This is an adherence failure, not missing policy.
 - **Correction:** Evaluate removal or simplification before optimizing incidental monitoring. Do not treat preserving an existing safeguard or indicator as a requirement without evidence that its benefit warrants its ongoing cost.
-- **Related:** AIF-054, AIF-041, AIF-031.
+- **Recurrence:** In default session `01a0fd31-02fa-77c7-ae11-7e836c2f64a8`, a test-cleanup review proposed replacing source-string assertions with parsed configuration assertions against copied constants. The operator challenged the weak protection and gate anti-pattern. The proposal explained a hypothetical typo but did not establish why retaining the gate was worthwhile. Replacement withdrawn; no replacement implemented or instruction change proposed.
+- **Related:** AIF-054, AIF-041, AIF-031, APR-087.
 - **Status:** Feedback recorded; no instruction change proposed because the active rules already cover the failure.
 
 ## AIF-094 - Tool cards should present operator meaning before transport identity

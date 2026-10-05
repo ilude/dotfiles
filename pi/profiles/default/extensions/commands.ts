@@ -27,8 +27,13 @@ export default function profileCommands(pi: ExtensionAPI): void {
 		pi.sendMessage({ customType: "profile-command-error", content: message, display: true }, { triggerTurn });
 	}
 
-	function presentCommit(text: string, error: boolean, ctx: ExtensionContext): void {
+	function presentCommit(text: string, error: boolean, ctx: ExtensionContext, args: string): void {
 		pi.appendEntry(RESULT_ENTRY, { text, error });
+		pi.sendMessage({
+			customType: RESULT_ENTRY,
+			content: `/commit${args.trim() ? ` ${args.trim()}` : ""}\n${text}`,
+			display: false,
+		}, { triggerTurn: true });
 		if (ctx.hasUI && error) ctx.ui.notify("/commit failed; see result above", "error");
 	}
 
@@ -87,9 +92,9 @@ export default function profileCommands(pi: ExtensionAPI): void {
 					inIgnoreDialog = text === "Waiting for ignore-file decision…";
 					ctx.ui.setStatus(STATUS_KEY, text);
 				});
-			presentCommit(result.text, false, ctx);
+			presentCommit(result.text, false, ctx, rawArgs);
 		} catch (error) {
-			presentCommit(`/commit failed: ${error instanceof Error ? error.message : String(error)}`, true, ctx);
+			presentCommit(`/commit failed: ${error instanceof Error ? error.message : String(error)}`, true, ctx, rawArgs);
 		} finally {
 			stopInput?.();
 			if (controller && active === controller) active = undefined;
