@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-10-10: Maintain Windows packages on every installer run
+
+- Normal `install.ps1` runs now ensure selected WinGet configuration groups and update all eligible installed WinGet applications, including unknown-version packages and applications outside the dotfiles lists. The timestamp-based `.dotfiles.lock` skip is removed; `-ForcePackages` remains accepted for compatibility and existing user pins are respected.
+- Installer-managed pnpm globals, PowerShell modules, Python hook dependencies and uv tools now resolve updates instead of treating an existing command as current. Explicit tool pins, supply-chain options, Pi/Herdr version-resolution paths and frozen repository dependency setup are preserved. Arbitrary user-managed globals and WSL applications are not bulk-upgraded.
+- Existing MSYS2 installations bypass the failing bootstrap reinstall path. The bootstrap receives a blocking WinGet pin unless already pinned, while staged pacman invocations update the runtime and packages in separate shells. Maintenance refreshes PATH before dependent setup so newly installed tools can be used during the same run.
+- Native command diagnostics and exit codes now feed an installation summary rather than relying on PowerShell exceptions or unconditional success messages. Failures and reboot requirements produce meaningful exit codes, including through self-elevation. Optional scheduler and temporary-hook soft failures retain their nonfatal behavior.
+- `-SkipPackages` is the explicit update opt-out, including the Pi global update and WSL installation/packages. Configuration and repository runtime dependency setup still run. Safe regression tests exercise maintenance ordering, pins, native failures, PATH refresh, skip behavior and elevation without upgrading the workstation.
+
 ## 2026-10-05: Bound plan closeout diagnostics
 
 - Plan integration now summarizes ignored-path preservation evidence and compacts legacy oversized diagnostics, keeping resumed closeout results within native tool output limits without touching ignored files or weakening closeout authority.

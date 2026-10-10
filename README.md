@@ -37,10 +37,11 @@ git clone --recursive https://github.com/ilude/dotfiles.git ~/.dotfiles
 
 ```powershell
 git clone --recursive https://github.com/ilude/dotfiles.git $HOME\.dotfiles
-~\.dotfiles\install.ps1                # Core packages
+~\.dotfiles\install.ps1                # Ensure core packages and update installed apps/tools
 ~\.dotfiles\install.ps1 -Work          # + AWS, Terraform, Helm, etc.
 ~\.dotfiles\install.ps1 -ITAdmin       # + AD, Graph, Exchange modules
 ~\.dotfiles\install.ps1 -NoElevate     # Skip elevation (Developer Mode)
+~\.dotfiles\install.ps1 -SkipPackages  # Configuration only, no application/tool updates
 ~\.dotfiles\install.ps1 -ListPackages  # Show available packages
 ```
 
@@ -48,6 +49,38 @@ Windows packages are defined declaratively in `winget/configuration/{core,work,d
 (WinGet Configuration / DSC). Add or remove packages by editing those files — `install.ps1`
 invokes `winget configure` on each selected group. Preserve the comment format
 `id: <id>  # <Display Name>` (two spaces before `#`) so `-ListPackages` keeps working.
+
+Every normal Windows run ensures the selected package groups exist, then runs
+`winget upgrade --all --include-unknown`. This also updates installed applications
+outside the dotfiles package lists, including previously installed work/dev tools
+without requiring those flags again. Existing WinGet pins remain respected.
+Packages with unknown versions may be offered again on subsequent runs.
+`-ForcePackages` remains accepted for compatibility; `.dotfiles.lock` no longer
+suppresses maintenance.
+
+Installer-managed pnpm globals, PowerShell modules, Python hook dependencies and
+uv tools are updated through their owning managers. Pi and Herdr retain their
+latest-stable installation paths and package-source fallback behavior. Explicit
+pins (including `lizard==1.21.3` and the checksum-pinned BWS release), existing
+supply-chain settings, and frozen repository dependency installs are retained.
+Arbitrary user pnpm/uv packages are not bulk-upgraded.
+
+An existing MSYS2 installation is excluded from the WinGet bootstrap configuration.
+The installer adds a blocking WinGet pin for `MSYS2.MSYS2` when no pin already exists,
+without replacing user pins, and updates MSYS2 through separate `pacman -Syu`
+passes before ensuring zsh is installed. Close MSYS2/Git Bash terminals before
+running maintenance; if a runtime update fails, close them and rerun the installer.
+
+`-SkipPackages` skips application/tool updates, the Pi global update, and WSL
+installation/package installation. Dotfiles configuration and repository runtime
+dependency setup still run. WSL package setup otherwise retains its existing
+behavior; this is not a bulk upgrade of all WSL applications.
+
+The transcript contains package-manager diagnostics. The final summary reports
+successful update/current checks, explicit no-update results, skips, failures and
+reboot requirements. Exit codes are `0` for success, `1` for failures, `2` for failed
+or cancelled elevation, and `3010` for reboot-required completion without other
+failures. Elevated runs propagate the child exit code. No automatic reboot occurs.
 
 ### Temporary install hooks
 

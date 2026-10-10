@@ -4,14 +4,15 @@
     Windows dotfiles installer using dotbot (self-elevating)
 .DESCRIPTION
     Installs dotfiles by creating symlinks via dotbot.
-    Installs packages on first run or when packages list changes.
+    Ensures selected packages are installed and updates applications and managed
+    tooling on every run, unless -SkipPackages is specified.
     Automatically elevates to Administrator if needed.
 
 .PARAMETER SkipPackages
-    Skip package installation even on first run
+    Skip package installation and tooling updates (configuration still runs)
 
 .PARAMETER ForcePackages
-    Force package installation even if lock file exists
+    Compatibility switch; normal runs now maintain packages every time
 
 .PARAMETER Work
     Include work-related packages (AWS, Helm, Terraform, etc.)
@@ -122,7 +123,6 @@ if ($ListPackages) {
 # SELF-ELEVATION
 # ============================================================================
 
-$LOCKFILE = Join-Path $env:USERPROFILE ".dotfiles.lock"
 # Preserve the interactive account across UAC elevation so the scheduled task
 # never accidentally targets an elevated/system identity.
 if (-not $env:DOTFILES_SCHEDULER_USER) {
@@ -159,7 +159,7 @@ if (-not $isAdmin -and -not $NoElevate) {
     if ($ITAdmin) { $argList += "-ITAdmin" }
 
     try {
-        Start-Process -FilePath $pwshExe -ArgumentList $argList -Verb RunAs -Wait
+        $elevated = Start-Process -FilePath $pwshExe -ArgumentList $argList -Verb RunAs -Wait -PassThru
 
         # Show log file location after elevated window closes
         $LogsDir = Join-Path $PSScriptRoot "logs"
@@ -172,7 +172,7 @@ if (-not $isAdmin -and -not $NoElevate) {
             }
         }
 
-        exit 0
+        exit $elevated.ExitCode
     } catch {
         Write-Host "Elevation cancelled or failed: $($_.Exception.Message)" -ForegroundColor Red
         exit 2
@@ -207,6 +207,8 @@ Write-Host ""
 # Source path utility functions (extracted for testability)
 . "$PSScriptRoot/powershell/lib/path-utils.ps1"
 . (Join-Path $PSScriptRoot 'powershell\lib\completion-cache.ps1')
+. (Join-Path $PSScriptRoot 'powershell\lib\install-maintenance.ps1')
+Initialize-InstallResults
 
 function Write-GitBashPath {
     # Generate .path-windows-local with Windows PATH converted for Git Bash
@@ -332,37 +334,34 @@ acl = private
 }
 
 function Invoke-WingetConfigure {
-    <#
-    .SYNOPSIS
-        Apply a WinGet Configuration (DSC) YAML file.
-    .DESCRIPTION
-        Runs `winget configure test` first as a pre-flight state diff, then
-        `winget configure` to apply. Non-zero exit from the apply step
-        appends "winget-configure:<GroupName>" to $script:failed.
-    #>
     param(
         [Parameter(Mandatory)][string]$GroupName,
         [Parameter(Mandatory)][string]$ConfigFile,
         [System.ConsoleColor]$Color = [System.ConsoleColor]::Cyan
     )
-
     Write-Host "`n--- $GroupName Packages (DSC) ---" -ForegroundColor $Color
-
     if (-not (Test-Path $ConfigFile)) {
-        Write-Host "  Configuration file not found: $ConfigFile" -ForegroundColor Red
-        $script:failed += "winget-configure:$GroupName (missing $ConfigFile)"
+        Add-InstallResult "winget-configure:$GroupName" Failed "Missing $ConfigFile"
         return
     }
-
-    Write-Host "  Applying configuration..." -ForegroundColor Cyan
-    & winget configure --accept-configuration-agreements --disable-interactivity -f $ConfigFile 2>&1 | Out-Host
-    $exitCode = $LASTEXITCODE
-
-    if ($exitCode -ne 0) {
-        Write-Host "  ${GroupName}: winget configure failed (exit: $exitCode)" -ForegroundColor Red
-        $script:failed += "winget-configure:$GroupName"
-    } else {
-        Write-Host "  ${GroupName}: configuration applied" -ForegroundColor Green
+    $temporaryConfig = $null
+    try {
+        if (Get-InstallMsys2Root) {
+            $content = Get-Content -LiteralPath $ConfigFile -Raw
+            $filtered = Remove-Msys2BootstrapResource -Content $content
+            if ($filtered -ne $content) {
+                $temporaryConfig = Join-Path ([IO.Path]::GetTempPath()) "dotfiles-$PID-$([guid]::NewGuid()).dsc.yaml"
+                [IO.File]::WriteAllText($temporaryConfig, $filtered)
+                $ConfigFile = $temporaryConfig
+                Write-Host '  Existing MSYS2: using pacman, not the bootstrap installer.'
+            }
+        }
+        $null = Invoke-InstallCommand -Name "winget-configure:$GroupName" -FilePath winget -ArgumentList @(
+            'configure', '--accept-configuration-agreements', '--disable-interactivity', '-f', $ConfigFile
+        ) -RebootExitCodes @(3010, 1641, -1978334967, -1978334965)
+    } finally {
+        if ($temporaryConfig) { Remove-Item $temporaryConfig -Force -ErrorAction SilentlyContinue }
+        Update-InstallPath
     }
 }
 
@@ -371,16 +370,12 @@ function Install-WingetPackage {
         [Parameter(Mandatory)][string]$Id,
         [Parameter(Mandatory)][string]$Name
     )
-
-    Write-Host "  $Name..." -ForegroundColor Cyan -NoNewline
-    & winget install --id $Id --exact --source winget --accept-package-agreements --accept-source-agreements --disable-interactivity 2>&1 | Out-Host
-    if ($LASTEXITCODE -eq 0) {
-        Write-Host "  ${Name}: installed" -ForegroundColor Green
-        return $true
-    }
-
-    Write-Host "  ${Name}: install failed (exit: $LASTEXITCODE)" -ForegroundColor Red
-    return $false
+    $result = Invoke-InstallCommand -Name $Name -FilePath winget -ArgumentList @(
+        'install', '--id', $Id, '--exact', '--source', 'winget', '--accept-package-agreements',
+        '--accept-source-agreements', '--disable-interactivity'
+    ) -CurrentExitCodes @(-1978335189, -1978335135, -1978335128) -RebootExitCodes @(3010, 1641, -1978334967, -1978334965)
+    Update-InstallPath
+    return $result
 }
 
 function Remove-GitShellExtensions {
@@ -433,20 +428,13 @@ function Ensure-WindowsTerminalContextMenu {
 
 function Install-PSModule {
     param([string]$Name)
-
-    Write-Host "  Installing $Name..." -ForegroundColor Cyan -NoNewline
-
-    if (Get-Module -ListAvailable -Name $Name) {
-        Write-Host " already installed" -ForegroundColor DarkGray
-        return $true
-    }
-
     try {
-        Install-Module -Name $Name -Scope CurrentUser -Force -AllowClobber -Confirm:$false -ErrorAction Stop
-        Write-Host " installed" -ForegroundColor Green
+        # Resolves the latest version, including modules not installed by PSGet.
+        Install-Module -Name $Name -Scope CurrentUser -Force -AllowClobber -Confirm:$false -ErrorAction Stop | Out-Host
+        Add-InstallResult "PowerShell module $Name" UpdatedOrCurrent
         return $true
     } catch {
-        Write-Host " failed: $_" -ForegroundColor Red
+        Add-InstallResult "PowerShell module $Name" Failed $_.Exception.Message
         return $false
     }
 }
@@ -472,37 +460,6 @@ function Ensure-WinGetLinksInPath {
         return $true
     }
     return $false
-}
-
-function Get-MissingConfiguredPackages {
-    param([switch]$Work, [switch]$Dev)
-
-    if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
-        return @()
-    }
-
-    $configFiles = @(
-        Join-Path $wingetConfigDir 'core.dsc.yaml'
-    )
-    if ($Work) {
-        $configFiles += Join-Path $wingetConfigDir 'work.dsc.yaml'
-    }
-    if ($Dev) {
-        $configFiles += Join-Path $wingetConfigDir 'dev.dsc.yaml'
-    }
-
-    $missing = @()
-    foreach ($configFile in $configFiles) {
-        foreach ($package in Get-DscYamlPackages -Path $configFile) {
-            $listOutput = & winget list --exact --id $package.Id 2>$null
-            $isInstalled = $LASTEXITCODE -eq 0 -and ($listOutput | Select-String -SimpleMatch $package.Id -Quiet)
-            if (-not $isInstalled) {
-                $missing += $package
-            }
-        }
-    }
-
-    return $missing
 }
 
 function Ensure-GitSshPathPriority {
@@ -920,7 +877,9 @@ function Initialize-PnpmGlobalConfig {
     )
     foreach ($setting in $pnpmSecurityConfig) {
         try {
-            pnpm config set --global $setting.Name $setting.Value 2>&1 | Out-Null
+            $null = Invoke-InstallCommand -Name "pnpm config $($setting.Name)" -FilePath pnpm -ArgumentList @(
+                'config', 'set', '--global', $setting.Name, $setting.Value
+            )
         } catch {
             Write-Host "  pnpm config $($setting.Name): warning -- $($_.Exception.Message)" -ForegroundColor Yellow
         }
@@ -928,7 +887,7 @@ function Initialize-PnpmGlobalConfig {
 
     # Run `pnpm setup` to populate the .tools/pnpm-exe shim. Idempotent.
     try {
-        pnpm setup 2>&1 | Out-Null
+        $null = Invoke-InstallCommand -Name 'pnpm setup' -FilePath pnpm -ArgumentList @('setup')
     } catch {
         Write-Host "  pnpm setup: warning -- $($_.Exception.Message)" -ForegroundColor Yellow
     }
@@ -1027,7 +986,8 @@ function Install-Herdr {
     $installer = Join-Path ([System.IO.Path]::GetTempPath()) "herdr-install-$PID.ps1"
     try {
         Invoke-WebRequest -UseBasicParsing -Uri 'https://herdr.dev/install.ps1' -OutFile $installer
-        & $installer
+        & $installer | Out-Host
+        Update-InstallPath
 
         $herdrPath = Join-Path $env:LOCALAPPDATA 'Programs\Herdr\bin\herdr.exe'
         if (-not (Test-Path $herdrPath)) {
@@ -1051,7 +1011,7 @@ function Install-Packages {
     param([switch]$Work, [switch]$Dev, [switch]$ITAdmin)
 
     if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
-        Write-Host "winget not found. Please install App Installer from Microsoft Store." -ForegroundColor Red
+        Add-InstallResult WinGet Failed 'Install App Installer from Microsoft Store'
         return $false
     }
 
@@ -1065,8 +1025,6 @@ function Install-Packages {
         Write-Host "Could not parse winget version '$wingetVersionRaw', continuing..." -ForegroundColor Yellow
     }
 
-    $script:failed = @()
-
     # Bun global isolation: pin globalDir/globalBinDir via ~/.bunfig.toml so
     # `bun install -g` never writes into %USERPROFILE% (a stray package.json
     # there causes pruning and dangling shims on subsequent installs).
@@ -1074,10 +1032,21 @@ function Install-Packages {
 
     # Update winget sources once (mitigates per-source agreement prompts)
     Write-Host "`nUpdating winget sources..." -ForegroundColor Cyan
-    & winget source update --disable-interactivity 2>&1 | Out-Host
+    $null = Invoke-InstallCommand -Name 'WinGet sources' -FilePath winget -ArgumentList @(
+        'source', 'update', '--disable-interactivity'
+    )
 
     # Core packages (DSC)
     Invoke-WingetConfigure -GroupName 'Core' -ConfigFile (Join-Path $wingetConfigDir 'core.dsc.yaml') -Color Cyan
+    if ($Work) {
+        Invoke-WingetConfigure -GroupName 'Work' -ConfigFile (Join-Path $wingetConfigDir 'work.dsc.yaml') -Color Yellow
+    }
+    if ($Dev) {
+        Invoke-WingetConfigure -GroupName 'Developer' -ConfigFile (Join-Path $wingetConfigDir 'dev.dsc.yaml') -Color Green
+    }
+    $script:Msys2Root = Get-InstallMsys2Root
+    Update-InstallWingetPackages -Msys2Root $script:Msys2Root
+    Update-InstallMsys2Packages -Root $script:Msys2Root
 
     # pnpm: ensure PNPM_HOME + PATH so `pnpm add -g` can install (and the resulting
     # binaries resolve in fresh shells). Must run AFTER core DSC since that's
@@ -1089,9 +1058,8 @@ function Install-Packages {
     # an official WinGet package. Keep this in the core path because default Pi
     # uses Herdr for visible subagents and long-running processes.
     Write-Host "`n--- Herdr Setup ---" -ForegroundColor Cyan
-    if (-not (Install-Herdr)) {
-        $script:failed += 'herdr:install-failed'
-    }
+    if (Install-Herdr) { Add-InstallResult Herdr UpdatedOrCurrent }
+    else { Add-InstallResult Herdr Failed 'installation failed' }
 
     # Git for Windows re-adds "Open Git GUI/Bash Here" context menu entries on
     # every (re)install. DSC can't pass /COMPONENTS overrides, so strip the
@@ -1099,22 +1067,9 @@ function Install-Packages {
     Write-Host "`n--- Git Context Menu Cleanup ---" -ForegroundColor Cyan
     Remove-GitShellExtensions
 
-    # Pin version-locked packages to prevent winget upgrade from overriding.
-    # DSC `WinGetPackage` `version:` is an install-time target, NOT an upgrade
-    # pin (winget-cli#3401, #5244). Pinning stays in a separate loop. The loop
-    # is dead code today (no packages carry a version) but preserved for future
-    # use -- when a version: key is added to a YAML entry, extend Get-DscYamlPackages
-    # to surface it and feed this loop.
-    # Placeholder: no-op. Fill in Version parsing in Get-DscYamlPackages when needed.
-
-    # Developer packages (heavy toolchains - opt-in via -Dev)
-    if ($Dev) {
-        Invoke-WingetConfigure -GroupName 'Developer' -ConfigFile (Join-Path $wingetConfigDir 'dev.dsc.yaml') -Color Green
-    }
-
     # WinGet Links setup (some packages don't auto-create symlinks)
     Write-Host "`n--- WinGet Links ---" -ForegroundColor Cyan
-    Ensure-WinGetLinksInPath
+    $null = Ensure-WinGetLinksInPath
 
     # Packages that need manual symlinks in WinGet Links
     $wingetLinks = @(
@@ -1140,29 +1095,9 @@ function Install-Packages {
         }
     }
 
-    # pnpm global packages for Node-based extras (Node.js + pnpm come from core packages)
-    if (Get-Command pnpm -ErrorAction SilentlyContinue) {
-        Write-Host "`n--- pnpm Global Packages ---" -ForegroundColor Cyan
-        $pnpmPackages = @('bats')
-        foreach ($pkg in $pnpmPackages) {
-            Write-Host "  $pkg..." -ForegroundColor Cyan -NoNewline
-            $installed = pnpm list -g $pkg 2>$null | Select-String $pkg
-            if ($installed) {
-                Write-Host " already installed" -ForegroundColor DarkGray
-            } else {
-                try {
-                    pnpm add -g $pkg 2>$null | Out-Null
-                    Write-Host " installed" -ForegroundColor Green
-                } catch {
-                    Write-Host " failed" -ForegroundColor Red
-                    $script:failed += "pnpm:$pkg"
-                }
-            }
-        }
-    } else {
-        Write-Host "`n--- pnpm Global Packages ---" -ForegroundColor DarkGray
-        Write-Host "  pnpm not found - skipping (rerun installer after core packages finish)" -ForegroundColor DarkGray
-    }
+    # Only globals owned by this installer, not arbitrary user packages.
+    Write-Host "`n--- pnpm Global Packages ---" -ForegroundColor Cyan
+    $null = Invoke-InstallCommand -Name 'pnpm global bats' -FilePath pnpm -ArgumentList @('add', '-g', 'bats')
 
     # Claude Code (WinGet). The native claude.exe needs no JS runtime and works
     # uniformly across Windows machines regardless of whether node/bun is present.
@@ -1212,19 +1147,10 @@ function Install-Packages {
         'tree-sitter-bash' = 'tree_sitter_bash'
     }
     foreach ($dep in $hookDeps.Keys) {
-        Write-Host "  $dep..." -ForegroundColor Cyan -NoNewline
-        $installed = python -c "import importlib; importlib.import_module('$($hookDeps[$dep])')" 2>$null
-        if ($LASTEXITCODE -eq 0) {
-            Write-Host " already installed" -ForegroundColor DarkGray
-        } else {
-            try {
-                pip install $dep 2>$null | Out-Null
-                Write-Host " installed" -ForegroundColor Green
-            } catch {
-                Write-Host " failed" -ForegroundColor Red
-                $script:failed += "pip:$dep"
-            }
-        }
+        $null = Invoke-InstallCommand -Name "Python hook dependency $dep" -FilePath uv -ArgumentList @(
+            'pip', 'install', '--python', 'python', '--system', '--upgrade',
+            '--exclude-newer', '3 days', '--index-strategy', 'first-index', '--no-sources', '--no-build', $dep
+        )
     }
 
     # Python dev tools (uv-managed) - mirrors the unix install script
@@ -1234,83 +1160,12 @@ function Install-Packages {
     #         validation hook across all supported languages.
     # detect-secrets: staged-file secret scanner used by the /commit workflow.
     Write-Host "`n--- Python Dev Tools (uv-managed) ---" -ForegroundColor Cyan
-    if (Get-Command uv -ErrorAction SilentlyContinue) {
-        # Harden uv tool resolutions: delay newly-uploaded packages, keep
-        # first-index dependency-confusion protection explicit, ignore
-        # development-only Git/URL/path sources, and avoid arbitrary sdist builds.
-        $uvSecurityArgs = @('--exclude-newer', '3 days', '--index-strategy', 'first-index', '--no-sources', '--no-build')
-        $uvTools = @('ruff', 'lizard', 'detect-secrets')
-        foreach ($tool in $uvTools) {
-            $package = if ($tool -eq 'lizard') { 'lizard==1.21.3' } else { $tool }
-            Write-Host "  $tool..." -ForegroundColor Cyan -NoNewline
-            $command = Get-Command $tool -ErrorAction SilentlyContinue
-            $needsInstall = -not $command
-            if ($tool -eq 'lizard' -and $command) {
-                $needsInstall = ((& $command.Source --version 2>$null).Trim() -ne '1.21.3')
-            }
-            if (-not $needsInstall) {
-                Write-Host " already installed" -ForegroundColor DarkGray
-            } else {
-                try {
-                    if ($tool -eq 'lizard') {
-                        uv tool install @uvSecurityArgs --reinstall $package 2>&1 | Out-Null
-                    } else {
-                        uv tool install @uvSecurityArgs $package 2>&1 | Out-Null
-                    }
-                    if ($LASTEXITCODE -eq 0) {
-                        Write-Host " installed" -ForegroundColor Green
-                    } else {
-                        Write-Host " failed (uv tool install exit $LASTEXITCODE)" -ForegroundColor Red
-                        $script:failed += "uv-tool:$tool"
-                    }
-                } catch {
-                    Write-Host " failed" -ForegroundColor Red
-                    $script:failed += "uv-tool:$tool"
-                }
-            }
-        }
-    } else {
-        Write-Host "  uv not found - skipping ruff/lizard/detect-secrets install" -ForegroundColor Yellow
-        Write-Host "  (uv comes from core winget packages; rerun installer)" -ForegroundColor DarkGray
-    }
+    Update-InstallUvTools
 
     Write-Host "`n--- Bitwarden Secrets Manager CLI ---" -ForegroundColor Cyan
-    try {
-        & python (Join-Path $BASEDIR 'scripts\install-bws.py')
-        if ($LASTEXITCODE -ne 0) {
-            $script:failed += 'bws'
-        }
-    } catch {
-        Write-Host "  bws installation failed" -ForegroundColor Red
-        $script:failed += 'bws'
-    }
-
-    # MSYS2 packages (zsh for Git Bash - requires MSYS2 from core packages)
-    Write-Host "`n--- MSYS2 Packages (Git Bash zsh) ---" -ForegroundColor Cyan
-    $msys2Pacman = "$Msys2Root\usr\bin\pacman.exe"
-    if (Test-Path $msys2Pacman) {
-        $msys2Packages = @('zsh')
-        foreach ($pkg in $msys2Packages) {
-            Write-Host "  $pkg..." -ForegroundColor Cyan -NoNewline
-            # Check if package is installed
-            $installed = & $msys2Pacman -Q $pkg 2>$null
-            if ($installed) {
-                Write-Host " already installed" -ForegroundColor DarkGray
-            } else {
-                try {
-                    # Install package non-interactively
-                    & $msys2Pacman -S --noconfirm $pkg 2>$null | Out-Null
-                    Write-Host " installed" -ForegroundColor Green
-                } catch {
-                    Write-Host " failed" -ForegroundColor Red
-                    $script:failed += "msys2:$pkg"
-                }
-            }
-        }
-    } else {
-        Write-Host "  MSYS2 not found at $Msys2Root - skipping zsh install" -ForegroundColor Yellow
-        Write-Host "  (Run installer again after MSYS2 finishes installing)" -ForegroundColor DarkGray
-    }
+    $null = Invoke-InstallCommand -Name 'bws' -FilePath python -ArgumentList @(
+        (Join-Path $BASEDIR 'scripts\install-bws.py')
+    )
 
     # Install zsh plugins for Git Bash
     Write-Host "`n--- Zsh Plugins (Git Bash) ---" -ForegroundColor Cyan
@@ -1320,14 +1175,11 @@ function Install-Packages {
         Write-Host "  Installing zsh plugins..." -ForegroundColor Cyan
         # Run zsh-plugins with ZDOTDIR set so it finds the right dotfiles dir
         $zdotdir = $HOME -replace '\\', '/'
-        & $gitBash --login -c "ZDOTDIR='$zdotdir' source '$($zshPluginsScript -replace '\\', '/')'" 2>&1 | ForEach-Object {
-            if ($_ -match 'Installing plugin') {
-                Write-Host "    $_" -ForegroundColor DarkGray
-            }
-        }
-        Write-Host "  Plugins installed" -ForegroundColor Green
+        $null = Invoke-InstallCommand -Name 'Zsh plugin setup' -FilePath $gitBash -ArgumentList @(
+            '--noprofile', '--norc', '-c', "ZDOTDIR='$zdotdir' source '$($zshPluginsScript -replace '\\', '/')'"
+        )
     } else {
-        Write-Host "  Git Bash not found - skipping plugin install" -ForegroundColor Yellow
+        Add-InstallResult 'Zsh plugin setup' Skipped 'Git Bash or setup script unavailable'
     }
 
     # Create MSYS2 zsh bootstrap (fixes HOME mismatch between Git Bash and MSYS2 zsh)
@@ -1375,7 +1227,7 @@ function Install-Packages {
                     New-Item -ItemType SymbolicLink -Path $linkPath -Target $targetPath -Force | Out-Null
                     Write-Host "  Linked $($link.Name) -> $targetPath" -ForegroundColor Green
                 } catch {
-                    Write-Host "  Failed to create symlink for $($link.Name): $_" -ForegroundColor Red
+                    Add-InstallResult "MSYS2 link $($link.Name)" Failed $_.Exception.Message
                     Write-Host "  (Enable Developer Mode in Windows Settings to allow symlinks)" -ForegroundColor DarkGray
                 }
             } else {
@@ -1387,23 +1239,14 @@ function Install-Packages {
     # PowerShell user modules (CurrentUser scope, no admin required)
     Write-Host "`n--- PowerShell User Modules ---" -ForegroundColor Blue
     foreach ($mod in $userModules) {
-        if (-not (Install-PSModule -Name $mod)) {
-            $script:failed += $mod
-        }
-    }
-
-    # Work packages (DSC)
-    if ($Work) {
-        Invoke-WingetConfigure -GroupName 'Work' -ConfigFile (Join-Path $wingetConfigDir 'work.dsc.yaml') -Color Yellow
+        $null = Install-PSModule -Name $mod
     }
 
     # IT Admin modules
     if ($ITAdmin) {
         Write-Host "`n--- IT Admin PowerShell Modules ---" -ForegroundColor Magenta
         foreach ($mod in $itAdminModules) {
-            if (-not (Install-PSModule -Name $mod)) {
-                $script:failed += $mod
-            }
+            $null = Install-PSModule -Name $mod
         }
 
         # RSAT features
@@ -1565,22 +1408,18 @@ function Install-WSLPackages {
     $wslPath = ConvertTo-WSLPath $wslPackagesScript
     $distroArg = if ($Distro) { @("-d", $Distro) } else { @() }
 
-    # Copy script to WSL and run it
-    wsl @distroArg -e bash --norc -c "mkdir -p /tmp/dotfiles-setup && tr -d '\r' < '$wslPath' > /tmp/dotfiles-setup/wsl-packages && chmod +x /tmp/dotfiles-setup/wsl-packages"
-
-    # Run the script
-    wsl @distroArg -e bash --norc -c '/tmp/dotfiles-setup/wsl-packages'
-    $runExitCode = $LASTEXITCODE
-
-    # Cleanup
-    wsl @distroArg -e bash --norc -c 'rm -rf /tmp/dotfiles-setup' 2>$null
-
-    if ($runExitCode -eq 0) {
-        Write-Host "  WSL packages installed" -ForegroundColor Green
-        return $true
-    } else {
-        Write-Host "  WSL package installation had warnings" -ForegroundColor Yellow
-        return $true
+    $prepared = Invoke-InstallCommand -Name 'WSL package script preparation' -FilePath wsl -ArgumentList (
+        $distroArg + @('-e', 'bash', '--norc', '-c', "mkdir -p /tmp/dotfiles-setup && tr -d '\r' < '$wslPath' > /tmp/dotfiles-setup/wsl-packages && chmod +x /tmp/dotfiles-setup/wsl-packages")
+    )
+    if (-not $prepared) { return $false }
+    try {
+        return (Invoke-InstallCommand -Name 'WSL package installation' -FilePath wsl -ArgumentList (
+            $distroArg + @('-e', 'bash', '--norc', '-c', '/tmp/dotfiles-setup/wsl-packages')
+        ))
+    } finally {
+        $null = Invoke-InstallCommand -Name 'WSL package script cleanup' -FilePath wsl -ArgumentList (
+            $distroArg + @('-e', 'bash', '--norc', '-c', 'rm -rf /tmp/dotfiles-setup')
+        )
     }
 }
 
@@ -1589,6 +1428,7 @@ function Install-WSLPackages {
 # ============================================================================
 
 $ErrorActionPreference = "Stop"
+$PSNativeCommandUseErrorActionPreference = $false
 
 # Enable ANSI color codes and virtual terminal
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -1679,6 +1519,18 @@ try {
         }
     }
 
+    # Always maintain packages before dependent configuration. The old
+    # .dotfiles.lock timestamp is not evidence that installed versions are current.
+    if ($SkipPackages) {
+        Add-InstallResult 'Package and tooling updates' Skipped '-SkipPackages'
+    } else {
+        if ($ForcePackages) { Write-Host '-ForcePackages is retained for compatibility; every normal run updates packages.' }
+        $null = Install-Packages -Work:$Work -Dev:$Dev -ITAdmin:$ITAdmin
+        Update-InstallPath
+        Write-Host "`nConfiguring rclone..." -ForegroundColor Cyan
+        Configure-Rclone
+    }
+
     # Update required submodules
     Write-Host "`nUpdating required submodules..." -ForegroundColor Cyan
     if (Get-Command git -ErrorAction SilentlyContinue) {
@@ -1713,7 +1565,7 @@ try {
     if ($LASTEXITCODE -eq 0) {
         Write-Host "`nDotfiles installed successfully!" -ForegroundColor Green
     } else {
-        Write-Host "`nDotbot completed with warnings." -ForegroundColor Yellow
+        Add-InstallResult Dotbot Failed "exit $LASTEXITCODE"
     }
 
     # Git Bash prompt (symlinks don't work reliably on Windows without admin)
@@ -1740,7 +1592,7 @@ try {
         $gitSshSetup = Join-Path $BASEDIR "scripts" "git-ssh-setup"
         if (Test-Path $gitSshSetup) {
             $bashPath = ConvertTo-GitBashPath $gitSshSetup
-            & $gitBash "$bashPath"
+            $null = Invoke-InstallCommand -Name 'Git SSH setup' -FilePath $gitBash -ArgumentList @($bashPath)
         }
 
         # Set up Claude Code directory link
@@ -1748,7 +1600,7 @@ try {
         $claudeLinkSetup = Join-Path $BASEDIR "scripts" "claude-link-setup"
         if (Test-Path $claudeLinkSetup) {
             $bashPath = ConvertTo-GitBashPath $claudeLinkSetup
-            & $gitBash "$bashPath"
+            $null = Invoke-InstallCommand -Name 'Claude link setup' -FilePath $gitBash -ArgumentList @($bashPath)
         }
 
         # Set up OpenCode commands link (shared with ~/.dotfiles/claude/commands)
@@ -1756,7 +1608,7 @@ try {
         $opencodeLinkSetup = Join-Path $BASEDIR "scripts" "opencode-link-setup"
         if (Test-Path $opencodeLinkSetup) {
             $bashPath = ConvertTo-GitBashPath $opencodeLinkSetup
-            & $gitBash "$bashPath"
+            $null = Invoke-InstallCommand -Name 'OpenCode link setup' -FilePath $gitBash -ArgumentList @($bashPath)
         }
 
         # Configure Claude MCP servers
@@ -1764,7 +1616,7 @@ try {
         $claudeMcpSetup = Join-Path $BASEDIR "scripts" "claude-mcp-setup"
         if (Test-Path $claudeMcpSetup) {
             $bashPath = ConvertTo-GitBashPath $claudeMcpSetup
-            & $gitBash "$bashPath"
+            $null = Invoke-InstallCommand -Name 'Claude MCP setup' -FilePath $gitBash -ArgumentList @($bashPath)
         }
 
         # Generate Git Bash PATH configuration
@@ -1779,7 +1631,10 @@ try {
     Write-Host "`nSetting up WSL environment..." -ForegroundColor Cyan
 
     # Step 1: Ensure WSL and Ubuntu are installed (requires admin for initial install)
-    if ($isAdmin) {
+    if ($SkipPackages) {
+        $wslResult = if ((Get-WSLStatus) -eq 'ready') { 'already-installed' } else { 'skipped' }
+        Add-InstallResult 'WSL installation and packages' Skipped '-SkipPackages'
+    } elseif ($isAdmin) {
         $wslResult = Install-WSLWithUbuntu -Distro "Ubuntu-24.04"
     } else {
         # Without admin, check if WSL is already available
@@ -1794,7 +1649,10 @@ try {
         }
     }
 
-    if ($wslResult -eq 'reboot-required') {
+    if ($wslResult -eq 'skipped') {
+        Write-Host '  WSL unavailable; skipping configuration.'
+    } elseif ($wslResult -eq 'reboot-required') {
+        Add-InstallResult WSL RebootRequired
         Write-Host "`n${Yellow}========================================${NC}" -ForegroundColor Yellow
         Write-Host "WSL installation requires a system reboot." -ForegroundColor Yellow
         Write-Host "After rebooting, run this script again to:" -ForegroundColor Yellow
@@ -1803,7 +1661,8 @@ try {
         Write-Host "  - Configure dotfiles in WSL" -ForegroundColor Yellow
         Write-Host "========================================" -ForegroundColor Yellow
     } elseif ($wslResult -eq 'failed') {
-        Write-Host "  WSL setup failed, skipping WSL configuration" -ForegroundColor Red
+        if ($isAdmin) { Add-InstallResult WSL Failed 'setup failed' }
+        else { Add-InstallResult WSL Skipped 'installation requires elevation' }
     } else {
         $wslBasedir = ConvertTo-WSLPath $BASEDIR
 
@@ -1813,8 +1672,9 @@ try {
         $sudoersCheck = wsl -e bash --norc -c 'sudo -n apt --version 2>/dev/null && echo "ok" || echo "need"'
         if ($sudoersCheck -eq "need") {
             # Create sudoers.d entry for current user (prompts for password once)
-            wsl -e bash -c 'echo "$(whoami) ALL=(ALL) NOPASSWD: /usr/bin/apt, /usr/bin/apt-get, /usr/bin/chsh" | sudo tee /etc/sudoers.d/$(whoami)-nopasswd > /dev/null && sudo chmod 440 /etc/sudoers.d/$(whoami)-nopasswd'
-            Write-Host "  Passwordless sudo: configured" -ForegroundColor Green
+            $null = Invoke-InstallCommand -Name 'WSL sudo configuration' -FilePath wsl -ArgumentList @(
+                '-e', 'bash', '-c', 'echo "$(whoami) ALL=(ALL) NOPASSWD: /usr/bin/apt, /usr/bin/apt-get, /usr/bin/chsh" | sudo tee /etc/sudoers.d/$(whoami)-nopasswd > /dev/null && sudo chmod 440 /etc/sudoers.d/$(whoami)-nopasswd'
+            )
         } else {
             Write-Host "  Passwordless sudo: already configured" -ForegroundColor DarkGray
         }
@@ -1828,92 +1688,26 @@ try {
         if ((Test-Path $installWslPath) -and (Test-Path $installWslYaml)) {
             # Run wsl/install directly from Windows mount - this uses dotbot to create
             # proper symlinks from WSL home to the Windows dotfiles repo
-            wsl -e bash --norc -c "cd '$wslBasedir' && ./wsl/install"
-            if ($LASTEXITCODE -eq 0) {
-                Write-Host "  WSL dotfiles configured (symlinks created)" -ForegroundColor Green
-            } else {
-                Write-Host "  WSL dotfiles setup completed with warnings" -ForegroundColor Yellow
-            }
+            $null = Invoke-InstallCommand -Name 'WSL dotfiles' -FilePath wsl -ArgumentList @(
+                '-e', 'bash', '--norc', '-c', "cd '$wslBasedir' && ./wsl/install"
+            )
         } else {
             Write-Host "  wsl/install or wsl/install.conf.yaml not found, skipping dotfiles" -ForegroundColor DarkGray
         }
 
         # Step 4: Install packages inside WSL (zsh, fzf, eza, etc.)
-        $null = Install-WSLPackages
+        if (-not $SkipPackages) { $null = Install-WSLPackages }
     }
 
-    # Package installation decision
-    $shouldInstallPackages = $false
-    $installReason = ""
-
-    if ($SkipPackages) {
-        Write-Host "`nSkipping package installation (-SkipPackages)" -ForegroundColor DarkGray
-    } elseif ($ForcePackages) {
-        Write-Host "`nForcing package installation (-ForcePackages)" -ForegroundColor Yellow
-        $shouldInstallPackages = $true
-        $installReason = "forced"
-    } elseif (-not (Test-Path $LOCKFILE)) {
-        Write-Host "`nFirst run detected - installing packages..." -ForegroundColor Cyan
-        $shouldInstallPackages = $true
-        $installReason = "first_run"
-    } else {
-        # Compare lock file timestamp vs this script's modification time
-        $lockTime = (Get-Item $LOCKFILE).LastWriteTime
-        $scriptTime = (Get-Item $PSCommandPath).LastWriteTime
-
-        if ($scriptTime -gt $lockTime) {
-            Write-Host "`nInstaller updated since last run - reinstalling packages..." -ForegroundColor Yellow
-            Write-Host "  install.ps1: $($scriptTime.ToString('yyyy-MM-dd HH:mm:ss'))" -ForegroundColor DarkGray
-            Write-Host "  lock file:   $($lockTime.ToString('yyyy-MM-dd HH:mm:ss'))" -ForegroundColor DarkGray
-            $shouldInstallPackages = $true
-            $installReason = "updated"
-        } else {
-            $lockContent = Get-Content $LOCKFILE -Raw | ConvertFrom-Json -ErrorAction SilentlyContinue
-            Write-Host "`nPackages up to date (installed $($lockContent.installed_at))" -ForegroundColor DarkGray
-        }
-    }
-
-    if (-not $SkipPackages -and -not $shouldInstallPackages) {
-        $missingPackages = Get-MissingConfiguredPackages -Work:$Work -Dev:$Dev
-        if ($missingPackages.Count -gt 0) {
-            Write-Host "`nConfigured packages are missing - reinstalling packages..." -ForegroundColor Yellow
-            foreach ($package in $missingPackages) {
-                Write-Host "  missing: $($package.Name) [$($package.Id)]" -ForegroundColor DarkGray
-            }
-            $shouldInstallPackages = $true
-            $installReason = "repair_missing_packages"
-        }
-    }
-
-    # Install packages
-    if ($shouldInstallPackages) {
-        $packagesInstalled = Install-Packages -Work:$Work -Dev:$Dev -ITAdmin:$ITAdmin
-
-        if ($packagesInstalled) {
-            # Update lock file
-            $lockData = @{
-                installed_at = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
-                install_reason = $installReason
-                work = $Work.IsPresent
-                dev = $Dev.IsPresent
-                itadmin = $ITAdmin.IsPresent
-            }
-            $lockData | ConvertTo-Json | Set-Content $LOCKFILE -Force
-            Write-Host "`nLock file updated: $LOCKFILE" -ForegroundColor Green
-
-            # Configure rclone for MinIO (after rclone is installed)
-            Write-Host "`nConfiguring rclone..." -ForegroundColor Cyan
-            Configure-Rclone
-        } else {
-            Write-Host "`nLock file not updated because package installation had failures" -ForegroundColor Yellow
-        }
-    }
+    # Package maintenance runs before dependent configuration (above).
 
     # ========================================================================
     # Pi coding agent (must run AFTER Install-Packages so pnpm exists on first run)
     # ========================================================================
     Write-Host "`nInstalling Pi coding agent..." -ForegroundColor Cyan
-    if (Get-Command pnpm -ErrorAction SilentlyContinue) {
+    if ($SkipPackages) {
+        Add-InstallResult 'Pi global update' Skipped '-SkipPackages'
+    } elseif (Get-Command pnpm -ErrorAction SilentlyContinue) {
         $piInstalled = pnpm list -g @earendil-works/pi-coding-agent 2>$null | Select-String "pi-coding-agent"
         # Remove conflicting/legacy installs BEFORE pnpm add. pnpm refuses to
         # install when another package owns the global "pi" bin (e.g. legacy
@@ -1921,13 +1715,15 @@ try {
         $legacyMarioPnpm = pnpm list -g --depth -1 2>$null | Select-String '@mariozechner/pi-coding-agent'
         if ($legacyMarioPnpm) {
             Write-Host "  Removing legacy pnpm-installed @mariozechner/pi-coding-agent..." -ForegroundColor DarkGray
-            pnpm remove -g '@mariozechner/pi-coding-agent' 2>$null | Out-Null
+            $null = Invoke-InstallCommand -Name 'Remove old Pi pnpm package' -FilePath pnpm -ArgumentList @(
+                'remove', '-g', '@mariozechner/pi-coding-agent'
+            )
         }
 
         $birdclawPnpm = pnpm list -g --depth -1 2>$null | Select-String '^birdclaw'
         if ($birdclawPnpm) {
             Write-Host "  Removing pnpm-installed birdclaw and its global dependencies..." -ForegroundColor DarkGray
-            pnpm remove -g 'birdclaw' 2>$null | Out-Null
+            $null = Invoke-InstallCommand -Name 'Remove old birdclaw pnpm package' -FilePath pnpm -ArgumentList @('remove', '-g', 'birdclaw')
             $pnpmHome = pnpm bin -g 2>$null | Select-Object -First 1
             if ($pnpmHome) {
                 Remove-Item -Force -ErrorAction SilentlyContinue `
@@ -1942,8 +1738,8 @@ try {
             $legacyMarioNpmPi = npm list -g @mariozechner/pi-coding-agent 2>$null | Select-String "pi-coding-agent"
             if ($legacyNpmPi -or $legacyMarioNpmPi) {
                 Write-Host "  Removing legacy npm-installed pi-coding-agent..." -ForegroundColor DarkGray
-                npm uninstall -g @earendil-works/pi-coding-agent 2>$null | Out-Null
-                npm uninstall -g @mariozechner/pi-coding-agent 2>$null | Out-Null
+                $null = Invoke-InstallCommand -Name 'Remove old Pi npm package' -FilePath npm -ArgumentList @('uninstall', '-g', '@earendil-works/pi-coding-agent')
+                $null = Invoke-InstallCommand -Name 'Remove old Mario Pi npm package' -FilePath npm -ArgumentList @('uninstall', '-g', '@mariozechner/pi-coding-agent')
             }
         }
 
@@ -1952,8 +1748,8 @@ try {
             $bunPi = Join-Path $bunBinDir 'pi'
             if ((Test-Path $bunPi) -or (Test-Path "${bunPi}.exe")) {
                 Write-Host "  Removing legacy Bun-installed pi-coding-agent..." -ForegroundColor DarkGray
-                bun uninstall -g @earendil-works/pi-coding-agent 2>$null | Out-Null
-                bun uninstall -g @mariozechner/pi-coding-agent 2>$null | Out-Null
+                $null = Invoke-InstallCommand -Name 'Remove old Pi Bun package' -FilePath bun -ArgumentList @('uninstall', '-g', '@earendil-works/pi-coding-agent')
+                $null = Invoke-InstallCommand -Name 'Remove old Mario Pi Bun package' -FilePath bun -ArgumentList @('uninstall', '-g', '@mariozechner/pi-coding-agent')
             }
         }
 
@@ -1992,13 +1788,13 @@ try {
             ) | Where-Object { $piGlobalDependencies -contains $_ }
             if ($piObsoleteGlobals.Count -gt 0) {
                 Write-Host "  Removing obsolete direct Pi runtime dependencies..." -ForegroundColor DarkGray
-                pnpm remove -g $piObsoleteGlobals
-                if ($LASTEXITCODE -ne 0) {
-                    Write-Warning "Failed to remove obsolete direct Pi runtime dependencies"
-                }
+                $null = Invoke-InstallCommand -Name 'Remove obsolete Pi direct dependencies' -FilePath pnpm -ArgumentList (
+                    @('remove', '-g') + $piObsoleteGlobals
+                )
             }
 
-            Write-Host "  pi-coding-agent: installed/updated successfully via pnpm" -ForegroundColor Green
+            Add-InstallResult Pi UpdatedOrCurrent
+            Update-InstallPath
 
             $piMarkdownPatch = Join-Path $BASEDIR 'install.d\50-pi-markdown-code-fence-fix.py'
             if (Test-Path $piMarkdownPatch) {
@@ -2013,10 +1809,10 @@ try {
                 }
             }
         } else {
-            Write-Host "  pi-coding-agent: installation/update failed" -ForegroundColor Red
+            Add-InstallResult Pi Failed "pnpm exited $piInstallExitCode"
         }
     } else {
-        Write-Host "  pnpm not found - skipping Pi installation (Windows installs Pi via pnpm because Bun's resolver fails on Pi's AWS SDK deps)" -ForegroundColor Yellow
+        Add-InstallResult Pi Failed 'pnpm not found'
     }
 
     # Install pi runtime dependencies (web-tree-sitter, tree-sitter-bash, jsdom, etc.)
@@ -2032,7 +1828,7 @@ try {
         $env:CI = '1'
         $env:PNPM_CONFIG_DANGEROUSLY_ALLOW_ALL_BUILDS = 'true'
         try {
-            pnpm install 2>&1 | Out-String | Write-Host
+            pnpm install --frozen-lockfile 2>&1 | Out-String | Write-Host
         } finally {
             $env:CI = $previousCi
             $env:PNPM_CONFIG_DANGEROUSLY_ALLOW_ALL_BUILDS = $previousPnpmAllowAllBuilds
@@ -2041,7 +1837,7 @@ try {
         if ($LASTEXITCODE -eq 0) {
             Write-Host "  pi runtime deps: installed" -ForegroundColor Green
         } else {
-            Write-Host "  pi runtime deps: install failed" -ForegroundColor Red
+            Add-InstallResult 'Pi runtime dependencies' Failed "pnpm exited $LASTEXITCODE"
         }
     } elseif (Test-Path $piPackageJson) {
         Write-Host "  pi runtime deps: pnpm not found, skipping" -ForegroundColor Yellow
@@ -2088,13 +1884,13 @@ try {
         $piLinkSetup = Join-Path $BASEDIR "scripts" "pi-link-setup"
         if (Test-Path $piLinkSetup) {
             $bashPath = ConvertTo-GitBashPath $piLinkSetup
-            & $gitBash "$bashPath"
+            $null = Invoke-InstallCommand -Name 'Pi link setup' -FilePath $gitBash -ArgumentList @($bashPath)
         }
 
         $piDepsLinkSetup = Join-Path $BASEDIR "scripts" "pi-deps-link-setup"
         if (Test-Path $piDepsLinkSetup) {
             $bashPath = ConvertTo-GitBashPath $piDepsLinkSetup
-            & $gitBash "$bashPath"
+            $null = Invoke-InstallCommand -Name 'Pi dependency link setup' -FilePath $gitBash -ArgumentList @($bashPath)
         }
     }
 
@@ -2137,9 +1933,11 @@ try {
             if ($LASTEXITCODE -ne 0) { throw 'Onclave backfill scheduler setup failed' }
             Write-Host '  Onclave backfill scheduler: registered' -ForegroundColor Green
         } catch {
+            Add-InstallResult 'Onclave backfill scheduler' Skipped $_.Exception.Message
             Write-Warning "Onclave backfill scheduler unavailable; continuing: $($_.Exception.Message)"
         }
     } else {
+        Add-InstallResult 'Onclave backfill scheduler' Skipped 'Node/pnpm or package unavailable'
         Write-Warning 'Node/pnpm or the backfill package is unavailable; automatic backfill is unavailable; continuing'
     }
 
@@ -2148,7 +1946,7 @@ try {
     # Runs independently of Install-Packages so optimization works on every run
     # ========================================================================
     Write-Host "`nEnsuring WinGet Links..." -ForegroundColor Cyan
-    Ensure-WinGetLinksInPath
+    $null = Ensure-WinGetLinksInPath
     $maintenanceLinks = @(
         @{ PackageId = 'dandavison.delta'; ExeName = 'delta.exe'; RelativePath = '' },
         @{ PackageId = 'TerraformLinters.tflint'; ExeName = 'tflint.exe'; RelativePath = '' },
@@ -2167,7 +1965,9 @@ try {
     $shimsScript = Join-Path $BASEDIR "scripts\winget-shims\Install-WinGetShims.ps1"
     if (Test-Path $shimsScript) {
         Write-Host "`nRefreshing WinGet dynamic shims..." -ForegroundColor Cyan
-        & pwsh -NoProfile -File $shimsScript
+        $null = Invoke-InstallCommand -Name 'WinGet shim refresh' -FilePath pwsh -ArgumentList @(
+            '-NoProfile', '-File', $shimsScript
+        )
     }
 
     # ========================================================================
@@ -2421,6 +2221,7 @@ try {
                         if ($python) {
                             & $python.Source $hook.FullName
                             if ($LASTEXITCODE -ne 0) {
+                                Add-InstallResult "install.d/$($hook.Name)" Skipped "exit $LASTEXITCODE; optional hook failed"
                                 Write-Warning "install.d/$($hook.Name) failed with exit code $LASTEXITCODE; continuing"
                             }
                         } else {
@@ -2429,18 +2230,20 @@ try {
                     }
                 }
                 catch {
+                    Add-InstallResult "install.d/$($hook.Name)" Skipped $_.Exception.Message
                     Write-Warning "install.d/$($hook.Name) failed: $($_.Exception.Message); continuing"
                 }
             }
         }
     }
 
-    Write-Host "`nInstallation complete." -ForegroundColor Green
+    Write-InstallSummary
 
 } catch {
     Write-Host "`nERROR: $_" -ForegroundColor Red
     Write-Host $_.ScriptStackTrace -ForegroundColor DarkRed
-    Write-Host "`nInstaller failed; see log above." -ForegroundColor Yellow
+    Add-InstallResult Installer Failed $_.Exception.Message
+    Write-InstallSummary
 }
 
 # ============================================================================
@@ -2452,3 +2255,4 @@ Stop-Transcript | Out-Null
 Write-Host "`nInstallation log saved to:" -ForegroundColor Cyan
 Write-Host "  $LogFile" -ForegroundColor White
 Write-Host "`nInstaller finished; closing without prompting." -ForegroundColor DarkGray
+exit (Get-InstallExitCode)
