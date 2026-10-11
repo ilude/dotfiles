@@ -54,8 +54,10 @@ describe("session profile logging", () => {
 		expect(Object.keys(result?.details as object)).toEqual(["session_id", "profile"]);
 		const theme = { fg: (_color: string, value: string) => value, bold: (value: string) => value };
 		const renderResult = tool?.renderResult as ((result: unknown, options: unknown, theme: unknown) => { render(width: number): string[] }) | undefined;
-		expect(renderResult?.(result, { expanded: false }, theme).render(80).join("\n").trimEnd()).toBe("profile · work");
-		expect(renderResult?.(result, { expanded: true }, theme).render(200).join("\n")).toContain(expected.session_id);
+		const expectedDisplay = `Pi Session: ${expected.session_id}  profile: ${expected.profile}`;
+		for (const expanded of [false, true]) {
+			expect(renderResult?.(result, { expanded }, theme).render(200).join("\n").trimEnd()).toBe(expectedDisplay);
+		}
 		expect(sessionManager.getEntries()).toEqual([]);
 	});
 });

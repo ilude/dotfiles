@@ -15,7 +15,7 @@ initTheme("dark", false);
 setKeybindings(new KeybindingsManager());
 const theme = getThemeByName("dark")!;
 function context(args: Partial<LogAnalyticsInput>, expanded = false, isError = false): ToolRenderContext {
-	return { args: args as LogAnalyticsInput, expanded, isError, state: {}, lastComponent: undefined, toolCallId: "test", cwd: "/fixture", executionStarted: true, argsComplete: true, isPartial: false, showImages: false, invalidate() {} };
+	return { args: args as LogAnalyticsInput, expanded, isError, state: {}, lastComponent: undefined, toolCallId: "test", cwd: "/fixture", executionStarted: true, argsComplete: true, isPartial: false, showImages: false, durationMs: undefined, outputPad: 0, invalidate() {} };
 }
 function registered(): Tool {
 	const pi = createMockPi();

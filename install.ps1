@@ -1048,6 +1048,12 @@ function Install-Packages {
     Update-InstallWingetPackages -Msys2Root $script:Msys2Root
     Update-InstallMsys2Packages -Root $script:Msys2Root
 
+    Install-PackageTooling -ITAdmin:$ITAdmin
+}
+
+function Install-PackageTooling {
+    param([switch]$ITAdmin)
+
     # pnpm: ensure PNPM_HOME + PATH so `pnpm add -g` can install (and the resulting
     # binaries resolve in fresh shells). Must run AFTER core DSC since that's
     # what installs pnpm in the first place.
@@ -1521,6 +1527,9 @@ try {
 
     # Always maintain packages before dependent configuration. The old
     # .dotfiles.lock timestamp is not evidence that installed versions are current.
+    function Invoke-InstallerPackageUpdates {
+        param([switch]$SkipPackages, [switch]$ForcePackages, [switch]$Work, [switch]$Dev, [switch]$ITAdmin)
+
     if ($SkipPackages) {
         Add-InstallResult 'Package and tooling updates' Skipped '-SkipPackages'
     } else {
@@ -1530,6 +1539,8 @@ try {
         Write-Host "`nConfiguring rclone..." -ForegroundColor Cyan
         Configure-Rclone
     }
+    }
+    Invoke-InstallerPackageUpdates -SkipPackages:$SkipPackages -ForcePackages:$ForcePackages -Work:$Work -Dev:$Dev -ITAdmin:$ITAdmin
 
     # Update required submodules
     Write-Host "`nUpdating required submodules..." -ForegroundColor Cyan
@@ -1710,6 +1721,9 @@ try {
     # Pi coding agent (must run AFTER Install-Packages so pnpm exists on first run)
     # ========================================================================
     Write-Host "`nInstalling Pi coding agent..." -ForegroundColor Cyan
+    function Invoke-InstallerPiUpdate {
+        param([switch]$SkipPackages)
+
     if ($SkipPackages) {
         Add-InstallResult 'Pi global update' Skipped '-SkipPackages'
     } elseif (Get-Command pnpm -ErrorAction SilentlyContinue) {
@@ -1819,34 +1833,8 @@ try {
     } else {
         Add-InstallResult Pi Failed 'pnpm not found'
     }
-
-    # Install pi runtime dependencies (web-tree-sitter, tree-sitter-bash, jsdom, etc.)
-    # pnpm install must run BEFORE pi-deps-link-setup because pnpm recreates
-    # node_modules and would wipe the @earendil-works/typebox symlinks otherwise.
-    $piDir = Join-Path $BASEDIR "pi\profiles\legacy"
-    $piPackageJson = Join-Path $piDir "package.json"
-    if ((Test-Path $piPackageJson) -and (Get-Command pnpm -ErrorAction SilentlyContinue)) {
-        Write-Host "  Installing pi runtime dependencies..." -ForegroundColor Cyan
-        Push-Location $piDir
-        $previousCi = $env:CI
-        $previousPnpmAllowAllBuilds = $env:PNPM_CONFIG_DANGEROUSLY_ALLOW_ALL_BUILDS
-        $env:CI = '1'
-        $env:PNPM_CONFIG_DANGEROUSLY_ALLOW_ALL_BUILDS = 'true'
-        try {
-            pnpm install --frozen-lockfile 2>&1 | Out-String | Write-Host
-        } finally {
-            $env:CI = $previousCi
-            $env:PNPM_CONFIG_DANGEROUSLY_ALLOW_ALL_BUILDS = $previousPnpmAllowAllBuilds
-        }
-        Pop-Location
-        if ($LASTEXITCODE -eq 0) {
-            Write-Host "  pi runtime deps: installed" -ForegroundColor Green
-        } else {
-            Add-InstallResult 'Pi runtime dependencies' Failed "pnpm exited $LASTEXITCODE"
-        }
-    } elseif (Test-Path $piPackageJson) {
-        Write-Host "  pi runtime deps: pnpm not found, skipping" -ForegroundColor Yellow
     }
+    Invoke-InstallerPiUpdate -SkipPackages:$SkipPackages
 
     # Install the workspace dependencies required by the Onclave Pi adapter loader.
     $onclaveDir = Join-Path $BASEDIR "modules\onclave"
@@ -1881,44 +1869,16 @@ try {
     }
     Write-Host "  Onclave private configuration and Dolos command: ready" -ForegroundColor Green
 
-    # Link the legacy Pi profile and plant its pnpm-global dependency symlinks.
-    # pi-deps-link-setup must run AFTER pnpm install (above) so the symlinks are
-    # not wiped when pnpm recreates node_modules.
-    if ($gitBash) {
-        Write-Host "`nSetting up Pi directory..." -ForegroundColor Cyan
-        $piLinkSetup = Join-Path $BASEDIR "scripts" "pi-link-setup"
-        if (Test-Path $piLinkSetup) {
-            $bashPath = ConvertTo-GitBashPath $piLinkSetup
-            $null = Invoke-InstallCommand -Name 'Pi link setup' -FilePath $gitBash -ArgumentList @($bashPath)
-        }
-
-        $piDepsLinkSetup = Join-Path $BASEDIR "scripts" "pi-deps-link-setup"
-        if (Test-Path $piDepsLinkSetup) {
-            $bashPath = ConvertTo-GitBashPath $piDepsLinkSetup
-            $null = Invoke-InstallCommand -Name 'Pi dependency link setup' -FilePath $gitBash -ArgumentList @($bashPath)
-        }
+    # Both installers use the same required default-profile setup stage.
+    if (-not $gitBash) {
+        throw 'Git Bash is required for default Pi setup'
     }
-
-    # Default safety setup is strict and does not inherit legacy build overrides.
-    $defaultPiDir = Join-Path $BASEDIR 'pi\profiles\default'
-    if (Test-Path (Join-Path $defaultPiDir 'package.json')) {
-        if (-not (Get-Command pnpm -ErrorAction SilentlyContinue) -or -not $gitBash) {
-            throw 'pnpm and Git Bash are required for default Pi setup'
-        }
-        Push-Location $defaultPiDir
-        try {
-            pnpm install --frozen-lockfile
-            if ($LASTEXITCODE -ne 0) { throw 'Default Pi dependency installation failed' }
-            pnpm --dir extensions/web-tools --ignore-workspace install --frozen-lockfile
-            if ($LASTEXITCODE -ne 0) { throw 'Default Pi web-tool dependency installation failed' }
-            & $gitBash (ConvertTo-GitBashPath (Join-Path $BASEDIR 'scripts/pi-deps-link-setup')) --profile default
-            if ($LASTEXITCODE -ne 0) { throw 'Default Pi runtime linking failed' }
-            pnpm run check:runtime
-            if ($LASTEXITCODE -ne 0) { throw 'Default Pi readiness failed' }
-        } finally {
-            Pop-Location
-        }
+    Write-Host "`nSetting up default Pi profile..." -ForegroundColor Cyan
+    & $gitBash (ConvertTo-GitBashPath (Join-Path $BASEDIR 'scripts/pi-default-setup'))
+    if ($LASTEXITCODE -ne 0) {
+        throw "Default Pi setup failed (exit $LASTEXITCODE)"
     }
+    Add-InstallResult 'Default Pi setup' UpdatedOrCurrent 'Configuration ready; authentication unverified'
 
     # ========================================================================
     # Onclave local-first backfill scheduler

@@ -1,5 +1,4 @@
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
@@ -27,14 +26,6 @@ describe("Integrator role and closeout handoff", () => {
     expect(role?.tools).toEqual(["read", "grep", "find", "ls", "bash", "edit", "write"]);
     expect(role?.tools).not.toContain("subagent");
     expect(composedAgentPrompt(role!, definitions.agents)).not.toContain("Available agent roles");
-    const skill = readFileSync(join(profile, "skills", "plan-integration", "SKILL.md"), "utf8");
-    expect(skill).toContain("COMPLETED");
-    expect(skill).toContain("MERGE BLOCKED");
-    expect(skill).toContain("USER INPUT REQUIRED");
-    expect(skill).toContain("CLEANUP PENDING");
-    expect(skill).toContain("target and task commits");
-    expect(skill).toContain("stash pop");
-    expect(skill).toContain("Do not push, deploy");
   });
 
   it("keeps closeout procedure and manifest details out of ordinary orchestration composition", () => {

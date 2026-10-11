@@ -1,4 +1,4 @@
-import { expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import subagents from "../extensions/subagents.ts";
@@ -8,6 +8,9 @@ import { getSubagentRuntime, resetSubagentRuntime } from "../lib/subagents/runti
 import { outcomeText } from "../lib/subagents/status.ts";
 import type { ChildRecord } from "../lib/subagents/rpc.ts";
 const here=dirname(fileURLToPath(import.meta.url));
+// These fixtures exercise origin-session handlers, not child authority.
+beforeEach(()=>vi.stubEnv("PI_SUBAGENT_AUTHORITY",""));
+afterEach(()=>vi.unstubAllEnvs());
 it("renders named transcript outcomes with bounded result and cleanup details",()=>{
  const r:ChildRecord={id:"12345678-rest",agent:"probe",origin:"a",surface:"headless",status:"running",retained:false,userOwned:false,turns:0,createdAt:"2026-09-08T00:00:00Z",updatedAt:"2026-09-08T00:00:00Z",assignmentStartedAt:"2026-09-08T00:00:00Z",lastActivityAt:"2026-09-08T00:00:01Z",lastContactAt:"2026-09-08T00:02:00Z",phase:"tool",toolName:"bash",processState:"running",transportState:"connected",waitState:"detached"};
  expect(outcomeText({...r,displayName:"Clara",status:"settled",outcome:"complete",result:"answer"})).toContain("Subagent Clara · probe");
@@ -66,7 +69,7 @@ it("delivers outcomes without a persistent status widget or progress messages",a
   expect(setWidget).not.toHaveBeenCalled();
   await vi.waitFor(()=>expect(runtime.get(b.id).record).toMatchObject({phase:"settled",processState:"exited"}),{timeout:7000});
   expect(messages).toHaveLength(1);expect(messages[0].content).toContain("preflight rejected");
-  await handlers.session_shutdown({reason:"switch"},ctx);owner="status-b";await handlers.session_start({},ctx);idle=true;await handlers.agent_settled();
+  await handlers.session_shutdown({reason:"switch"},ctx);owner="status-b";await handlers.session_start({},ctx);idle=true;await handlers.agent_settled({type:"agent_settled",aborted:false},ctx);
   expect(messages).toHaveLength(1);expect(setWidget).not.toHaveBeenCalled();
   await handlers.session_shutdown({reason:"switch"},ctx);owner="status-a";await handlers.session_start({},ctx);
   expect(messages).toHaveLength(1);expect(messages[0].content).toContain("preflight rejected");

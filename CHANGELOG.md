@@ -1,5 +1,23 @@
 # Changelog
 
+## 2026-10-11: Replace fragile test assertions with behavioral boundaries
+
+- Removed prose-only prompt, skill and documentation checks that failed on harmless rewording or line wrapping without exercising runtime behavior. Guidance tests retain catalog filtering, inherited context, role isolation, stable composition, prepared coordinates, manifest validation and context-size bounds. Native skill discovery checks published metadata and body exclusion rather than instruction wording.
+- Installer cleanup parsing now has a callable helper used by production and tests. Windows maintenance ordering and skip/update tests call real functions with mocked package-operation boundaries instead of selecting statement fragments by source spelling. Existing package ordering, skip policy, error handling and unattended behavior are preserved.
+- Retained unique lifecycle, ownership, exchange-consumption and cleanup-failure coverage. Removed a private-field assertion where observable tool activity and neighboring outcome tests provide coverage; remaining private fixtures and the isolated elevation case are not silently discarded without equivalent replacements. Tests make no paid model requests or real package changes.
+
+## 2026-10-11: Verify default Pi setup across native and wrapped launches
+
+- Bash and PowerShell installation share a bounded default-only setup stage. Normal setup and Pi validation no longer maintain the historical legacy profile. Required dependency, linking and readiness failures stop setup; existing global Pi update policy remains unchanged.
+- Native agent-link replacement preserves old link destinations and stops before deleting a physical directory when its backup fails. Windows uses native junction APIs and supports paths containing spaces rather than parsing CMD directory listings.
+- Offline acceptance exercises the installed Pi CLI and SDK through native fallback without a masking profile override and through the internal wrapper. It checks loaded default settings and runtime model definitions, distinguishing credential-dependent model selection from configuration readiness. No model request or login is made; subscription access remains explicitly unverified by installation.
+- Replaced extracted installer-phase tests with executable stage tests, removed duplicate launcher and implementation-string checks, and retained argument, startup protection, ownership and failure-propagation coverage. Default CI selects the runtime through the installer release resolver rather than old version pins and runs existing Windows installer Pester coverage. Updated stale SDK/event and presentation fixtures, made Bedrock protocol tests independent of mutable newest-model snapshots, and isolated native-profile tests from the operator's home. Full Windows tests exposed subprocess deadlines under unbounded worker concurrency; four workers passed the same checks and are now the default test bound.
+- Onclave already stopped retrying permanent bootstrap failures, but its footer and status incorrectly claimed recovery continued. The shared adapter now reports terminal initialization failure and stopped bootstrap, including missing `BITWARDEN_ACCESS_KEY`; transient background retries remain unchanged. Reload/restart is required to load the adapter correction, and process environment changes require a restart.
+
+## 2026-10-11: Ground Pi setup acceptance in the operator's launch
+
+- Local agent guidance now requires diagnosing the effective launch and profile before repairing Pi setup, and checking subscription access through that path in the operator's workspace. Native OpenAI OAuth and profile-local credentials are distinguished from historical routing; fresh-process success is not presented as repair of an already-running session. This addresses the wrapper-only acceptance that missed native Pi's legacy link without changing runtime behavior or legacy files.
+
 ## 2026-10-11: Align native Pi launches with default
 
 - `~/.pi/agent` now points to default rather than legacy. Pi launched without an interactive shell wrapper previously selected legacy settings despite default's working OpenAI login; wrapper-only acceptance tests missed the operator's actual launch path. Installation and stopped-process migration now retain the default target. Legacy files remain unchanged.

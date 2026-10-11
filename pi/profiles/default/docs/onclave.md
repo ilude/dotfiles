@@ -31,7 +31,11 @@ The BWS executable is `~/.local/bin/bws` (`bws.exe` on Windows). Transient BWS
 command failures receive three bounded startup attempts. If those attempts fail,
 Onclave reports a degraded state and retries every minute in the background so
 it can recover without `/clear` or `/reload`. Bootstrap validation and secret
-payload errors fail immediately. Session replacement and shutdown cancel active
+payload errors fail immediately. Missing credentials such as `BITWARDEN_ACCESS_KEY`
+show `initialization failed` in the footer and `bootstrap: stopped` in `/onclave`,
+not a background-retry claim. Provide the missing configuration and restart Pi;
+changing a shell environment variable does not update an already-running process.
+Session replacement and shutdown cancel active
 attempts and retry timers. The service endpoint uses HTTPS. Requests retain the existing signing contract with the
 local unencrypted OpenSSH Ed25519 key at `~/.ssh/id_ed25519`. The port does not
 change service authentication or configure credentials. `--onclave-id` overrides

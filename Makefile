@@ -216,25 +216,9 @@ check-pi-default:
 	cd pi/profiles/default && pnpm run typecheck
 	cd pi/profiles/default && pnpm test
 
-# Legacy Pi extension validation remains independent of default.
-# See pi/profiles/legacy/README.md for the full extension conventions.
-check-pi-ci:
-	@echo "==> Running CI-safe Pi Vitest suite"
-	cd pi/profiles/legacy && pnpm install --frozen-lockfile
-	scripts/pi-deps-link-setup
-	cd pi/profiles/legacy && pnpm test
-	@echo "Pi CI checks passed."
-
-check-pi-extensions:
-	@echo "==> Type-checking Pi extensions"
-	cd pi/profiles/legacy && pnpm install --frozen-lockfile
-	scripts/pi-deps-link-setup
-	cd pi/profiles/legacy && pnpm run typecheck
-	@echo "==> Running Pi Vitest suite (includes runtime smoke checks)"
-	cd pi/profiles/legacy && pnpm test --exclude tests/commit-mutation.test.ts
-	@echo "==> Running subprocess-heavy Pi commit mutation tests in isolation"
-	cd pi/profiles/legacy && pnpm run test:commit-mutation
-	@echo "Pi extension checks passed."
+# CI Pi validation follows the current default profile setup.
+check-pi-ci: check-pi-default
+check-pi-extensions: check-pi-default
 
 # Run configured quality validators once for an explicit file list.
 check-changed:

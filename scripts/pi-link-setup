@@ -1,139 +1,81 @@
 #!/usr/bin/env bash
 
-# Create ~/.pi/agent junction/symlink pointing to the default Pi profile
-# Windows: uses junction (no admin required)
-# Linux/WSL: uses symlink
-#
-# If ~/.pi/agent is an existing directory (not a link), this script will:
-# 1. Create a backup archive in ~/
-# 2. Remove the original directory
-# 3. Create the junction/symlink
+# Create the native Pi agent link to this repository's default profile.
+# Physical agent directories are archived before removal. Link targets are preserved.
+set -euo pipefail
 
-DOTFILES_DIR="${HOME}/.dotfiles"
-PI_PROFILE_ROOT="${DOTFILES_DIR}/pi/profiles"
-PI_SOURCE="${PI_PROFILE_ROOT}/default"
-PI_DEFAULT_PROFILE="${PI_PROFILE_ROOT}/default"
-PI_TARGET="${HOME}/.pi/agent"
+DOTFILES_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --root)
+            [[ $# -ge 2 ]] || {
+                echo 'Error: --root requires a path' >&2
+                exit 1
+            }
+            DOTFILES_DIR="$2"
+            shift 2
+            ;;
+        *)
+            echo "Error: Unknown argument: $1" >&2
+            exit 1
+            ;;
+    esac
+done
+DOTFILES_DIR="$(cd -- "$DOTFILES_DIR" && pwd)"
 
-# Self-contained platform detection (intentionally not sourcing rc.d/00-helpers.zsh)
-is_windows() {
-    [[ "$OSTYPE" == "msys" ]] || [[ "$OSTYPE" == "cygwin" ]] || [[ -n "$WINDIR" ]]
+# Junction operations must use native APIs, not MSYS directory/link emulation.
+if [[ "${OSTYPE:-}" == msys* || "${OSTYPE:-}" == cygwin* || -n "${WINDIR:-}" ]]; then
+    SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+    NATIVE_HOME="${HOME:-${USERPROFILE:-}}"
+    [[ -n "$NATIVE_HOME" ]] || {
+        echo 'Error: HOME or USERPROFILE is required' >&2
+        exit 1
+    }
+    MSYS2_ARG_CONV_EXCL='*' pwsh -NoLogo -NoProfile -File "$(cygpath -w "$SCRIPT_DIR/pi-link-setup.ps1")" \
+        -Root "$(cygpath -w "$DOTFILES_DIR")" -HomePath "$(cygpath -w "$NATIVE_HOME")"
+    exit $?
+fi
+
+PI_SOURCE="$DOTFILES_DIR/pi/profiles/default"
+PI_TARGET="$HOME/.pi/agent"
+[[ -d "$PI_SOURCE" ]] || {
+    echo "Error: Source directory not found: $PI_SOURCE" >&2
+    exit 1
 }
+mkdir -p -- "$(dirname -- "$PI_TARGET")"
 
-# Check if path is a junction (Windows) or symlink
-is_link() {
-    local path="$1"
-    if is_windows; then
-        # Check for junction or symlink on Windows
-        if [[ -L "$path" ]]; then
-            return 0
-        fi
-        # Check Windows junction via cmd
-        local win_path
-        win_path=$(cygpath -w "$path" 2>/dev/null)
-        if [[ -n "$win_path" ]] && cmd //c "dir /AL \"$(dirname "$win_path")\"" 2>/dev/null | grep -q "$(basename "$path")"; then
-            return 0
-        fi
-        return 1
-    else
-        [[ -L "$path" ]]
-    fi
-}
-
-# Create backup archive
 create_backup() {
-    local source="$1"
-    local timestamp
-    timestamp=$(date +%Y%m%d-%H%M%S)
-    local backup_name="pi-agent-backup-${timestamp}"
-
-    echo "  Creating backup archive..."
-
-    # Prefer 7z if available, fallback to tar.gz
+    local source="$1" backup_name archive
+    backup_name="pi-agent-backup-$(date +%Y%m%d-%H%M%S)"
     if command -v 7z &>/dev/null; then
-        local archive="${HOME}/${backup_name}.7z"
-        if is_windows; then
-            local win_source win_archive
-            win_source=$(cygpath -w "$source")
-            win_archive=$(cygpath -w "$archive")
-            if 7z a -mx=5 "$win_archive" "$win_source" >/dev/null 2>&1; then
-                echo "  Backup created: ~/${backup_name}.7z"
-                return 0
-            fi
-        else
-            if 7z a -mx=5 "$archive" "$source" >/dev/null 2>&1; then
-                echo "  Backup created: ~/${backup_name}.7z"
-                return 0
-            fi
+        archive="$HOME/$backup_name.7z"
+        if 7z a -mx=5 "$archive" "$source" >/dev/null 2>&1; then
+            echo "Backup created: $archive"
+            return 0
         fi
     fi
-
-    # Fallback to tar.gz
-    local archive="${HOME}/${backup_name}.tar.gz"
-    if tar -czf "$archive" -C "$(dirname "$source")" "$(basename "$source")" 2>/dev/null; then
-        echo "  Backup created: ~/${backup_name}.tar.gz"
+    archive="$HOME/$backup_name.tar.gz"
+    if tar -czf "$archive" -C "$(dirname -- "$source")" "$(basename -- "$source")" 2>/dev/null; then
+        echo "Backup created: $archive"
         return 0
     fi
-
-    echo "  Warning: Failed to create backup archive"
+    echo 'Error: Failed to create backup archive; agent directory preserved' >&2
     return 1
 }
 
-echo "Setting up Pi agent directory link..."
-
-# Check if source exists
-if [[ ! -d "$PI_SOURCE" ]]; then
-    echo "  Error: Source directory not found: $PI_SOURCE"
+if [[ -L "$PI_TARGET" ]]; then
+    if [[ "$PI_TARGET" -ef "$PI_SOURCE" ]]; then
+        echo "$PI_TARGET: Already linked correctly"
+        exit 0
+    fi
+    rm -- "$PI_TARGET"
+elif [[ -d "$PI_TARGET" ]]; then
+    create_backup "$PI_TARGET" || exit 1
+    rm -rf -- "$PI_TARGET"
+elif [[ -e "$PI_TARGET" ]]; then
+    echo "Error: Agent path is not a directory or link: $PI_TARGET" >&2
     exit 1
 fi
 
-# Native Pi and shell launches must use the same default profile.
-mkdir -p "$(dirname "$PI_TARGET")" "$PI_DEFAULT_PROFILE"
-
-# Check if target is already a correct link
-if is_link "$PI_TARGET"; then
-    current_target=$(readlink -f "$PI_TARGET" 2>/dev/null || readlink "$PI_TARGET")
-    expected_target=$(readlink -f "$PI_SOURCE" 2>/dev/null || echo "$PI_SOURCE")
-    if [[ "$current_target" == "$expected_target" ]] || [[ "$current_target" == "$PI_SOURCE" ]]; then
-        echo "  ~/.pi/agent: Already linked correctly"
-        exit 0
-    fi
-    echo "  Removing incorrect link..."
-    rm -f "$PI_TARGET"
-fi
-
-# Handle existing directory (not a link)
-if [[ -d "$PI_TARGET" ]] && ! is_link "$PI_TARGET"; then
-    echo "  Found existing ~/.pi/agent directory"
-
-    # Create backup
-    create_backup "$PI_TARGET"
-
-    # Remove the original directory
-    echo "  Removing original ~/.pi/agent directory..."
-    rm -rf "$PI_TARGET"
-fi
-
-# Remove any remaining target
-if [[ -e "$PI_TARGET" ]] || [[ -L "$PI_TARGET" ]]; then
-    rm -rf "$PI_TARGET"
-fi
-
-# Create link
-if is_windows; then
-    # Windows: use junction (doesn't require admin)
-    win_target=$(cygpath -w "$PI_TARGET")
-    win_source=$(cygpath -w "$PI_SOURCE")
-    if cmd //c "mklink /J $win_target $win_source" > /dev/null 2>&1; then
-        echo "  ~/.pi/agent: Junction created -> ~/.dotfiles/pi/profiles/default"
-    else
-        echo "  Error: Failed to create junction"
-        exit 1
-    fi
-else
-    # Linux/WSL: use symlink
-    ln -s "$PI_SOURCE" "$PI_TARGET"
-    echo "  ~/.pi/agent: Symlink created -> ~/.dotfiles/pi/profiles/default"
-fi
-
-echo "  Done"
+ln -s -- "$PI_SOURCE" "$PI_TARGET"
+echo "$PI_TARGET: Symlink created -> $PI_SOURCE"

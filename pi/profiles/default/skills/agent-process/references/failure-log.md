@@ -1,5 +1,22 @@
 # Agent process failure log
 
+## APR-089 - Validated a wrapper instead of the operator's native launch
+
+- **Reference:** Operator correction, 2026-10-11, after Codex subscription setup was reported complete.
+- **Observed:** Fresh wrapper launches worked, but the operator's running process had no profile override. Native Pi still followed the legacy agent-directory link. Successful installation and wrapper tests were reported as operator-facing completion without checking that actual process.
+- **Related:** APR-083's substituted live launch missed native runtime behavior; AIF-101 requires preserving historical legacy files.
+- **Correction:** Retargeted the native alias to default without modifying legacy, corrected installation/migration targets and native profile identity, and verified an unwrapped authenticated request in the operator's workspace. The old running process must restart to replace its cached configuration.
+- **Status:** Runtime correction implemented; focused tests passed. The operator subsequently authorized durable local guidance (AIF-102), now recorded in root `AGENTS.md`. Operator confirmation of subscription access and future adherence remain unverified.
+
+## APR-088 - Commit exclusion used removal instead of restoring the index
+
+- **Reference:** Default session `01a12424-11fb-74e0-9505-d51dfec4c7e8`, 2026-10-10; operator-provided `/commit push` failure and subsequent recovery.
+- **Observed:** After staging, the private commit agent tried `git rm --cached` to exclude a new root-level gitlink. Git rejected the operation because the staged entry differed from both HEAD and the working representation. No commits were created. The orchestrator used `git restore --staged` to preserve the checkout and completed the requested commits and push.
+- **Finding:** Commit guidance already gives `restore --staged` for repositories with HEAD, but frames it as a regrouping example rather than explicitly covering individual exclusions. The ignore-choice runtime separately uses `rm --cached` unconditionally and has the same failure mode. The root checkout points to the existing module's Git directory and is not a declared additional submodule.
+- **Related:** APR-081 concerns completing authorized publication after helper limitations; no matching prior unstaging incident was found in the feedback/failure logs.
+- **Proposal:** Clarify HEAD-aware exclusion in the owning commit prompt, use the same behavior in the ignore-choice runtime, test gitlink and changed-index exclusions with real Git, and consider ignoring the duplicate root checkout while retaining the declared module path.
+- **Status:** Incident recorded. Recovery was committed and pushed. Preventive prompt/runtime/ignore changes are proposals only, not implemented or approved.
+
 ## APR-087 - Optimized a static test gate before justifying its retention
 
 - **Reference:** Default session `01a0fd31-02fa-77c7-ae11-7e836c2f64a8`, operator correction during test cleanup.

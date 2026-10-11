@@ -22,18 +22,6 @@ it("retains deterministic attached and detached publication behavior", () => {
 	expect(formatPublicationEligibility(true, "")).toContain("do not re-check its branch, outgoing commits, upstream, remotes, or push");
 });
 
-it("composes stage-first instructions without obsolete gates", () => {
-	const prompt = readFileSync(new URL("../commands/commit/reviewer.md", import.meta.url), "utf8");
-	expect(prompt).toContain('add -A` before reviewing');
-	expect(prompt).toContain("Unstage and selectively restage");
-	expect(prompt).toContain("`.local` alone is not a reason");
-	expect(prompt).toContain("Correct routine read/search/Git inspection errors and continue");
-	expect(prompt).toContain("git stash create");
-	expect(prompt).toContain("Local parent gitlink commits do not require publication or pulling");
-	expect(prompt).not.toContain("commit_git_review");
-	expect(prompt).not.toContain("before staging them");
-});
-
 it("validates and appends one ignore rule without duplicates", async () => {
 	const repo = mkdtempSync(join(tmpdir(), "commit-ignore-"));
 	try {

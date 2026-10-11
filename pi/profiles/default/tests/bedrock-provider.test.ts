@@ -6,6 +6,8 @@ import { bedrockRouteTargetIds, buildBedrockModelRoutes, contextForBedrockRoute,
 import { readRecords } from "../lib/bedrock/ledger.ts";
 import registerBedrockProvider from "../extensions/bedrock/provider.ts";
 import { createAssistantMessageEventStream } from "@earendil-works/pi-ai";
+import { getBuiltinModels } from "@earendil-works/pi-ai/providers/all";
+import { selectLatestClaudeModelIds } from "../lib/bedrock/model-policy.ts";
 
 let scratch: string | undefined;
 
@@ -32,23 +34,37 @@ describe("Bedrock provider routing", () => {
 	it("keeps regions scoped and curates newest supported routes", () => {
 		expect(resolveBedrockMantleTarget({ AWS_REGION: "eu-west-1" }).region).toBe("us-east-1");
 		expect(resolveBedrockMantleTarget({ BEDROCK_MANTLE_REGION: "us-west-2", AWS_PROFILE: "work" })).toMatchObject({ region: "us-west-2", profile: "work" });
-		const routes = buildBedrockModelRoutes(["anthropic.claude-sonnet-4-6", "anthropic.claude-sonnet-5", "openai.gpt-5.6-luna", "openai.gpt-5.6-sol"]);
-		expect(routes.map(route => route.model.id)).toEqual(expect.arrayContaining(["anthropic.claude-sonnet-5", "openai.gpt-5.6-luna", "openai.gpt-5.6-sol"]));
-		expect(routes.some(route => route.model.id === "anthropic.claude-sonnet-4-6")).toBe(false);
+		// Discovery competes with the installed SDK's Runtime catalog. Assert the
+		// latest union, not an older Sonnet snapshot that Runtime can supersede.
+		const discoveredIds = getBuiltinModels("anthropic").map(model => `anthropic.${model.id}`);
+		const runtimeRoutes = buildBedrockModelRoutes([]);
+		const expectedClaudeIds = selectLatestClaudeModelIds([
+			...discoveredIds,
+			...runtimeRoutes.map(route => route.model.id),
+		], "anthropic");
+		const routes = buildBedrockModelRoutes([...discoveredIds, "openai.gpt-5.6-luna", "openai.gpt-5.6-sol"]);
+		expect(expectedClaudeIds.length).toBeGreaterThan(0);
+		expect(routes.map(route => route.model.id).sort()).toEqual([...expectedClaudeIds, "openai.gpt-5.6-luna", "openai.gpt-5.6-sol"].sort());
+		for (const id of expectedClaudeIds.filter(id => discoveredIds.includes(id))) {
+			expect(routes.find(route => route.model.id === id)).toMatchObject({ transport: "mantle-anthropic", target: { id } });
+		}
 	});
 	it("preserves the materialized Runtime fallback versus advertised Mantle target", async () => {
-		const runtimeMetadata = [{ id: "us.anthropic.claude-opus-5-5", kind: "inference-profile" as const, modelName: "Runtime Opus" }];
+		const runtimeRoute = buildBedrockModelRoutes([]).find(route => route.model.id.startsWith("anthropic.claude-opus-"));
+		expect(runtimeRoute).toBeDefined();
+		const { model: { id: logicalId }, target: { id: runtimeId } } = runtimeRoute!;
+		const runtimeMetadata = [{ id: runtimeId, kind: "inference-profile" as const, modelName: "Runtime Opus" }];
 		const runtimeProvider = createBedrockModelProvider({}, { provideToken: async () => "token", runtimeMetadata });
-		expect(bedrockRouteTargetIds(runtimeProvider, ["anthropic.claude-opus-5-5"])).toEqual(["us.anthropic.claude-opus-5-5"]);
+		expect(bedrockRouteTargetIds(runtimeProvider, [logicalId])).toEqual([runtimeId]);
 
 		const mantleProvider = createBedrockModelProvider({}, {
 			provideToken: async () => "token",
 			runtimeMetadata,
-			discoverModels: async () => ["anthropic.claude-opus-5-5"],
+			discoverModels: async () => [logicalId],
 		});
 		await mantleProvider.refreshModels?.({ allowNetwork: true, signal: new AbortController().signal, publish: async (event: any) => event.update?.() } as any);
-		expect(bedrockRouteTargetIds(mantleProvider, ["anthropic.claude-opus-5-5"])).toEqual(["anthropic.claude-opus-5-5"]);
-		expect(mantleProvider.getModels().find(model => model.id === "anthropic.claude-opus-5-5")?.provider).toBe("bedrock-mantle");
+		expect(bedrockRouteTargetIds(mantleProvider, [logicalId])).toEqual([logicalId]);
+		expect(mantleProvider.getModels().find(model => model.id === logicalId)?.provider).toBe("bedrock-mantle");
 	});
 
 	it("normalizes route identity and replays matching context through the target", async () => {

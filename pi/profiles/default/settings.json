@@ -1,8 +1,21 @@
 {
-  "lastChangelogVersion": "1.1.0",
-  "defaultProvider": "openai",
+  "codemode": {
+    "mode": "on"
+  },
   "defaultModel": "gpt-6.1-sol",
+  "defaultProjectTrust": "always",
+  "defaultProvider": "openai",
   "defaultThinkingLevel": "low",
+  "defaultTools": [
+    "+tool_search",
+    "+codemode",
+    "+grep",
+    "+find",
+    "+ls",
+    "+powershell"
+  ],
+  "deviceId": "0c81cbc1-c1fc-4f3e-91be-b1310b86a0a5",
+  "doubleEscapeAction": "none",
   "enabledModels": [
     "openai/gpt-6-astra",
     "openai/gpt-6.1-sol",
@@ -49,22 +62,9 @@
     "bedrock-mantle/anthropic.claude-sonnet-5",
     "bedrock-mantle/anthropic.claude-haiku-4-5"
   ],
-  "steeringMode": "all",
   "followUpMode": "all",
-  "defaultProjectTrust": "always",
-  "doubleEscapeAction": "none",
-  "treeFilterMode": "default",
-  "defaultTools": [
-    "+tool_search",
-    "+codemode",
-    "+grep",
-    "+find",
-    "+ls",
-    "+powershell"
-  ],
-  "codemode": {
-    "mode": "on"
-  },
+  "lastChangelogVersion": "1.1.0",
+  "steeringMode": "all",
   "theme": "glenn-dark",
-  "deviceId": "0c81cbc1-c1fc-4f3e-91be-b1310b86a0a5"
+  "treeFilterMode": "default"
 }
