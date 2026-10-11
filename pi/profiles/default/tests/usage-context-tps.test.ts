@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync, appendFileSync, readFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync, appendFileSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
@@ -12,6 +12,10 @@ import { formatCacheUsage, formatQuota, formatResetCredits, formatUsage, paceCol
 
 import { createEventBus } from "../node_modules/@earendil-works/pi-coding-agent/dist/core/event-bus.js";
 import { RELOAD_REQUEST } from "../lib/profile-reload-events.ts";
+vi.mock("node:os", async importOriginal => {
+  const original = await importOriginal<typeof import("node:os")>();
+  return { ...original, homedir: () => process.env.PI_CODING_AGENT_DIR ?? original.homedir() };
+});
 vi.mock("../lib/bedrock/ledger.ts", () => ({
   summarize: async () => ({ month: "test", records: [], cost: 0, unpriced: 0, baseline: 0 }),
   formatUsage: () => "Bedrock: no local usage recorded this month.",
@@ -85,10 +89,14 @@ describe("Codex usage", () => {
     expect(() => resolveCodexAuth()).toThrow("use Pi /login");
   });
 
-  it("takes the account claim from the selected native token when legacy credentials coexist", () => {
+  it("takes the account claim from the selected native token when legacy and CLI credentials coexist", () => {
     const access = `header.${Buffer.from(JSON.stringify({ "https://api.openai.com/auth": { chatgpt_account_id: "native-account" } })).toString("base64url")}.signature`;
     writeFileSync(join(dir, "auth.json"), JSON.stringify({ openai: { type: "oauth", access }, "openai-codex": { access: "legacy-token", accountId: "legacy-account" } }));
+    mkdirSync(join(dir, ".codex"));
+    writeFileSync(join(dir, ".codex", "auth.json"), JSON.stringify({ tokens: { access_token: "cli-token", account_id: "cli-account" } }));
     expect(resolveCodexAuth()).toEqual({ accessToken: access, accountId: "native-account" });
+    writeFileSync(join(dir, "auth.json"), JSON.stringify({ openai: { type: "oauth", access: "native-without-claim", accountId: "unrelated-account" }, "openai-codex": { access: "legacy-token", accountId: "legacy-account" } }));
+    expect(resolveCodexAuth()).toEqual({ accessToken: "native-without-claim", accountId: undefined });
   });
 
   it("shows a startup report outside model context, shares its fetch with the footer, and refreshes", async () => {
