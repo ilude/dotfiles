@@ -64,8 +64,8 @@ describe("process-local descendant ownership",()=>{
  });
  it("reuses released names while keeping historical name aliases disabled",async()=>{
   const runtime=fixture();
-  const first=await runtime.launch(input,join(here,".."),join(here,"../extensions/subagent-child.ts"),true);
-  const second=await runtime.launch(input,join(here,".."),join(here,"../extensions/subagent-child.ts"),true);
+  const first=await runtime.launch({...input,instructions:"[hold]"},join(here,".."),join(here,"../extensions/subagent-child.ts"),true);
+  const second=await runtime.launch({...input,instructions:"[hold]"},join(here,".."),join(here,"../extensions/subagent-child.ts"),true);
   expect(first.displayName).toBeTruthy();expect(second.displayName).toBeTruthy();
   expect(first.displayName).not.toBe(second.displayName);
   expect(runtime.get(first.displayName!.toUpperCase(),input.origin).record.id).toBe(first.id);
@@ -73,7 +73,7 @@ describe("process-local descendant ownership",()=>{
   await runtime.get(first.id).cancel();
   const stale=runtime.get(first.id).snapshot();
   expect(()=>runtime.get(first.displayName!,input.origin)).toThrow(/Unknown/);
-  const third=await runtime.launch(input,join(here,".."),join(here,"../extensions/subagent-child.ts"),true);
+  const third=await runtime.launch({...input,instructions:"[hold]"},join(here,".."),join(here,"../extensions/subagent-child.ts"),true);
   expect(third.displayName).toBe(first.displayName);
   (runtime as any).reconcileCleanup(stale);
   expect(runtime.get(first.displayName!,input.origin).record.id).toBe(third.id);

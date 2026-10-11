@@ -167,6 +167,7 @@ it("launches an exact active-profile session from the tool using its saved cwd",
 	vi.unstubAllEnvs();
 	vi.stubEnv("PI_CODING_AGENT_DIR", root);
 	vi.stubEnv("HERDR_ENV", "0");
+	vi.stubEnv("WT_SESSION", "fixture");
 	vi.mocked(spawnSync).mockReturnValue({ status: 0 } as any);
 
 	const result = await tools.session_launch.execute("call", { session, title: "resumed" }, undefined, undefined, { cwd: process.cwd() });

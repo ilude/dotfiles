@@ -57,9 +57,9 @@ describe("model resolution and foreground behavior at subagent launch seams", ()
     // The extension owns its runtime; use its normal tool seam and inspect its returned child record.
     const progress = vi.fn();
     const blockingReason = agent === "strategist" || background === true ? undefined : "The model result is required before continuing.";
-    const result = await tools.subagent.execute("call", { agent, background, retain, instructions: "[live]", surface: "headless", blockingReason, ...(requested ? { model: requested } : {}) }, undefined, progress, ctx);
-    expect(result.isError).not.toBe(true);
     const effectiveBackground = agent !== "strategist" && background === true;
+    const result = await tools.subagent.execute("call", { agent, background, retain, instructions: effectiveBackground ? "[hold]" : "[live]", surface: "headless", blockingReason, ...(requested ? { model: requested } : {}) }, undefined, progress, ctx);
+    expect(result.isError).not.toBe(true);
     expect(result.details).toMatchObject({ model: "openai/gpt", retained: agent === "strategist" ? false : retain ?? false, status: effectiveBackground ? "running" : "settled", waitState: effectiveBackground ? "background" : "attached" });
     if (effectiveBackground) await tools.subagent_control.execute("cancel", { action: "cancel", id: result.details.id }, undefined, undefined, ctx);
     rmSync(profile, { recursive: true, force: true }); rmSync(cwd, { recursive: true, force: true });
@@ -91,7 +91,7 @@ describe("model resolution and foreground behavior at subagent launch seams", ()
     const modelRegistry = registry([model("bedrock-mantle", "gpt"), model("openai", "gpt")], ["bedrock-mantle", "openai"]);
     const parent = await runtime.launch({ definition: coordinator, instructions: "[hold]", cwd: here, model: "openai/gpt", effort: "low", skills: [], origin: "coordinator-model-test", surface: "headless", retained: false, catalog: new Map([["coordinator", coordinator], ["leaf", leaf]]), modelRegistry }, join(here, ".."), join(here, "../extensions/subagent-child.ts"), true);
     await vi.waitFor(() => expect(runtime.get(parent.id).record.sessionId).toEqual(expect.any(String)));
-    const response = await (runtime as any).dispatch({ child: parent.id, origin: "coordinator-model-test", run: "fixture" }, { type: "delegate", payload: { agent: "leaf", instructions: "[live]", ...(requested ? { model: requested } : {}), background: true } });
+    const response = await (runtime as any).dispatch({ child: parent.id, origin: "coordinator-model-test", run: "fixture" }, { type: "delegate", payload: { agent: "leaf", instructions: "[hold]", ...(requested ? { model: requested } : {}), background: true } });
     expect(response).toMatchObject({ model: expected, status: "running", parentId: parent.id });
     await runtime.get(response.id).cancel(); await runtime.get(parent.id).cancel();
   });
