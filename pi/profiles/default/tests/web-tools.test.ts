@@ -10,8 +10,8 @@ import webTools, { bounded, searchQuery } from "../extensions/web-tools/index.ts
 
 const complete = vi.hoisted(() => vi.fn<ModelRuntime["completeSimple"]>());
 const getAvailable = vi.hoisted(() => vi.fn<ModelRuntime["getAvailable"]>());
-const screeningModel: Model<"openai-codex-responses"> = {
-  provider: "openai-codex", id: "gpt-6-luna", name: "offline", api: "openai-codex-responses",
+const screeningModel: Model<"openai-responses"> = {
+  provider: "openai", id: "gpt-6-luna", name: "offline", api: "openai-responses",
   baseUrl: "https://unused.invalid", reasoning: true, input: ["text"],
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 1000, maxTokens: 1000,
 };
@@ -77,7 +77,7 @@ describe("tool integration", () => {
     expect(result.content[0].text).toContain("websearch: test\n--- Result 1 ---");
     expect(result.usage.totalTokens).toBe(10);
     expect(complete.mock.calls[0][0]).toBe(screeningModel);
-    expect(getAvailable).toHaveBeenCalledWith("openai-codex", { signal: expect.any(AbortSignal) });
+    expect(getAvailable).toHaveBeenCalledWith("openai", { signal: expect.any(AbortSignal) });
     expect(String((fetchMock.mock.calls as unknown as Array<[unknown]>)[0][0])).toContain("language=en");
     expect(new URL(String((fetchMock.mock.calls as unknown as Array<[unknown]>)[0][0])).searchParams.get("engines")).toBeNull();
     const context = (complete.mock.calls as unknown as Array<[unknown, any]>)[0][1];

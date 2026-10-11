@@ -1,15 +1,9 @@
 {
   "lastChangelogVersion": "1.1.0",
-  "defaultProvider": "openai-codex",
+  "defaultProvider": "openai",
   "defaultModel": "gpt-6.1-sol",
   "defaultThinkingLevel": "low",
   "enabledModels": [
-    "openai-codex/gpt-6-astra",
-    "openai-codex/gpt-6.1-sol",
-    "openai-codex/gpt-5.6-terra",
-    "openai-codex/gpt-6-luna",
-    "openai-codex/gpt-5.6-sol",
-    "openai-codex/gpt-5.6-luna",
     "bedrock-mantle/anthropic.claude-fable-5-1",
     "bedrock-mantle/anthropic.claude-opus-5",
     "bedrock-mantle/anthropic.claude-sonnet-5",

@@ -33,6 +33,11 @@ git clone --recursive https://github.com/ilude/dotfiles.git ~/.dotfiles
 ~/.dotfiles/install
 ```
 
+The installer does not request interactive privilege escalation. On Linux, run it as
+root or configure non-interactive `sudo -n` access for package setup; if neither is
+available, setup stops with a clear error. The installer links `~/.local/bin/pp`
+to the repository launcher for direct Pi invocation.
+
 ### Windows PowerShell
 
 ```powershell

@@ -22,6 +22,7 @@
     ~/.inputrc: home/.inputrc
     ~/.hushlogin: home/.hushlogin
     ~/.dircolors: home/.dircolors
+    ~/.local/bin/pp: scripts/pp
 
 # Claude Code config
 - link:

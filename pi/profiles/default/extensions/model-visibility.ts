@@ -2,6 +2,7 @@ import { getThinkingLevelMap, toModelDefinition } from "../lib/models/compat.ts"
 import { getSettingsPath } from "../lib/settings-file.ts";
 import * as fs from "node:fs";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { Provider } from "@earendil-works/pi-ai";
 
 type ModelLike = {
 	provider: string;
@@ -25,7 +26,7 @@ type ModelLike = {
 };
 
 const TARGET_PROVIDERS = [
-	"openai-codex",
+	"openai",
 	"opencode",
 	"opencode-go",
 	"openrouter",
@@ -42,7 +43,7 @@ const ALLOW_EXACT_IDS = {
 } as const;
 
 const HIDE_EXACT_IDS = {
-	"openai-codex": new Set(["codex-auto-review", "gpt-6-sol"]),
+	openai: new Set(["codex-auto-review", "gpt-6-sol"]),
 	opencode: new Set([
 		"claude-3-5-haiku",
 		"claude-haiku-4-5",
@@ -251,7 +252,7 @@ const HIDE_PREFIXES = {
 		"openai/gpt-",
 		"xiaomi/",
 	],
-	"openai-codex": [] as string[],
+	openai: [] as string[],
 	opencode: ["gpt-"],
 	"opencode-go": [] as string[],
 	"amazon-bedrock": [] as string[],
@@ -259,7 +260,7 @@ const HIDE_PREFIXES = {
 
 const HIDE_PATTERNS = {
 	openrouter: [] as RegExp[],
-	"openai-codex": [] as RegExp[],
+	openai: [] as RegExp[],
 	opencode: [] as RegExp[],
 	"opencode-go": [] as RegExp[],
 	"amazon-bedrock": [
@@ -326,7 +327,8 @@ function toProviderModelDef(model: ModelLike): Record<string, unknown> {
 type ModelRegistryLike = {
 	getAll(): ModelLike[];
 	getApiKeyForProvider(provider: string): Promise<string | undefined>;
-	registerProvider(provider: string, definition: Record<string, unknown>): void;
+	getProvider?(provider: string): Provider | undefined;
+	registerProvider(provider: string | Provider, definition?: Record<string, unknown>): void;
 };
 
 type VisibilityContext = { modelRegistry: ModelRegistryLike };
@@ -392,7 +394,7 @@ function planProvider(
 		credentialRequired:
 			changed &&
 			filtered.length > 0 &&
-			(provider === "openai-codex" || provider === "amazon-bedrock"),
+			provider === "amazon-bedrock",
 		apiKeyEnv:
 			provider === "opencode" || provider === "opencode-go"
 				? "$OPENCODE_API_KEY"
@@ -422,6 +424,23 @@ async function applyPlans(
 			return { before: plan.models.length, after: plan.models.length };
 		const result = planResult(plan);
 		if (result.after > 0 && result.after < result.before) {
+			if (plan.provider === "openai") {
+				const native = ctx.modelRegistry.getProvider?.(plan.provider);
+				if (!native) return { before: result.before, after: result.before };
+				// Keep native APIs, auth, model descriptors, and non-chat operations.
+				const originalFilter = native.filterAllModels;
+				const visibleChat = (model: Pick<ModelLike, "id" | "name">) => !shouldHideModel("openai", model);
+				ctx.modelRegistry.registerProvider({
+					...native,
+					getModels: () => native.getModels().filter(visibleChat),
+					getAllModels: () => (native.getAllModels?.() ?? native.getModels())
+						.filter((model) => model.type !== "chat" || visibleChat(model)),
+					filterAllModels: (models, credential) =>
+						(originalFilter ? originalFilter(models, credential) : models)
+							.filter((model) => model.type !== "chat" || !shouldHideModel("openai", model)),
+				});
+				return result;
+			}
 			const first = plan.models[0];
 			const definition: Record<string, unknown> = {
 				baseUrl: first.baseUrl,

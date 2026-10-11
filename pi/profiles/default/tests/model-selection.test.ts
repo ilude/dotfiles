@@ -5,13 +5,13 @@ import { resolveLatestCodexModelFromRegistry, resolveLatestCodexModelFromRuntime
 import { modelFixture, registryFixture } from "./helpers/model-selection.ts";
 
 const models = [
-	modelFixture("openai-codex", "gpt-5.6-luna"),
-	modelFixture("openai-codex", "gpt-6-luna"),
+	modelFixture("openai", "gpt-5.6-luna"),
+	modelFixture("openai", "gpt-6-luna"),
 	modelFixture("bedrock-mantle", "openai.gpt-7-luna"),
-	modelFixture("openai-codex", "gpt-7-sol"),
+	modelFixture("openai", "gpt-7-sol"),
 ];
 
-describe("latest authenticated Codex family resolution", () => {
+describe("latest authenticated OpenAI family resolution", () => {
 	it("keeps registry and runtime contracts separate at compile time", () => {
 		expectTypeOf<ModelRegistry>().not.toExtend<Parameters<typeof resolveLatestCodexModelFromRuntime>[1]>();
 		expectTypeOf<ModelRuntime>().not.toExtend<Parameters<typeof resolveLatestCodexModelFromRegistry>[1]>();
@@ -19,20 +19,20 @@ describe("latest authenticated Codex family resolution", () => {
 		expectTypeOf<ReturnType<typeof resolveLatestCodexModelFromRuntime>>().toEqualTypeOf<Promise<Model<Api>>>();
 	});
 
-	it("uses the same Codex-only family/version selection for registry and runtime", async () => {
-		const registry = registryFixture(models, ["openai-codex", "bedrock-mantle"]);
+	it("uses the same OpenAI-only family/version selection for registry and runtime", async () => {
+		const registry = registryFixture(models, ["openai", "bedrock-mantle"]);
 		const runtime = { getAvailable: vi.fn<ModelRuntime["getAvailable"]>().mockResolvedValue(models) } satisfies Pick<ModelRuntime, "getAvailable">;
 		const signal = new AbortController().signal;
 
 		expect(resolveLatestCodexModelFromRegistry("luna", registry).id).toBe("gpt-6-luna");
-		await expect(resolveLatestCodexModelFromRuntime("luna", runtime, signal)).resolves.toMatchObject({ provider: "openai-codex", id: "gpt-6-luna" });
-		expect(runtime.getAvailable).toHaveBeenCalledWith("openai-codex", { signal });
+		await expect(resolveLatestCodexModelFromRuntime("luna", runtime, signal)).resolves.toMatchObject({ provider: "openai", id: "gpt-6-luna" });
+		expect(runtime.getAvailable).toHaveBeenCalledWith("openai", { signal });
 	});
 
 	it.each(["astra", "sol", "terra", "luna"] as const)("resolves %s synchronously with Pi's actual registry API", family => {
-		const latest = modelFixture("openai-codex", `gpt-7-${family}`);
-		const pinned = modelFixture("openai-codex", "gpt-6.1-sol");
-		const registry = registryFixture([modelFixture("openai-codex", `gpt-6-${family}`), latest, pinned], ["openai-codex"]);
+		const latest = modelFixture("openai", `gpt-7-${family}`);
+		const pinned = modelFixture("openai", "gpt-6.1-sol");
+		const registry = registryFixture([modelFixture("openai", `gpt-6-${family}`), latest, pinned], ["openai"]);
 		// This real method was missing from the original mock, hiding the crash.
 		expect(Array.isArray(registry.getAvailable())).toBe(true);
 		expect(resolveLatestCodexModelFromRegistry(family, registry)).toBe(family === "sol" ? pinned : latest);
@@ -40,19 +40,19 @@ describe("latest authenticated Codex family resolution", () => {
 	});
 
 	it("does not substitute Sol 5.6 or Sol 6 when pinned Sol 6.1 is unavailable", async () => {
-		const older = [modelFixture("openai-codex", "gpt-5.6-sol"), modelFixture("openai-codex", "gpt-6-sol")];
-		const registry = registryFixture(older, ["openai-codex"]);
+		const older = [modelFixture("openai", "gpt-5.6-sol"), modelFixture("openai", "gpt-6-sol")];
+		const registry = registryFixture(older, ["openai"]);
 		const runtime = { getAvailable: vi.fn<ModelRuntime["getAvailable"]>().mockResolvedValue(older) };
-		expect(() => resolvePreferredModel("sol", registry)).toThrow(/No authenticated openai-codex sol model/);
-		await expect(resolveLatestCodexModelFromRuntime("sol", runtime)).rejects.toThrow(/No authenticated openai-codex sol model/);
+		expect(() => resolvePreferredModel("sol", registry)).toThrow(/No authenticated openai sol model/);
+		await expect(resolveLatestCodexModelFromRuntime("sol", runtime)).rejects.toThrow(/No authenticated openai sol model/);
 	});
 
 	it("rejects missing families and never falls back to another provider", async () => {
 		const onlyBedrock = [models[2]];
 		const registry = registryFixture(onlyBedrock, ["bedrock-mantle"]);
 		const runtime = { getAvailable: vi.fn<ModelRuntime["getAvailable"]>().mockResolvedValue(onlyBedrock) };
-		expect(() => resolveLatestCodexModelFromRegistry("luna", registry)).toThrow(/No authenticated openai-codex luna model/);
-		await expect(resolveLatestCodexModelFromRuntime("luna", runtime)).rejects.toThrow(/No authenticated openai-codex luna model/);
+		expect(() => resolveLatestCodexModelFromRegistry("luna", registry)).toThrow(/No authenticated openai luna model/);
+		await expect(resolveLatestCodexModelFromRuntime("luna", runtime)).rejects.toThrow(/No authenticated openai luna model/);
 	});
 
 	it("ignores unauthenticated registry entries", () => {
@@ -77,7 +77,7 @@ describe("latest authenticated Codex family resolution", () => {
 			}),
 		};
 		await expect(resolveLatestCodexModelFromRuntime("luna", runtime, controller.signal)).rejects.toThrow();
-		expect(runtime.getAvailable).toHaveBeenCalledWith("openai-codex", { signal: controller.signal });
+		expect(runtime.getAvailable).toHaveBeenCalledWith("openai", { signal: controller.signal });
 		runtime.getAvailable.mockClear();
 		await expect(resolveLatestCodexModelFromRuntime("luna", runtime, controller.signal)).rejects.toThrow();
 		expect(runtime.getAvailable).not.toHaveBeenCalled();

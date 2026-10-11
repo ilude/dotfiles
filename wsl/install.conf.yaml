@@ -36,6 +36,8 @@
     ~/.inputrc: home/.inputrc
     ~/.dircolors: home/.dircolors
     ~/.hushlogin: home/.hushlogin
+    ~/.local/bin/pp:
+      path: scripts/pp
 
 # Oh My Posh config
 - link:

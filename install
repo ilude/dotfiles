@@ -2,6 +2,11 @@
 
 set -e
 
+# Prevent unattended Git and SSH operations from waiting for credentials.
+export GIT_TERMINAL_PROMPT=0
+export GIT_SSH_COMMAND="${GIT_SSH_COMMAND:-ssh} -o BatchMode=yes"
+export DEBIAN_FRONTEND=noninteractive
+
 completed_steps=()
 skipped_steps=()
 current_step=""
@@ -298,14 +303,21 @@ if [[ ! -x "${BASEDIR}/bin/dolos" && ! -x "${BASEDIR}/bin/dolos.exe" ]] &&
         winget install --id GoLang.Go --exact --source winget --accept-package-agreements --accept-source-agreements --disable-interactivity ||
             onclave_bootstrap_ready=
     elif command -v apt-get &>/dev/null; then
-        sudo apt-get update
-        if apt-cache show golang-1.23-go >/dev/null 2>&1; then
-            sudo apt-get install -y golang-1.23-go
+        apt_runner=()
+        if [[ "$EUID" -ne 0 ]]; then
+            apt_runner=(sudo -n --preserve-env=DEBIAN_FRONTEND)
+        fi
+        if "${apt_runner[@]}" apt-get update &&
+            apt-cache show golang-1.23-go >/dev/null 2>&1 &&
+            "${apt_runner[@]}" apt-get install -y golang-1.23-go; then
             export PATH="/usr/lib/go-1.23/bin:$PATH"
             if ! has_supported_go; then
                 echo "Warning: Go 1.23 installation did not produce a usable compiler" >&2
                 onclave_bootstrap_ready=
             fi
+        elif [[ "$EUID" -ne 0 ]] && ! sudo -n true; then
+            echo "Warning: Go bootstrap requires passwordless sudo or a root shell; skipping private configuration restore" >&2
+            onclave_bootstrap_ready=
         else
             echo "Warning: this apt repository does not provide Go 1.23; install Go 1.23 or Docker" >&2
             onclave_bootstrap_ready=
@@ -497,9 +509,13 @@ if command -v pnpm &>/dev/null; then
 
     if [[ -n "$pi_install_succeeded" ]]; then
         pi_obsolete_globals=()
-        pi_global_list=$(pnpm list -g --depth -1 2>/dev/null || true)
+        pi_global_list=$(pnpm list -g --depth -1 --json 2>/dev/null | "$PYTHON_BIN" -c '
+import json, sys
+for project in json.load(sys.stdin):
+    print("\n".join(project.get("dependencies", {})))
+' || true)
         for package in @earendil-works/pi-agent-core @earendil-works/pi-ai @earendil-works/pi-tui typebox; do
-            if grep -q "${package}@" <<<"$pi_global_list"; then
+            if grep -Fxq "$package" <<<"$pi_global_list"; then
                 pi_obsolete_globals+=("$package")
             fi
         done
@@ -531,7 +547,7 @@ current_step="pi runtime deps"
 PI_DIR="${BASEDIR}/pi/profiles/legacy"
 if [[ -f "$PI_DIR/package.json" ]] && command -v pnpm &>/dev/null; then
     echo "Installing pi runtime dependencies..."
-    pnpm install --dir "$PI_DIR"
+    CI=true pnpm install --dir "$PI_DIR" --frozen-lockfile
     # Smoke test native deps against the current Node version
     if command -v node &>/dev/null; then
         _node_version="$(node --version 2>/dev/null)"
@@ -569,7 +585,7 @@ current_step="Onclave adapter dependencies"
 ONCLAVE_DIR="${BASEDIR}/modules/onclave"
 if [[ -f "$ONCLAVE_DIR/package.json" ]] && command -v pnpm &>/dev/null; then
     echo "Installing Onclave adapter dependencies..."
-    if pnpm install --dir "$ONCLAVE_DIR" --frozen-lockfile; then
+    if CI=true pnpm install --dir "$ONCLAVE_DIR" --frozen-lockfile; then
         # The onclave-pi extension is loaded by pi from the workspace package, so its
         # own dependencies must resolve, not just the ones at the Onclave root.
         ONCLAVE_PI_DIR="${ONCLAVE_DIR}/extensions/onclave-pi"
@@ -607,8 +623,8 @@ if [[ -f "$DEFAULT_PI_DIR/package.json" ]]; then
         echo "Error: pnpm is required for default Pi setup" >&2
         exit 1
     }
-    pnpm install --dir "$DEFAULT_PI_DIR" --frozen-lockfile || exit 1
-    pnpm --dir "$DEFAULT_PI_DIR/extensions/web-tools" --ignore-workspace install --frozen-lockfile || exit 1
+    CI=true pnpm install --dir "$DEFAULT_PI_DIR" --frozen-lockfile || exit 1
+    CI=true pnpm --dir "$DEFAULT_PI_DIR/extensions/web-tools" --ignore-workspace install --frozen-lockfile || exit 1
     "${BASEDIR}/scripts/pi-deps-link-setup" --profile default || exit 1
     (cd "$DEFAULT_PI_DIR" && pnpm run check:runtime) || exit 1
 fi
@@ -646,16 +662,12 @@ current_step="pi agent directory link"
 "${BASEDIR}/scripts/pi-link-setup"
 completed_steps+=("pi agent directory link")
 
-current_step="pi model catalog check"
-# The openai-codex catalog is fetched at runtime and cached outside version
-# control, so a fresh checkout has no record of the gpt-5.6 models named in
-# pi/profiles/legacy/settings.json. Without it pi warns on every start and falls back off the
-# configured default model.
-if [[ ! -f "${PI_DIR}/model-cache/refresh-models/openai-codex.json" ]]; then
-    echo "[warn] No cached openai-codex model catalog."
-    echo "[warn] Start pi and run: /refresh-models openai-codex"
-fi
-completed_steps+=("pi model catalog check")
+current_step="default pi model setup"
+# Native OpenAI models ship with Pi; no legacy Codex catalog cache is required.
+# Account authorization remains an explicit, active-profile login operation.
+echo "Default Pi uses the native OpenAI catalog; logins are profile-specific."
+echo "If needed, start pp and use /login to sign in with your ChatGPT subscription."
+completed_steps+=("default pi model setup")
 
 current_step="GUI tool setup"
 if [[ -z "$HEADLESS" ]]; then

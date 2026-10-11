@@ -9,7 +9,7 @@ vi.mock("@earendil-works/pi-coding-agent", async original => ({
   ...await original(), getAgentDir: () => "/test-profile",
   ModelRuntime: { create: async () => ({
     getAvailable: async () => [{
-      provider: "openai-codex", id: "gpt-6-luna", name: "Luna", api: "openai-codex-responses",
+      provider: "openai", id: "gpt-6-luna", name: "Luna", api: "openai-responses",
       baseUrl: "https://example.test", reasoning: true, input: ["text"],
       cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 1000, maxTokens: 100,
     }],

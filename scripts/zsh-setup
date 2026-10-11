@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC1090,SC1091
 
+export DEBIAN_FRONTEND=noninteractive
+
 # Self-contained platform detection (intentionally not sourcing rc.d/00-helpers.zsh)
 is_windows() {
   [[ "$OSTYPE" == "msys" ]] || [[ "$OSTYPE" == "cygwin" ]] || [[ -n "$WINDIR" ]]
@@ -71,7 +73,11 @@ install_packages() {
   # Determine if sudo is needed
   SUDO=""
   if [[ "$EUID" -ne 0 ]]; then
-    SUDO=sudo
+    if ! command -v sudo >/dev/null 2>&1 || ! sudo -n true; then
+      echo "Error: package installation requires passwordless sudo or a root shell; rerun with required privileges available." >&2
+      return 1
+    fi
+    SUDO="sudo -n --preserve-env=DEBIAN_FRONTEND"
   fi
 
   # Check if running on Proxmox
@@ -90,7 +96,7 @@ install_packages() {
         PACKAGES+=(tldr)
         # Use --no-install-recommends and disable suggests to avoid extra packages
         COMMAND="apt-get install -y --no-install-recommends -o APT::Install-Suggests=false"
-        $SUDO apt-get update
+        $SUDO apt-get update || return 1
         ;;
       alpine)
         PACKAGES=("${BASE_PACKAGES[@]}" apk-tools-zsh-completion linux-headers shadow py3-pip py3-setuptools coreutils zsh-vcs)
@@ -108,7 +114,7 @@ install_packages() {
   elif [[ "$OS" == "proxmox" ]]; then
     # Proxmox should use sudo for update and avoid installing recommended/suggested packages
     COMMAND="apt-get install -y --no-install-recommends -o APT::Install-Suggests=false"
-    $SUDO apt-get update
+    $SUDO apt-get update || return 1
   else
     echo "❌ Unsupported OS, exiting."
     exit 1
@@ -129,6 +135,7 @@ install_packages() {
     # shellcheck disable=SC2086  # Word splitting on COMMAND is intentional
     if ! $SUDO $COMMAND "$package"; then
       echo "❌ Failed to install: $package" >&2
+      return 1
     fi
   done
 
@@ -139,7 +146,9 @@ install_packages() {
 
   # Change user shell to zsh
   echo "🔄 Setting $(whoami) shell to $(which zsh)"
-  $SUDO chsh -s "$(which zsh)" "$(whoami)"
+  if ! $SUDO chsh -s "$(which zsh)" "$(whoami)"; then
+    echo "Warning: could not change the login shell to zsh; change it manually if desired." >&2
+  fi
 }
 
 # macOS-specific setup
@@ -216,7 +225,7 @@ if [[ -f /etc/NIXOS ]]; then
 fi
 
 # Run package installation function (Linux only)
-install_packages
+install_packages || exit $?
 
 # Import SSH keys from GitHub if ssh-import-id is available
 if command -v ssh-import-id >/dev/null 2>&1; then

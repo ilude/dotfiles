@@ -148,7 +148,7 @@ describe("/refresh-models command", () => {
 			path.join(agentDir, "settings.json"),
 			`${JSON.stringify(
 				{
-					enabledModels: ["openai-codex/gpt-5.4"],
+					enabledModels: ["openai/gpt-5.4"],
 					unrelated: { preserved: true },
 				},
 				null,
@@ -198,7 +198,7 @@ describe("/refresh-models command", () => {
 		]);
 
 		expect(result.scope).toEqual([
-			"openai-codex/gpt-5.4",
+			"openai/gpt-5.4",
 			"openrouter/google/gemini-3.1-pro",
 			"opencode/zen",
 		]);
@@ -207,7 +207,7 @@ describe("/refresh-models command", () => {
 
 	it("rebuilds configured Codex scope from refreshed available models", async () => {
 		const model = (id: string) => ({
-			provider: "openai-codex",
+			provider: "openai",
 			id,
 			name: id,
 			api: "openai-codex-responses",
@@ -222,7 +222,7 @@ describe("/refresh-models command", () => {
 			modelRegistry: {
 				getAll: () => [model("gpt-5.6-sol"), model("gpt-6-astra"), model("gpt-6-sol"), model("gpt-6.1-sol"), model("codex-auto-review")],
 				getProviderAuthStatus: (provider: string) => ({
-					configured: provider === "openai-codex",
+					configured: provider === "openai",
 				}),
 			},
 		} as never;
@@ -230,17 +230,17 @@ describe("/refresh-models command", () => {
 		const result = await syncCuratedModelScope(ctx, []);
 
 		expect(result.scope).toEqual([
-			"openai-codex/gpt-6-astra",
-			"openai-codex/gpt-6.1-sol",
-			"openai-codex/gpt-5.6-sol",
+			"openai/gpt-6-astra",
+			"openai/gpt-6.1-sol",
+			"openai/gpt-5.6-sol",
 		]);
-		expect(result.scope).not.toContain("openai-codex/gpt-6-sol");
-		expect(result.scope).not.toContain("openai-codex/gpt-5.4");
+		expect(result.scope).not.toContain("openai/gpt-6-sol");
+		expect(result.scope).not.toContain("openai/gpt-5.4");
 		const settings = JSON.parse(fs.readFileSync(path.join(tempHome, ".pi", "agent", "settings.json"), "utf-8"));
-		expect(settings).toMatchObject({ defaultProvider: "openai-codex", defaultModel: "gpt-6.1-sol" });
+		expect(settings).toMatchObject({ defaultProvider: "openai", defaultModel: "gpt-6.1-sol" });
 	});
 
-	it("restores current Pi metadata when the cache has no new models", () => {
+	it("ignores historic Codex cache when it has no new models", () => {
 		const cacheDir = path.join(
 			tempHome,
 			".pi",
@@ -274,17 +274,11 @@ describe("/refresh-models command", () => {
 		const providerCall = registerProvider.mock.calls.find(
 			([provider]: [string]) => provider === "openai-codex",
 		);
-		if (!providerCall) throw new Error("missing cached provider registration");
-		const definition = providerCall[1] as {
-			models: Array<{ id: string; contextWindow: number }>;
-		};
-		expect(
-			definition.models.find((model) => model.id === "gpt-5.6-sol")
-				?.contextWindow,
-		).toBe(272000);
+		expect(providerCall).toBeUndefined();
+		expect(registerProvider).not.toHaveBeenCalled();
 	});
 
-	it("applies context windows from a versioned refresh cache", () => {
+	it("ignores historic Codex versioned cache context windows", () => {
 		const cacheDir = path.join(
 			tempHome,
 			".pi",
@@ -313,21 +307,11 @@ describe("/refresh-models command", () => {
 		const providerCall = registerProvider.mock.calls.find(
 			([provider]: [string]) => provider === "openai-codex",
 		);
-		if (!providerCall) throw new Error("missing cached provider registration");
-		const definition = providerCall[1] as {
-			models: Array<{ id: string; contextWindow: number }>;
-		};
-		expect(
-			definition.models.find((model) => model.id === "gpt-5.6-sol")
-				?.contextWindow,
-		).toBe(372000);
-		expect(
-			definition.models.find((model) => model.id === "gpt-5.6-luna")
-				?.contextWindow,
-		).toBe(272000);
+		expect(providerCall).toBeUndefined();
+		expect(registerProvider).not.toHaveBeenCalled();
 	});
 
-	it("composes legacy cached discoveries over current Pi model metadata", () => {
+	it("ignores historic Codex cached discoveries", () => {
 		const cacheDir = path.join(
 			tempHome,
 			".pi",
@@ -383,32 +367,40 @@ describe("/refresh-models command", () => {
 		const providerCall = registerProvider.mock.calls.find(
 			([provider]: [string]) => provider === "openai-codex",
 		);
-		if (!providerCall) throw new Error("missing cached provider registration");
-		const definition = providerCall[1] as {
-			baseUrl: string;
-			models: Array<{
-				id: string;
-				name: string;
-				contextWindow: number;
-				thinkingLevelMap?: Record<string, string | null>;
-			}>;
-		};
-		expect(definition.baseUrl).toBe("https://chatgpt.com/backend-api");
-		expect(definition.models.map((model) => model.id)).toEqual([
-			"gpt-5.6-luna",
-			"gpt-5.6-sol",
-			"gpt-5.7-preview",
-		]);
-		expect(definition.models[0]).toMatchObject({
-			name: "GPT-5.6 Luna",
-			contextWindow: 272000,
-			thinkingLevelMap: {
-				minimal: "low",
-				xhigh: "xhigh",
-				max: "max",
-			},
-		});
-		expect(definition.models[0].thinkingLevelMap).not.toHaveProperty("off");
+		expect(providerCall).toBeUndefined();
+		expect(registerProvider).not.toHaveBeenCalled();
+	});
+
+	it("refreshes native OpenAI without token extraction, remote catalog or descriptor overlays", async () => {
+		const pi = createMockPi();
+		const startupRegister = vi.fn();
+		Object.assign(pi, { registerProvider: startupRegister });
+		registerRefreshModelsCommand(pi as never);
+		const cmd = pi._commands.find((command) => command.name === "refresh-models");
+		const models = ["gpt-6.1-sol", "gpt-6-luna", "gpt-6-sol"].map((id) => ({
+			provider: "openai", type: "chat", id, name: id, api: "openai-responses",
+			baseUrl: "https://api.openai.com/v1", inputLimits: { maxRequestBytes: 100 },
+		}));
+		const fetchMock = vi.fn();
+		vi.stubGlobal("fetch", fetchMock);
+		const refresh = vi.fn(async () => ({ errors: new Map() }));
+		const getApiKeyForProvider = vi.fn(async () => undefined);
+		const registerProvider = vi.fn();
+		const notify = vi.fn();
+		const ctx = { ui: { notify }, modelRegistry: {
+			getAll: () => [...models, { provider: "openai-codex", id: "historic" }],
+			getProviderAuthStatus: (provider) => ({ configured: provider === "openai" }),
+			refresh, getApiKeyForProvider, registerProvider,
+		} };
+		await cmd.handler("openai", ctx as never);
+		expect(refresh).toHaveBeenCalledWith({ providers: ["openai"], allowNetwork: true, force: true });
+		expect(getApiKeyForProvider).not.toHaveBeenCalled();
+		expect(fetchMock).not.toHaveBeenCalled();
+		expect(registerProvider).not.toHaveBeenCalled();
+		expect(startupRegister).not.toHaveBeenCalled();
+		expect(notify).toHaveBeenCalledWith(expect.stringContaining("Done. Refreshed 1"), "info");
+		const settings = JSON.parse(fs.readFileSync(path.join(tempHome, ".pi", "agent", "settings.json"), "utf-8"));
+		expect(settings.enabledModels).toEqual(["openai/gpt-6.1-sol", "openai/gpt-6-luna"]);
 	});
 
 	it("refreshes anthropic using /v1/models with x-api-key auth", async () => {
@@ -638,7 +630,7 @@ describe("/refresh-models command", () => {
 			),
 		);
 		expect(settings.enabledModels).toEqual([
-			"openai-codex/gpt-5.4",
+			"openai/gpt-5.4",
 			"opencode/zen",
 		]);
 		expect(settings.unrelated).toEqual({ preserved: true });
@@ -676,7 +668,7 @@ describe("/refresh-models command", () => {
 		expect(refresh).toHaveBeenCalledWith({ providers: ["bedrock-mantle"], allowNetwork: true, force: true });
 		const settings = JSON.parse(fs.readFileSync(path.join(tempHome, ".pi", "agent", "settings.json"), "utf-8"));
 		expect(settings.enabledModels).toEqual([
-			"openai-codex/gpt-5.4",
+			"openai/gpt-5.4",
 			"bedrock-mantle/anthropic.claude-opus-5",
 			"bedrock-mantle/openai.gpt-5.6-luna",
 		]);

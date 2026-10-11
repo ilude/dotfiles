@@ -105,7 +105,7 @@ describe.skipIf(process.env.PI_PLAN_CLOSEOUT_HERDR_LIVE !== "1")("isolated produ
       const successorInitial = evidenceAt(successorEvidence).find(row => row.kind === "request")!;
       const definition = loadDefinitions(profile, false, profile).agents.get("integrator")!;
       expect(definition.model).toBe("luna"); expect(definition.effort).toBe("high");
-      expect(successorInitial.model).toBe(`openai-codex/${fixtureIntegratorModel}`);
+      expect(successorInitial.model).toBe(`openai/${fixtureIntegratorModel}`);
       expect(successorInitial.reasoning).toBe(definition.effort);
       expect(successorInitial.herdrSocket).toBe(fixture.env.HERDR_SOCKET_PATH);
       expect(successorInitial.authority).toMatchObject({ agent: "integrator", tools: definition.tools, delegates: [], cwd: repo, closeout: { manifest, provenance: { source: "subagent-runtime", version: 1, parentSessionId: initial.sessionId, targetCheckout: repo } } });

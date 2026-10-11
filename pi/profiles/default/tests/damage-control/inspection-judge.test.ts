@@ -5,7 +5,7 @@ import { projectInspectionEvidence, reviewInspection } from "../../lib/damage-co
 import { modelFixture, registryFixture } from "../helpers/model-selection.ts";
 import type { InspectionEvidence, PendingCall, Settings } from "../../lib/damage-control/types.ts";
 
-const settings: Settings = { version: 1, judge: { enabled: true, provider: "openai-codex", model: "luna", reasoning: "high", deadlineMs: 80, retries: 0 }, parseBudgetMs: 50 };
+const settings: Settings = { version: 1, judge: { enabled: true, provider: "openai", model: "luna", reasoning: "high", deadlineMs: 80, retries: 0 }, parseBudgetMs: 50 };
 const pending: PendingCall = { callId: "pending-id", fingerprint: "fp", generation: 4 };
 function evidence(): InspectionEvidence {
   return {
@@ -14,10 +14,10 @@ function evidence(): InspectionEvidence {
   };
 }
 function message(value: unknown, stopReason: "stop" | "error" | "aborted" = "stop"): AssistantMessage {
-  return { role: "assistant", api: "openai-codex-responses", provider: "openai-codex", model: "gpt-6-luna", timestamp: 0, content: [{ type: "text", text: typeof value === "string" ? value : JSON.stringify(value) }], stopReason, usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } } };
+  return { role: "assistant", api: "openai-responses", provider: "openai", model: "gpt-6-luna", timestamp: 0, content: [{ type: "text", text: typeof value === "string" ? value : JSON.stringify(value) }], stopReason, usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } } };
 }
 function context(complete: ReturnType<typeof vi.fn<ExtensionContext["modelRegistry"]["complete"]>>, authenticated = true): Pick<ExtensionContext, "modelRegistry" | "signal"> {
-  const registry = registryFixture([modelFixture("openai-codex", "gpt-6-luna")], authenticated ? ["openai-codex"] : []);
+  const registry = registryFixture([modelFixture("openai", "gpt-6-luna")], authenticated ? ["openai"] : []);
   vi.spyOn(registry, "complete").mockImplementation(complete);
   return { modelRegistry: registry, signal: undefined };
 }
@@ -42,7 +42,7 @@ describe("Explorer inspection judge", () => {
     await expect(reviewInspection(evidence(), context(complete), settings, pending, () => 4)).resolves.toMatchObject({ status: "valid", verdict });
     expect(complete).toHaveBeenCalledOnce();
     const [model, request, options] = complete.mock.calls[0] as unknown as [{ provider: string; id: string }, { messages: [{ content: [{ text: string }] }] }, { maxRetries: number; reasoningEffort: string; signal: AbortSignal }];
-    expect(model).toMatchObject({ provider: "openai-codex", id: "gpt-6-luna" });
+    expect(model).toMatchObject({ provider: "openai", id: "gpt-6-luna" });
     expect(options).toMatchObject({ maxRetries: 0, reasoningEffort: "high" });
     expect(request.messages[0].content[0].text).toContain('"pendingCall":{"tool":"bash"');
     expect(request.messages[0].content[0].text).toContain("curl https://example.test");

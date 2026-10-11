@@ -102,7 +102,13 @@ if [[ "$dc_recovery" == true && "$profile" != "default" ]]; then
 	exit 2
 fi
 
-script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+script_path="${BASH_SOURCE[0]}"
+while [[ -L "$script_path" ]]; do
+	script_dir="$(cd "$(dirname "$script_path")" && pwd)"
+	script_path="$(readlink "$script_path")"
+	[[ "$script_path" = /* ]] || script_path="${script_dir}/${script_path}"
+done
+script_dir="$(cd "$(dirname "$script_path")" && pwd)"
 case "$profile" in
 default | legacy)
 	profile_dir="${script_dir}/../pi/profiles/${profile}"

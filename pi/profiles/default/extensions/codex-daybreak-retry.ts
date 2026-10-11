@@ -7,7 +7,8 @@ const RETRYABLE_DAYBREAK_ACCESS_ERROR = "Unable to verify Daybreak Blue access. 
 
 export function markDaybreakAccessErrorRetryable(message: AssistantMessage): AssistantMessage | undefined {
 	if (
-		message.provider !== "openai-codex" ||
+		message.provider !== "openai" ||
+		message.api !== "openai-responses" ||
 		modelFamilyVersion(message.model)?.family !== "sol" ||
 		message.stopReason !== "error" ||
 		!message.errorMessage?.includes(DAYBREAK_ACCESS_ERROR)

@@ -127,5 +127,5 @@ export function registerCloseoutFixture(pi: ExtensionAPI, options: {
   pi.registerProvider("closeout-fixture", { apiKey: "fixture", baseUrl: "http://invalid.test", api: "closeout-fixture", models: [model("deterministic-origin")], streamSimple });
   // Keep the role's actual `model: luna` resolution and `effort: high`. Replace
   // only provider reasoning/network, including the authenticated Codex tier.
-  pi.registerProvider("openai-codex", { apiKey: "fixture", baseUrl: "http://invalid.test", api: "closeout-fixture", models: [model("gpt-5.4-luna"), model(fixtureIntegratorModel)], streamSimple });
+  pi.registerProvider("openai", { apiKey: "fixture", baseUrl: "http://invalid.test", api: "openai-responses", models: [model("gpt-5.4-luna"), model(fixtureIntegratorModel)], streamSimple });
 }

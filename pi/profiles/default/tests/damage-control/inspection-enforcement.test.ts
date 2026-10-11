@@ -12,7 +12,7 @@ afterEach(() => vi.unstubAllEnvs());
 async function explorer(complete = vi.fn().mockResolvedValue({ content: [{ type: "text", text: JSON.stringify({ verdict: "observation", reason: "observational fixture" }) }], stopReason: "stop" }), dependencies: Partial<GateDependencies> = {}) {
   vi.stubEnv("PI_SUBAGENT_AUTHORITY", JSON.stringify({ agent: "explorer", tools: ["bash", "powershell"] }));
   const h = await harness(dependencies);
-  const model = { provider: "openai-codex", id: "gpt-5.6-luna" };
+  const model = { provider: "openai", id: "gpt-5.6-luna" };
   h.ctx.modelRegistry = { getAll: () => [model], hasConfiguredAuth: () => true, complete } as unknown as ExtensionContext["modelRegistry"];
   return { ...h, complete };
 }

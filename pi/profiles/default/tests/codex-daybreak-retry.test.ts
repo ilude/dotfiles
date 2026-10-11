@@ -7,8 +7,8 @@ function message(overrides: Partial<AssistantMessage> = {}): AssistantMessage {
 	return {
 		role: "assistant",
 		content: [],
-		api: "openai-codex-responses",
-		provider: "openai-codex",
+		api: "openai-responses",
+		provider: "openai",
 		model: "gpt-6-sol",
 		usage: {
 			input: 0,
@@ -37,6 +37,8 @@ describe("Daybreak access retry classification", () => {
 
 	it.each([
 		{ provider: "amazon-bedrock" },
+		{ provider: "openai-codex", api: "openai-codex-responses" },
+		{ api: "openai-completions" },
 		{ model: "gpt-5.6-luna" },
 		{ stopReason: "stop", errorMessage: undefined },
 		{ errorMessage: "Codex error: account is not eligible for Daybreak Blue." },
