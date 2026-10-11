@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-10-11: Align native Pi launches with default
+
+- `~/.pi/agent` now points to default rather than legacy. Pi launched without an interactive shell wrapper previously selected legacy settings despite default's working OpenAI login; wrapper-only acceptance tests missed the operator's actual launch path. Installation and stopped-process migration now retain the default target. Legacy files remain unchanged.
+
+## 2026-10-11: Clarify the legacy Pi preservation boundary
+
+- Root agent guidance defines legacy as the preserved previous customized setup, not a routine maintenance target. Access, launches, changes and commits require a specific operator request; merely mentioning legacy or seeing runtime metadata in Git status does not authorize work there. Current Pi work remains in the default profile.
+
+## 2026-10-11: Make pi the sole public profile launcher
+
+- Removed the public `pp` command. Interactive zsh and PowerShell now invoke internal profile helpers directly through `pi`; installer-managed obsolete `pp` links are removed.
+- Bare `pi` still selects the default profile. `pi --profile <name>` and the existing `-p <name>` alias retain profile selection; use `--print` or `-- -p` for Pi print mode. Profile-aware resume, Damage Control startup preflight and explicit `pi --dc-recovery` behavior are preserved. Legacy runtime and historical documentation remain unchanged.
+
 ## 2026-10-11: Use native OpenAI subscription routing in default Pi
 
 - Default Pi targets the native `openai` provider used by Pi 1.1.0's ChatGPT subscription login, rather than the historic `openai-codex` provider. The default remains Sol 6.1; family shortcuts, internal Luna selection, and subscription accounting follow the native provider. Legacy stays a historical profile and is not migrated.

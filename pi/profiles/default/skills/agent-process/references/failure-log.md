@@ -1,5 +1,13 @@
 # Agent process failure log
 
+## APR-089 - Validated a wrapper instead of the operator's native launch
+
+- **Reference:** Operator correction, 2026-10-11, after Codex subscription setup was reported complete.
+- **Observed:** Fresh wrapper launches worked, but the operator's running process had no profile override. Native Pi still followed the legacy agent-directory link. Successful installation and wrapper tests were reported as operator-facing completion without checking that actual process.
+- **Related:** APR-083's substituted live launch missed native runtime behavior; AIF-101 requires preserving historical legacy files.
+- **Correction:** Retargeted the native alias to default without modifying legacy, corrected installation/migration targets and native profile identity, and verified an unwrapped authenticated request in the operator's workspace. The old running process must restart to replace its cached configuration.
+- **Status:** Runtime correction implemented; focused tests passed. No new process-policy instructions added. Operator confirmation remains pending.
+
 ## APR-088 - Commit exclusion used removal instead of restoring the index
 
 - **Reference:** Default session `01a12424-11fb-74e0-9505-d51dfec4c7e8`, 2026-10-10; operator-provided `/commit push` failure and subsequent recovery.

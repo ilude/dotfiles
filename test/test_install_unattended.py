@@ -12,18 +12,18 @@ BASH = shutil.which("bash")
 
 
 @pytest.mark.skipif(BASH is None, reason="bash not found")
-def test_pp_symlink_launches_exact_selected_profile_without_network(tmp_path: Path) -> None:
+def test_internal_launcher_launches_exact_selected_profile_without_network(tmp_path: Path) -> None:
     home = tmp_path / "home"
     bin_dir = tmp_path / "bin"
     home.mkdir()
     bin_dir.mkdir()
-    launcher = tmp_path / "pp"
-    launcher.symlink_to(DOTFILES / "scripts" / "pp")
+    launcher = DOTFILES / "scripts" / "pi-profile-launch"
     fake_pi = bin_dir / "pi"
     fake_pi.write_text(
         "#!/usr/bin/env bash\n"
-        "printf '{\"profile\":\"%s\",\"args\":[' \"$PI_CODING_AGENT_DIR\"\n"
-        "first=1; for arg in \"$@\"; do ((first)) || printf ','; printf '\"%s\"' \"$arg\"; first=0; done\n"
+        'printf \'{"profile":"%s","args":[\' "$PI_CODING_AGENT_DIR"\n'
+        "first=1; for arg in \"$@\"; do ((first)) || printf ','; "
+        'printf \'"%s"\' "$arg"; first=0; done\n'
         "printf ']}\\n'\n",
         encoding="utf-8",
     )

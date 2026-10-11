@@ -2,11 +2,13 @@
 
 Repository-wide rules for this cross-platform dotfiles repository: Linux, Windows PowerShell, Git Bash/MSYS2, and WSL; Dotbot and project submodules under `modules/`; terminals converging on zsh. Read this file first. More specific active-client or directory instructions take precedence without changing these repository-wide invariants:
 
-Ignore `pi/profiles/legacy/` for local work unless the user explicitly mentions the legacy profile. Do not inspect, change, test, or include it in scope by default.
+`pi/profiles/legacy/` preserves the previous customized Pi setup and its local runtime state. It is historical, not the active default or a routine maintenance target. Use `pi/profiles/default/` for current Pi work.
+
+Leave legacy untouched unless the user explicitly requests a specific operation there. Do not inspect, edit, test, install dependencies, launch Pi against it, or stage/commit its changes as part of unrelated work. This includes indirect access through `~/.pi/agent`. A mention or Git status entry is not authorization; preserve incidental runtime metadata changes unless the user asks to revert them.
 
 - Claude Code: `CLAUDE.md`
 - OpenCode/Codex: `opencode/AGENTS.md`
-- Default Pi's profile-wide working rules live in `pi/profiles/default/AGENTS.md`, loaded through `PI_CODING_AGENT_DIR` by bare `pp`. Other profiles keep their own instructions.
+- Default Pi's profile-wide working rules live in `pi/profiles/default/AGENTS.md`, loaded through `PI_CODING_AGENT_DIR` by bare `pi`. Other profiles keep their own instructions.
 - Claude global instructions: `claude/CLAUDE.md` (independent from Pi instructions, no symlink)
 - Pi runtime: [`pi/README.md`](pi/README.md)
 
@@ -38,10 +40,10 @@ Tooling rules:
 
 The installer entrypoints and supporting paths are indexed in [`README.md#structure`](README.md#structure).
 
-- `pp` is the cross-platform Pi profile launcher. Use `pp` for the clean repository-owned default profile, `pp -p legacy` or `pp --profile legacy` for the customized legacy setup, and `pp -p <name>` or `pp --profile <name>` for other isolated profiles.
-- `scripts/pp` and `scripts/pp.ps1` reserve `-p` for profile selection, validate profile names as `[A-Za-z0-9][A-Za-z0-9._-]*`, set `PI_CODING_AGENT_DIR`, and pass remaining arguments to `pi`. Put Pi's own short `-p` argument after `--`, or prefer Pi's long spelling when available.
-- Repository-owned Pi profiles live under `pi/profiles/`: `default/` is the clean default selected by bare `pp`, and `legacy/` contains the previous customized Pi setup plus its local runtime state. Arbitrary named profiles are created on first use under `~/.pi/profiles/<name>/` and are not repository-owned.
-- The compatibility path `~/.pi/agent` points at `pi/profiles/legacy/` so direct `pi` invocations retain the previous customized behavior. Use `scripts/migrate-pi-profiles.ps1` with Pi stopped to perform or repair the stopped-process migration into `pi/profiles/{default,legacy}/`.
+- `pi` is the sole public cross-platform Pi launcher. Use bare `pi` for the clean repository-owned default profile, `pi --profile legacy` for the customized legacy setup, and `pi --profile <name>` for other isolated profiles.
+- Interactive shell functions invoke the internal `scripts/pi-profile-launch` and `scripts/pi-profile-launch.ps1` helpers directly. They reserve `-p` for profile selection, validate profile names as `[A-Za-z0-9][A-Za-z0-9._-]*`, set `PI_CODING_AGENT_DIR`, and pass remaining arguments to Pi. Use `--print` for Pi print mode, or put Pi's own short `-p` argument after `--`.
+- Repository-owned Pi profiles live under `pi/profiles/`: `default/` is the clean default selected by bare `pi`, and `legacy/` contains the previous customized Pi setup plus its local runtime state. Arbitrary named profiles are created on first use under `~/.pi/profiles/<name>/` and are not repository-owned.
+- The native path `~/.pi/agent` points at `pi/profiles/default/` so direct `pi` invocations and shell launches use the same active profile. Legacy is historical reference, not the implicit runtime. Use `scripts/migrate-pi-profiles.ps1` with Pi stopped to perform or repair the stopped-process migration into `pi/profiles/{default,legacy}/`.
 - `wsl/install.conf.yaml` must mirror every relevant cross-platform link from `install.conf.yaml`. Add the WSL equivalent with each cross-platform link; exclude Windows-only targets such as the PowerShell profile and Windows VS Code paths.
 - All terminals converge through `.bash_profile -> .zshenv -> .zshrc`; see the [shell architecture](README.md#shell-architecture).
 - In MSYS2 and Git Bash, pass `ZDOTDIR` through `env` when execing zsh.
@@ -84,7 +86,7 @@ Key paths:
 | --- | --- |
 | `install`, `install.ps1`, `wsl/` | Primary installers and WSL install/config/validation |
 | `install.conf.yaml` | Cross-platform Dotbot links |
-| `scripts/pp`, `scripts/pp.ps1` | Cross-platform Pi profile launchers |
+| `scripts/pi-profile-launch`, `scripts/pi-profile-launch.ps1` | Internal cross-platform Pi profile launch helpers |
 | `pi/profiles/default/`, `pi/profiles/legacy/` | Repository-owned clean and customized Pi profiles |
 | `zsh/env.d/`, `zsh/rc.d/` | Environment and interactive zsh modules; platform helpers start in `zsh/rc.d/00-helpers.zsh` |
 | `config/git/`, `powershell/profile.ps1` | Git and PowerShell configuration |

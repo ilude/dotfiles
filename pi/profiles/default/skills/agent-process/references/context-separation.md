@@ -16,6 +16,6 @@ Native `/tree` stays in the same session file. Selecting a pre-digression checkp
 
 ## Resume saved work
 
-`pp --session <session-id-or-path>` opens an existing saved session. Use `pp -p <profile> --session ...` when the profile differs from default. In Herdr, `herdr_layout` with `{"action":"resume","session":"<UUID>"}` opens and focuses that saved session; it resumes rather than forks.
+`pi --session <session-id-or-path>` opens an existing saved session. Use `pi --profile <profile> --session ...` when the profile differs from default. In Herdr, `herdr_layout` with `{"action":"resume","session":"<UUID>"}` opens and focuses that saved session; it resumes rather than forks.
 
 These operations change conversation history, not files, commits, deployments, schedules, or current instructions. A resumed task needs a brief update about material external changes since its checkpoint. TUI picker/editor and new-tab appearance were source-inspected or covered by focused checks where noted, not exercised live during the original investigation.

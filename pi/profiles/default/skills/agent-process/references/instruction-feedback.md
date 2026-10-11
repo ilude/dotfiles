@@ -1,5 +1,12 @@
 # Agent instruction feedback log
 
+## AIF-101 - Preserve the historical legacy profile
+
+- **Reference:** Default-profile session `01a12424-11fb-74e0-9505-d51dfec4c7e8`, 2026-10-11.
+- **Feedback:** After requesting reversal of existing legacy runtime metadata changes, the operator requested local guidance explaining what legacy is and that it should not be touched.
+- **Evidence:** The diff contained only a changelog-version update and an added device ID; its modification timestamp preceded this session. The originating process was not established. Existing root guidance excluded legacy by default but treated an explicit mention as the exception.
+- **Decision/status:** Replaced that exception with a specific-operation request boundary in root `AGENTS.md`. Historical setup and runtime state remain preserved, including through the compatibility path; default remains the current work target. No legacy edits were made for this instruction update.
+
 ## AIF-100 - Plain-language commit and push requests authorize ordinary Git
 
 - **Reference:** Operator correction in gcc_automation, 2026-09-30, following explicit commit-and-push request.

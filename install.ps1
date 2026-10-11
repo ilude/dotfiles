@@ -1555,6 +1555,11 @@ try {
         throw "Python not found. Please install Python and ensure it's in PATH."
     }
 
+    & $python (Join-Path $BASEDIR "scripts/pi-launcher-cleanup.py") --root $BASEDIR
+    if ($LASTEXITCODE -ne 0) {
+        Add-InstallResult 'Obsolete Pi launcher cleanup' Failed "exit $LASTEXITCODE"
+    }
+
     # Disable colors if VT not supported (legacy console)
     if (-not $Host.UI.SupportsVirtualTerminal) {
         $env:NO_COLOR = "1"

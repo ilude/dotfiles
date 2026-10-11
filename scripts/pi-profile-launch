@@ -4,7 +4,7 @@ set -euo pipefail
 
 usage() {
 	cat >&2 <<'EOF'
-usage: pp [-p|--profile <name>] [--dc-recovery] [--resume|--session <path-or-id>] [--] [pi arguments...]
+usage: pi [-p|--profile <name>] [--dc-recovery] [--resume|--session <path-or-id>] [--] [pi arguments...]
 EOF
 	exit 2
 }
@@ -94,11 +94,11 @@ while (($#)); do
 done
 
 if [[ ! "$profile" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || [[ "$profile" == "." ]] || [[ "$profile" == ".." ]]; then
-	echo "pp: invalid profile name: $profile" >&2
+	echo "pi: invalid profile name: $profile" >&2
 	exit 2
 fi
 if [[ "$dc_recovery" == true && "$profile" != "default" ]]; then
-	echo "pp: --dc-recovery is available only for the default profile" >&2
+	echo "pi: --dc-recovery is available only for the default profile" >&2
 	exit 2
 fi
 
@@ -113,7 +113,7 @@ case "$profile" in
 default | legacy)
 	profile_dir="${script_dir}/../pi/profiles/${profile}"
 	if [[ ! -d "$profile_dir" ]]; then
-		echo "pp: repository profile is not initialized: $profile" >&2
+		echo "pi: repository profile is not initialized: $profile" >&2
 		echo "run scripts/migrate-pi-profiles.ps1 after closing Pi" >&2
 		exit 1
 	fi
@@ -141,12 +141,12 @@ if [[ "$profile" == "default" ]]; then
 			recovery_args=("${sanitized_args[@]}")
 			TMPDIR=/tmp exec pi --no-extensions --extension "$recovery_helper" "${recovery_args[@]}"
 		fi
-		echo "pp: recovery helper is unavailable; starting tools-disabled, extensions-disabled repair mode" >&2
+		echo "pi: recovery helper is unavailable; starting tools-disabled, extensions-disabled repair mode" >&2
 	elif node "$preflight" "$bootstrap"; then
 		TMPDIR=/tmp exec pi "${pi_args[@]}"
 	else
-		echo "pp: default damage-control bootstrap is unavailable; starting tools-disabled, extensions-disabled repair mode" >&2
-		echo "pp: repair the default profile, exit Pi, then relaunch pp normally; recovery is never selected automatically" >&2
+		echo "pi: default damage-control bootstrap is unavailable; starting tools-disabled, extensions-disabled repair mode" >&2
+		echo "pi: repair the default profile, exit Pi, then relaunch pi normally; recovery is never selected automatically" >&2
 	fi
 
 	sanitize_pi_args true "${pi_args[@]}"

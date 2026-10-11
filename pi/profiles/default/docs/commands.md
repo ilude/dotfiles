@@ -2,7 +2,7 @@
 
 `extensions/commands.ts` runs the explicit registry in `commands/index.ts`: `/bro` is prompt-backed and `/commit` calls its private runner directly. Other direct runtime commands live in focused extensions. Native Pi prompt templates live under `prompts/`. Everything belongs to this profile; no project command directories are scanned. Legacy is unchanged.
 
-Default uses Pi's native `openai` provider for the ChatGPT subscription. Start `pp`
+Default uses Pi's native `openai` provider for the ChatGPT subscription. Start `pi`
 (or bare `pi` in the configured interactive shell), then use `/login` and select
 OpenAI's ChatGPT subscription sign-in. Credentials belong to that active profile;
 login in legacy does not authenticate default. `/refresh-models openai` uses Pi's
@@ -14,7 +14,7 @@ native catalog, not the legacy Codex transport. `/sol` selects `openai/gpt-6.1-s
 - `/commit [push]`: directly runs the [private commit workflow](commit.md), without a main-agent tool or prompt. F10 commits; F9 commits and pushes. Ordinary conversational commit/push requests use Git through Bash.
 - `exit` or `/exit`: gracefully quits Pi; Pi prints its built-in resume hint on shutdown.
 - `/effort [level]`: shows or sets thinking effort. Levels: `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`.
-- `/new-instance [title]` (alias: `/pi [title]`, also supports `--resume`): opens a new Pi instance for the current `pp` profile in a new terminal tab. `/new-instance --resume <session-uuid> [title]` resumes that active-profile session in its saved cwd. The `session_launch` tool provides the same fresh-or-resume behavior.
+- `/new-instance [title]` (alias: `/pi [title]`, also supports `--resume`): opens a new Pi instance for the current Pi profile in a new terminal tab. `/new-instance --resume <session-uuid> [title]` resumes that active-profile session in its saved cwd. The `session_launch` tool provides the same fresh-or-resume behavior.
 - `/new-terminal [title]`: opens a plain shell in this cwd in a new terminal tab.
 - `/plans`: opens an interactive list of direct-child `.specs/*/plan.md` files, including each plan's later creation or modification date. Use `↑`/`↓` to navigate, `Enter` for details, `o` for VS Code, `d` to launch `/do-it` in a focused Herdr Pi tab, `a` to archive an eligible completed plan, and `Esc`/`q` to close. Plan execution has no non-Herdr terminal fallback. Archive requires completed status, a completion date, no unchecked tasks, confirmation, and a free destination.
 - `/sol [low|medium|high|xhigh]`, `/astra [...]`, `/luna [...]`, `/fable [...]`, and `/opus [...]` resolve their named model family through the same deterministic ladder used by subagents: authenticated native `openai` subscription models first, then `bedrock-mantle`, then native `amazon-bedrock`. The newest version of the named family in the first matching tier wins, except `/sol` selects Sol 6.1. Configured baseline token cost breaks same-version ties for the other families. Subagent model references still use their separate exact-name resolver. Other providers are never selected implicitly. These commands optionally set effort, and their effort arguments autocomplete.

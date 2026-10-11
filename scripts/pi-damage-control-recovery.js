@@ -1,7 +1,7 @@
 const STATUS_KEY = "damage-control-recovery";
 const STATUS_TEXT = "damage-control: recovery";
 const LOCKED_REASON =
-  "Damage-control recovery is locked. Model tools remain disabled until the operator confirms this explicit interactive recovery launch. Exit Pi and relaunch pp normally after repair.";
+  "Damage-control recovery is locked. Model tools remain disabled until the operator confirms this explicit interactive recovery launch. Exit Pi and relaunch pi normally after repair.";
 
 function boundedError(error) {
   const message = error instanceof Error ? error.message : String(error);
@@ -36,18 +36,18 @@ export function createRecoveryExtension(isInteractiveProcess = defaultInteractiv
 
           if (ctx.mode !== "tui" || !ctx.hasUI || !isInteractiveProcess()) {
             lockReason =
-              "Damage-control recovery requires TUI mode with this process attached to interactive stdin and stdout. Model tools remain disabled; exit and rerun pp --dc-recovery in a terminal.";
+              "Damage-control recovery requires TUI mode with this process attached to interactive stdin and stdout. Model tools remain disabled; exit and rerun pi --dc-recovery in a terminal.";
             return;
           }
 
           const confirmed = await ctx.ui.confirm(
             "DAMAGE-CONTROL RECOVERY",
-            "This explicit mode temporarily releases model tools so you and Pi can repair damage-control. It does not persist. Confirm only in this terminal. Exit with Ctrl+D (or /quit), then relaunch pp normally to restore protection.",
+            "This explicit mode temporarily releases model tools so you and Pi can repair damage-control. It does not persist. Confirm only in this terminal. Exit with Ctrl+D (or /quit), then relaunch pi normally to restore protection.",
             { signal: ctx.signal },
           );
           if (confirmed !== true || ctx.signal?.aborted) {
             lockReason =
-              "Damage-control recovery was denied or cancelled. Model tools remain disabled; exit and rerun pp --dc-recovery to try again.";
+              "Damage-control recovery was denied or cancelled. Model tools remain disabled; exit and rerun pi --dc-recovery to try again.";
             return;
           }
 
@@ -57,7 +57,7 @@ export function createRecoveryExtension(isInteractiveProcess = defaultInteractiv
           released = true;
         } catch (error) {
           released = false;
-          lockReason = `Damage-control recovery initialization failed; model tools remain disabled: ${boundedError(error)}. Exit and repair or rerun pp --dc-recovery.`;
+          lockReason = `Damage-control recovery initialization failed; model tools remain disabled: ${boundedError(error)}. Exit and repair or rerun pi --dc-recovery.`;
         }
       });
 

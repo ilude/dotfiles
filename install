@@ -98,6 +98,10 @@ else
     skipped_steps+=("Project submodules (failed)")
 fi
 
+current_step="Obsolete Pi launcher cleanup"
+"$PYTHON_BIN" "${BASEDIR}/scripts/pi-launcher-cleanup.py" --root "$BASEDIR"
+completed_steps+=("Obsolete Pi launcher cleanup")
+
 current_step="Dotbot symlinks"
 "${BASEDIR}/${DOTBOT_DIR}/${DOTBOT_BIN}" -d "${BASEDIR}" -c "${CONFIG}" "${@}"
 completed_steps+=("Dotbot symlinks")
@@ -666,7 +670,7 @@ current_step="default pi model setup"
 # Native OpenAI models ship with Pi; no legacy Codex catalog cache is required.
 # Account authorization remains an explicit, active-profile login operation.
 echo "Default Pi uses the native OpenAI catalog; logins are profile-specific."
-echo "If needed, start pp and use /login to sign in with your ChatGPT subscription."
+echo "If needed, start pi and use /login to sign in with your ChatGPT subscription."
 completed_steps+=("default pi model setup")
 
 current_step="GUI tool setup"
