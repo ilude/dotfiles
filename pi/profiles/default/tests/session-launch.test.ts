@@ -182,6 +182,29 @@ it("launches an exact active-profile session from the tool using its saved cwd",
 	const args = vi.mocked(spawnSync).mock.calls[0]?.[1] as string[];
 	expect(args).toContain(savedCwd);
 	expect(args.join(" ")).toContain(session);
+	expect(args.join(" ")).toContain(process.platform === "win32" ? "pi-profile-launch.ps1" : "pi-profile-launch");
+	expect(args.join(" ")).toContain(`'--' '--session' '${session}'`);
+});
+
+it.each(["win32", "darwin", "linux"])("uses the internal profile launcher for non-Herdr %s terminals", async platform => {
+	const originalPlatform = process.platform;
+	const { commands, ctx } = fixture();
+	vi.stubEnv("HERDR_ENV", "0");
+	vi.stubEnv("WT_SESSION", "fixture");
+	vi.stubEnv("PI_CODING_AGENT_DIR", join(process.cwd(), "profile-name"));
+	try {
+		Object.defineProperty(process, "platform", { value: platform });
+		await commands["new-instance"].handler("fresh", ctx);
+		const args = vi.mocked(spawnSync).mock.calls[0][1] as string[];
+		const command = args.at(-1)!;
+		expect(command).toContain(platform === "win32" ? "pi-profile-launch.ps1" : "pi-profile-launch");
+		expect(command).toContain("-p 'profile-name'");
+		if (platform === "win32") expect(command).toMatch(/^& '/);
+		else expect(command).toContain("bash '");
+		expect(execFile).not.toHaveBeenCalled();
+	} finally {
+		Object.defineProperty(process, "platform", { value: originalPlatform });
+	}
 });
 
 it.each(["new-instance", "pi"])("registers /%s to launch a titled fresh instance", async (name) => {

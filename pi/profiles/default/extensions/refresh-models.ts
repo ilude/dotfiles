@@ -40,7 +40,7 @@ const SUPPORTED_REFRESH_PROVIDERS = new Set([
 	"amazon-bedrock",
 	"bedrock-mantle",
 	"anthropic",
-	"openai-codex",
+	"openai",
 	"openrouter",
 	"opencode",
 	"opencode-go",
@@ -263,17 +263,18 @@ export async function syncCuratedModelScope(
 					(value): value is string => typeof value === "string",
 				)
 			: [];
-		const existingCodex = existing.filter((id) =>
-			id.startsWith("openai-codex/"),
+		const existingOpenAI = existing.filter((id) =>
+			id.startsWith("openai/"),
 		);
-		const availableCodex = orderProviderModels(available.filter(
+		const availableOpenAI = orderProviderModels(available.filter(
 			(model) =>
-				model.provider === "openai-codex" &&
-				!shouldHideModel("openai-codex", model),
-		)).map((model) => `openai-codex/${model.id}`);
-		const codex = configured.has("openai-codex")
-			? availableCodex
-			: existingCodex;
+				model.provider === "openai" &&
+				!("type" in model && model.type !== "chat") &&
+				!shouldHideModel("openai", model),
+		)).map((model) => `openai/${model.id}`);
+		const openai = configured.has("openai")
+			? availableOpenAI
+			: existingOpenAI;
 		const bedrock =
 			configured.has("amazon-bedrock") || configured.has("bedrock-mantle")
 				? orderProviderModels(bedrockModelIds.map((id) => ({ id }))).map(({ id }) => {
@@ -289,6 +290,7 @@ export async function syncCuratedModelScope(
 				.filter(
 					(provider) =>
 						configured.has(provider) &&
+						provider !== "openai" &&
 						provider !== "openai-codex" &&
 						provider !== "amazon-bedrock" &&
 						provider !== "bedrock-mantle" &&
@@ -304,11 +306,11 @@ export async function syncCuratedModelScope(
 					model.provider === provider && !shouldHideModel(provider, model),
 			)).map((model) => `${provider}/${model.id}`),
 		);
-		scope = [...new Set([...codex, ...bedrock, ...remaining])];
-		const latestSol = availableCodex.find((id) => id === `openai-codex/${PINNED_SOL_MODEL}`);
+		scope = [...new Set([...openai, ...bedrock, ...remaining])];
+		const latestSol = availableOpenAI.find((id) => id === `openai/${PINNED_SOL_MODEL}`);
 		const next = {
 			...settings,
-			...(latestSol ? { defaultProvider: "openai-codex", defaultModel: latestSol.split("/")[1] } : {}),
+			...(latestSol ? { defaultProvider: "openai", defaultModel: latestSol.split("/")[1] } : {}),
 			enabledModels: scope,
 		};
 		if (JSON.stringify(settings) === JSON.stringify(next)) return settings;
@@ -332,7 +334,7 @@ export function formatRefreshFailure(provider: string, error: unknown): string {
 
 function registerCachedProvider(
 	pi: ExtensionAPI,
-	provider: "openai-codex" | "openrouter" | "opencode" | "opencode-go",
+	provider: "openrouter" | "opencode" | "opencode-go",
 ): void {
 	const cache = loadProviderCache(provider);
 	if (!cache) return;
@@ -353,7 +355,6 @@ function registerCachedProvider(
 
 export default function registerRefreshModelsCommand(pi: ExtensionAPI) {
 	for (const provider of [
-		"openai-codex",
 		"openrouter",
 		"opencode",
 		"opencode-go",
@@ -468,6 +469,24 @@ export default function registerRefreshModelsCommand(pi: ExtensionAPI) {
 
 			for (const provider of providers) {
 				try {
+					if (provider === "openai") {
+						const beforeIds = new Set((ctx.modelRegistry.getAll() as ModelLike[])
+							.filter((model) => model.provider === provider).map((model) => model.id));
+						// Native OpenAI owns its catalog and subscription authentication.
+						// It has no subscription /models transport; refresh its native lifecycle.
+						const refresh = await ctx.modelRegistry.refresh({
+							providers: [provider], allowNetwork: true, force: true,
+						});
+						if (refresh.errors.size > 0) throw [...refresh.errors.values()][0];
+						const afterIds = new Set((ctx.modelRegistry.getAll() as ModelLike[])
+							.filter((model) => model.provider === provider).map((model) => model.id));
+						const addedIds = [...afterIds].filter((id) => !beforeIds.has(id)).sort();
+						const removedIds = [...beforeIds].filter((id) => !afterIds.has(id)).sort();
+						outcomes.push({ provider, ok: true,
+							message: `${provider}: ${beforeIds.size} -> ${afterIds.size} models (added ${addedIds.length}, removed ${removedIds.length})`,
+							addedIds, removedIds });
+						continue;
+					}
 					if (provider === "bedrock-mantle") {
 						const beforeIds = new Set(
 							(ctx.modelRegistry.getAll() as ModelLike[])
@@ -591,7 +610,7 @@ export default function registerRefreshModelsCommand(pi: ExtensionAPI) {
 			if (scopeUpdate.changed) {
 				changedModelState = true;
 				notify(
-					`Curated model scope updated: ${scopeUpdate.scope.length} models ordered Codex, Bedrock, OpenRouter, then other providers.`,
+					`Curated model scope updated: ${scopeUpdate.scope.length} models ordered OpenAI, Bedrock, OpenRouter, then other providers.`,
 					"info",
 				);
 			}

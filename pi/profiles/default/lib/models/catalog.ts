@@ -1,6 +1,5 @@
 import { asString, asStringArray, asNumber, asReasoningLevelArray } from "./values.ts";
 import type { InputKind, ThinkingLevelMap, RemoteModelInfo } from "./types.ts";
-const CODEX_CLIENT_VERSION_CANDIDATES = ["999.0.0", "1.0.0", "0.99.0"];
 
 function normalizeBaseUrl(raw: string): string {
 	return raw.replace(/\/+$/, "");
@@ -27,27 +26,6 @@ function buildThinkingLevelMap(
 			supported.has(level) ? level : null,
 		]),
 	) as ThinkingLevelMap;
-}
-
-function decodeJwtPayload(token: string): Record<string, unknown> | undefined {
-	const parts = token.split(".");
-	if (parts.length !== 3) return undefined;
-	try {
-		const payload = Buffer.from(parts[1], "base64url").toString("utf8");
-		const parsed = JSON.parse(payload);
-		if (parsed && typeof parsed === "object")
-			return parsed as Record<string, unknown>;
-	} catch {
-		return undefined;
-	}
-	return undefined;
-}
-
-function extractChatGptAccountId(token: string): string | undefined {
-	const payload = decodeJwtPayload(token);
-	const authClaim = payload?.["https://api.openai.com/auth"];
-	if (!authClaim || typeof authClaim !== "object") return undefined;
-	return asString((authClaim as Record<string, unknown>).chatgpt_account_id);
 }
 
 function extractModelIds(payload: unknown): string[] {
@@ -107,47 +85,6 @@ async function fetchJson(
 	}
 }
 
-async function fetchOpenAICodexCatalog(
-	baseUrl: string,
-	apiKey: string,
-	headers?: Record<string, string>,
-) {
-	const accountId = extractChatGptAccountId(apiKey);
-	if (!accountId) {
-		throw new Error(
-			"Could not extract chatgpt_account_id from OpenAI Codex token",
-		);
-	}
-
-	const normalized = normalizeBaseUrl(baseUrl);
-	const requestHeaders: Record<string, string> = {
-		Accept: "application/json",
-		Authorization: `Bearer ${apiKey}`,
-		"chatgpt-account-id": accountId,
-		originator: "pi",
-		"User-Agent": "pi",
-		...(headers ?? {}),
-	};
-
-	let lastError = "Unknown error";
-	for (const clientVersion of CODEX_CLIENT_VERSION_CANDIDATES) {
-		const url = `${normalized}/codex/models?client_version=${encodeURIComponent(clientVersion)}`;
-		try {
-			const payload = await fetchJson(url, requestHeaders);
-			const ids = extractModelIds(payload);
-			if (ids.length === 0) {
-				lastError = `${url} returned no model ids`;
-				continue;
-			}
-			return payload;
-		} catch (error) {
-			lastError = error instanceof Error ? error.message : String(error);
-		}
-	}
-
-	throw new Error(lastError);
-}
-
 async function fetchAnthropicCatalog(
 	baseUrl: string,
 	apiKey: string,
@@ -172,12 +109,11 @@ export async function fetchProviderCatalog(params: {
 	apiKey: string;
 	headers?: Record<string, string>;
 }): Promise<unknown> {
+	if (params.provider === "openai") {
+		throw new Error("OpenAI model discovery is owned by the native provider; use modelRegistry.refresh");
+	}
 	if (params.provider === "openai-codex") {
-		return fetchOpenAICodexCatalog(
-			params.baseUrl,
-			params.apiKey,
-			params.headers,
-		);
+		throw new Error("The historic openai-codex catalog transport is not used by the default profile");
 	}
 	if (params.provider === "anthropic") {
 		return fetchAnthropicCatalog(params.baseUrl, params.apiKey, params.headers);

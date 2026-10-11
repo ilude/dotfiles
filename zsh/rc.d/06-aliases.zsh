@@ -4,9 +4,8 @@
 claude() { command claude "$@"; }
 opencode() { command opencode "$@"; }
 pi() {
-    # Bare pi uses the repository-owned default profile and its startup
-    # preflight. The external pp process can still resolve the real pi binary.
-    command pp "$@"
+    # The separate Bash process resolves the real Pi binary, not this function.
+    command bash "${ZDOTDIR:-$HOME}/.dotfiles/scripts/pi-profile-launch" "$@"
 }
 
 # Claude Code YOLO mode

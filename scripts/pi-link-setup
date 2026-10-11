@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Create ~/.pi/agent junction/symlink pointing to the legacy Pi profile
+# Create ~/.pi/agent junction/symlink pointing to the default Pi profile
 # Windows: uses junction (no admin required)
 # Linux/WSL: uses symlink
 #
@@ -11,7 +11,7 @@
 
 DOTFILES_DIR="${HOME}/.dotfiles"
 PI_PROFILE_ROOT="${DOTFILES_DIR}/pi/profiles"
-PI_SOURCE="${PI_PROFILE_ROOT}/legacy"
+PI_SOURCE="${PI_PROFILE_ROOT}/default"
 PI_DEFAULT_PROFILE="${PI_PROFILE_ROOT}/default"
 PI_TARGET="${HOME}/.pi/agent"
 
@@ -87,7 +87,7 @@ if [[ ! -d "$PI_SOURCE" ]]; then
     exit 1
 fi
 
-# The profile migration creates legacy. Keep default independently writable.
+# Native Pi and shell launches must use the same default profile.
 mkdir -p "$(dirname "$PI_TARGET")" "$PI_DEFAULT_PROFILE"
 
 # Check if target is already a correct link
@@ -125,7 +125,7 @@ if is_windows; then
     win_target=$(cygpath -w "$PI_TARGET")
     win_source=$(cygpath -w "$PI_SOURCE")
     if cmd //c "mklink /J $win_target $win_source" > /dev/null 2>&1; then
-        echo "  ~/.pi/agent: Junction created -> ~/.dotfiles/pi/profiles/legacy"
+        echo "  ~/.pi/agent: Junction created -> ~/.dotfiles/pi/profiles/default"
     else
         echo "  Error: Failed to create junction"
         exit 1
@@ -133,7 +133,7 @@ if is_windows; then
 else
     # Linux/WSL: use symlink
     ln -s "$PI_SOURCE" "$PI_TARGET"
-    echo "  ~/.pi/agent: Symlink created -> ~/.dotfiles/pi/profiles/legacy"
+    echo "  ~/.pi/agent: Symlink created -> ~/.dotfiles/pi/profiles/default"
 fi
 
 echo "  Done"

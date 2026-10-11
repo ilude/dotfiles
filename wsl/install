@@ -107,6 +107,8 @@ else
     exit 1
 fi
 
+"$PYTHON" "$BASEDIR/scripts/pi-launcher-cleanup.py" --root "$BASEDIR"
+
 # Handle ~/.claude - backup if directory, remove to allow symlink
 if [[ -d "$HOME/.claude" && ! -L "$HOME/.claude" ]]; then
     BACKUP_FILE="$HOME/.claude-backup-$(date +%Y%m%d-%H%M%S).tar.gz"

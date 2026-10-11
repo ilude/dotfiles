@@ -45,7 +45,7 @@ The historical migration fixture remains evidence, not active policy authority. 
 - `/dc scan` discovers tracked and nonignored project scripts, excludes generated/dependency output, and uses bounded parallel read-only subagents without executing scripts. Completed unchanged results are reused.
 - Eligible prompts add `Allow once and review for future use`. The current call proceeds without waiting; only a completed, source-stable qualifying review grants future reuse.
 - The failed-call watchdog counts adjacent exact tool/input/effective-cwd failures. It permits twelve failures and blocks attempt thirteen, terminates the batch, and keeps that run stopped across queued continuations and reload until new direct operator input. Before a trip, an unrelated call or success resets the streak; successful polling has no limit.
-- `/dc on`, `/dc off`, `/dc scan`, `/dc mode default`, and `/dc mode noshell` are supported. There is no `/dc status`; `pp --dc-recovery` remains available.
+- `/dc on`, `/dc off`, `/dc scan`, `/dc mode default`, and `/dc mode noshell` are supported. There is no `/dc status`; `pi --dc-recovery` remains available.
 - There is no mandatory project scan, environment inventory, sandbox, dependency resolver, persistent telemetry, or change to legacy.
 
 The earlier parity audit is historical: [restoration plan](../../../../.specs/archive/damage-control-provenance-audit/plan.md) and [audit report](../../../../.specs/archive/damage-control-provenance-audit/full-audit.md). The approved environmental changes above supersede its exact-parity decisions only for the named behavior.

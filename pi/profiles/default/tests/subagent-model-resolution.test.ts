@@ -53,14 +53,14 @@ describe("model resolution and foreground behavior at subagent launch seams", ()
     const tools: Record<string, any> = {};
     const pi: any = { registerTool: (tool: any) => { tools[tool.name] = tool; }, registerCommand: () => {}, registerMessageRenderer: () => {}, on: () => {} };
     subagents(pi);
-    const ctx: any = { cwd, isProjectTrusted: () => false, sessionManager: { getSessionId: () => "direct-model-test" }, isIdle: () => true, modelRegistry: registry([model("bedrock-mantle", "gpt"), model("openai-codex", "gpt")], ["bedrock-mantle", "openai-codex"]) };
+    const ctx: any = { cwd, isProjectTrusted: () => false, sessionManager: { getSessionId: () => "direct-model-test" }, isIdle: () => true, modelRegistry: registry([model("bedrock-mantle", "gpt"), model("openai", "gpt")], ["bedrock-mantle", "openai"]) };
     // The extension owns its runtime; use its normal tool seam and inspect its returned child record.
     const progress = vi.fn();
     const blockingReason = agent === "strategist" || background === true ? undefined : "The model result is required before continuing.";
     const result = await tools.subagent.execute("call", { agent, background, retain, instructions: "[live]", surface: "headless", blockingReason, ...(requested ? { model: requested } : {}) }, undefined, progress, ctx);
     expect(result.isError).not.toBe(true);
     const effectiveBackground = agent !== "strategist" && background === true;
-    expect(result.details).toMatchObject({ model: "openai-codex/gpt", retained: agent === "strategist" ? false : retain ?? false, status: effectiveBackground ? "running" : "settled", waitState: effectiveBackground ? "background" : "attached" });
+    expect(result.details).toMatchObject({ model: "openai/gpt", retained: agent === "strategist" ? false : retain ?? false, status: effectiveBackground ? "running" : "settled", waitState: effectiveBackground ? "background" : "attached" });
     if (effectiveBackground) await tools.subagent_control.execute("cancel", { action: "cancel", id: result.details.id }, undefined, undefined, ctx);
     rmSync(profile, { recursive: true, force: true }); rmSync(cwd, { recursive: true, force: true });
   });
@@ -81,15 +81,15 @@ describe("model resolution and foreground behavior at subagent launch seams", ()
   });
 
   it.each([
-    ["definition fallback", undefined, "openai-codex/gpt"],
-    ["explicit bare override", "gpt", "openai-codex/gpt"],
+    ["definition fallback", undefined, "openai/gpt"],
+    ["explicit bare override", "gpt", "openai/gpt"],
   ])("coordinator delegate uses its propagated registry for %s", async (_label, requested, expected) => {
     fixture();
     const runtime = new SubagentRuntime(); runtimes.push(runtime);
     const leaf = definition("leaf", { model: requested === undefined ? "gpt" : "bedrock-mantle/gpt" });
     const coordinator = definition("coordinator", { tools: ["subagent"], delegates: ["leaf"] });
-    const modelRegistry = registry([model("bedrock-mantle", "gpt"), model("openai-codex", "gpt")], ["bedrock-mantle", "openai-codex"]);
-    const parent = await runtime.launch({ definition: coordinator, instructions: "[hold]", cwd: here, model: "openai-codex/gpt", effort: "low", skills: [], origin: "coordinator-model-test", surface: "headless", retained: false, catalog: new Map([["coordinator", coordinator], ["leaf", leaf]]), modelRegistry }, join(here, ".."), join(here, "../extensions/subagent-child.ts"), true);
+    const modelRegistry = registry([model("bedrock-mantle", "gpt"), model("openai", "gpt")], ["bedrock-mantle", "openai"]);
+    const parent = await runtime.launch({ definition: coordinator, instructions: "[hold]", cwd: here, model: "openai/gpt", effort: "low", skills: [], origin: "coordinator-model-test", surface: "headless", retained: false, catalog: new Map([["coordinator", coordinator], ["leaf", leaf]]), modelRegistry }, join(here, ".."), join(here, "../extensions/subagent-child.ts"), true);
     await vi.waitFor(() => expect(runtime.get(parent.id).record.sessionId).toEqual(expect.any(String)));
     const response = await (runtime as any).dispatch({ child: parent.id, origin: "coordinator-model-test", run: "fixture" }, { type: "delegate", payload: { agent: "leaf", instructions: "[live]", ...(requested ? { model: requested } : {}), background: true } });
     expect(response).toMatchObject({ model: expected, status: "running", parentId: parent.id });

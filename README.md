@@ -33,6 +33,12 @@ git clone --recursive https://github.com/ilude/dotfiles.git ~/.dotfiles
 ~/.dotfiles/install
 ```
 
+The installer does not request interactive privilege escalation. On Linux, run it as
+root or configure non-interactive `sudo -n` access for package setup; if neither is
+available, setup stops with a clear error. Interactive zsh and PowerShell expose
+`pi` as the sole public launcher, selecting the default profile unless
+`--profile <name>` is supplied.
+
 ### Windows PowerShell
 
 ```powershell
@@ -200,7 +206,7 @@ make test-quick    # Run core tests only
 
 ### Default Pi validation
 
-Default dependencies are installed with `pnpm --dir pi/profiles/default install --frozen-lockfile`, then linked with `bash scripts/pi-deps-link-setup --profile default`. Run `make check-pi-default` for grammar/loader readiness, typecheck, and tests. Existing legacy Pi targets remain independent. Damage Control loads on normal default-profile `pi` and `pp` launches; use `/reload` for an existing session. See [default setup, explicit recovery and verification limits](pi/profiles/default/docs/damage-control-setup.md).
+Default dependencies are installed with `pnpm --dir pi/profiles/default install --frozen-lockfile`, then linked with `bash scripts/pi-deps-link-setup --profile default`. Run `make check-pi-default` for grammar/loader readiness, typecheck, and tests. Existing legacy Pi targets remain independent. Damage Control loads on normal default-profile `pi` launches; use `/reload` for an existing session. See [default setup, explicit recovery and verification limits](pi/profiles/default/docs/damage-control-setup.md).
 
 ### Onclave backfill operations
 

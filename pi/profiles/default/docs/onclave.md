@@ -7,7 +7,7 @@ subagents or other instances. These rules travel with the tools, not global
 
 ## Loading and connection
 
-Bare `pp` loads `extensions/onclave-pi.ts`, a thin loader for
+Bare `pi` loads `extensions/onclave-pi.ts`, a thin loader for
 `modules/onclave/extensions/onclave-pi/src/onclave-pi.ts` in the owning dotfiles
 checkout. Initialize that module and install its pnpm workspace dependencies.
 The adapter requires Pi 0.85.x, including `agent_settled` lifecycle support.

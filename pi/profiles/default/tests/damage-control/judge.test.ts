@@ -7,21 +7,21 @@ import { modelFixture, registryFixture } from "../helpers/model-selection.ts";
 import { Context, DIRECT_INPUT_LIMIT } from "../../lib/damage-control/context.ts";
 import type { Evidence, PendingCall, Settings } from "../../lib/damage-control/types.ts";
 
-const settings: Settings = { version: 1, judge: { enabled: true, provider: "openai-codex", model: "luna", reasoning: "high", deadlineMs: 50, retries: 0 }, parseBudgetMs: 50 };
+const settings: Settings = { version: 1, judge: { enabled: true, provider: "openai", model: "luna", reasoning: "high", deadlineMs: 50, retries: 0 }, parseBudgetMs: 50 };
 const pending: PendingCall = { callId: "call-1", fingerprint: "fp", generation: 3 };
 function evidence(applicability: "candidate" | "confirmed" = "candidate"): Evidence {
   return { callId: "call-1", operation: "rm ./scratch", operator: [{ source: "interactive", text: "remove the scratch fixture" }], conversation: [{ role: "user", text: "Remove the scratch fixture." }, { role: "assistant", text: "I will remove only the generated scratch output." }], pendingCall: { tool: "bash", input: { command: "rm ./scratch" }, cwd: "/work" }, untrusted: { effects: [], matches: [{ ruleId: "delete", action: applicability === "confirmed" ? "block" : "review", applicability, reason: "delete match", effects: [] }], uncertainties: ["parser detail must stay local"] }, omissions: [] };
 }
 function textResponse(value: unknown, stopReason: "stop" | "error" | "aborted" = "stop", errorMessage?: string): AssistantMessage {
   return {
-    role: "assistant", api: "openai-codex-responses", provider: "openai-codex", model: "gpt-6-luna", timestamp: 0,
+    role: "assistant", api: "openai-responses", provider: "openai", model: "gpt-6-luna", timestamp: 0,
     content: [{ type: "text", text: JSON.stringify(value) }], stopReason, errorMessage,
     usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
   };
 }
 function context(complete: ReturnType<typeof vi.fn<ExtensionContext["modelRegistry"]["complete"]>>, signal?: AbortSignal, authenticated = true): Pick<ExtensionContext, "modelRegistry" | "signal"> {
-  const models = [modelFixture("openai-codex", "gpt-5.6-luna"), modelFixture("openai-codex", "gpt-6-luna")];
-  const registry = registryFixture(models, authenticated ? ["openai-codex"] : []);
+  const models = [modelFixture("openai", "gpt-5.6-luna"), modelFixture("openai", "gpt-6-luna")];
+  const registry = registryFixture(models, authenticated ? ["openai"] : []);
   vi.spyOn(registry, "complete").mockImplementation(complete);
   return { modelRegistry: registry, signal };
 }
@@ -32,14 +32,14 @@ describe("Luna review", () => {
   it("uses the maintained prompt, exact Luna model, high reasoning, zero retries, and one completion", async () => {
     const complete = vi.fn().mockResolvedValue(textResponse(valid, "stop"));
     const ctx = context(complete);
-    await expect(review(evidence(), ctx, settings, pending, () => 3)).resolves.toMatchObject({ status: "valid", ...valid, diagnostics: { version: 1, callId: "call-1", provider: "openai-codex", model: "gpt-6-luna", promptTruncated: false, outputTruncated: false, stopReason: "stop", verdict: "allow" } });
+    await expect(review(evidence(), ctx, settings, pending, () => 3)).resolves.toMatchObject({ status: "valid", ...valid, diagnostics: { version: 1, callId: "call-1", provider: "openai", model: "gpt-6-luna", promptTruncated: false, outputTruncated: false, stopReason: "stop", verdict: "allow" } });
     expect(complete).toHaveBeenCalledTimes(1);
     const [model, request, options] = complete.mock.calls[0] as unknown as [{ provider: string; id: string }, { messages: [{ content: [{ text: string }] }] }, { reasoningEffort: string; maxRetries: number; signal: AbortSignal }];
     const contract = readFileSync(new URL("../../lib/damage-control/judge-prompt.md", import.meta.url), "utf8").trim();
     expect(contract).toContain("uses unchanged, and then removes");
     expect(contract).toContain("confirmed `review` rule");
     expect(contract).toContain("identity or path is reassigned");
-    expect(model).toMatchObject({ provider: "openai-codex", id: "gpt-6-luna" });
+    expect(model).toMatchObject({ provider: "openai", id: "gpt-6-luna" });
     expect(options).toMatchObject({ reasoningEffort: "high", maxRetries: 0 });
     expect(request.messages[0].content[0].text.startsWith(`${contract}\n\nEVIDENCE JSON:\n`)).toBe(true);
     const outbound = request.messages[0].content[0].text;

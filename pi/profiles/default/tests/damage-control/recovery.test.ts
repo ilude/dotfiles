@@ -117,7 +117,7 @@ describe("independent damage-control recovery helper", () => {
     expect(setStatus).toHaveBeenCalledWith("damage-control-recovery", "damage-control: recovery");
     expect(context.ui.confirm).toHaveBeenCalledWith(
       "DAMAGE-CONTROL RECOVERY",
-      expect.stringContaining("relaunch pp normally"),
+      expect.stringContaining("relaunch pi normally"),
       { signal: undefined },
     );
   });

@@ -1,5 +1,30 @@
 # Changelog
 
+## 2026-10-11: Align native Pi launches with default
+
+- `~/.pi/agent` now points to default rather than legacy. Pi launched without an interactive shell wrapper previously selected legacy settings despite default's working OpenAI login; wrapper-only acceptance tests missed the operator's actual launch path. Installation and stopped-process migration now retain the default target. Legacy files remain unchanged.
+
+## 2026-10-11: Clarify the legacy Pi preservation boundary
+
+- Root agent guidance defines legacy as the preserved previous customized setup, not a routine maintenance target. Access, launches, changes and commits require a specific operator request; merely mentioning legacy or seeing runtime metadata in Git status does not authorize work there. Current Pi work remains in the default profile.
+
+## 2026-10-11: Make pi the sole public profile launcher
+
+- Removed the public `pp` command. Interactive zsh and PowerShell now invoke internal profile helpers directly through `pi`; installer-managed obsolete `pp` links are removed.
+- Bare `pi` still selects the default profile. `pi --profile <name>` and the existing `-p <name>` alias retain profile selection; use `--print` or `-- -p` for Pi print mode. Profile-aware resume, Damage Control startup preflight and explicit `pi --dc-recovery` behavior are preserved. Legacy runtime and historical documentation remain unchanged.
+
+## 2026-10-11: Use native OpenAI subscription routing in default Pi
+
+- Default Pi targets the native `openai` provider used by Pi 1.1.0's ChatGPT subscription login, rather than the historic `openai-codex` provider. The default remains Sol 6.1; family shortcuts, internal Luna selection, and subscription accounting follow the native provider. Legacy stays a historical profile and is not migrated.
+- Model refresh and visibility preserve Pi's native provider, authentication, API descriptors, and classifier filtering instead of rebuilding OpenAI through the legacy Codex catalog transport. Profile credentials remain isolated; installation does not copy logins from legacy or initiate account authorization.
+
+## 2026-10-11: Repair Linux Pi launching and unattended setup
+
+- Linux and WSL installation now link the executable `pp` launcher into `~/.local/bin`. The launcher resolves its source through symlinks so repository-owned profiles and startup preflight remain intact. Previously the shell's `pi` wrapper called a launcher that installation neither linked nor made executable.
+- Shared Claude settings no longer override Opus with a Bedrock model ID. Subscription launches use their native model routing; the explicit `ccyl --bedrock` route keeps its provider-specific override.
+- Linux setup uses noninteractive privilege escalation and package configuration, and propagates package-setup failures rather than continuing with an incomplete shell setup. Git authentication cannot wait for a terminal prompt, and Pi dependency installation uses frozen lockfiles without confirmation prompts. Existing credentials and profile isolation are preserved; installation does not perform interactive account authorization.
+- Pi global-package cleanup now compares exact dependency names from pnpm's JSON output. The previous substring match mistook `@sinclair/typebox` for `typebox`, failed its removal, and aborted installation before profile setup. A real unattended Rearden install now completes; optional private Onclave bootstrap still skips when the host's identity cannot decrypt it.
+
 ## 2026-10-10: Maintain Windows packages on every installer run
 
 - Normal `install.ps1` runs now ensure selected WinGet configuration groups and update all eligible installed WinGet applications, including unknown-version packages and applications outside the dotfiles lists. The timestamp-based `.dotfiles.lock` skip is removed; `-ForcePackages` remains accepted for compatibility and existing user pins are respected.

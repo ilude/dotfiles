@@ -3,7 +3,7 @@ import type { ModelRegistry, ModelRuntime } from "@earendil-works/pi-coding-agen
 import { compareModelVersions, modelFamilyVersion } from "./model-family.ts";
 
 const PROVIDER_LADDER = [
-	["openai-codex"],
+	["openai"],
 	["bedrock-mantle"],
 	["amazon-bedrock"],
 ] as const;
@@ -15,7 +15,7 @@ const MODEL_ALIASES: Readonly<Record<string, string>> = {
 	sol: "sol",
 	terra: "terra",
 };
-const CODEX_PROVIDER = "openai-codex";
+const CODEX_PROVIDER = "openai";
 export const PINNED_SOL_MODEL = "gpt-6.1-sol";
 type OpenAIFamily = "astra" | "sol" | "terra" | "luna";
 

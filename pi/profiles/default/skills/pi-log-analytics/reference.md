@@ -161,7 +161,7 @@ The [skill's read-only fallback](SKILL.md#read-only-fallback) permits `find`, `r
 
 ## Installation and checks
 
-The default profile owns `@duckdb/node-api@1.5.5-r.4` through pnpm. From the repository root, follow the normal default setup: frozen pnpm install in `pi/profiles/default`, then `bash scripts/pi-deps-link-setup --profile default`. Use `/reload` or a fresh `pp` session to activate installed code. No live reload is performed by validation.
+The default profile owns `@duckdb/node-api@1.5.5-r.4` through pnpm. From the repository root, follow the normal default setup: frozen pnpm install in `pi/profiles/default`, then `bash scripts/pi-deps-link-setup --profile default`. Use `/reload` or a fresh `pi` session to activate installed code. No live reload is performed by validation.
 
 From `pi/profiles/default/`:
 

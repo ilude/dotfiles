@@ -56,14 +56,14 @@ function repoRoot(): string {
 	return path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
 }
 
-function ppScript(): string {
-	return path.join(repoRoot(), "scripts", process.platform === "win32" ? "pp.ps1" : "pp");
+function profileLauncherScript(): string {
+	return path.join(repoRoot(), "scripts", process.platform === "win32" ? "pi-profile-launch.ps1" : "pi-profile-launch");
 }
 
 function currentProfileName(): string {
 	const name = activeProfileName();
 	if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(name) || name === "." || name === "..") {
-		throw new Error(`Cannot derive pp profile name from ${profileDir()}.`);
+		throw new Error(`Cannot derive pi profile name from ${profileDir()}.`);
 	}
 	return name;
 }
@@ -93,12 +93,12 @@ function quoteShell(value: string): string {
 	return `'${value.replace(/'/g, "'\\''")}'`;
 }
 
-function ppCommand(args: string[] = []): string {
+function profileLauncherCommand(args: string[] = []): string {
 	const profile = currentProfileName();
 	if (process.platform === "win32") {
-		return ["&", quotePowerShell(ppScript()), "-p", quotePowerShell(profile), ...args.map(quotePowerShell)].join(" ");
+		return ["&", quotePowerShell(profileLauncherScript()), "-p", quotePowerShell(profile), ...args.map(quotePowerShell)].join(" ");
 	}
-	return [quoteShell(ppScript()), "-p", quoteShell(profile), ...args.map(quoteShell)].join(" ");
+	return ["bash", quoteShell(profileLauncherScript()), "-p", quoteShell(profile), ...args.map(quoteShell)].join(" ");
 }
 
 function buildPiArgsForSession(sessionFile: string): string[] {
@@ -381,7 +381,7 @@ async function launchNewInstance(input: { cwd: string; title?: string; session?:
 		const { resolveResumeSession } = await import("../lib/herdr-resume.ts");
 		const target = await resolveResumeSession(input.session, path.join(getAgentDir(), "sessions"), input.signal);
 		const title = input.title || defaultTitle(target.cwd);
-		const command = ppCommand(buildPiArgsForSession(target.file));
+		const command = profileLauncherCommand(buildPiArgsForSession(target.file));
 		const plan = process.platform === "darwin" ? buildGhosttyPlan({ cwd: target.cwd, initialInput: command }) : buildWindowsTerminalPlan({ cwd: target.cwd, title, command });
 		const result = launch(plan);
 		if (!result.launched) throw new Error(result.error ? `Terminal launch failed: ${result.error}` : plan.reason ?? "Terminal launch failed.");
@@ -392,7 +392,7 @@ async function launchNewInstance(input: { cwd: string; title?: string; session?:
 		const receipt = await createHerdrPiTab(input.cwd, title, undefined, undefined, Boolean(input.title));
 		return { ...receipt, cwd: input.cwd, title, launched: true };
 	}
-	const plan = process.platform === "darwin" ? buildGhosttyPlan({ cwd: input.cwd, initialInput: ppCommand() }) : buildWindowsTerminalPlan({ cwd: input.cwd, title, command: ppCommand() });
+	const plan = process.platform === "darwin" ? buildGhosttyPlan({ cwd: input.cwd, initialInput: profileLauncherCommand() }) : buildWindowsTerminalPlan({ cwd: input.cwd, title, command: profileLauncherCommand() });
 	const result = launch(plan);
 	if (!result.launched) throw new Error(result.error ? `Terminal launch failed: ${result.error}` : plan.reason ?? "Terminal launch failed.");
 	return { cwd: input.cwd, title, launched: true };
@@ -452,10 +452,10 @@ async function executeBranch(args: string, ctx: CommandContext, pi: ExtensionAPI
 	pi.appendEntry(BRANCH_EVIDENCE_TYPE, evidence);
 	if (isHerdr()) {
 		try { await createHerdrPiTab(cwd, title, branchSessionFile, undefined, Boolean(args.trim())); }
-		catch (error) { throw new Error(`${String(error)}\nBranch retained: ${branchSessionFile}\nResume with pp --session ${quotePowerShell(branchSessionFile)}`); }
+		catch (error) { throw new Error(`${String(error)}\nBranch retained: ${branchSessionFile}\nResume with pi --session ${quotePowerShell(branchSessionFile)}`); }
 		return;
 	}
-	const command = ppCommand(buildPiArgsForSession(branchSessionFile));
+	const command = profileLauncherCommand(buildPiArgsForSession(branchSessionFile));
 	const plan = process.platform === "darwin" ? buildGhosttyPlan({ cwd, initialInput: command }) : buildWindowsTerminalPlan({ cwd, title, command });
 	const result = launch(plan);
 	if (!result.launched) ctx.ui.notify(result.error ? `Terminal launch failed: ${result.error}` : plan.reason ?? "Terminal launch failed.", "error");

@@ -9,7 +9,7 @@ import type { Policy, Settings, ToolRequest } from "../../lib/damage-control/typ
 import type { PathFacts } from "../../lib/damage-control/paths.ts";
 
 const policy = { version: 1, commands: [], paths: { zeroAccess: [], exclusions: [], readOnly: [], noDelete: [], writeConfirm: [], readConfirm: [], generated: [], scratch: [], integrity: [] } } satisfies Policy;
-const settings = { version: 1, judge: { enabled: false, provider: "openai-codex", model: "luna", reasoning: "high", deadlineMs: 1000, retries: 0 }, parseBudgetMs: 1000 } satisfies Settings;
+const settings = { version: 1, judge: { enabled: false, provider: "openai", model: "luna", reasoning: "high", deadlineMs: 1000, retries: 0 }, parseBudgetMs: 1000 } satisfies Settings;
 const dependencies: AnalysisDependencies = { policy, settings };
 const facts: PathFacts = { platform: process.platform === "win32" ? "win32" : "posix", cwd: process.cwd(), repo: process.cwd(), profile: process.cwd(), realpath, home: process.env.HOME ?? process.cwd() };
 const context: CreationFacts = { wasCreated: () => false, wasDockerCreated: () => false };

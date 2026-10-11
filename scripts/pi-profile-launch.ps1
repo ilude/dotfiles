@@ -1,5 +1,5 @@
 function Write-Usage {
-  Write-Error 'usage: pp [-p|--profile <name>] [--dc-recovery] [--resume|--session <path-or-id>] [--] [pi arguments...]'
+  Write-Error 'usage: pi [-p|--profile <name>] [--dc-recovery] [--resume|--session <path-or-id>] [--] [pi arguments...]'
   exit 2
 }
 
@@ -8,7 +8,7 @@ function Write-Usage {
 $piExecutable = Get-Command pi -CommandType Application, ExternalScript -ErrorAction SilentlyContinue |
   Select-Object -First 1
 if (-not $piExecutable) {
-  Write-Error 'pp: pi executable is unavailable'
+  Write-Error 'pi: pi executable is unavailable'
   exit 1
 }
 $piExecutablePath = $piExecutable.Source
@@ -48,7 +48,7 @@ function Test-DamageControlJavaScript {
 
   $nodeCommand = Get-Command node -ErrorAction SilentlyContinue
   if (-not $nodeCommand) {
-    Write-Error 'pp: damage-control preflight failed: node is unavailable'
+    Write-Error 'pi: damage-control preflight failed: node is unavailable'
     return $false
   }
   & $nodeCommand.Source $Preflight $Target
@@ -105,18 +105,18 @@ for ($index = 0; $index -lt $args.Count; $index++) {
 }
 
 if ($profileName -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]*$' -or $profileName -in '.', '..') {
-  Write-Error "pp: invalid profile name: $profileName"
+  Write-Error "pi: invalid profile name: $profileName"
   exit 2
 }
 if ($dcRecovery -and $profileName -ne 'default') {
-  Write-Error 'pp: --dc-recovery is available only for the default profile'
+  Write-Error 'pi: --dc-recovery is available only for the default profile'
   exit 2
 }
 
 if ($profileName -in 'default', 'legacy') {
   $profileDirectory = Join-Path $PSScriptRoot "..\pi\profiles\$profileName"
   if (-not (Test-Path -LiteralPath $profileDirectory -PathType Container)) {
-    Write-Error "pp: repository profile is not initialized: $profileName. Run scripts/migrate-pi-profiles.ps1 after closing Pi."
+    Write-Error "pi: repository profile is not initialized: $profileName. Run scripts/migrate-pi-profiles.ps1 after closing Pi."
     exit 1
   }
 } else {
@@ -141,13 +141,13 @@ if ($profileName -eq 'default') {
       & $piExecutablePath --no-extensions --extension $recoveryHelper @recoveryArguments
       exit $LASTEXITCODE
     }
-    Write-Error 'pp: recovery helper is unavailable; starting tools-disabled, extensions-disabled repair mode'
+    Write-Error 'pi: recovery helper is unavailable; starting tools-disabled, extensions-disabled repair mode'
   } elseif (Test-DamageControlJavaScript $preflight $bootstrap) {
     & $piExecutablePath @piArguments
     exit $LASTEXITCODE
   } else {
-    Write-Error 'pp: default damage-control bootstrap is unavailable; starting tools-disabled, extensions-disabled repair mode'
-    Write-Error 'pp: repair the default profile, exit Pi, then relaunch pp normally; recovery is never selected automatically'
+    Write-Error 'pi: default damage-control bootstrap is unavailable; starting tools-disabled, extensions-disabled repair mode'
+    Write-Error 'pi: repair the default profile, exit Pi, then relaunch pi normally; recovery is never selected automatically'
   }
 
   [string[]] $repairArguments = @(Remove-UnsafeArguments $piArguments.ToArray() $true)

@@ -83,13 +83,13 @@ if (-not (Test-Path -LiteralPath $defaultMarker)) {
 $rootReadme = @'
 # Pi Profiles
 
-`pp` launches Pi with an isolated profile directory.
+`pi` launches Pi with an isolated profile directory.
 
-- `pp` uses `pi/profiles/default/`.
-- `pp -p legacy` uses `pi/profiles/legacy/`, which contains the previous customized Pi setup and its local runtime state.
+- `pi` uses `pi/profiles/default/`.
+- `pi --profile legacy` uses `pi/profiles/legacy/`, which contains the previous customized Pi setup and its local runtime state.
 - Other named profiles use `~/.pi/profiles/<name>/`.
 
-The compatibility path `~/.pi/agent` points to the legacy profile so direct `pi` invocations retain the previous behavior.
+The native path `~/.pi/agent` points to default so direct `pi` invocations and shell launches use the same active profile.
 '@
 Set-Content -LiteralPath (Join-Path $piRoot 'README.md') -Value $rootReadme -Encoding utf8NoBOM
 
@@ -118,14 +118,14 @@ if (Test-Path -LiteralPath $agentPath) {
   Remove-DirectoryLink -Path $agentPath
 }
 
-New-Item -ItemType Junction -Path $agentPath -Target $legacyProfile | Out-Null
+New-Item -ItemType Junction -Path $agentPath -Target $defaultProfile | Out-Null
 
 $resolvedAgent = (Get-Item -LiteralPath $agentPath -Force).Target
-if ([IO.Path]::GetFullPath($resolvedAgent) -ne [IO.Path]::GetFullPath($legacyProfile)) {
+if ([IO.Path]::GetFullPath($resolvedAgent) -ne [IO.Path]::GetFullPath($defaultProfile)) {
   throw "Pi agent compatibility junction has the wrong target: $resolvedAgent"
 }
 
 Write-Host "Default profile: $defaultProfile"
 Write-Host "Legacy profile:  $legacyProfile"
-Write-Host "Pi compatibility: $agentPath -> $legacyProfile"
-Write-Host 'Migration complete. Run pp for the clean default profile or pp -p legacy for the previous setup.'
+Write-Host "Pi native profile: $agentPath -> $defaultProfile"
+Write-Host 'Migration complete. Run pi for the clean default profile or pi --profile legacy for the previous setup.'

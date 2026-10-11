@@ -19,8 +19,8 @@ vi.mock("@earendil-works/pi-coding-agent", async (importOriginal) => {
 	return { ...original, createBashTool: (cwd: string) => ({ ...original.createBashTool(cwd), execute: doubles.shell }) };
 });
 
-const model: Model<"openai-codex-responses"> = {
-	id: "gpt-6-luna", name: "offline", api: "openai-codex-responses", provider: "openai-codex",
+const model: Model<"openai-responses"> = {
+	id: "gpt-6-luna", name: "offline", api: "openai-responses", provider: "openai",
 	baseUrl: "https://unused.invalid", reasoning: false, input: ["text"],
 	cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 1000, maxTokens: 1000,
 };
@@ -112,8 +112,8 @@ it.each([false, true])("retries the same response context after a completed tool
 	);
 	const { run } = start();
 	const result = await run;
-	expect(result.model).toBe("openai-codex/gpt-6-luna:low");
-	expect(doubles.getAvailable).toHaveBeenCalledWith("openai-codex", { signal: expect.any(AbortSignal) });
+	expect(result.model).toBe("openai/gpt-6-luna:low");
+	expect(doubles.getAvailable).toHaveBeenCalledWith("openai", { signal: expect.any(AbortSignal) });
 	expect(commits).toEqual(["child commit", "parent commit"]);
 	expect(requests[2]).toEqual(requests[1]);
 	expect(requests[2]!.messages.filter(item => item.role === "user")).toHaveLength(1);
@@ -225,7 +225,7 @@ it("reports a retained index reference without losing confirmed publication", as
 	expect(result.text).toBe("No commits created.\nPreserved index content: stash@{0}\nPushed.");
 });
 
-const haiku = { ...model, id: "claude-haiku-4-5", provider: "anthropic", api: "anthropic-messages" } as unknown as Model<"openai-codex-responses">;
+const haiku = { ...model, id: "claude-haiku-4-5", provider: "anthropic", api: "anthropic-messages" } as unknown as Model<"openai-responses">;
 const withHaiku = () => doubles.getAvailable.mockImplementation(async provider => provider === "anthropic"
 	? [{ ...haiku, id: "claude-haiku-4-5-20251001" }, { ...haiku, id: "claude-haiku-4-4" }, haiku]
 	: [model]);

@@ -18,13 +18,13 @@ describe("subagent definitions",()=>{
  it.each(["/model", "provider/", " provider/model"])("rejects incomplete model %s",(model)=>{expect(()=>resolveModel(model,undefined)).toThrow(/Explicit/)});
  it("requires explicit provider/model",()=>{expect(()=>resolveModel(undefined,undefined)).toThrow(/Explicit/);expect(resolveModel("openai-codex/model",undefined)).toEqual({provider:"openai-codex",id:"model"})});
  it("resolves an exact bare model through the provider ladder",()=>{
-  const got=resolveModel("gpt",undefined,registry([model("bedrock-mantle","gpt"),model("openai-codex","gpt")],["bedrock-mantle","openai-codex"]));
-  expect(got).toEqual({provider:"openai-codex",id:"gpt"});
+  const got=resolveModel("gpt",undefined,registry([model("bedrock-mantle","gpt"),model("openai","gpt")],["bedrock-mantle","openai"]));
+  expect(got).toEqual({provider:"openai",id:"gpt"});
  });
  it("accepts a full bare model name and prefers subscription over AWS",()=>{
-  const models=[model("amazon-bedrock","openai.gpt-5.6-sol"),model("bedrock-mantle","openai.gpt-5.6-sol"),model("openai-codex","gpt-5.6-sol")];
-  const got=resolveModel("gpt-5.6-sol",undefined,registry(models,["amazon-bedrock","bedrock-mantle","openai-codex"]));
-  expect(got).toEqual({provider:"openai-codex",id:"gpt-5.6-sol"});
+  const models=[model("amazon-bedrock","openai.gpt-5.6-sol"),model("bedrock-mantle","openai.gpt-5.6-sol"),model("openai","gpt-5.6-sol")];
+  const got=resolveModel("gpt-5.6-sol",undefined,registry(models,["amazon-bedrock","bedrock-mantle","openai"]));
+  expect(got).toEqual({provider:"openai",id:"gpt-5.6-sol"});
  });
  it("falls back from subscription to Mantle before native Bedrock",()=>{
   const models=[model("amazon-bedrock","anthropic.claude-fable-5"),model("bedrock-mantle","anthropic.claude-fable-5")];
@@ -32,22 +32,22 @@ describe("subagent definitions",()=>{
   expect(got).toEqual({provider:"bedrock-mantle",id:"anthropic.claude-fable-5"});
  });
  it("reports preferred-provider not-found errors",()=>{
-  expect(()=>resolveModel("missing",undefined,registry([model("openai-codex","gpt")],["openai-codex"]))).toThrow(/No configured subscription or AWS model/);
+  expect(()=>resolveModel("missing",undefined,registry([model("openai","gpt")],["openai"]))).toThrow(/No configured subscription or AWS model/);
  });
  it("does not resolve a similar model from an unapproved provider",()=>{
-  expect(()=>resolveModel("sol",undefined,registry([model("openrouter","upstage/solar-pro4")],["openrouter"]))).toThrow(/No authenticated openai-codex sol model/);
+  expect(()=>resolveModel("sol",undefined,registry([model("openrouter","upstage/solar-pro4")],["openrouter"]))).toThrow(/No authenticated openai sol model/);
  });
  it.each(["astra", "terra", "luna"])("resolves the latest %s default from the supplied registry", family=>{
-  const source=registry([model("openai-codex",`gpt-6-${family}`),model("openai-codex",`gpt-7-${family}`)],["openai-codex"]);
-  expect(resolveModel(undefined,family,source)).toEqual({provider:"openai-codex",id:`gpt-7-${family}`});
+  const source=registry([model("openai",`gpt-6-${family}`),model("openai",`gpt-7-${family}`)],["openai"]);
+  expect(resolveModel(undefined,family,source)).toEqual({provider:"openai",id:`gpt-7-${family}`});
  });
  it("routes the Sol role default to 6.1 while preserving explicit 5.6 selection",()=>{
-  const source=registry([model("openai-codex","gpt-5.6-sol"),model("openai-codex","gpt-6-sol"),model("openai-codex","gpt-6.1-sol"),model("openai-codex","gpt-7-sol")],["openai-codex"]);
-  expect(resolveModel(undefined,"sol",source)).toEqual({provider:"openai-codex",id:"gpt-6.1-sol"});
+  const source=registry([model("openai","gpt-5.6-sol"),model("openai","gpt-6-sol"),model("openai","gpt-6.1-sol"),model("openai","gpt-7-sol")],["openai"]);
+  expect(resolveModel(undefined,"sol",source)).toEqual({provider:"openai",id:"gpt-6.1-sol"});
   expect(resolveModel("openai-codex/gpt-5.6-sol","sol",source)).toEqual({provider:"openai-codex",id:"gpt-5.6-sol"});
  });
  it("uses the canonical bare model before effort restrictions",()=>{
-  const resolved=resolveModel("luna",undefined,registry([model("openai-codex","gpt-5.6-luna")],["openai-codex"]));
+  const resolved=resolveModel("luna",undefined,registry([model("openai","gpt-5.6-luna")],["openai"]));
   expect(()=>resolveAgentEffort("strategist",`${resolved.provider}/${resolved.id}`,"low","high")).toThrow(/below high/);
  });
  it("rejects Luna Strategist effort below high without restricting stronger models",()=>{

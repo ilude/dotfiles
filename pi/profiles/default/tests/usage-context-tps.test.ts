@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync, appendFileSync, readFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync, appendFileSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
@@ -8,10 +8,14 @@ import codex from "../extensions/codex-status.ts";
 import context from "../extensions/context.ts";
 import tps from "../extensions/tps-tracker.ts";
 import clear from "../extensions/clear.ts";
-import { formatCacheUsage, formatQuota, formatResetCredits, formatUsage, paceColor, readCacheUsage, recordCacheUsage, REFRESH_MS, RESET_CREDITS_ENDPOINT, USAGE_PAGE } from "../lib/codex-usage.ts";
+import { formatCacheUsage, formatQuota, formatResetCredits, formatUsage, paceColor, readCacheUsage, recordCacheUsage, resolveCodexAuth, REFRESH_MS, RESET_CREDITS_ENDPOINT, USAGE_PAGE } from "../lib/codex-usage.ts";
 
 import { createEventBus } from "../node_modules/@earendil-works/pi-coding-agent/dist/core/event-bus.js";
 import { RELOAD_REQUEST } from "../lib/profile-reload-events.ts";
+vi.mock("node:os", async importOriginal => {
+  const original = await importOriginal<typeof import("node:os")>();
+  return { ...original, homedir: () => process.env.PI_CODING_AGENT_DIR ?? original.homedir() };
+});
 vi.mock("../lib/bedrock/ledger.ts", () => ({
   summarize: async () => ({ month: "test", records: [], cost: 0, unpriced: 0, baseline: 0 }),
   formatUsage: () => "Bedrock: no local usage recorded this month.",
@@ -35,7 +39,7 @@ function runtime(register: (pi: ExtensionAPI) => void, sm = SessionManager.inMem
     getSystemPrompt: () => "x".repeat(40),
     getSystemPromptOptions: () => ({ contextFiles: [{ path: "AGENTS.md", content: "rules" }], selectedTools: ["read"], skills: [] }),
     getContextUsage: () => ({ tokens: 100, contextWindow: 10000, percent: 1 }),
-    model: { provider: "openai-codex", id: "test", contextWindow: 10000 },
+    model: { provider: "openai", id: "test", contextWindow: 10000 },
   };
   const events = createEventBus();
   events.on(RELOAD_REQUEST, reply => (reply as Function)({ needed: true }));
@@ -66,19 +70,35 @@ const resetCredits = { available_count: 2, credits: [
   { status: "available", expires_at: "2026-01-02T03:04:00Z" },
   { status: "available", expires_at: "2026-02-03T04:05:00Z" },
 ] };
-const assistant = (output = 100, stopReason = "stop") => ({ role: "assistant", provider: "openai-codex", model: "test", api: "openai-codex-responses", timestamp: Date.now(), content: [{ type: "text", text: "hello" }], usage: { input: 10, cacheRead: 90, cacheWrite: 0, output, totalTokens: 100 + output, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, stopReason });
+const assistant = (output = 100, stopReason = "stop") => ({ role: "assistant", provider: "openai", model: "test", api: "openai-responses", timestamp: Date.now(), content: [{ type: "text", text: "hello" }], usage: { input: 10, cacheRead: 90, cacheWrite: 0, output, totalTokens: 100 + output, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, stopReason });
 const flush = () => vi.advanceTimersByTimeAsync(0);
 let dir: string;
 beforeEach(() => {
   vi.useFakeTimers();
   dir = mkdtempSync(join(tmpdir(), "pi-usage-port-"));
   vi.stubEnv("PI_CODING_AGENT_DIR", dir);
-  writeFileSync(join(dir, "auth.json"), JSON.stringify({ "openai-codex": { access: "synthetic-token", accountId: "synthetic-account" } }));
+  const access = `header.${Buffer.from(JSON.stringify({ "https://api.openai.com/auth": { chatgpt_account_id: "synthetic-account" } })).toString("base64url")}.signature`;
+  writeFileSync(join(dir, "auth.json"), JSON.stringify({ openai: { type: "oauth", access, refresh: "synthetic-refresh", expires: Date.now() + 3600000, clientId: "synthetic-client", scopes: [] } }));
   vi.stubGlobal("fetch", vi.fn(async (url: string | URL) => new Response(JSON.stringify(String(url) === RESET_CREDITS_ENDPOINT ? resetCredits : usage))));
 });
 afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.restoreAllMocks(); rmSync(dir, { recursive: true, force: true }); });
 
 describe("Codex usage", () => {
+  it("uses native Pi OpenAI OAuth auth and rejects a plain API key", () => {
+    writeFileSync(join(dir, "auth.json"), JSON.stringify({ openai: { type: "api_key", key: "synthetic-key" } }));
+    expect(() => resolveCodexAuth()).toThrow("use Pi /login");
+  });
+
+  it("takes the account claim from the selected native token when legacy and CLI credentials coexist", () => {
+    const access = `header.${Buffer.from(JSON.stringify({ "https://api.openai.com/auth": { chatgpt_account_id: "native-account" } })).toString("base64url")}.signature`;
+    writeFileSync(join(dir, "auth.json"), JSON.stringify({ openai: { type: "oauth", access }, "openai-codex": { access: "legacy-token", accountId: "legacy-account" } }));
+    mkdirSync(join(dir, ".codex"));
+    writeFileSync(join(dir, ".codex", "auth.json"), JSON.stringify({ tokens: { access_token: "cli-token", account_id: "cli-account" } }));
+    expect(resolveCodexAuth()).toEqual({ accessToken: access, accountId: "native-account" });
+    writeFileSync(join(dir, "auth.json"), JSON.stringify({ openai: { type: "oauth", access: "native-without-claim", accountId: "unrelated-account" }, "openai-codex": { access: "legacy-token", accountId: "legacy-account" } }));
+    expect(resolveCodexAuth()).toEqual({ accessToken: "native-without-claim", accountId: undefined });
+  });
+
   it("shows a startup report outside model context, shares its fetch with the footer, and refreshes", async () => {
     const r = runtime(codex);
     await r.emit("session_start", { reason: "startup" });
@@ -107,7 +127,7 @@ describe("Codex usage", () => {
     expect(r.sm.buildSessionContext().messages).toEqual([]);
     expect(r.statuses.get("codex")).toContain("5h 25%");
     expect(fetch).toHaveBeenCalledTimes(2);
-    expect(vi.mocked(fetch).mock.calls[0][1]?.headers).toMatchObject({ authorization: "Bearer synthetic-token", "chatgpt-account-id": "synthetic-account" });
+    expect(vi.mocked(fetch).mock.calls[0][1]?.headers).toMatchObject({ authorization: expect.stringMatching(/^Bearer header\./), "chatgpt-account-id": "synthetic-account" });
     await r.emit("message_end", { message: assistant() });
     await r.commands.get("usage").handler("", r.ctx);
     const refreshed = (r.reports()[1] as any).data.text;

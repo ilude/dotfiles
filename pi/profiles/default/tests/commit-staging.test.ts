@@ -13,8 +13,8 @@ const provider = vi.hoisted(() => ({ stream: vi.fn<ModelRuntime["streamSimple"]>
 vi.mock("../lib/model-runtime.ts", () => ({ createProfileModelRuntime: async () => ({
 	getAvailable: async () => [model], streamSimple: provider.stream,
 }) }));
-const model: Model<"openai-codex-responses"> = {
-	id: "gpt-6-luna", name: "offline", api: "openai-codex-responses", provider: "openai-codex", baseUrl: "https://unused.invalid",
+const model: Model<"openai-responses"> = {
+	id: "gpt-6-luna", name: "offline", api: "openai-responses", provider: "openai", baseUrl: "https://unused.invalid",
 	reasoning: false, input: ["text"], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 10000, maxTokens: 1000,
 };
 type Call = { name: string; arguments: Record<string, string> };

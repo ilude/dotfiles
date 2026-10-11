@@ -5,7 +5,7 @@ import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
 
 function fail(message, exitCode = 1) {
-  process.stderr.write(`pp: damage-control preflight failed: ${message}\n`);
+  process.stderr.write(`pi: damage-control preflight failed: ${message}\n`);
   process.exitCode = exitCode;
 }
 

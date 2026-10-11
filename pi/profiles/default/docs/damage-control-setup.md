@@ -27,7 +27,7 @@ Use the normal settled-only `/reload` boundary or a fresh session before launchi
 - New sessions clear bypass state.
 - `/dc scan` reviews current project-owned scripts without executing them and reuses unchanged completed results.
 - There is no `/dc status` command.
-- `pp --dc-recovery` remains available as an explicit maintenance path.
+- `pi --dc-recovery` remains available as an explicit maintenance path.
 
 Confirmed blocks, remote/cloud/live operations, Docker volumes, exfiltration, dynamic targets, and protected paths are not bypassed. Eligibility comes from parsed effects and canonical path facts for the whole invocation; a local command prefix does not make accompanying or unresolved effects eligible. Normal-policy review failures retain the approval path; Explorer inspection review failures deny without a mutation override. The default-profile Integrator has one separate deterministic allowance: only the unmodified canonical plan-integration helper, invoked alone with the runtime-issued Integrator manifest and authenticated parent-session provenance, runs without a prompt. Altered helper bytes, aliases, broadened manifests, missing provenance, or composed commands receive ordinary Damage Control enforcement. This does not change `/dc off` or either shell mode. `/do-it` dispatches the Integrator after the task-branch commit unless `--no-merge` is set; local closeout authority does not include push or deployment. Those remain orchestrator-owned when the plan explicitly authorizes them. Prepared Herdr successors use the same bounded helper authority for staged `integrate` and `cleanup`; the runtime handoff observes exact-origin retirement before cleanup. This does not grant general shell, pane-control, or detach authority.
 

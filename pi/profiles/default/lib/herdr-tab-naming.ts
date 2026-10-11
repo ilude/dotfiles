@@ -7,7 +7,7 @@ import { createProfileModelRuntime } from "./model-runtime.ts";
 import { resolveLatestCodexModelFromRuntime } from "./model-selection.ts";
 import { result, type HerdrCli } from "./herdr-cli.ts";
 
-export const NAMING_MODEL_PROVIDER = "openai-codex";
+export const NAMING_MODEL_PROVIDER = "openai";
 export const NAMING_MODEL_FAMILY = "luna";
 export const NAMING_MODEL = `${NAMING_MODEL_PROVIDER}/${NAMING_MODEL_FAMILY}`;
 export const NAMING_PROMPT = `You name the current coding session.

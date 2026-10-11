@@ -12,12 +12,13 @@ import modelVisibility, {
 import { createMockCtx, createMockPi } from "./helpers/mock-pi";
 
 describe("applyProviderFilter", () => {
-	it("re-registers built-in OAuth providers without legacy OAuth helpers", async () => {
+	it("preserves native descriptors and OAuth filtering without resolving an API key", async () => {
 		const registerProvider = vi.fn();
 		const model = {
-			provider: "openai-codex",
+			type: "chat",
+			provider: "openai",
 			name: "GPT-5.5",
-			api: "openai-codex-responses",
+			api: "openai-responses",
 			baseUrl: "https://chatgpt.com/backend-api/codex",
 			reasoning: true,
 			input: ["text"],
@@ -25,21 +26,28 @@ describe("applyProviderFilter", () => {
 			contextWindow: 200000,
 			maxTokens: 128000,
 		};
-		const ctx = {
-			modelRegistry: {
-				getAll: () => [
-					{ ...model, id: "gpt-5.5" },
-					{ ...model, id: "codex-auto-review", name: "Codex Auto Review" },
-				],
-				getApiKeyForProvider: async () => "oauth-token",
-				registerProvider,
-			},
-		};
-
-		await expect(applyProviderFilter(ctx, "openai-codex")).resolves.toEqual({
-			before: 2,
-			after: 1,
-		});
+		const models = [{ ...model, id: "gpt-5.5", inputLimits: { images: { maxPerMessage: 10 } } },
+			{ ...model, id: "codex-auto-review", name: "Codex Auto Review" }];
+		const classifier = { ...model, type: "classifier", id: "gpt-6-luna" };
+		const native = { id: "openai", api: { id: "openai-responses" }, auth: { oauth: {} },
+			classifiers: { "openai-decisions": {} },
+			getModels: () => models, getAllModels: () => [...models, classifier],
+			filterAllModels: (all, credential) => credential?.type === "oauth"
+				? all.filter((entry) => entry.type !== "classifier") : all };
+		const getApiKeyForProvider = vi.fn(async () => undefined);
+		const ctx = { modelRegistry: { getAll: () => models,
+			getProvider: () => native, getApiKeyForProvider, registerProvider } };
+		await expect(applyProviderFilter(ctx, "openai")).resolves.toEqual({ before: 2, after: 1 });
+		expect(getApiKeyForProvider).not.toHaveBeenCalled();
+		const wrapped = registerProvider.mock.calls[0][0];
+		expect(wrapped.api).toBe(native.api);
+		expect(wrapped.auth).toBe(native.auth);
+		expect(wrapped.classifiers).toBe(native.classifiers);
+		expect(wrapped.getModels()).toEqual([models[0]]);
+		expect(wrapped.getModels()[0]).toBe(models[0]);
+		expect(wrapped.getAllModels()).toEqual([models[0], classifier]);
+		expect(wrapped.filterAllModels([...models, classifier], { type: "oauth" })).toEqual([models[0]]);
+		expect(wrapped.filterAllModels([...models, classifier], { type: "api_key" })).toEqual([models[0], classifier]);
 	});
 
 });
@@ -49,7 +57,7 @@ describe("model visibility startup", () => {
 		const registerProvider = vi.fn();
 		const models = [
 			{
-				provider: "openai-codex",
+				provider: "openai",
 				id: "codex-auto-review",
 				name: "Codex Auto Review",
 				api: "responses",
@@ -61,7 +69,7 @@ describe("model visibility startup", () => {
 				maxTokens: 1,
 			},
 			{
-				provider: "openai-codex",
+				provider: "openai",
 				id: "gpt-5.5",
 				name: "GPT-5.5",
 				api: "responses",
@@ -79,6 +87,7 @@ describe("model visibility startup", () => {
 			sessionManager: { getSessionId: () => "test-session" },
 			modelRegistry: {
 				getAll: vi.fn(() => models),
+				getProvider: () => ({ id: "openai", getModels: () => models }),
 				getApiKeyForProvider: vi.fn(async () => {
 					pendingCredentials += 1;
 					return "token";
@@ -91,9 +100,9 @@ describe("model visibility startup", () => {
 		await pi._getHook("session_start")[0].handler({ reason: "startup" }, ctx);
 
 		expect(ctx.modelRegistry.getAll).toHaveBeenCalledOnce();
-		expect(pendingCredentials).toBe(1);
-		expect(registerProvider.mock.calls.map(([provider]) => provider)).toEqual([
-			"openai-codex",
+		expect(pendingCredentials).toBe(0);
+		expect(registerProvider.mock.calls.map(([provider]) => provider.id)).toEqual([
+			"openai",
 		]);
 	});
 });
@@ -110,13 +119,13 @@ describe("shouldHideModel", () => {
 
 	it("hides explicit blocklist entries", () => {
 		expect(
-			shouldHideModel("openai-codex", {
+			shouldHideModel("openai", {
 				id: "codex-auto-review",
 				name: "Codex Auto Review",
 			}),
 		).toBe(true);
 		expect(
-			shouldHideModel("openai-codex", {
+			shouldHideModel("openai", {
 				id: "gpt-6-sol",
 				name: "GPT-6 Sol",
 			}),
@@ -164,13 +173,13 @@ describe("shouldHideModel", () => {
 
 	it("keeps non-blocked modern models", () => {
 		expect(
-			shouldHideModel("openai-codex", { id: "gpt-5.5", name: "GPT-5.5" }),
+			shouldHideModel("openai", { id: "gpt-5.5", name: "GPT-5.5" }),
 		).toBe(false);
 		expect(
-			shouldHideModel("openai-codex", { id: "gpt-5.6-sol", name: "GPT-5.6 Sol" }),
+			shouldHideModel("openai", { id: "gpt-5.6-sol", name: "GPT-5.6 Sol" }),
 		).toBe(false);
 		expect(
-			shouldHideModel("openai-codex", { id: "gpt-6.1-sol", name: "GPT-6.1 Sol" }),
+			shouldHideModel("openai", { id: "gpt-6.1-sol", name: "GPT-6.1 Sol" }),
 		).toBe(false);
 		expect(
 			shouldHideModel("opencode", {

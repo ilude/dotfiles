@@ -4,7 +4,7 @@ import { review as actualReview } from "../../lib/damage-control/judge.ts";
 import { harness } from "./fixtures/fake-pi.ts";
 
 function actualJudge(complete: ReturnType<typeof vi.fn>) {
-  const model = { provider: "openai-codex", id: "gpt-5.6-luna" };
+  const model = { provider: "openai", id: "gpt-5.6-luna" };
   const modelRegistry = {
     getAll: vi.fn(() => [model]),
     hasConfiguredAuth: vi.fn(() => true),
@@ -84,7 +84,7 @@ it("uses only the current native branch after resume, reload, and tree navigatio
   expect(promptPayload(4).conversation).toEqual([]);
 });
 it("persists judge diagnostics as a custom entry without changing approval", async () => {
-  const diagnostics = { version: 1 as const, callId: "diagnostic-call", startedAt: "2026-09-11T00:00:00.000Z", endedAt: "2026-09-11T00:00:00.010Z", elapsedMs: 10, deadlineMs: 40000, provider: "openai-codex", model: "gpt-5.6-luna", effort: "high", maxTokens: 800, retries: 0, prompt: "redacted prompt", promptTruncated: false, promptRedacted: true, status: "valid" as const, verdict: "allow" as const };
+  const diagnostics = { version: 1 as const, callId: "diagnostic-call", startedAt: "2026-09-11T00:00:00.000Z", endedAt: "2026-09-11T00:00:00.010Z", elapsedMs: 10, deadlineMs: 40000, provider: "openai", model: "gpt-5.6-luna", effort: "high", maxTokens: 800, retries: 0, prompt: "redacted prompt", promptTruncated: false, promptRedacted: true, status: "valid" as const, verdict: "allow" as const };
   const h = await harness({ review: async () => ({ status: "valid" as const, verdict: "allow" as const, reason: "safe", dismissedCandidates: [], diagnostics }) });
   expect(await h.emit("tool_call", { toolName: "bash", toolCallId: "logged", input: { command: "rm -rf build-output" } })).toBeUndefined();
   expect(h.entries).toContainEqual(expect.objectContaining({ customType: "damage-control-judge-review-v1", data: diagnostics }));

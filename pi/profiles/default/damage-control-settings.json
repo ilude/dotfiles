@@ -2,7 +2,7 @@
   "version": 1,
   "judge": {
     "enabled": true,
-    "provider": "openai-codex",
+    "provider": "openai",
     "model": "luna",
     "reasoning": "high",
     "deadlineMs": 40000,

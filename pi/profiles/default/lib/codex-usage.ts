@@ -29,11 +29,17 @@ function json(file: string): Record<string, unknown> | undefined {
 }
 function text(value: unknown): string | undefined { return typeof value === "string" && value ? value : undefined; }
 export function resolveCodexAuth(): { accessToken: string; accountId?: string } {
-  const pi = object(json(join(profileDir(), "auth.json"))?.["openai-codex"]);
+  const native = object(json(join(profileDir(), "auth.json"))?.openai);
+  const codex = object(json(join(profileDir(), "auth.json"))?.["openai-codex"]);
   const cli = object(json(join(homedir(), ".codex", "auth.json"))?.tokens);
-  const accessToken = text(pi?.access) || text(cli?.access_token);
-  if (!accessToken) throw new Error("Login needed: use Pi /login for OpenAI Codex or codex login.");
-  let accountId = text(pi?.access) ? text(pi?.accountId) : text(cli?.account_id);
+  // Pi /login stores native provider credentials with an explicit discriminator.
+  // Do not use a plain OpenAI API key for this ChatGPT subscription endpoint.
+  const nativeAccess = native?.type === "oauth" ? text(native.access) : undefined;
+  const codexAccess = text(codex?.access);
+  const cliAccess = text(cli?.access_token);
+  const accessToken = nativeAccess || codexAccess || cliAccess;
+  if (!accessToken) throw new Error("Login needed: use Pi /login for OpenAI Codex.");
+  let accountId = nativeAccess ? undefined : codexAccess ? text(codex?.accountId) : text(cli?.account_id);
   if (!accountId) {
     try {
       const payload = JSON.parse(Buffer.from(accessToken.split(".")[1], "base64url").toString("utf8"));
@@ -143,7 +149,7 @@ export function formatUsage(usage: CodexUsage): string {
 export interface CacheObservation { model: string; input: number | null; cacheRead: number | null }
 function count(value: unknown): number | null { return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null; }
 export function recordCacheUsage(message: { provider: string; model: string; usage?: { input?: number; cacheRead?: number }; stopReason?: string }): void {
-  if (message.provider !== "openai-codex") return;
+  if (message.provider !== "openai") return;
   const failed = message.stopReason === "error" || message.stopReason === "aborted";
   const input = count(message.usage?.input), cacheRead = count(message.usage?.cacheRead);
   const unavailable = failed && !(input || cacheRead);

@@ -124,7 +124,7 @@ function formatStatusDirectory(cwd: string): string {
 
 function formatProviderName(provider: string | undefined): string | null {
 	if (!provider) return null;
-	if (provider === "openai-codex") return "codex";
+	if (provider === "openai") return "openai";
 	if (provider === "amazon-bedrock" || provider === "bedrock-mantle") return "bedrock";
 	return provider;
 }

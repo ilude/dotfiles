@@ -80,7 +80,7 @@ describe("production prepared admission", () => {
     vi.stubEnv("HERDR_ENV", "1");
     vi.stubEnv("PI_HERDR_PLAN_RUN", JSON.stringify(receipt()));
     const first = fixture(); first.start("origin");
-    // A bare pp subprocess inherits this environment, not the global owner.
+    // A pi launcher subprocess inherits this environment, not the global owner.
     expect({ ...process.env }).not.toHaveProperty("PI_HERDR_PLAN_RUN");
     delete globals[ownerKey];
     const ordinary = fixture(); ordinary.start("ordinary", []);
