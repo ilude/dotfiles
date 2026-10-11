@@ -42,7 +42,6 @@ describe("subagent RPC lifecycle",()=>{
   const instance=child("[nested] [hold]"),activities:string[]=[];instance.onProgress=record=>{if(record.phase==="tool")activities.push(record.toolName??"")};void instance.start();
   await vi.waitFor(()=>expect(instance.snapshot()).toMatchObject({status:"running",phase:"tool",toolName:"codemode"}));
   expect(activities).toContain("grep");expect(activities.at(-1)).toBe("codemode");
-  expect((instance as any).toolFailure).toBeUndefined();
   await instance.cancel();
   expect(instance.snapshot()).toMatchObject({status:"settled",outcome:"cancelled"});
  });

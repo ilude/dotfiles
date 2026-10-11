@@ -8,6 +8,21 @@ import { getBuiltinModels } from "@earendil-works/pi-ai/providers/all";
 import { buildBedrockModelRoutes, createBedrockRoutingStream } from "../lib/bedrock/provider.ts";
 import { codexHistory, discoveredClaudeIds } from "./fixtures/bedrock-cross-provider.ts";
 
+// Keep discovery controlled for the older Mantle protocol cases. The real
+// native model definitions, routing policy, and payload serializers stay intact;
+// newly added Runtime Sonnet/Haiku models must not silently remove these cases.
+vi.mock("@earendil-works/pi-ai/providers/all", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("@earendil-works/pi-ai/providers/all")>();
+	const runtimeIds = new Set(["us.anthropic.claude-fable-5-1", "us.anthropic.claude-opus-5-5"]);
+	return {
+		...actual,
+		getBuiltinModels: ((provider) => {
+			const models = actual.getBuiltinModels(provider);
+			return provider === "amazon-bedrock" ? models.filter(model => runtimeIds.has(model.id)) : models;
+		}) satisfies typeof actual.getBuiltinModels,
+	};
+});
+
 const routes = buildBedrockModelRoutes(discoveredClaudeIds);
 const mantleRoutes = routes.filter(route => route.transport === "mantle-anthropic");
 const rejection = () => new Response(JSON.stringify({ type: "error", error: { type: "invalid_request_error", message: "intercepted serialized request" } }), { status: 400, headers: { "content-type": "application/json" } });
@@ -33,7 +48,7 @@ function expectCompatibleMessages(payload: any) {
 }
 
 describe("Bedrock real adapter serialization", () => {
-	it("uses the four latest discovered model routes", () => {
+	it("selects the latest routes from the controlled discovery catalog", () => {
 		expect(routes.map(route => [route.model.id, route.target.id, route.transport])).toEqual([
 			["anthropic.claude-fable-5-1", "us.anthropic.claude-fable-5-1", "runtime"],
 			["anthropic.claude-opus-5-5", "us.anthropic.claude-opus-5-5", "runtime"],

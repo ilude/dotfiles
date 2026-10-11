@@ -8,6 +8,29 @@ Interactive zsh and PowerShell expose `pi` as the sole public launcher and invok
 - Other named profiles use `~/.pi/profiles/<name>/`.
 - `-p <name>` remains a profile-selection alias. Use `--print` for Pi print mode, or pass Pi's short `-p` after `--`.
 
+## Default installation and acceptance
+
+Normal Bash and PowerShell installation calls the same bounded stage,
+`bash scripts/pi-default-setup`, after installing the global Pi runtime. It uses
+frozen default-profile installs, links the matching runtime, checks runtime
+loading, and sets the native `~/.pi/agent` alias. Historical legacy dependencies
+are not installed or tested during normal setup or default CI.
+
+`node scripts/pi-setup-smoke.mjs --root <checkout>` then checks the actual Pi CLI
+in offline RPC mode. Native fallback is tested without `PI_CODING_AGENT_DIR`;
+the internal wrapper must load the same default configuration and runtime model
+definition. The probe sends no model prompt and disables discovered resources
+and network activity. Other runtime checks cover the safety bootstrap separately.
+Without credentials Pi may select a fallback model; configured-default selection
+is checked when that model is available. Installation reports authentication as
+unverified. Use `/login` in default and a real request to verify subscription
+access. Existing Pi processes and loaded shell functions still need the relevant
+restart or reload after configuration changes.
+
+Agent-directory links are replaced without deleting their destination contents.
+If the native path is a physical directory, its archive must succeed before it
+is removed. Windows uses native junction operations with paths passed as data.
+
 ## Documentation ownership
 
 This file owns cross-profile launcher and directory guidance. Customized legacy runtime documentation lives in [`profiles/legacy/docs/README.md`](profiles/legacy/docs/README.md), with the full setup guide in [`profiles/legacy/README.md`](profiles/legacy/README.md). Those documents do not describe the default profile. Keep new profile-specific documentation with its owning profile rather than recreating a shared `pi/docs/` tree.

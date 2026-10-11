@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+
+# Required, bounded default-profile setup. Global Pi installation belongs to
+# the calling installer; authorization remains an explicit profile login.
+set -e
+
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+DEFAULT_PI_DIR="$REPO/pi/profiles/default"
+if [[ $# -ne 0 ]]; then
+    echo "Usage: bash $0" >&2
+    exit 2
+fi
+command -v pnpm >/dev/null || {
+    echo "Error: pnpm is required for default Pi setup" >&2
+    exit 1
+}
+
+CI=true pnpm install --dir "$DEFAULT_PI_DIR" --frozen-lockfile
+CI=true pnpm --dir "$DEFAULT_PI_DIR/extensions/web-tools" --ignore-workspace install --frozen-lockfile
+bash "$REPO/scripts/pi-deps-link-setup" --profile default
+(cd "$DEFAULT_PI_DIR" && pnpm run check:runtime)
+bash "$REPO/scripts/pi-link-setup" --root "$REPO"
+node "$REPO/scripts/pi-setup-smoke.mjs" --root "$REPO"
+
+echo "Default Pi configuration ready; authentication unverified."
+echo "Start pi and use /login to authorize this profile if needed."

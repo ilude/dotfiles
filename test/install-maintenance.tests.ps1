@@ -139,19 +139,19 @@ Describe 'WinGet and MSYS2 maintenance' {
     It 'ensures all selected groups before upgrades and pacman maintenance' {
         $script:order = @()
         $wingetConfigDir = Join-Path $PSScriptRoot '..\winget\configuration'
-        $Work = $true
-        $Dev = $true
+        function winget { 'v1.6.0' }
+        Mock Initialize-BunGlobalConfig {}
+        Mock Install-PackageTooling { $script:order += 'tooling'; return $true }
         Mock Invoke-WingetConfigure { $script:order += $GroupName }
         Mock Get-InstallMsys2Root { 'C:\msys64' }
         Mock Update-InstallWingetPackages { $script:order += 'upgrades' }
         Mock Update-InstallMsys2Packages { $script:order += 'pacman' }
-        $fn = $installerAst.Find({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Install-Packages' }, $false)
-        $statements = $fn.Body.EndBlock.Statements
-        $selected = @($statements | Where-Object {
-            $_.Extent.Text -match '^(Invoke-WingetConfigure|if \(\$(Work|Dev)\)|\$script:Msys2Root|Update-InstallWingetPackages|Update-InstallMsys2Packages)'
-        })
-        foreach ($statement in $selected) { . ([scriptblock]::Create($statement.Extent.Text)) }
-        ($script:order -join ',') | Should Be 'Core,Work,Developer,upgrades,pacman'
+        Install-Packages -Work -Dev | Should Be $true
+        ($script:order -join ',') | Should Be 'Core,Work,Developer,upgrades,pacman,tooling'
+        Assert-MockCalled Initialize-BunGlobalConfig -Scope It -Times 1 -Exactly
+        Assert-MockCalled Invoke-InstallCommand -Scope It -Times 1 -Exactly -ParameterFilter {
+            $Name -eq 'WinGet sources'
+        }
     }
 }
 
@@ -188,36 +188,77 @@ Describe 'Managed tooling and entrypoint controls' {
     }
 
     It 'skips package maintenance and Pi global updates when requested' {
-        $SkipPackages = $true
         Mock Install-Packages { throw 'must not maintain packages' }
         Mock Configure-Rclone { throw 'must not configure package secrets' }
-        $nodes = $installerAst.FindAll({ param($n)
-            $n -is [System.Management.Automation.Language.IfStatementAst] -and
-            $n.Extent.Text -match '^if \(\$SkipPackages\)' -and
-            $n.Extent.Text -match "Package and tooling updates|Pi global update"
-        }, $false)
-        $nodes.Count | Should Be 2
-        foreach ($node in $nodes) { . ([scriptblock]::Create($node.Extent.Text)) }
+        Mock Update-InstallPath { throw 'must not refresh package PATH' }
+        Mock Get-Command { throw 'must not resolve package commands' }
+        Invoke-InstallerPackageUpdates -SkipPackages
+        Invoke-InstallerPiUpdate -SkipPackages
         Assert-MockCalled Install-Packages -Scope It -Times 0 -Exactly
         $script:installResults.Count | Should Be 2
         $script:installResults[1].Status | Should Be Skipped
     }
 
     It 'always performs package maintenance on a normal run rather than consulting a lock timestamp' {
-        $SkipPackages = $false
-        $ForcePackages = $false
-        $Work = $true
-        $Dev = $false
-        $ITAdmin = $false
         Mock Install-Packages { return $false }
         Mock Update-InstallPath {}
         Mock Configure-Rclone {}
-        $node = $installerAst.Find({ param($n)
-            $n -is [System.Management.Automation.Language.IfStatementAst] -and
-            $n.Extent.Text -match '^if \(\$SkipPackages\)' -and $n.Extent.Text -match 'Package and tooling updates'
-        }, $false)
-        . ([scriptblock]::Create($node.Extent.Text))
+        Invoke-InstallerPackageUpdates -Work
         Assert-MockCalled Install-Packages -Scope It -Times 1 -Exactly -ParameterFilter { $Work -and -not $Dev }
+        Assert-MockCalled Update-InstallPath -Scope It -Times 1 -Exactly
+        Assert-MockCalled Configure-Rclone -Scope It -Times 1 -Exactly
+    }
+
+    It 'records a missing pnpm as a failed Pi update' {
+        Mock Get-Command { $null }
+        Invoke-InstallerPiUpdate
+        $script:installResults.Count | Should Be 1
+        $script:installResults[0].Status | Should Be Failed
+        $script:installResults[0].Detail | Should Be 'pnpm not found'
+    }
+
+    It 'updates Pi and removes only exact obsolete direct dependency names' {
+        $BASEDIR = Join-Path $PSScriptRoot '..'
+        function pnpm {
+            if ($args -contains 'add') {
+                Set-Variable LASTEXITCODE -Value 0 -Scope 1
+            } elseif ($args -contains '--json') {
+                '[{"dependencies":{"@sinclair/typebox":{},"typebox":{},"@earendil-works/pi-ai":{}}}]'
+            }
+        }
+        Mock Get-Command { [pscustomobject]@{ Name = 'pnpm' } } -ParameterFilter { $Name -eq 'pnpm' }
+        Mock Get-Command { $null } -ParameterFilter { $Name -ne 'pnpm' }
+        Mock Get-LatestAgentVersion { '1.2.3' }
+        Mock Test-Path { $false }
+        Mock Update-InstallPath {}
+        Mock Invoke-InstallCommand { return $true }
+        $previousCi = $env:CI
+        $previousBuilds = $env:PNPM_CONFIG_DANGEROUSLY_ALLOW_ALL_BUILDS
+        Invoke-InstallerPiUpdate
+        $env:CI | Should Be $previousCi
+        $env:PNPM_CONFIG_DANGEROUSLY_ALLOW_ALL_BUILDS | Should Be $previousBuilds
+        $script:installResults[-1].Status | Should Be UpdatedOrCurrent
+        Assert-MockCalled Invoke-InstallCommand -Scope It -Times 1 -Exactly -ParameterFilter {
+            $Name -eq 'Remove obsolete Pi direct dependencies' -and
+            ($ArgumentList -join ',') -eq 'remove,-g,@earendil-works/pi-ai,typebox'
+        }
+        Assert-MockCalled Update-InstallPath -Scope It -Times 1 -Exactly
+    }
+
+    It 'records Pi install failures without removing runtime dependencies' {
+        function pnpm {
+            if ($args -contains 'add') { Set-Variable LASTEXITCODE -Value 9 -Scope 1 }
+            if ($args -contains '--json') { throw 'must not inspect cleanup after failure' }
+        }
+        Mock Get-Command { [pscustomobject]@{ Name = 'pnpm' } } -ParameterFilter { $Name -eq 'pnpm' }
+        Mock Get-Command { $null } -ParameterFilter { $Name -ne 'pnpm' }
+        Mock Get-LatestAgentVersion { '1.2.3' }
+        Mock Invoke-InstallCommand { throw 'must not remove dependencies' }
+        Mock Update-InstallPath { throw 'must not refresh failed install PATH' }
+        Invoke-InstallerPiUpdate
+        $script:installResults[-1].Status | Should Be Failed
+        $script:installResults[-1].Detail | Should Be 'pnpm exited 9'
+        Get-InstallExitCode | Should Be 1
     }
 
     It 'refreshes PATH with persistent additions while keeping process-only entries' {

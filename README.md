@@ -39,6 +39,13 @@ available, setup stops with a clear error. Interactive zsh and PowerShell expose
 `pi` as the sole public launcher, selecting the default profile unless
 `--profile <name>` is supplied.
 
+Normal Bash and PowerShell installers configure only default through
+`bash scripts/pi-default-setup`; legacy remains historical. The stage checks
+runtime loading and the native/default launch configuration offline. A successful
+install does not prove account access: it reports authentication as unverified.
+Use `/login` in Pi and an authenticated request to verify the subscription.
+See [Pi setup and acceptance](pi/README.md#default-installation-and-acceptance).
+
 ### Windows PowerShell
 
 ```powershell

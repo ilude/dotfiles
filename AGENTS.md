@@ -30,7 +30,7 @@ Installation entrypoints and options live in [`README.md#installation`](README.m
 Tooling rules:
 
 - Python tooling uses `uv`; tests use `pytest`, Python lint/format uses `ruff`, shell lint uses `shellcheck`, shell format uses `shfmt`, and `pyproject.toml` sets Python 3.9 as the floor.
-- Pi TypeScript is pnpm-only. `pi/profiles/default/package.json` owns default dependencies, typecheck, and Vitest; `pi/profiles/legacy/package.json` remains the source of truth for the customized legacy setup. Default setup is frozen install followed by `bash scripts/pi-deps-link-setup --profile default` from the repository root, then `pnpm run check:runtime` in default. `make check-pi-default` validates default without reinstalling; file filters go directly after `pnpm test` without `--`. Never use `bun add`, `bun install`, `bun run`, or `bun test` for Pi packages/tests. Use `cd pi/profiles/legacy && pnpm install --frozen-lockfile` only when dependencies need installation; available checks include `pnpm run typecheck` and `pnpm test`.
+- Pi TypeScript is pnpm-only. `pi/profiles/default/package.json` owns default dependencies, typecheck, and Vitest; `pi/profiles/legacy/package.json` remains the source of truth for the customized legacy setup. After global Pi installation, `bash scripts/pi-default-setup` owns frozen default dependency installation, matching runtime/native-profile linking, runtime checks, and offline launch acceptance. `make check-pi-default` validates default without reinstalling; file filters go directly after `pnpm test` without `--`. Never use `bun add`, `bun install`, `bun run`, or `bun test` for Pi packages/tests. Use `cd pi/profiles/legacy && pnpm install --frozen-lockfile` only when dependencies need installation; available checks include `pnpm run typecheck` and `pnpm test`.
 - For one Vitest file in the legacy Pi profile, pass the filter directly, for example `cd pi/profiles/legacy && pnpm test operator-status.test.ts`; never insert `--`, because the script passes it through to Vitest and would run the full suite.
 - `@earendil-works/*` and `typebox` are intentionally absent from `pi/profiles/legacy/package.json`; `scripts/pi-deps-link-setup` links them from pnpm-global into `pi/profiles/legacy/node_modules` so they match the installed Pi binary. See [`pi/README.md`](pi/README.md) and [`pi/profiles/legacy/README.md`](pi/profiles/legacy/README.md).
 
@@ -49,6 +49,13 @@ The installer entrypoints and supporting paths are indexed in [`README.md#struct
 - In MSYS2 and Git Bash, pass `ZDOTDIR` through `env` when execing zsh.
 - On Windows with MSYS2, `nsswitch.conf` must resolve HOME with `db_home: env windows cygwin desc`.
 - Before changing files under `zsh/`, read and follow `zsh/AGENTS.md`; standalone scripts may redefine platform detection only to remain self-contained.
+
+### Pi setup diagnosis and acceptance
+
+- Diagnose the operator's actual launch before changing setup: command resolution (shell function versus native executable), working directory, active process `PI_CODING_AGENT_DIR`, native agent-link target, and selected provider/model. A fresh shell or an explicit profile override can hide the failure in an existing process; repository cwd does not establish its profile.
+- Default uses native `openai` OAuth for the Codex subscription. Historical `openai-codex` routing is not the default repair path. Credentials belong to the selected profile; a login or settings change in another profile does not establish access in this one. Preserve the legacy boundary above.
+- Verify subscription access with an authenticated model request through the affected launch path in the operator's workspace. Installation success, model listings, and wrapper-only requests do not establish native-launch access. When native launch is affected, test without adding `PI_CODING_AGENT_DIR` to make the check pass.
+- Distinguish files changed on disk from configuration already loaded by the operator's process. State the required Pi restart or shell reload specifically; a successful fresh-process check does not prove the existing session is repaired. When challenged, inspect that process and rerun the faithful check rather than repeating the earlier completion claim.
 
 ### Git identity and submodules
 

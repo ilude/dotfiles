@@ -6,7 +6,7 @@
 - **Observed:** Fresh wrapper launches worked, but the operator's running process had no profile override. Native Pi still followed the legacy agent-directory link. Successful installation and wrapper tests were reported as operator-facing completion without checking that actual process.
 - **Related:** APR-083's substituted live launch missed native runtime behavior; AIF-101 requires preserving historical legacy files.
 - **Correction:** Retargeted the native alias to default without modifying legacy, corrected installation/migration targets and native profile identity, and verified an unwrapped authenticated request in the operator's workspace. The old running process must restart to replace its cached configuration.
-- **Status:** Runtime correction implemented; focused tests passed. No new process-policy instructions added. Operator confirmation remains pending.
+- **Status:** Runtime correction implemented; focused tests passed. The operator subsequently authorized durable local guidance (AIF-102), now recorded in root `AGENTS.md`. Operator confirmation of subscription access and future adherence remain unverified.
 
 ## APR-088 - Commit exclusion used removal instead of restoring the index
 

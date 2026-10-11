@@ -13,18 +13,22 @@ describe("shared prompting skill", () => {
     expect(result.diagnostics).toEqual([]);
     expect(result.skills).toHaveLength(1);
     expect(result.skills[0]).toMatchObject({ name: "prompting", disableModelInvocation: false });
+    const skill = result.skills[0];
+    expect(skill.filePath).toBe(prompting);
     const discovery = formatSkillsForPrompt(result.skills);
-    expect(discovery).toContain("role/system prompts, tool guidance, AGENTS.md, skills, and prompt templates");
-    expect(discovery).not.toContain("Apply the Pareto principle");
-    const body = readFileSync(prompting, "utf8");
-    expect(body).toContain("## Procedure");
-    expect(body).toContain("Assemble the prompt");
-    expect(body).toContain("Recover requirements");
-    expect(body).toContain("Assign ownership");
-    expect(body).toContain("Inspect the complete result");
-    expect(body).toContain("Review caching effects");
-    expect(body).toContain("reported provider usage");
-    expect(body).toContain("not actual cache effectiveness");
+    const xml = discovery.match(/<available_skills>[\s\S]*<\/available_skills>/)?.[0];
+    if (!xml) throw new Error("Native skill discovery returned no catalog");
+    expect(xml.match(/<skill>/g)).toHaveLength(1);
+    const entities: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" };
+    const fields = [...xml.matchAll(/<(name|description|location)>([\s\S]*?)<\/\1>/g)].map(
+      ([, name, value]) => [name, value.replace(/&(amp|lt|gt|quot|apos);/g, (_, entity: string) => entities[entity])],
+    );
+    expect(fields).toEqual([
+      ["name", skill.name], ["description", skill.description], ["location", skill.filePath],
+    ]);
+    const body = readFileSync(prompting, "utf8").replace(/^---\r?\n[\s\S]*?\r?\n---\s*/, "").trim();
+    expect(body.length).toBeGreaterThan(0);
+    expect(discovery).not.toContain(body);
   });
 
   it.each(["skill-creation", "pi-extension", "agent-process"])("%s links to the shared instruction-writing source", (name) => {
@@ -34,6 +38,5 @@ describe("shared prompting skill", () => {
     expect(reference).toBeDefined();
     if (!reference) throw new Error(`Missing prompting reference in ${name}`);
     expect(resolve(dirname(file), reference)).toBe(prompting);
-    expect(text).not.toContain("Apply the Pareto principle");
   });
 });

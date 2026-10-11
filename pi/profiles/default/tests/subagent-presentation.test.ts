@@ -259,10 +259,13 @@ it("executes registered tools against an inert RPC child and renders their live 
     expect(messages).not.toHaveBeenCalled();
     abort.abort();
     const detached = await pending;
-    expect(detached.details.waitState).toBe("detached");
+    expect(detached.details).toMatchObject({
+      waitState: "detached", status: "running",
+      dispatch: { accepted: true, operation: "assignment", disposition: "started", completion: "not-reported" },
+    });
     for (const width of [36, 120]) {
       const text = plain(tools.subagent.renderResult(detached, {}, theme, context), width);
-      expect(text.replace(/\s+/g, " ")).toContain("wait detached; child continues");
+      expect(text.replace(/\s+/g, " ").trim()).toBe(`${name}: assignment started; completion not reported`);
     }
     const controlArgs = { action: "cancel", id: name };
     const controlContext: any = { state: {}, args: controlArgs };
@@ -275,7 +278,11 @@ it("executes registered tools against an inert RPC child and renders their live 
     expect(plain(cancelledView, 120)).not.toContain("child continues");
     const backgroundArgs = { agent: "probe", instructions: "[hold]", background: true };
     const background = await tools.subagent.execute("background", backgroundArgs, undefined, undefined, ctx);
-    expect(background.details).toMatchObject({ subagentId: background.details.id, id: background.details.id });
+    expect(background.details).toMatchObject({
+      subagentId: background.details.id, id: background.details.id,
+      status: "running", waitState: "background",
+      dispatch: { accepted: true, operation: "assignment", disposition: "started", completion: "not-reported" },
+    });
     expect(background.details).not.toHaveProperty("sessionFile");
     const inspected = await tools.subagent_control.execute("inspect", { action: "inspect", id: background.details.subagentId }, undefined, undefined, ctx);
     expect(inspected.details).toMatchObject({ subagentId: background.details.subagentId, id: background.details.subagentId });
@@ -286,11 +293,17 @@ it("executes registered tools against an inert RPC child and renders their live 
     expect(tools.subagent_control.description).toContain("returned subagentId");
     expect(tools.subagent_control.description).toContain("returned sessionId");
     expect(tools.subagent_control.parameters.properties.id.description).toContain("not the native sessionId");
-    expect(plain(tools.subagent.renderResult(background, {}, theme, { state: {} }), 120)).toContain("started in background; child continues");
+    expect(plain(tools.subagent.renderResult(background, {}, theme, { state: {} }), 120).trim()).toBe(`${background.details.displayName}: assignment started; completion not reported`);
     await expect(tools.subagent_control.execute("wait-bg", { action: "wait", id: background.details.displayName }, undefined, undefined, ctx)).rejects.toThrow("requires blockingReason");
     await tools.subagent_control.execute("cancel-bg", { action: "cancel", id: background.details.displayName }, undefined, undefined, ctx);
     const approval = await tools.subagent.execute("approval", { agent: "probe", instructions: "[approval]", blockingReason: "The approval response is required before continuing." }, undefined, undefined, ctx);
-    expect(plain(tools.subagent.renderResult(approval, {}, theme, {}), 120)).toContain("needs user input");
+    expect(approval.details).toMatchObject({
+      status: "waiting", phase: "waiting-user",
+      dispatch: { accepted: true, operation: "assignment", disposition: "started", completion: "not-reported" },
+    });
+    expect(plain(tools.subagent.renderResult(approval, {}, theme, {}), 120).trim()).toBe(`${approval.details.displayName}: assignment started; completion not reported`);
+    const approvalSnapshot = await tools.subagent_control.execute("inspect-approval", { action: "inspect", id: approval.details.subagentId }, undefined, undefined, ctx);
+    expect(plain(tools.subagent_control.renderResult(approvalSnapshot, {}, theme, {}), 120)).toContain("needs user input");
     await tools.subagent_control.execute("cancel-approval", { action: "cancel", id: approval.details.displayName }, undefined, undefined, ctx);
     const fullAssignment = `Return an answer\n${"full assignment ".repeat(1100)}\nLAST REQUESTED LINE`;
     const complete = await tools.subagent.execute("complete", { agent: "probe", instructions: fullAssignment, blockingReason: "The answer is required before continuing." }, undefined, undefined, ctx);

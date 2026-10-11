@@ -1,5 +1,6 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { homedir } from "node:os";
+import { homedir, tmpdir } from "node:os";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
 import { execFile, spawnSync } from "node:child_process";
 import { getAgentDir, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -19,9 +20,21 @@ it.each([
 	if (directory.startsWith("~")) expect(getAgentDir()).toBe(join(homedir(), ".pi", "profiles", "review"));
 });
 
-it("retains the native agent fallback", () => {
+it("resolves the native default alias without using the operator's home", () => {
+	const home = mkdtempSync(join(tmpdir(), "pi-native-default-"));
+	const profile = join(home, ".dotfiles", "pi", "profiles", "default");
+	mkdirSync(profile, { recursive: true });
+	mkdirSync(join(home, ".pi"));
+	symlinkSync(profile, join(home, ".pi", "agent"), process.platform === "win32" ? "junction" : "dir");
+	vi.stubEnv("HOME", home);
+	vi.stubEnv("USERPROFILE", home);
 	vi.stubEnv("PI_CODING_AGENT_DIR", "");
-	expect(activeProfileName()).toBe("agent");
+	try {
+		expect(getAgentDir()).toBe(join(home, ".pi", "agent"));
+		expect(activeProfileName()).toBe("default");
+	} finally {
+		rmSync(home, { recursive: true, force: true });
+	}
 });
 
 it("passes the active profile to a new instance without launching a real terminal", async () => {

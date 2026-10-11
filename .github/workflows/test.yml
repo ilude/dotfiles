@@ -77,6 +77,9 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
+    env:
+      HOME: ${{ runner.temp }}/pi-ci-home
+      USERPROFILE: ${{ runner.temp }}/pi-ci-home
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
@@ -88,50 +91,49 @@ jobs:
       - uses: astral-sh/setup-uv@v8.1.0
         with:
           enable-cache: false
-      - name: Install matching Pi runtime
-        shell: bash
-        run: pnpm add -g @earendil-works/pi-coding-agent@0.85.1
-      - name: Install default profile and link runtime
+      - name: Install Pester
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Install-Module Pester -RequiredVersion 4.10.1 -Scope CurrentUser -Force
+      - name: Run Windows installer maintenance tests
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Import-Module Pester -RequiredVersion 4.10.1
+          Invoke-Pester test/install-maintenance.tests.ps1 -EnableExit
+      - name: Install current Pi runtime
         shell: bash
         run: |
-          pnpm --dir pi/profiles/default install --frozen-lockfile
-          pnpm --dir pi/profiles/default/extensions/web-tools --ignore-workspace install --frozen-lockfile
-          bash scripts/pi-deps-link-setup --profile default
-      - name: Verify default profile
+          set -euo pipefail
+          mkdir -p "$HOME"
+          export PNPM_HOME="$HOME/pnpm"
+          if command -v cygpath >/dev/null 2>&1; then
+            export PNPM_HOME=$(cygpath -m "$PNPM_HOME")
+          fi
+          export npm_config_global_dir="$PNPM_HOME/global"
+          mkdir -p "$PNPM_HOME"
+          pnpm_bin="$PNPM_HOME"
+          if command -v cygpath >/dev/null 2>&1; then
+            pnpm_bin=$(cygpath -u "$PNPM_HOME")
+          fi
+          export PATH="$pnpm_bin:$PATH"
+          printf '%s\n' "PNPM_HOME=$PNPM_HOME" "npm_config_global_dir=$npm_config_global_dir" >> "$GITHUB_ENV"
+          printf '%s\n' "$PNPM_HOME" >> "$GITHUB_PATH"
+          pi_version=latest
+          if resolved_pi_version=$(uv run python scripts/get_latest_agent_version.py pi); then
+            pi_version="$resolved_pi_version"
+          else
+            echo "Warning: could not resolve the latest Pi GitHub release; using the npm latest tag"
+          fi
+          pnpm --config.minimumReleaseAge=720 add -g --allow-build=koffi --allow-build=protobufjs "@earendil-works/pi-coding-agent@$pi_version"
+          command -v pi
+          pi --version
+      - name: Install default Pi profile (includes offline smoke)
+        shell: bash
+        run: bash scripts/pi-default-setup
+      - name: Verify default profile and setup regressions
         shell: bash
         run: |
-          pnpm --dir pi/profiles/default run check:runtime
           pnpm --dir pi/profiles/default run typecheck
           pnpm --dir pi/profiles/default test
-          uv run pytest test/test_pi_profile_setup.py
-
-  pi-vitest:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Bootstrap Pi CI contract
-        run: scripts/ci-bootstrap pi
-
-      - name: Install bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v5
-        with:
-          version: 10
-
-      - name: Install pi-coding-agent
-        run: >
-          pnpm install -g
-          @earendil-works/pi-coding-agent@0.84.1
-          @earendil-works/pi-agent-core@0.84.1
-          @earendil-works/pi-ai@0.84.1
-          @earendil-works/pi-tui@0.84.1
-          typebox@1.3.7
-
-      - name: Run Pi Vitest suite
-        run: make check-pi-ci
+          uv run pytest test/test_pi_profile_setup.py test/test_pi_default_link.py test/test_pi_setup_smoke.py test/test_install_unattended.py

@@ -1,3 +1,5 @@
+import importlib.util
+import io
 import json
 import os
 import shutil
@@ -11,40 +13,10 @@ DOTFILES = Path(__file__).parent.parent
 BASH = shutil.which("bash")
 
 
-@pytest.mark.skipif(BASH is None, reason="bash not found")
-def test_internal_launcher_launches_exact_selected_profile_without_network(tmp_path: Path) -> None:
-    home = tmp_path / "home"
-    bin_dir = tmp_path / "bin"
-    home.mkdir()
-    bin_dir.mkdir()
-    launcher = DOTFILES / "scripts" / "pi-profile-launch"
-    fake_pi = bin_dir / "pi"
-    fake_pi.write_text(
-        "#!/usr/bin/env bash\n"
-        'printf \'{"profile":"%s","args":[\' "$PI_CODING_AGENT_DIR"\n'
-        "first=1; for arg in \"$@\"; do ((first)) || printf ','; "
-        'printf \'"%s"\' "$arg"; first=0; done\n'
-        "printf ']}\\n'\n",
-        encoding="utf-8",
-    )
-    fake_pi.chmod(0o755)
-
-    result = subprocess.run(
-        [BASH, str(launcher), "--profile", "legacy", "--model", "fixture"],
-        env={**os.environ, "HOME": str(home), "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}"},
-        capture_output=True,
-        text=True,
-        timeout=10,
-    )
-
-    assert result.returncode == 0, result.stderr
-    payload = json.loads(result.stdout)
-    assert payload["profile"].endswith("/pi/profiles/legacy")
-    assert payload["args"] == ["--model", "fixture"]
-    assert payload["profile"].endswith("/.dotfiles/pi/profiles/legacy")
-
-
-@pytest.mark.skipif(BASH is None or getattr(os, "geteuid", lambda: -1)() != 0, reason="requires bash and root package path")
+@pytest.mark.skipif(
+    BASH is None or getattr(os, "geteuid", lambda: -1)() != 0,
+    reason="requires bash and root package path",
+)
 def test_zsh_setup_stops_when_package_install_fails(tmp_path: Path) -> None:
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
@@ -54,24 +26,26 @@ def test_zsh_setup_stops_when_package_install_fails(tmp_path: Path) -> None:
 
     result = subprocess.run(
         [BASH, str(DOTFILES / "scripts" / "zsh-setup")],
-        env={**os.environ, "HOME": str(tmp_path), "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}"},
+        env={
+            **os.environ,
+            "HOME": str(tmp_path),
+            "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+        },
         capture_output=True,
         text=True,
         timeout=10,
     )
 
     assert result.returncode != 0
-    assert "apt-get" in result.stderr or result.returncode != 0
     assert "Setup completed successfully" not in result.stdout
 
 
 def test_pi_cleanup_distinguishes_scoped_typebox() -> None:
-    installer = (DOTFILES / "install").read_text(encoding="utf-8")
-    start = installer.index('pi_global_list=$(pnpm list -g --depth -1 --json')
-    parser = installer[start:].split("-c '\n", 1)[1].split("\n' || true)", 1)[0]
     result = subprocess.run(
-        [sys.executable, "-c", parser],
-        input=json.dumps([{"dependencies": {"@sinclair/typebox": {}, "@earendil-works/pi-ai": {}}}]),
+        [sys.executable, str(DOTFILES / "scripts" / "pi-global-cleanup-packages.py")],
+        input=json.dumps(
+            [{"dependencies": {"@sinclair/typebox": {}, "@earendil-works/pi-ai": {}}}]
+        ),
         capture_output=True,
         text=True,
         check=True,
@@ -80,26 +54,50 @@ def test_pi_cleanup_distinguishes_scoped_typebox() -> None:
     assert "@sinclair/typebox" in names
     assert "typebox" not in names
     assert "@earendil-works/pi-ai" in names
-    assert 'grep -Fxq "$package"' in installer
 
 
-def test_unattended_installer_contract() -> None:
-    installer = (DOTFILES / "install").read_text(encoding="utf-8")
-    zsh_setup = (DOTFILES / "scripts" / "zsh-setup").read_text(encoding="utf-8")
+def test_pi_cleanup_lists_exact_names_across_projects() -> None:
+    path = DOTFILES / "scripts" / "pi-global-cleanup-packages.py"
+    spec = importlib.util.spec_from_file_location("pi_global_cleanup_packages", path)
+    assert spec is not None and spec.loader is not None
+    helper = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(helper)
+    output = io.StringIO()
+    helper.list_global_packages(
+        io.StringIO(json.dumps([{}, {"dependencies": {"typebox": {}, "@scope/typebox": {}}}])),
+        output,
+    )
+    assert output.getvalue() == "\ntypebox\n@scope/typebox\n"
 
-    assert 'export GIT_TERMINAL_PROMPT=0' in installer
-    assert 'BatchMode=yes' in installer
-    assert 'apt_runner=(sudo -n --preserve-env=DEBIAN_FRONTEND)' in installer
-    assert '"${apt_runner[@]}" apt-get update' in installer
-    assert '"${apt_runner[@]}" apt-get install -y golang-1.23-go' in installer
-    assert "export DEBIAN_FRONTEND=noninteractive" in installer
-    assert "CI=true pnpm install --dir \"$PI_DIR\" --frozen-lockfile" in installer
-    assert 'CI=true pnpm install --dir "$DEFAULT_PI_DIR" --frozen-lockfile' in installer
-    assert 'CI=true pnpm install --dir "$ONCLAVE_DIR" --frozen-lockfile' in installer
-    assert '/refresh-models openai-codex' not in installer
-    assert 'Default Pi uses the native OpenAI catalog' in installer
-    assert 'SUDO="sudo -n --preserve-env=DEBIAN_FRONTEND"' in zsh_setup
-    assert 'export DEBIAN_FRONTEND=noninteractive' in zsh_setup
-    assert "install_packages || exit $?" in zsh_setup
-    assert "$SUDO apt-get update || return 1" in zsh_setup
-    assert 'return 1' in zsh_setup
+
+def test_pi_cleanup_invalid_json_reports_error() -> None:
+    result = subprocess.run(
+        [sys.executable, str(DOTFILES / "scripts" / "pi-global-cleanup-packages.py")],
+        input="not json",
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode != 0
+    assert result.stdout == ""
+    assert "JSONDecodeError" in result.stderr
+
+
+@pytest.mark.skipif(BASH is None, reason="requires bash")
+def test_pi_cleanup_invalid_json_shell_fallback() -> None:
+    result = subprocess.run(
+        [
+            BASH,
+            "-c",
+            'names=$(printf "invalid" | "$1" "$2" || true); printf "%s" "$names"',
+            "cleanup-probe",
+            sys.executable,
+            str(DOTFILES / "scripts" / "pi-global-cleanup-packages.py"),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0
+    assert result.stdout == ""
+    assert "JSONDecodeError" in result.stderr

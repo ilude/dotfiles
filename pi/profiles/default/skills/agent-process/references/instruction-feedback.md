@@ -1,5 +1,13 @@
 # Agent instruction feedback log
 
+## AIF-102 - Verify the operator's effective Pi setup, not a substituted launch
+
+- **Reference:** Codex subscription setup, 2026-10-11; APR-089; operator explicitly requested durable local guidance after the correction.
+- **Feedback:** Setup was reported complete while the operator still could not use the subscription. A wrapper test selected default, but the actual native process had no profile override and followed the legacy link.
+- **Related:** AIF-101 preserves historical legacy; APR-083 and APR-078 also concern acceptance through a substituted launch; APR-074 distinguishes configuration edits from loaded client state.
+- **Decision:** Added repository-local setup guidance covering effective command/process/profile resolution, native OpenAI OAuth and profile-local credentials, authenticated acceptance in the affected workspace without a masking override, and explicit restart/reload boundaries.
+- **Status:** Operator-authorized guidance implemented in root `AGENTS.md`. No runtime or legacy changes in this instruction task. Future adherence is unverified.
+
 ## AIF-101 - Preserve the historical legacy profile
 
 - **Reference:** Default-profile session `01a12424-11fb-74e0-9505-d51dfec4c7e8`, 2026-10-11.

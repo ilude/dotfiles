@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 import shlex
 import shutil
 import subprocess
@@ -93,25 +94,131 @@ def package_lock_guard_roots() -> set[Path]:
     return {ROOT, *((ROOT / path).parent for path in proc.stdout.splitlines())}
 
 
-def test_pi_workflow_installs_repository_runtime_dependencies() -> None:
-    packages = {
-        token
-        for step in workflow_steps()
-        if isinstance(step.get("run"), str)
-        for command in shell_commands(step["run"])
-        if command and command[0] == "pnpm" and {"-g", "--global"} & set(command)
-        for token in command
+@pytest.mark.parametrize(
+    ("resolver_status", "install_status", "expected_version"),
+    [(0, 0, "9.8.7"), (1, 0, "latest"), (0, 1, "9.8.7")],
+)
+def test_pi_ci_installs_runtime_before_bounded_default_stage(
+    tmp_path: Path, resolver_status: int, install_status: int, expected_version: str
+) -> None:
+    workflow = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
+    job = workflow["jobs"]["pi-default"]
+    assert job["env"]["HOME"] == "${{ runner.temp }}/pi-ci-home"
+    assert job["env"]["USERPROFILE"] == job["env"]["HOME"]
+    # Execute actual workflow commands. Only resolver/package-manager, downstream
+    # stage and verification boundaries are fakes, not install orchestration.
+    # A missing bootstrap must fail even if a Pi executable is already on PATH.
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    scripts = tmp_path / "scripts"
+    scripts.mkdir()
+    fakes = {
+        "uv": 'if [[ "$*" == "run python scripts/get_latest_agent_version.py pi" ]]; then\n'
+        '  printf "resolver %s\\n" "$*" >> "$EVENTS"\n'
+        '  printf "9.8.7\\n"\n  exit "$RESOLVER_STATUS"\n'
+        'fi\nprintf "verify %s\\n" "$*" >> "$EVENTS"\n',
+        "pnpm": 'printf "pnpm %s\\n" "$*" >> "$EVENTS"\n'
+        'if [ "$INSTALL_STATUS" != 0 ]; then exit "$INSTALL_STATUS"; fi\n'
+        'touch "$RUNTIME_INSTALLED"\n',
+        "pi": 'printf "pi %s\\n" "$*" >> "$EVENTS"\n',
     }
+    for name, body in fakes.items():
+        executable = bin_dir / name
+        executable.write_bytes(("#!/usr/bin/env bash\n" + body).encode("utf-8"))
+        executable.chmod(0o755)
+    (scripts / "pi-default-setup").write_bytes(
+        b'set -e\ntest -f "$RUNTIME_INSTALLED"\n'
+        b'profile="$USERPROFILE"; home="$HOME"\n'
+        b"if command -v cygpath >/dev/null 2>&1; then\n"
+        b'profile=$(cygpath -m "$profile"); home=$(cygpath -m "$home"); fi\n'
+        b'test "$profile" = "$home"\n'
+        b'test "$npm_config_global_dir" = "$home/pnpm/global"\n'
+        b'printf "stage\\n" >> "$EVENTS"\n'
+    )
+    home = tmp_path / "home"
+    env_file = tmp_path / "github-env"
+    path_file = tmp_path / "github-path"
+    events = tmp_path / "events"
+    env = {
+        **os.environ,
+        "HOME": home.as_posix(),
+        "USERPROFILE": home.as_posix(),
+        "GITHUB_ENV": env_file.as_posix(),
+        "GITHUB_PATH": path_file.as_posix(),
+        "EVENTS": events.as_posix(),
+        "RUNTIME_INSTALLED": (tmp_path / "installed").as_posix(),
+        "RESOLVER_STATUS": str(resolver_status),
+        "INSTALL_STATUS": str(install_status),
+        "FAKE_BIN": bin_dir.as_posix(),
+    }
+    bash = shutil.which("bash")
+    if os.name == "nt":
+        git_bash = Path(os.environ.get("PROGRAMFILES", "C:/Program Files")) / "Git/bin/bash.exe"
+        if git_bash.exists():
+            bash = str(git_bash)
+    assert bash is not None, "CI runtime bootstrap contract requires bash"
+    results = []
+    for step in job["steps"]:
+        if step.get("shell") != "bash" or "run" not in step:
+            continue
+        proc = subprocess.run(
+            [
+                bash,
+                "-e",
+                "-c",
+                'bin="$FAKE_BIN"; if command -v cygpath >/dev/null 2>&1; then '
+                'bin=$(cygpath -u "$bin"); fi; export PATH="$bin:$PATH"\n' + step["run"],
+            ],
+            cwd=tmp_path,
+            env=env,
+            text=True,
+            capture_output=True,
+        )
+        results.append(proc)
+        if proc.returncode:
+            break
+        if env_file.exists():
+            for line in env_file.read_text(encoding="utf-8").splitlines():
+                key, value = line.split("=", 1)
+                env[key] = value
+    log = events.read_text(encoding="utf-8").splitlines() if events.exists() else []
+    assert log[:2] == [
+        "resolver run python scripts/get_latest_agent_version.py pi",
+        "pnpm --config.minimumReleaseAge=720 add -g --allow-build=koffi "
+        f"--allow-build=protobufjs @earendil-works/pi-coding-agent@{expected_version}",
+    ], [(proc.stdout, proc.stderr) for proc in results]
+    if install_status:
+        assert results[-1].returncode != 0
+        assert "stage" not in log
+    else:
+        assert all(proc.returncode == 0 for proc in results), [proc.stderr for proc in results]
+        assert log[2:] == [
+            "pi --version",
+            "stage",
+            "pnpm --dir pi/profiles/default run typecheck",
+            "pnpm --dir pi/profiles/default test",
+            "verify run pytest test/test_pi_profile_setup.py test/test_pi_default_link.py "
+            "test/test_pi_setup_smoke.py test/test_install_unattended.py",
+        ]
+        assert path_file.read_text(encoding="utf-8").splitlines() == [f"{home.as_posix()}/pnpm"]
+    # Offline smoke belongs to the bounded stage, not a second CI invocation.
+    assert not any("pi-setup-smoke.mjs" in step.get("run", "") for step in job["steps"])
 
-    expected = {
-        "@earendil-works/pi-coding-agent@0.84.1",
-        "@earendil-works/pi-agent-core@0.84.1",
-        "@earendil-works/pi-ai@0.84.1",
-        "@earendil-works/pi-tui@0.84.1",
-        "typebox@1.3.7",
-    }
-    assert expected <= packages
-    assert not any(package.startswith("@sinclair/typebox@") for package in packages)
+
+def test_windows_ci_runs_installer_maintenance_pester_suite() -> None:
+    workflow = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
+    steps = workflow["jobs"]["pi-default"]["steps"]
+    assert any(
+        step.get("if") == "runner.os == 'Windows'"
+        and "Pester" in step.get("name", "")
+        and "Install-Module Pester -RequiredVersion 4.10.1" in step.get("run", "")
+        for step in steps
+    )
+    assert any(
+        step.get("if") == "runner.os == 'Windows'"
+        and "install-maintenance.tests.ps1" in step.get("run", "")
+        for step in steps
+    )
 
 
 def test_preflight_checks_configured_shell_scripts(tmp_path: Path) -> None:
