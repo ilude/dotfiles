@@ -1890,6 +1890,16 @@ try {
     $backfillArtifact = Join-Path $backfillDir 'dist\tools\onclave-backfill\src\main.js'
     $nodeCommand = Get-Command node -ErrorAction SilentlyContinue
     $pnpmCommand = Get-Command pnpm -ErrorAction SilentlyContinue
+    # The installer runs with -NoProfile, so load the endpoint settings from the
+    # per-machine .env that interactive shells already import.
+    $envFile = Join-Path $BASEDIR '.env'
+    if (Test-Path $envFile) {
+        foreach ($line in Get-Content $envFile) {
+            if ($line -match '^\s*(export\s+)?(ONCLAVE_API_BASE|HOST_DOMAIN)=(.*)$' -and -not (Get-Item "env:$($Matches[2])" -ErrorAction SilentlyContinue)) {
+                Set-Item "env:$($Matches[2])" ($Matches[3].Trim() -replace '^["'']|["'']$', '')
+            }
+        }
+    }
     if ((Test-Path (Join-Path $backfillDir 'package.json')) -and $nodeCommand -and $pnpmCommand) {
         try {
             pnpm --dir $backfillDir build
