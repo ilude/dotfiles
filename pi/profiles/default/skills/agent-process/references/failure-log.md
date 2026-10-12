@@ -1,5 +1,13 @@
 # Agent process failure log
 
+## APR-090 - Stopped Onclave diagnosis at a transport symptom
+
+- **Reference:** Default-profile session `01a12424-11fb-74e0-9505-d51dfec4c7e8`, 2026-10-11.
+- **Observed:** Reported failed hostname resolution and listed the next diagnostic checks instead of performing them. The operator requested continuation while read-only checks remained available.
+- **Finding:** Direct resolver comparisons showed that the internal DNS server resolves the service, while the gateway selected by Tailscale split DNS times out. HTTPS probes using the resolved address with normal certificate validation returned healthy and ready responses. A Git push did not repair this live DNS route.
+- **Related:** APR-086 concerns stopping an investigation while discoverable evidence remained available. Existing investigation guidance already required these checks; no new instruction was needed.
+- **Correction/status:** Completed resolver and service-reachability checks. Recommended correcting the split-DNS route; live DNS changes remain subject to operator authorization. No DNS or service configuration was changed.
+
 ## APR-089 - Validated a wrapper instead of the operator's native launch
 
 - **Reference:** Operator correction, 2026-10-11, after Codex subscription setup was reported complete.
