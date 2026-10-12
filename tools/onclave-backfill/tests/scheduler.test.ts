@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { isAbsolute, join } from "node:path";
 import { tmpdir } from "node:os";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import {
   applySchedulerPlan,
   detectSchedulerPlatform,
+  nodeRunner,
   renderLaunchAgentPlist,
   renderSystemdService,
   renderSystemdTimer,
@@ -48,7 +50,24 @@ describe("native scheduler definitions", () => {
     expect(xml).toContain("<MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>");
     expect(xml).toContain("<ExecutionTimeLimit>PT5M</ExecutionTimeLimit>");
     expect(xml).toContain("&quot;/home/test user/.dotfiles/tools/onclave-backfill/dist/main.js&quot;");
+    expect(xml.startsWith('<?xml version="1.0" encoding="UTF-16"?>')).toBe(true);
     expect(() => renderWindowsTaskXml(paths, "SYSTEM")).toThrow(/intended interactive user/);
+  });
+
+  it("writes Windows task XML as UTF-16LE with a BOM and reads it back", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "onclave-task-"));
+    try {
+      const path = join(dir, "task.xml");
+      const xml = renderWindowsTaskXml(paths, "CONTOSO\\mglenn");
+      await nodeRunner.writeFile(path, xml);
+      const bytes = await readFile(path);
+      expect([bytes[0], bytes[1]]).toEqual([0xff, 0xfe]);
+      expect(await nodeRunner.readFile(path)).toBe(xml);
+      await nodeRunner.writeFile(join(dir, "unit.service"), renderSystemdService(paths));
+      expect((await readFile(join(dir, "unit.service")))[0]).toBe("[".charCodeAt(0));
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 
   it("renders a per-user launch agent with absolute arguments, daily calendar and login start", () => {

@@ -39,6 +39,8 @@ export const LAUNCHD_LABEL = "com.dotfiles.onclave.backfill";
 export const SYSTEMD_SERVICE = "dotfiles-onclave-backfill.service";
 export const SYSTEMD_TIMER = "dotfiles-onclave-backfill.timer";
 const OWNER_MARKER = "Managed by dotfiles Onclave backfill; do not edit.";
+// schtasks /XML rejects UTF-8 task files; they must be UTF-16LE with a BOM.
+const UTF16_XML_DECLARATION = '<?xml version="1.0" encoding="UTF-16"?>';
 
 function xml(value: string): string {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
@@ -61,7 +63,7 @@ export function renderWindowsTaskXml(paths: SchedulerPaths, userId: string, star
   assertAbsolute(paths);
   if (!userId.trim() || /^(?:NT AUTHORITY\\)?SYSTEM$/i.test(userId.trim())) throw new Error("Windows scheduler requires the intended interactive user, not SYSTEM");
   const [command, artifact, config] = [paths.executablePath, paths.artifactPath, paths.configPath];
-  return `<?xml version="1.0" encoding="UTF-8"?>\n<Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">\n  <RegistrationInfo><Author>${xml(userId)}</Author><Description>${OWNER_MARKER}</Description><URI>${TASK_NAME}</URI></RegistrationInfo>\n  <Triggers>\n    <CalendarTrigger><StartBoundary>${xml(startBoundary)}</StartBoundary><Enabled>true</Enabled><ScheduleByDay><DaysInterval>1</DaysInterval></ScheduleByDay></CalendarTrigger>\n    <LogonTrigger><Enabled>true</Enabled><UserId>${xml(userId)}</UserId></LogonTrigger>\n  </Triggers>\n  <Principals><Principal id="Author"><UserId>${xml(userId)}</UserId><LogonType>InteractiveToken</LogonType><RunLevel>LeastPrivilege</RunLevel></Principal></Principals>\n  <Settings><MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy><StartWhenAvailable>true</StartWhenAvailable><ExecutionTimeLimit>PT5M</ExecutionTimeLimit><AllowStartOnDemand>true</AllowStartOnDemand><DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries><StopIfGoingOnBatteries>false</StopIfGoingOnBatteries></Settings>\n  <Actions Context="Author"><Exec><Command>${xml(command)}</Command><Arguments>${xml(`"${artifact}" --config "${config}"`)}</Arguments><WorkingDirectory>${xml(dirname(artifact))}</WorkingDirectory></Exec></Actions>\n</Task>\n`;
+  return `${UTF16_XML_DECLARATION}\n<Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">\n  <RegistrationInfo><Author>${xml(userId)}</Author><Description>${OWNER_MARKER}</Description><URI>${TASK_NAME}</URI></RegistrationInfo>\n  <Triggers>\n    <CalendarTrigger><StartBoundary>${xml(startBoundary)}</StartBoundary><Enabled>true</Enabled><ScheduleByDay><DaysInterval>1</DaysInterval></ScheduleByDay></CalendarTrigger>\n    <LogonTrigger><Enabled>true</Enabled><UserId>${xml(userId)}</UserId></LogonTrigger>\n  </Triggers>\n  <Principals><Principal id="Author"><UserId>${xml(userId)}</UserId><LogonType>InteractiveToken</LogonType><RunLevel>LeastPrivilege</RunLevel></Principal></Principals>\n  <Settings><MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy><StartWhenAvailable>true</StartWhenAvailable><ExecutionTimeLimit>PT5M</ExecutionTimeLimit><AllowStartOnDemand>true</AllowStartOnDemand><DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries><StopIfGoingOnBatteries>false</StopIfGoingOnBatteries></Settings>\n  <Actions Context="Author"><Exec><Command>${xml(command)}</Command><Arguments>${xml(`"${artifact}" --config "${config}"`)}</Arguments><WorkingDirectory>${xml(dirname(artifact))}</WorkingDirectory></Exec></Actions>\n</Task>\n`;
 }
 
 export function renderLaunchAgentPlist(paths: SchedulerPaths): string {
@@ -130,8 +132,15 @@ export async function writeBackfillConfig(path: string, endpoint: string, paths:
 
 export const nodeRunner: SchedulerRunner = {
   async run(command, args) { const result = await execFileAsync(command, args, { windowsHide: true, maxBuffer: 1024 * 1024 }); return { stdout: result.stdout, stderr: result.stderr, status: 0 }; },
-  async writeFile(path, content) { await mkdir(dirname(path), { recursive: true }); await writeFile(path, content, { encoding: "utf8", mode: 0o600 }); },
-  async readFile(path) { return readFile(path, "utf8"); },
+  async writeFile(path, content) {
+    await mkdir(dirname(path), { recursive: true });
+    const utf16 = content.startsWith(UTF16_XML_DECLARATION);
+    await writeFile(path, utf16 ? `\uFEFF${content}` : content, { encoding: utf16 ? "utf16le" : "utf8", mode: 0o600 });
+  },
+  async readFile(path) {
+    const bytes = await readFile(path);
+    return bytes[0] === 0xff && bytes[1] === 0xfe ? bytes.subarray(2).toString("utf16le") : bytes.toString("utf8");
+  },
   async removeFile(path) { await rm(path, { force: true }); },
   async exists(path) { try { await access(path); return true; } catch { return false; } },
 };
