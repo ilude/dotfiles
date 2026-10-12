@@ -4,13 +4,14 @@
     Makes normal Windows Brave launch surfaces attachable through loopback CDP.
 .DESCRIPTION
     Updates Brave shortcuts under the Desktop, Start Menu, and Quick Launch
-    trees, creates a Desktop shortcut when absent, and updates the active
+    trees (including True Launch Bar shortcuts stored there), creates a Desktop
+    shortcut when absent, and updates the active
     Brave HTTP/HTTPS ProgID command. Existing profile selections and unrelated
     shortcut arguments are preserved. Repeated runs make no further changes.
 #>
 [CmdletBinding()]
 param(
-    [string]$BravePath = (Join-Path $env:LOCALAPPDATA 'BraveSoftware\Brave-Browser\Application\brave.exe'),
+    [string]$BravePath,
     [string]$UserDataDir = (Join-Path $env:LOCALAPPDATA 'BraveSoftware\Brave-Browser\User Data'),
     [string[]]$ShortcutRoots,
     [string]$DesktopDirectory = [Environment]::GetFolderPath('Desktop'),
@@ -21,7 +22,16 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-if (-not (Test-Path -LiteralPath $BravePath -PathType Leaf)) {
+if (-not $BravePath) {
+    $candidates = @(
+        if ($env:BRAVE_PATH) { $env:BRAVE_PATH }
+        foreach ($root in @($env:LOCALAPPDATA, $env:ProgramFiles, ${env:ProgramFiles(x86)})) {
+            if ($root) { Join-Path $root 'BraveSoftware\Brave-Browser\Application\brave.exe' }
+        }
+    )
+    $BravePath = $candidates | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
+}
+if (-not $BravePath -or -not (Test-Path -LiteralPath $BravePath -PathType Leaf)) {
     Write-Host "Brave CDP setup skipped; executable not found: $BravePath" -ForegroundColor DarkGray
     return
 }

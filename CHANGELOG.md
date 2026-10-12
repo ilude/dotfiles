@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-10-12: Discover system-wide Brave installs for Windows debugging shortcuts
+
+- Windows Brave shortcut setup now finds per-user and system-wide installations, with `BRAVE_PATH` available as an override. The previous per-user-only default skipped this machine's Program Files installation.
+- Desktop, Start Menu, and Quick Launch shortcuts, including True Launch Bar shortcuts stored in Quick Launch, retain their existing profile selections and unrelated arguments while adding explicit loopback CDP launch flags. Existing backup, idempotence, and browser-session ownership behavior is unchanged.
+
 ## 2026-10-11: Replace fragile test assertions with behavioral boundaries
 
 - Removed prose-only prompt, skill and documentation checks that failed on harmless rewording or line wrapping without exercising runtime behavior. Guidance tests retain catalog filtering, inherited context, role isolation, stable composition, prepared coordinates, manifest validation and context-size bounds. Native skill discovery checks published metadata and body exclusion rather than instruction wording.
