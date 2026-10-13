@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-10-13: Restore Sol startup selection after Pi 1.2.0 upgrade
+
+- Default startup and Sol 6.1's model-scope entry now use `openai-codex`, matching the installed Pi 1.2.0 runtime and the default profile's existing subscription login. The previous `openai` default could not match the authenticated model and new instances fell back to another provider. Model ID, low thinking default, other scope entries, credentials, and Anthropic billing warnings remain unchanged. This corrects startup selection only; existing sessions retain their selected model.
+
 ## 2026-10-13: Restore direct commit feedback and complete eligible groups
 
 - `/commit` now reports results only through its session entry, without starting an extra main-agent turn. Private work uses Pi's standard animated loader above the editor with phase messages and cleanup on success, failure, or cancellation; ignore dialogs remain usable.
@@ -9,9 +13,14 @@
 
 - Tool-call analysis still reads all classification corrections, but searches and reads relevant prior incident reports instead of loading the entire analysis log before every review. Broader history is read when missing evidence could change the finding; durable records and explicitly requested exhaustive session reviews remain unchanged.
 
+## 2026-10-13: Queue headless subagent follow-ups during busy turns
+
+- Headless parent answers and waiting-state messages now explicitly queue as follow-ups when native Pi is still finishing its current turn. Registering a parent question no longer leads to an idle-only prompt rejection that fails the assignment.
+- Idle follow-ups still start normally. Running-child steering, explicit redirects, question identity, and visible delivery remain unchanged. No new gate, retry loop, or timeout is added.
+
 ## 2026-10-13: Follow Pi upgrades in Herdr launches
 
-- Herdr plugin setup now registers the stable default-profile dependency path instead of freezing a version-specific pnpm store entrypoint. New instances, branches, and hosted children resolve the linked package’s CLI on each launch. Refresh dependency links after a global Pi upgrade; existing registrations need one setup refresh. Running sessions, explicit-entry registrations, preflight, and pane lifecycle remain unchanged.
+- Herdr plugin setup now registers the stable default-profile dependency path instead of freezing a version-specific pnpm store entrypoint. New instances, branches, and hosted children resolve the linked package’s CLI on each launch. Refresh dependency links after a global Pi upgrade with `bash scripts/pi-deps-link-setup --profile default`, now recorded in root `AGENTS.md`; existing registrations need one setup refresh. Running sessions, explicit-entry registrations, preflight, and pane lifecycle remain unchanged.
 
 ## 2026-10-12: Discover system-wide Brave installs for Windows debugging shortcuts
 

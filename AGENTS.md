@@ -52,6 +52,7 @@ The installer entrypoints and supporting paths are indexed in [`README.md#struct
 
 ### Pi setup diagnosis and acceptance
 
+- After upgrading global Pi, run `bash scripts/pi-deps-link-setup --profile default` to refresh the default profile's runtime links. Herdr resolves that link on each launch; Pi upgrades do not require rerunning Herdr setup. Existing Pi processes retain their loaded version until restarted.
 - Diagnose the operator's actual launch before changing setup: command resolution (shell function versus native executable), working directory, active process `PI_CODING_AGENT_DIR`, native agent-link target, and selected provider/model. A fresh shell or an explicit profile override can hide the failure in an existing process; repository cwd does not establish its profile.
 - Default uses native `openai` OAuth for the Codex subscription. Historical `openai-codex` routing is not the default repair path. Credentials belong to the selected profile; a login or settings change in another profile does not establish access in this one. Preserve the legacy boundary above.
 - Verify subscription access with an authenticated model request through the affected launch path in the operator's workspace. Installation success, model listings, and wrapper-only requests do not establish native-launch access. When native launch is affected, test without adding `PI_CODING_AGENT_DIR` to make the check pass.
