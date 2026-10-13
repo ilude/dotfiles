@@ -1,5 +1,59 @@
 # Agent process failure log
 
+## APR-093 - Setup detours continued without reconciling an independently working publisher
+
+- **Reference:** Default session `01a11d2b-e005-7757-9e1c-98fdbe0eb0b3`, operator correction, 2026-10-09.
+- **Observed:** The operator reported that a colleague had apparently completed the notification setup while the orchestrator pursued authentication, profile configuration, and repeated setup-status checks. Earlier local Boolean-parameter and insufficient-diagnostic errors also caused extra authentication attempts. The orchestrator had not checked current GitHub publishing state before opening another setup sign-in.
+- **Evidence:** Subsequent read-only GitHub checks found an active main-push notification workflow with a successful run at 20:33 UTC, before the orchestrator launched its owner-login helper at 21:13 UTC. The workflow references a webhook secret, not Microsoft token/Graph authentication. Channel metadata includes a later user-attributed message but does not alone establish neutral-bot delivery or correlate it to the CI run.
+- **Correction:** Abandoned the duplicate setup attempt, confirmed its helper was no longer running and no timers remained, preserved the existing publisher, and corrected local setup status without creating a flow or post. Report only verified portions rather than turning incomplete evidence into a claim that the entire setup is finished or broken.
+- **Related:** APR-090-local, APR-091, APR-092, AIF-095, AIF-105.
+- **Status:** Failure recorded. No new policy proposed; no live changes, commits, or pushes.
+
+## APR-092 - Optional browser automation was presented as a webhook prerequisite
+
+- **Reference:** Default session `01a11d2b-e005-7757-9e1c-98fdbe0eb0b3`, operator correction, 2026-10-09.
+- **Observed:** After agreement on a webhook experiment, the orchestrator discovered a target-tenant Brave profile without a configured alias and asked the operator to run browser setup as the next required step. The operator asked what Brave had to do with the integration.
+- **Finding:** The runtime is an unattended HTTPS callback into a tenant workflow. Brave is only one optional tool for interacting with the setup UI, not a delivery dependency. Denial of the tested app-only Flow APIs does not establish that a particular browser or profile setup is required.
+- **Correction:** Withdraw the browser-specific prerequisite. Identify the actual one-time workflow-authoring access need separately from CI delivery, and do not turn local tooling configuration into the requested architecture.
+- **Related:** APR-090-local, APR-091, AIF-095.
+- **Follow-up (2026-10-09):** The operator explicitly approved API/CLI-first new setup work in the active repository, with Brave/browser-driven setup only as a last-resort fallback. Added the repository rule rather than changing global browser tooling or skills; see AIF-105.
+- **Status:** Repository instruction change approved and recorded. No browser alias, live flow, message, or permission was changed.
+
+## APR-091 - Management inspection became a personal-sign-in dependency for webhook delivery
+
+- **Reference:** Default session `01a11d2b-e005-7757-9e1c-98fdbe0eb0b3`, operator correction, 2026-10-09.
+- **Observed:** After app-only management discovery returned Forbidden, the orchestrator repeatedly launched delegated account authentication to inspect an existing notification flow and presented the operator's account selection as the next required step. The requested delivery pattern was an unattended webhook caller, not personal delegated publication.
+- **Evidence:** Rechecked reference implementation: caller retrieves the callback URL from its secret store and sends JSON with Content-Type only. It does not acquire or send a Microsoft user token. Documentation separately identifies flow co-owners and a Teams connection managed outside caller infrastructure. The flow's current visible sender and private-channel compatibility have not been established.
+- **Correction:** Separate optional management inspection/authentication from runtime notification delivery. Preserve the intended CI-to-secret-webhook-to-flow path; do not make repeated personal sign-in the deliverable or infer the flow's posting identity from its caller or ownership. Propose target-flow setup/test for approval without substituting personal CI credentials.
+- **Related:** APR-090-local, AIF-095.
+- **Status:** No sign-in retry jobs remain. No live flow changes, posts, permission grants, or executable policy edits.
+
+## APR-090-local - Browser inspection preceded checking an available management API
+
+- **Reference:** Default session `01a11d2b-e005-7757-9e1c-98fdbe0eb0b3`, operator correction, 2026-10-09.
+- **Observed:** To inspect an existing Power Automate flow, the orchestrator took over browser access from a restricted Team Lead and attempted portal sign-in without first checking API tooling or authorization. Login did not reach the flow. The operator asked why the API was not used.
+- **Evidence:** Power Platform administration and maker PowerShell modules were already installed. Subsequent read-only API checks with existing app credentials authenticated successfully but returned HTTP 403 Forbidden for GCC admin-environment discovery in both relevant tenants. This establishes lack of authorization for those requests, not absence of management APIs or proof that delegated co-owner access would fail.
+- **Correction:** Prefer supported API/cmdlet discovery first and report the actual authorization result. Delegated co-owner API access remains a candidate for scoped inspection; do not grant tenant-wide management-app access merely to inspect one flow without approval.
+- **Status:** Read-only API blocker established. No flow changes, posts, permission grants, or executable instruction edits.
+
+## APR-089-local - Cleanup advice conflated resetting sessions with retiring tabs/worktrees
+
+- **Reference:** Operator correction during session consolidation, 2026-10-09.
+- **Observed:** The assistant repeatedly recommended closing tabs and preserving/removing a completed task worktree. The operator clarified that two tabs used the primary main checkout and asked whether `/clear` was safe there.
+- **Finding:** The advice answered a broader cleanup operation instead of distinguishing the requested conversation reset from tab closure and worktree deletion. Repository cleanliness and completed-work interviews supported reusing the primary-checkout tabs.
+- **Remediation:** Verify the actual `/clear` command and give a direct answer scoped to those two tabs; leave the separate task-worktree tab untouched. No additional cleanup gate or policy needed.
+- **Related:** AIF-104, AIF-050, AIF-087.
+- **Status:** Clarification provided; no reset, tab closure or worktree mutation performed.
+
+## APR-088-local - Reconfirmed supporting deployment work after outcome approval
+
+- **Reference:** Default session `01a117b3-e184-7405-bb73-af2d7198883d`, operator correction, 2026-10-07.
+- **Observed:** Repeatedly asked for revised supporting infrastructure-plan approval during an authorized development fix, including an SSM document/association update after the operator approved the specific correction it delivered.
+- **Finding:** The orchestrator preserved plan review but failed to carry the operator's outcome authorization through necessary delivery steps. The operator clarified that continuation was authorized unless the work materially departed from the goal.
+- **Remediation:** Applied the already reviewed SSM-only plan, verified the clean follow-up plan and successful host update, and continued image delivery. Retain scope boundaries without recurring generic approval prompts.
+- **Related:** AIF-103, AIF-102-local, APR-068.
+- **Status:** Recorded; task resumed. No instruction edits, database reset, or expanded production scope.
+
 ## APR-090 - Stopped Onclave diagnosis at a transport symptom
 
 - **Reference:** Default-profile session `01a12424-11fb-74e0-9505-d51dfec4c7e8`, 2026-10-11.

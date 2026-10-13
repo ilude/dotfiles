@@ -1,5 +1,50 @@
 # Agent instruction feedback log
 
+## AIF-105 - API/CLI first, browser setup only as a last resort in this repository
+
+- **Reference:** Default session `01a11d2b-e005-7757-9e1c-98fdbe0eb0b3`, operator direction, 2026-10-09.
+- **Feedback:** Brave use should be a last-chance fallback, never the first choice for new setup work in the active repository.
+- **Evidence:** Earlier browser/profile and repeated sign-in detours displaced webhook setup. The recovered reference implementation used Azure CLI and PowerShell APIs for setup, with a separate unattended webhook caller at runtime. Failure of one app-only API credential was not evidence that browser setup was necessary.
+- **Decision:** Operator-approved repository-only rule in `gcc_automation/AGENTS.md`: supported APIs, PowerShell cmdlets, or CLI first; browser-driven setup last, with a specific blocker established and reported before switching. Preserve tenant-mutation approval and credential boundaries. No global skill or browser-tool changes.
+- **Related:** APR-090-local, APR-091, APR-092, AIF-095.
+- **Status:** Rule and repository changelog updated. No tenant or browser-profile mutation; no commit or push.
+
+## AIF-104 - Separate session reset from tab closure and worktree removal
+
+- **Reference:** Operator correction during session consolidation, 2026-10-09.
+- **Feedback:** Cleanup advice increased confusion; the operator wanted to reuse two primary-checkout tabs with `/clear`, not close them or remove worktrees.
+- **Finding:** The assistant continued discussing tab retirement and worktree preservation without distinguishing conversation reset, process closure and filesystem cleanup. Existing plain-language and intent guidance applies.
+- **Decision:** Answer the exact reset question first, identify the two primary-checkout tabs, and keep the separate task worktree out of that action. Verified the default `/clear` implementation starts a new session and resets owned subagents; it does not perform Git cleanup.
+- **Related:** AIF-001, AIF-050, AIF-087, APR-089-local.
+- **Status:** Recorded; no instruction or runtime change proposed.
+
+## AIF-103 - Outcome authorization should not become repeated delivery approval stops
+
+- **Reference:** Default session `01a117b3-e184-7405-bb73-af2d7198883d`, operator correction, 2026-10-07.
+- **Feedback:** Approval to get a scoped development deployment working covers necessary delivery and fixes; stop for a material departure, not each supporting operation.
+- **Observed:** After the operator approved a demonstrated database correction, the orchestrator stopped again for an SSM-only wrapper plan within that same outcome. Earlier delivery also required repeated confirmations.
+- **Finding:** Saved-plan review remains required, but the orchestrator treated approval wording mechanically instead of retaining the operator's authorized outcome. The operator explicitly clarified standing authority for the remaining scoped work.
+- **Decision:** Continue reviewed, necessary deployment operations under that authority; ask only for a material scope change. The wrapper plan was reviewed and applied without another confirmation.
+- **Related:** AIF-102-local, AIF-100, APR-068, APR-088-local.
+- **Status:** Feedback recorded and delivery resumed. No executable instruction changes or broader deployment authority inferred.
+
+## AIF-102-local - Development plans should not accumulate production-scale verification
+
+- **Reference:** Default session `01a11156-12e7-753b-a108-8b1e1d8bb70e`, development-plan review, 2026-10-06.
+- **Feedback:** Review planned safety gates, engineering and tests against a development environment rather than a large production system.
+- **Finding:** The plans prescribe repeated per-task render/fixture checks, full solution builds, comprehensive inventory accounting and lifecycle-case verification on top of existing pipeline checks. Some checks address concrete failures, but the combined verification is more prescriptive than the development outcome needs. Existing proportionality/stopping guidance already covers this; no new global policy is needed.
+- **Decision:** Reuse existing CI and changed-path checks once, prioritize a working deployment with clean startup/current logs, and retain the specific real-email fallback regression. Configuration conventions remain higher-priority correctness work: keep focused real-loader/runtime/precedence/overlay tests, especially on transfer to dev. Avoid a new acceptance harness, exhaustive failure matrix or repeated generic authorization prompts; retain actual authority boundaries and concrete key/access protections.
+- **Related:** AIF-095, AIF-093, AIF-041, AIF-031, APR-087.
+- **Status:** Operator clarified delivery-first priority while retaining stronger configuration-convention checks. Both planning artifacts simplified accordingly; no global instruction, code, Git or live-state changes.
+
+## AIF-101-local - Issue descriptions should lead with the problem and desired result
+
+- **Reference:** Operator review of six issue descriptions, 2026-10-06.
+- **Feedback:** The descriptions were too dense. An earlier explanation in the same workflow had also been difficult to understand.
+- **Finding:** The descriptions repeated evidence, expected behavior, branch provenance, full commit identifiers, and validation details across several sections. Existing plain-language guidance already applies; more policy wording is not needed.
+- **Decision:** Rewrite each description around the problem and completion condition. Keep the test-branch link and put reproduction commands in a foldout. State unresolved decisions directly rather than burying them in technical rationale.
+- **Status:** Applied to all six descriptions, now 90-110 words including folded commands. No instruction changes.
+
 ## AIF-102 - Verify the operator's effective Pi setup, not a substituted launch
 
 - **Reference:** Codex subscription setup, 2026-10-11; APR-089; operator explicitly requested durable local guidance after the correction.
@@ -60,6 +105,8 @@
 - **Status:** Plan wording corrected; operator approved explicit `/do-it` local Git authorization in the shared planning skill and template. The `/do-it` command already stated the rule and was not changed.
 
 ## AIF-095 - Apply proportionality before proposing replacement machinery
+
+- **Recurrence (2026-10-09):** In default session `01a11d2b-e005-7757-9e1c-98fdbe0eb0b3`, the operator challenged duplicate suppression, automatic retries, and failure visibility presented as setup needs for a small internal repository-notification feed. No CI implementation was authorized or built. Treat custom retry/dedup machinery as optional, distinguish GitHub's existing failed-run visibility from a new monitoring feature, and prefer one publish attempt with manual rerun unless observed failures justify more. Discussion correction only; no instruction edits or removal of previously approved tooling.
 
 - **Reference:** Pi extension CPU and recurring-work review, 2026-09-27.
 - **Feedback:** The orchestrator proposed worker-based reload scanning, persistent authenticated signaling, and aggressive resource-monitor refinements before asking whether these low-value safeguards and indicators should exist at all. The operator identified the proposals as over-engineered and gold-plated.
