@@ -24,6 +24,7 @@ let results: Array<{ toolName: string; content: unknown; isError?: boolean }>;
 let answers: string[];
 let commands: string[];
 let execs: string[][];
+let completion: string;
 const git = (cwd: string, ...args: string[]) => execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8", timeout: 15000, windowsHide: true });
 const bash = (command: string): Call => ({ name: "bash", arguments: { command } });
 const inRepo = (cwd: string, command: string) => `git -C '${cwd.replace(/\\/g, "/")}' ${command}`;
@@ -36,14 +37,14 @@ function init(cwd: string) {
 }
 beforeEach(() => {
 	root = realpathSync(mkdtempSync(join(tmpdir(), "commit-staging-")));
-	init(root); steps = []; results = []; answers = []; commands = []; execs = [];
+	init(root); steps = []; results = []; answers = []; commands = []; execs = []; completion = "Pushed";
 	provider.stream.mockReset().mockImplementation((_model, context) => {
 		results = context.messages.filter(m => m.role === "toolResult") as typeof results;
 		const step = steps.shift();
 		const calls = step ? (Array.isArray(step) ? step : [step]) : [];
 		for (const call of calls) if (call.name === "bash") commands.push(String(call.arguments.command));
 		const message: AssistantMessage = {
-			role: "assistant", content: calls.length ? calls.map((call, index) => ({ type: "toolCall", id: `call-${commands.length}-${index}`, ...call })) : [{ type: "text", text: "Pushed" }],
+			role: "assistant", content: calls.length ? calls.map((call, index) => ({ type: "toolCall", id: `call-${commands.length}-${index}`, ...call })) : [{ type: "text", text: completion }],
 			stopReason: calls.length ? "toolUse" : "stop", model: model.id, api: model.api, provider: model.provider, timestamp: Date.now(),
 			usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
 		};
@@ -58,9 +59,9 @@ const pi = { exec: async (command: string, args: string[], options: { signal?: A
 		resolve({ stdout, stderr, code: error ? (typeof error.code === "number" ? error.code : 1) : 0, killed: Boolean(error?.killed) });
 	}));
 } } as unknown as ExtensionAPI;
-function run(push = false, signal?: AbortSignal) {
+function run(push = false, signal?: AbortSignal, onProgress?: (text: string) => void) {
 	const ctx = { cwd: root, hasUI: true, ui: { select: async () => answers.shift() } } as unknown as ExtensionContext;
-	return runCommitReviewer(pi, ctx, push, signal);
+	return runCommitReviewer(pi, ctx, push, signal, onProgress);
 }
 
 it("stages before review, includes staged new files, and forms whole-file groups by unstage/restage", async () => {
@@ -90,6 +91,38 @@ it.each(["Include in commit", "Add to .gitignore", "Leave untracked"])("applies 
 		if (answer === "Add to .gitignore") expect(git(root, "show", "HEAD:.gitignore").trim()).toBe("cache.txt");
 		else expect(git(root, "status", "--short")).toContain("?? cache.txt");
 	}
+});
+
+it("keeps tracked feedback eligible and refuses to treat it as a new ignore candidate", async () => {
+	const candidate = "instruction-feedback.md";
+	writeFileSync(join(root, candidate), "A feedback record is not permission to commit.\n");
+	git(root, "add", candidate); git(root, "commit", "--quiet", "-m", "feedback baseline");
+	writeFileSync(join(root, candidate), "Operator feedback correction\n");
+	answers.push("Leave untracked");
+	steps.push(bash("git add -A"), ask(candidate), bash("git commit -m forbidden"));
+	await expect(run()).rejects.toThrow("Ignore decisions require a staged new file");
+	expect(answers).toEqual(["Leave untracked"]);
+	expect(git(root, "diff", "--cached", "--name-only").trim()).toBe(candidate);
+	expect(git(root, "show", `HEAD:${candidate}`)).toContain("not permission to commit");
+});
+
+it("reports reviewer-selected exclusion reasons without dropping them from completion", async () => {
+	writeFileSync(join(root, "base.txt"), "remaining\n");
+	completion = "Done\nLeft out: base.txt: concrete review issue";
+	const report = await run();
+	expect(report.text).toContain("Remaining changes:");
+	expect(report.text).toContain("Left out: base.txt: concrete review issue");
+});
+
+it("reports inventory, model, review, tool, and completion phases", async () => {
+	const progress: string[] = [];
+	steps.push(bash("git diff --cached"), { name: "read", arguments: { path: "base.txt" } });
+	await run(false, undefined, text => progress.push(text));
+	expect(progress).toEqual([
+		"Inspecting repositories…", "Resolving commit model…", "Reviewing changes…",
+		"Running Git/shell command…", "Reviewing changes…",
+		"Reading repository instructions and changes…", "Reviewing changes…", "Collecting commit results…",
+	]);
 });
 
 it("preserves sole index content with normal Git before blanket staging", async () => {

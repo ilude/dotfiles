@@ -22,11 +22,15 @@ function fixture() {
 	const sent: Array<{ message: any; options?: any }> = [];
 	const entries: Array<{ name: string; data: any }> = [];
 	const terminal = new Set<(data: string) => unknown>();
+	const widgets = new Map<string, { render: (width: number) => string[]; stop: () => void }>();
 	let activeTools = ["read", "unrelated_tool"];
 	let idle = true;
 	const ctx = {
 		hasUI: true, mode: "tui", isIdle: () => idle,
-		ui: { notify: vi.fn(), setStatus: vi.fn(), onTerminalInput: vi.fn((handler: (data: string) => unknown) => {
+		ui: { notify: vi.fn(), setStatus: vi.fn(), setWidget: vi.fn((key: string, factory?: (tui: any, theme: any) => any) => {
+			if (factory) widgets.set(key, factory({ requestRender: vi.fn() }, { fg: (_color: string, text: string) => text }));
+			else widgets.delete(key);
+		}), onTerminalInput: vi.fn((handler: (data: string) => unknown) => {
 			terminal.add(handler);
 			return () => { terminal.delete(handler); };
 		}) },
@@ -51,7 +55,7 @@ function fixture() {
 	const emit = async (name: string, event: any) => {
 		for (const handler of [...hooks.get(name) ?? []]) await handler(event, ctx);
 	};
-	return { pi, commands, shortcuts, tools, sent, entries, terminal, hooks, ctx, emit, active: () => activeTools,
+	return { pi, commands, shortcuts, tools, sent, entries, terminal, hooks, widgets, ctx, emit, active: () => activeTools,
 		setIdle: (value: boolean) => { idle = value; }, input: (data: string) => [...terminal].map(handler => handler(data)) };
 }
 
@@ -73,21 +77,17 @@ describe("profile command lifecycle", () => {
 		expect(f.tools.size).toBe(0);
 		expect(f.active()).toEqual(["read", "unrelated_tool"]);
 		expect(f.terminal.size).toBe(0);
-		expect(f.sent).toEqual([{
-			message: { customType: "profile-commit-result", content: `/commit${push ? " push" : ""}\nabc123 committed`, display: false },
-			options: { triggerTurn: true },
-		}]);
+		expect(f.sent).toEqual([]);
+		expect(f.widgets.size).toBe(0);
 	});
 
-	it("delivers slash failure diagnostics to the model and triggers recovery", async () => {
+	it("shows slash failure diagnostics without triggering model recovery", async () => {
 		const f = fixture();
 		const diagnostics = "shell command failed\ncat: '/C:/repo/AGENTS.md': No such file or directory\nNo commits created.\nPush completion not confirmed.";
 		reviewer.run.mockRejectedValueOnce(new Error(diagnostics));
 		await f.commands.get("commit")!.handler("push", f.ctx);
-		expect(f.sent).toEqual([{
-			message: { customType: "profile-commit-result", content: `/commit push\n/commit failed: ${diagnostics}`, display: false },
-			options: { triggerTurn: true },
-		}]);
+		expect(f.sent).toEqual([]);
+		expect(f.widgets.size).toBe(0);
 		expect(f.entries.at(-1)?.data.text).toBe(`/commit failed: ${diagnostics}`);
 	});
 
@@ -165,7 +165,36 @@ describe("profile command lifecycle", () => {
 		expect(f.entries.at(-1)?.data).toMatchObject({ error: true, text: expect.stringContaining("abc123 existing commit") });
 		expect(f.ctx.ui.notify).toHaveBeenCalledWith("/commit failed; see result above", "error");
 		expect(f.terminal.size).toBe(0);
-		expect(f.ctx.ui.setStatus).toHaveBeenLastCalledWith("profile-commit", undefined);
+		expect(f.ctx.ui.setWidget).toHaveBeenLastCalledWith("profile-commit", undefined);
+		expect(f.widgets.size).toBe(0);
+	});
+
+	it("uses Pi's standard loader throughout private work and stops it on completion", async () => {
+		const f = fixture();
+		const gate = deferred();
+		const idle = deferred();
+		f.ctx.waitForIdle.mockReturnValueOnce(idle.promise);
+		let stopped: ReturnType<typeof vi.spyOn> | undefined;
+		reviewer.run.mockImplementationOnce(async (_pi, _ctx, _push, _signal, progress: (text: string) => void) => {
+			const loader = f.widgets.get("profile-commit")!;
+			stopped = vi.spyOn(loader, "stop");
+			progress("Inspecting repositories…");
+			expect(loader.render(80).join("\n")).toContain("Inspecting repositories…");
+			progress("Reviewing changes…");
+			expect(loader.render(80).join("\n")).toContain("Reviewing changes…");
+			await gate.promise;
+			return { text: "done" };
+		});
+		const run = f.commands.get("commit")!.handler("", f.ctx);
+		await vi.waitFor(() => expect(f.widgets.get("profile-commit")?.render(80).join("\n")).toContain("Waiting for Pi to finish…"));
+		idle.resolve();
+		await vi.waitFor(() => expect(reviewer.run).toHaveBeenCalledOnce());
+		gate.resolve();
+		await run;
+		expect(stopped).toHaveBeenCalledOnce();
+		expect(f.widgets.size).toBe(0);
+		expect(f.ctx.ui.notify).not.toHaveBeenCalled();
+		expect(f.sent).toEqual([]);
 	});
 
 	it("shutdown aborts active runner and clears terminal input", async () => {

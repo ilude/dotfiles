@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { Box, matchesKey, Text } from "@earendil-works/pi-tui";
+import { Box, Loader, matchesKey, Text } from "@earendil-works/pi-tui";
 import { completePartialArgument } from "../lib/argument-completions.ts";
 import { commands } from "../commands/index.ts";
 import { runCommitReviewer } from "../commands/commit/reviewer.ts";
@@ -27,13 +27,8 @@ export default function profileCommands(pi: ExtensionAPI): void {
 		pi.sendMessage({ customType: "profile-command-error", content: message, display: true }, { triggerTurn });
 	}
 
-	function presentCommit(text: string, error: boolean, ctx: ExtensionContext, args: string): void {
+	function presentCommit(text: string, error: boolean, ctx: ExtensionContext): void {
 		pi.appendEntry(RESULT_ENTRY, { text, error });
-		pi.sendMessage({
-			customType: RESULT_ENTRY,
-			content: `/commit${args.trim() ? ` ${args.trim()}` : ""}\n${text}`,
-			display: false,
-		}, { triggerTurn: true });
 		if (ctx.hasUI && error) ctx.ui.notify("/commit failed; see result above", "error");
 	}
 
@@ -59,6 +54,14 @@ export default function profileCommands(pi: ExtensionAPI): void {
 		let controller: AbortController | undefined;
 		let stopInput: (() => void) | undefined;
 		let inIgnoreDialog = false;
+		let loader: Loader | undefined;
+		let progressText = "Waiting for Pi to finish…";
+		const progress = (text: string) => {
+			progressText = text;
+			inIgnoreDialog = text === "Waiting for ignore-file decision…";
+			if (ctx.mode === "tui") loader?.setMessage(text);
+			else if (ctx.hasUI) ctx.ui.setStatus(STATUS_KEY, text);
+		};
 		try {
 			const parse = commands.find((command) => command.name === "commit")?.arguments;
 			if (!parse) throw new Error("Commit command is unavailable.");
@@ -72,8 +75,15 @@ export default function profileCommands(pi: ExtensionAPI): void {
 				if (matchesKey(data, "escape") && !inIgnoreDialog) controller?.abort();
 				return undefined;
 			});
-			ctx.ui.setStatus(STATUS_KEY, "Committing…");
-			if (ctx.hasUI) ctx.ui.notify("Committing…", "info");
+			if (ctx.mode === "tui") {
+				// The native working row is streaming-only. Use Pi's standard loader
+				// as a non-modal widget for private work, leaving dialogs usable.
+				ctx.ui.setWidget(STATUS_KEY, (tui, theme) => {
+					loader?.stop();
+					loader = new Loader(tui, text => theme.fg("accent", text), text => theme.fg("muted", text), progressText);
+					return loader;
+				});
+			} else if (ctx.hasUI) ctx.ui.setStatus(STATUS_KEY, progressText);
 			if (waitForIdle) {
 				const signal = controller.signal;
 				await new Promise<void>((resolve, reject) => {
@@ -87,18 +97,18 @@ export default function profileCommands(pi: ExtensionAPI): void {
 				});
 			} else await waitForMainIdle(ctx, controller.signal);
 			controller.signal.throwIfAborted();
-			const result = await runCommitReviewer(pi, ctx, parsed.options?.push === true, controller.signal,
-				(text) => {
-					inIgnoreDialog = text === "Waiting for ignore-file decision…";
-					ctx.ui.setStatus(STATUS_KEY, text);
-				});
-			presentCommit(result.text, false, ctx, rawArgs);
+			const result = await runCommitReviewer(pi, ctx, parsed.options?.push === true, controller.signal, progress);
+			presentCommit(result.text, false, ctx);
 		} catch (error) {
-			presentCommit(`/commit failed: ${error instanceof Error ? error.message : String(error)}`, true, ctx, rawArgs);
+			presentCommit(`/commit failed: ${error instanceof Error ? error.message : String(error)}`, true, ctx);
 		} finally {
 			stopInput?.();
 			if (controller && active === controller) active = undefined;
-			if (controller) ctx.ui.setStatus(STATUS_KEY, undefined);
+			if (controller) {
+				loader?.stop();
+				if (ctx.mode === "tui") ctx.ui.setWidget(STATUS_KEY, undefined);
+				else if (ctx.hasUI) ctx.ui.setStatus(STATUS_KEY, undefined);
+			}
 		}
 	}
 

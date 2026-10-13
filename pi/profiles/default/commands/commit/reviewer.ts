@@ -135,7 +135,7 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 				if (result.killed || result.code !== 0) throw new Error(`Git HEAD lookup failed: ${result.stderr.trim()}`);
 				return result.stdout.trim();
 			};
-			progress("Committing…");
+			progress("Inspecting repositories…");
 			try {
 				combined.throwIfAborted();
 				root = realpathSync(await git(["rev-parse", "--show-toplevel"], combined));
@@ -152,6 +152,7 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 					const publication = formatPublicationEligibility(push, branch);
 					inventory.push(`Repository: ${relative(root, repository) || "."}\nInstruction files: ${instructions.length ? instructions.join(", ") : "none"}${publication ? `\n${publication}` : ""}\n${status}`);
 				}
+				progress("Resolving commit model…");
 				const runtime = await createProfileModelRuntime(combined);
 				let usedFallback = false;
 				let model: Model<Api>;
@@ -192,6 +193,8 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 									if (!repository) throw new Error(`Repository is not in the supplied inventory: ${repo}`);
 									if (!candidate || /^[\\/]/.test(candidate) || /^[A-Za-z]:/.test(candidate) || candidate.split(/[\\/]+/).includes(".."))
 										throw new Error(`Candidate must be repository-relative: ${candidate}`);
+									const added = await git(["--literal-pathspecs", "diff", "--cached", "--diff-filter=A", "--name-only", "-z", "--", candidate], combined, repository);
+									if (!added.split("\0").includes(candidate)) throw new Error(`Ignore decisions require a staged new file, not a tracked modification: ${candidate}`);
 									const rule = validateGitignorePattern(pattern);
 									pauseTimer();
 									progress("Waiting for ignore-file decision…");
@@ -204,10 +207,10 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 											// rm --cached also works before the repository's first commit.
 											await git(["--literal-pathspecs", "rm", "--cached", "--", candidate], combined, repository);
 											if (answer === "Add to .gitignore") await git(["add", "--", ".gitignore"], combined, repository);
-											leftOut.push(`${repo === "." ? "" : `${repo}/`}${candidate}`);
+											leftOut.push(`${repo === "." ? "" : `${repo}/`}${candidate}: ${answer} (${reason})`);
 										}
 										return { content: [{ type: "text" as const, text: `${answer}: ${repo}/${candidate}` }], details: {} };
-									} finally { resumeTimer(); progress("Committing…"); }
+									} finally { resumeTimer(); progress("Reviewing changes…"); }
 								},
 							},
 						],
@@ -223,11 +226,13 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 				});
 				unsubscribe = agent.subscribe((event) => {
 					if (event.type === "tool_execution_start") {
+						progress(event.toolName === "bash" ? "Running Git/shell command…" : event.toolName === "read" ? "Reading repository instructions and changes…" : "Preparing ignore-file decision…");
 						activeTools.set(event.toolCallId, { description: describeCommitTool(event.toolName, event.args), startedAt: Date.now(), terminal: event.toolName === "ask_ignore" || (event.toolName === "bash" && !isCommitInspection(String((event.args as { command?: unknown }).command ?? ""))) });
 					}
 					if (event.type === "tool_execution_end") {
 						const active = activeTools.get(event.toolCallId);
 						activeTools.delete(event.toolCallId);
+						progress("Reviewing changes…");
 						if (event.isError && active?.terminal && !failure) {
 							const text = (event.result.content as (TextContent | ImageContent)[]).filter((part) => part.type === "text").map((part) => part.text).join("\n");
 							failure = `${active?.description ?? `tool ${event.toolName}`} failed after ${active ? Date.now() - active.startedAt : "unknown"}ms\n${text}`;
@@ -240,6 +245,7 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 					}
 				});
 				combined.throwIfAborted();
+				progress("Reviewing changes…");
 				await agent.prompt(buildCommitTask(push, root, inventory));
 				const lastError = () => {
 					const last = agent!.state.messages.at(-1);
@@ -260,7 +266,7 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 						// Agent never executes tools from an errored response. Remove only that
 						// response, keeping all completed tool results, as native Pi retry does.
 						agent.state.messages = agent.state.messages.slice(0, -1);
-						progress("Committing…");
+						progress("Reviewing changes…");
 						await agent.continue();
 					}
 					combined.throwIfAborted();
@@ -295,6 +301,7 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 			}
 			// Report Git's actual state even after cancellation/failure: a commit may already
 			// have completed. These read-only queries do not reuse the cancelled signal.
+			progress("Collecting commit results…");
 			let summary = "";
 			if (root && baselines.size) {
 				try {
@@ -315,7 +322,8 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 			}
 			const publication = push && publicationTargets > 0 ? (/^Pushed\.?$/i.test(outcome.split("\n")[0] ?? "") ? "Pushed." : "Push completion not confirmed.") : "";
 			const preserved = outcome.split("\n").filter(line => line.startsWith("Preserved index content: ")).join("\n");
-			const report = [summary, preserved, leftOut.length ? `Left out: ${leftOut.join(", ")}` : "", publication].filter(Boolean).join("\n");
+			const exclusions = outcome.split("\n").filter(line => line.startsWith("Left out: "));
+			const report = [summary, preserved, leftOut.length ? `Left out: ${leftOut.join(", ")}` : "", ...exclusions, publication].filter(Boolean).join("\n");
 			if (failure) throw new Error(`${failure}\n${report}\nStopped; existing commits and changes were not undone.`);
 			return { text: report, elapsedMs: WORKFLOW_TIMEOUT_MS - remaining, model: `${selectedModel?.provider}/${selectedModel?.id}:low`, usage };
 }

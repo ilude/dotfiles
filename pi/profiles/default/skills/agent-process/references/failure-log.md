@@ -1,5 +1,12 @@
 # Agent process failure log
 
+## APR-094 - Quiet commits triggered extra turns and left feedback unexplained
+
+- **Reference:** Default session `01a135a4-1364-751e-838f-9a5ab68530bf`, 2026-10-13; AIF-107, AIF-100.
+- **Observed:** `/commit` triggered redundant main-agent replies, showed only footer/notification progress during private work, and left a tracked feedback change without an exclusion reason. The first extra turn took about 6s while the next command was waiting for idle. The exclusion motive and remaining historical latency are unknown because the private trace was not retained.
+- **Correction:** Removed commit-result model dispatch, used Pi's standard loader with phase messages and cleanup, clarified all-group/feedback eligibility, preserved exclusion reasons, and constrained ignore questions to staged new files. Existing feedback edits and Git work were preserved; no new telemetry, timeout change, commit, or push.
+- **Status:** 60 focused tests pass. Four pre-existing typecheck compatibility errors remain outside this change. Reload and live UI acceptance are outstanding; see AIF-107 for the bounded timing evidence.
+
 ## APR-093 - Setup detours continued without reconciling an independently working publisher
 
 - **Reference:** Default session `01a11d2b-e005-7757-9e1c-98fdbe0eb0b3`, operator correction, 2026-10-09.

@@ -1,5 +1,20 @@
 # Agent instruction feedback log
 
+## AIF-107 - Commit progress, completion, and feedback handling
+
+- **Reference:** Default session `01a135a4-1364-751e-838f-9a5ab68530bf`, 2026-10-13; related AIF-100.
+- **Feedback:** The operator rejected the unexplained leftover tracked feedback, redundant assistant replies after `/commit`, feedback-record framing, long delay, and lack of standard Pi running feedback. All of those concerns are in scope, not only whether the feedback file was committed.
+- **Evidence:** Two command-to-result intervals were approximately 51s and 35s. The handler sent results with `triggerTurn: true`, while documentation described interface-only results. Progress used a footer status and notification. The second result left `instruction-feedback.md` modified without a reason. The private runner retained no tool/model timing trace, so the exclusion motive and exact latency cause are unknown.
+- **Decision:** The operator authorized fixing completion and standard running feedback, making tracked feedback eligible under explicit `/commit`, reporting exclusions, and investigating delay. This is not approval to commit these repairs, rewrite the pre-existing feedback record, or treat agent interpretation as operator agreement.
+- **Status:** Implemented with 60 passing focused tests across command lifecycle, staging, reviewer guidance, and retries. The extra first-result assistant turn took about 6s while the next command was waiting; a current read-only inventory replay took 5.3s across five repositories. Remaining historical latency and live UI acceptance are unverified. Typecheck still reports four existing compatibility errors outside the changed files. The pre-existing AIF-106 edit is preserved.
+
+## AIF-106 - Preserve subagent decision explanations for later review
+
+- **Reference:** Operator clarification following the default Pi gate review, 2026-10-13; related AIF-081/AIF-082.
+- **Feedback:** Subagent explanations exist so the operator can understand why agents are called and assess when and whether they should have been. The operator rejected the filename-based upload concern as an issue to pursue.
+- **Decision:** Preserve existing foreground `blockingReason` requirements and recorded reasons; no subagent runtime or schema change authorized. Treat explanations as decision evidence, not automatically as unnecessary ceremony. Existing requirements cover foreground blocking, not every background launch. Drop the proposed upload-classifier remediation. Separately approved targeted failure-history retrieval is recorded as TCF-006 in the tool-call analysis skill.
+- **Status:** Recorded; existing delegation behavior remains unchanged.
+
 ## AIF-105 - API/CLI first, browser setup only as a last resort in this repository
 
 - **Reference:** Default session `01a11d2b-e005-7757-9e1c-98fdbe0eb0b3`, operator direction, 2026-10-09.

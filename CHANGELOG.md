@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-10-13: Restore direct commit feedback and complete eligible groups
+
+- `/commit` now reports results only through its session entry, without starting an extra main-agent turn. Private work uses Pi's standard animated loader above the editor with phase messages and cleanup on success, failure, or cancellation; ignore dialogs remain usable.
+- Review guidance commits every eligible group, including tracked feedback records, and retains reasons for reviewer-selected exclusions. Ignore dialogs reject tracked modifications. Running time still depends on repository work and private model responses; the historical delay is not established by a successful UI correction.
+
 ## 2026-10-13: Focus tool-failure review history retrieval
 
 - Tool-call analysis still reads all classification corrections, but searches and reads relevant prior incident reports instead of loading the entire analysis log before every review. Broader history is read when missing evidence could change the finding; durable records and explicitly requested exhaustive session reviews remain unchanged.
