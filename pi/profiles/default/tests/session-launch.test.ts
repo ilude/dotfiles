@@ -92,10 +92,12 @@ function realBranchFixture() {
 		return {} as any;
 	});
 	const promptOptions = normalizeBuildSystemPromptOptions({ cwd: root, sections: { unrelated: "preserve me" } });
-	function promptFor(manager: SessionManager) {
-		hooks.get("before_agent_start")!({
-			type: "before_agent_start", prompt: "Discuss a different task", systemPrompt: buildSystemPrompt(promptOptions), systemPromptOptions: promptOptions,
-		}, { sessionManager: manager } as unknown as ExtensionContext);
+	function promptFor(manager: SessionManager, messageType: "user" | "custom" = "user") {
+		const shared = { type: "before_agent_start" as const, systemPrompt: buildSystemPrompt(promptOptions), systemPromptOptions: promptOptions };
+		const event: BeforeAgentStartEvent = messageType === "user"
+			? { ...shared, messageType, prompt: "Discuss a different task" }
+			: { ...shared, messageType, message: { role: "custom", customType: "fixture", content: "Continue", display: false, timestamp: Date.now() } };
+		hooks.get("before_agent_start")!(event, { sessionManager: manager } as unknown as ExtensionContext);
 		return { section: promptOptions.sections.session_branch, prompt: buildSystemPrompt(promptOptions) };
 	}
 	return { commands, ctx, parent, renderers, promptFor };
@@ -354,6 +356,7 @@ it("restores only the current child's monitoring boundary from persisted metadat
 	expect(initial.prompt).toContain("preserve me");
 	expect(Buffer.byteLength(initial.section)).toBeLessThan(800);
 	expect(promptFor(child)).toEqual(initial);
+	expect(promptFor(child, "custom")).toEqual(initial);
 
 	const retained = child.appendMessage({ role: "user", content: "Discuss a different task", timestamp: Date.now() });
 	child.appendCompaction("Inherited deployment monitoring was pending.", retained, 1000);

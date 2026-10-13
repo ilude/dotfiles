@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "specRelativePath": ".specs/pi-1-2-extension-compatibility/plan.md",
+  "specStub": "pi-1-2-extension-compatibility",
+  "taskWorktreePath": "C:\\Users\\mglenn\\.dotfiles\\.worktrees\\pi-1-2-extension-compatibility",
+  "taskBranch": "task/pi-1-2-extension-compatibility",
+  "originCheckoutPath": "C:\\Users\\mglenn\\.dotfiles",
+  "originBranch": "main",
+  "startingTargetCommit": "eca70a6d72ef4040cb764e6d7f7dd5548259fe78",
+  "sourceSpecSnapshot": {
+    "version": 1,
+    "files": [
+      {
+        "path": "investigation.md",
+        "sha256": "20be6c0450442adddd0ce7dff75efeeb7ae5094559ebfd0293fa7c20b4788e3c"
+      },
+      {
+        "path": "plan.md",
+        "sha256": "b2b328e1c0748dd00f4412be58155174988f383df8af8d21a0201b15820e2aad"
+      }
+    ]
+  }
+}

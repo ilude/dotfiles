@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-10-13: Complete default extension compatibility with Pi 1.2.0
+
+- Herdr first-user tab naming now discriminates user and custom startup events before reading a prompt or consuming first-prompt state. Custom-triggered turns retain shared branch, delegation, and successor context. Updated event fixtures and added coverage for custom startup followed by a user prompt and branch context on custom runs.
+- After the operator completed native OpenAI ChatGPT login, default startup was restored to `openai/gpt-6.1-sol` at low thinking. Pi 1.2.0 supports both native `openai` and the distinct legacy `openai-codex` route; the earlier temporary startup repair matched existing credentials, not a native-provider removal. Credentials were not copied or relabeled, and classifier routing, model-family behavior, safety policy, and legacy contents remain unchanged.
+- Reload with no active or retained subagents, or restart Pi, to load the extension fix. Existing sessions retain their selected model until switched or restarted. Native/wrapped startup and a bounded native authenticated request were verified separately from offline event/model tests; interactive Herdr UX remains unverified and non-blocking.
+
 ## 2026-10-13: Restore Sol startup selection after Pi 1.2.0 upgrade
 
 - Default startup and Sol 6.1's model-scope entry now use `openai-codex`, matching the installed Pi 1.2.0 runtime and the default profile's existing subscription login. The previous `openai` default could not match the authenticated model and new instances fell back to another provider. Model ID, low thinking default, other scope entries, credentials, and Anthropic billing warnings remain unchanged. This corrects startup selection only; existing sessions retain their selected model.

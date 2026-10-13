@@ -78,6 +78,15 @@ it("runs restored-context naming when Pi reports a resumed session", async () =>
   await vi.waitFor(() => expect(f.exec).toHaveBeenCalledWith("fixture-herdr", ["tab", "get", "w1:t1"], expect.anything()));
 });
 
+it("preserves first-user naming after a custom-triggered run", async () => {
+  const f = fixture(); await f.start();
+  f.exec.mockClear();
+  await f.handlers.before_agent_start({ messageType: "custom", message: { customType: "fixture", content: "Continue" } }, f.ctx);
+  expect(f.exec).not.toHaveBeenCalled();
+  await f.handlers.before_agent_start({ messageType: "user", prompt: "Fix startup selection" }, f.ctx);
+  await vi.waitFor(() => expect(f.exec).toHaveBeenCalledWith("fixture-herdr", ["tab", "get", "w1:t1"], expect.anything()));
+});
+
 it("renames the current tab explicitly and records the command outcome for model context", async () => {
   const f = fixture(); await f.start();
   await f.commands.rename.handler("  My Exact Title  ", f.ctx);

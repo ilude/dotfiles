@@ -37,7 +37,7 @@ export function registerCloseoutFixture(pi: ExtensionAPI, options: {
   // No external reasoning or model network is allowed in either real Pi process.
   globalThis.fetch = async () => { throw new Error("Network forbidden in live closeout fixture"); };
   pi.on("session_start", (_event, ctx) => { current = ctx; record("session-start", session()); });
-  pi.on("before_agent_start", (event, ctx) => { current = ctx; prompt = event.prompt; record("before-agent-start", { prompt, ...session() }); });
+  pi.on("before_agent_start", (event, ctx) => { current = ctx; prompt = event.messageType === "user" ? event.prompt : ""; record("before-agent-start", { messageType: event.messageType, prompt, ...session() }); });
   pi.on("message_end", event => {
     if (event.message.role === "toolResult" && event.message.toolName === "closeout_successor" && event.message.toolCallId === "release" && !event.message.isError) released = true;
     record("message-end", { message: event.message });

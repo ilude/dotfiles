@@ -119,7 +119,7 @@ export default function herdrOrchestratorLabel(pi: ExtensionAPI): void {
   });
 
   pi.on("before_agent_start", (event, ctx) => {
-    if (!active || firstPromptDelivered) return;
+    if (event.messageType !== "user" || !active || firstPromptDelivered) return;
     firstPromptDelivered = true;
     // event.prompt is the delivered pre-template prompt and avoids naming from expanded skill bodies.
     background("first-prompt", [{ type: "message", message: { role: "user", content: event.prompt } }]);

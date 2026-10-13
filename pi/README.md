@@ -31,6 +31,24 @@ Agent-directory links are replaced without deleting their destination contents.
 If the native path is a physical directory, its archive must succeed before it
 is removed. Windows uses native junction operations with paths passed as data.
 
+## Default profile on Pi 1.2.0
+
+Use `/login` in the actual default profile and choose native `openai` with the
+ChatGPT subscription flow. Pi 1.2.0 also supports `openai-codex` as a distinct
+legacy route; its login is not native OpenAI authentication. Do not copy or
+relabel credentials between them. Default startup remains
+`openai/gpt-6.1-sol` at low thinking, and `/sol` remains pinned to Sol 6.1.
+Native OpenAI classifiers use the separate Decisions API, not subscription chat.
+
+Pi 1.2.0 runs `before_agent_start` for both user and custom-triggered turns.
+First-user Herdr naming checks `messageType` before reading `prompt` or consuming
+that opportunity. Shared delegation, successor authority, and branch context
+continue applying to both turn kinds. Use `/reload` only with no active or
+retained subagents, or restart Pi, to load extension changes. Existing sessions
+retain their selected model until switched or restarted. Offline focused checks
+cover event behavior and native model selection; interactive Herdr UX remains a
+separate, non-blocking verification limit.
+
 ## Documentation ownership
 
 This file owns cross-profile launcher and directory guidance. Customized legacy runtime documentation lives in [`profiles/legacy/docs/README.md`](profiles/legacy/docs/README.md), with the full setup guide in [`profiles/legacy/README.md`](profiles/legacy/README.md). Those documents do not describe the default profile. Keep new profile-specific documentation with its owning profile rather than recreating a shared `pi/docs/` tree.
