@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-10-13: Focus tool-failure review history retrieval
+
+- Tool-call analysis still reads all classification corrections, but searches and reads relevant prior incident reports instead of loading the entire analysis log before every review. Broader history is read when missing evidence could change the finding; durable records and explicitly requested exhaustive session reviews remain unchanged.
+
 ## 2026-10-13: Follow Pi upgrades in Herdr launches
 
 - Herdr plugin setup now registers the stable default-profile dependency path instead of freezing a version-specific pnpm store entrypoint. New instances, branches, and hosted children resolve the linked package’s CLI on each launch. Refresh dependency links after a global Pi upgrade; existing registrations need one setup refresh. Running sessions, explicit-entry registrations, preflight, and pane lifecycle remain unchanged.

@@ -9,7 +9,7 @@ This skill owns a durable history of tool-call reviews and operator corrections.
 
 ## Persistent workflow
 
-1. Before every tool-call or subagent-failure review, read [the analysis log](references/analysis-log.md) and [the classification feedback log](references/classification-feedback.md) completely.
+1. Before every tool-call or subagent-failure review, read [the classification feedback log](references/classification-feedback.md) completely. Search [the analysis log](references/analysis-log.md) for relevant mechanisms, tools, or comparable incidents and read the matching entries. Expand to linked incidents or more history only when missing evidence could change the classification, cause, or remedy.
 2. Define the profiles and exact `[since, until)` interval before retrieval. Review every selected session when exhaustive coverage is requested.
 3. Classify observed events using this skill and all non-superseded operator feedback. Separate verified facts from suspected causes.
 4. Append an analysis-log entry after each review. Record:

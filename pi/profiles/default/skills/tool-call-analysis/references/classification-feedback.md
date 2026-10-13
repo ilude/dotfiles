@@ -31,7 +31,7 @@ Operator decisions and corrections used by the `tool-call-analysis` skill. Read 
 - **Reference:** Operator request, 2026-09-11.
 - **Feedback:** The skill must evolve like `agent-process`: retain when analysis last ran, which profiles and date ranges it covered, and later operator feedback about what is and is not a tool-call failure.
 - **Decision:** The skill owns this feedback log and `analysis-log.md`, reads both before every review, appends review coverage and corrections, and updates executable taxonomy when directed or approved. No automatic monitoring or telemetry.
-- **Status:** Implemented.
+- **Status:** History preservation remains implemented. Mandatory complete analysis-log reading is superseded by TCF-006; classification corrections still require complete reading.
 
 ## TCF-005 - Keep failed checks separate from tool failures in delegation reviews
 
@@ -39,3 +39,10 @@ Operator decisions and corrections used by the `tool-call-analysis` skill. Read 
 - **Feedback:** Do not call test failures tool errors when assessing Iris's delegation. Long model phases also do not establish inactivity.
 - **Decision:** The six correctly invoked intermediate TypeScript/Vitest failures in TCA-012 are command/application outcomes because Bash and the runners faithfully reported them. Count invocation mistakes separately as tool-use failures, and assess child activity from recorded work rather than elapsed phase labels. This reaffirms TCF-001/TCF-002; it does not change the executable taxonomy.
 - **Status:** Applied to TCA-012. No skill edit.
+
+## TCF-006 - Retrieve relevant incident history instead of reading every report
+
+- **Reference:** Operator-approved follow-up to the default Pi safety-gate review, 2026-10-13.
+- **Feedback:** Keep reading classification corrections, but retrieve relevant past incidents rather than reading every historical failure report before each review.
+- **Decision:** Read this feedback log completely. Search the analysis log for relevant mechanisms, tools, or comparable incidents, read matching entries, and expand only when missing evidence could change classification, cause, or remedy. Preserve durable history, review logging, and exhaustive session traversal when requested. No measured performance improvement or causal link to the stalled weekly review is claimed.
+- **Status:** Implemented in `SKILL.md`; supersedes only TCF-004's complete analysis-log reading interpretation.
