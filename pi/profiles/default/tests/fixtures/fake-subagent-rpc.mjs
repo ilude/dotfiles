@@ -12,6 +12,7 @@ const startup=endpoint?new Promise((resolve,reject)=>{
 }):Promise.resolve();
 
 let buffer='';
+let busyFollowUp=false;
 process.stdin.on('data',chunk=>{
  buffer+=chunk;
  for(;;){
@@ -23,6 +24,19 @@ process.stdin.on('data',chunk=>{
 
 async function handle(command){
  if(command.type==='prompt'){await startup;
+   // Model native Pi's busy-prompt boundary for the waiting-parent race.
+   if(busyFollowUp){
+    if(!command.streamingBehavior){process.stdout.write(JSON.stringify({type:'response',id:command.id,success:false,error:"Agent is already processing. Specify streamingBehavior ('steer' or 'followUp') to queue the message."})+'\n');return}
+    busyFollowUp=false;
+    process.stdout.write(JSON.stringify({type:'response',id:command.id,success:true,data:{disposition:'queued'}})+'\n');
+    process.stdout.write(JSON.stringify({type:'message_end',message:{role:'assistant',content:[{type:'text',text:`delivered: ${command.message}`}]}})+'\n');
+    process.stdout.write('{"type":"agent_settled"}\n');return;
+   }
+   if(command.message.includes('[busy-follow-up]')){
+    busyFollowUp=true;
+    process.stdout.write(JSON.stringify({type:'response',id:command.id,success:true,data:{disposition:'started'}})+'\n');
+    process.stdout.write('{"type":"agent_start"}\n');return;
+   }
    if(command.message.includes('[reject]')){process.stdout.write(JSON.stringify({type:'response',id:command.id,success:false,error:'fixture provider preflight rejected'})+'\n');return}
    const handled=command.message.includes('[handled]');
    const queued=command.message.includes('[queued]');

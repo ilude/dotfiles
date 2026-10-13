@@ -295,7 +295,8 @@ export class RpcChild {
     if(this.record.surface==="visible")activate();
     else this.activatePrompt=activate;
     try{
-      const data=await this.command("prompt",{message:value});
+      // Waiting for a parent answer does not mean native Pi has finished its turn.
+      const data=await this.command("prompt",{message:value,streamingBehavior:"followUp"});
       const disposition=this.record.surface==="headless"?nativeInputDisposition(data,"prompt"):undefined;
       if(this.record.outcome==="cancelled")return disposition;
       if(disposition!=="handled")activate();

@@ -79,6 +79,29 @@ describe("native subagent message boundaries", () => {
     expect(instance.snapshot()).toMatchObject({ outcome: "complete", result: "first answer", exchangeId: originalExchange, exchangeKind: "original", originalAssignment: { exchangeId: originalExchange, assignment: "[hold]", outcome: "complete", result: "first answer" } });
   });
 
+  it.each(["answer", "message"] as const)("queues a waiting-parent %s while native Pi is still busy", async action => {
+    const instance = child("[busy-follow-up]");
+    void instance.start();
+    await vi.waitFor(() => expect(instance.snapshot().phase).toBe("model"));
+    const request = instance.parentMessage({ type: "question", payload: "Need a decision" }) as { id: string };
+    const disposition = action === "answer"
+      ? await instance.answer("decision supplied", request.id)
+      : await instance.message("additional context", { delivery: "queued" });
+    expect(disposition).toBe("queued");
+    if (action === "message") {
+      // Ordinary context does not resolve a protocol question.
+      expect(instance.snapshot().requestId).toBe(request.id);
+      await vi.waitFor(() => expect(instance.snapshot()).toMatchObject({ status: "waiting", turns: 1 }));
+      expect(instance.snapshot().error).toBeUndefined();
+      await instance.answer("decision supplied", request.id);
+    }
+    await vi.waitFor(() => expect(instance.snapshot()).toMatchObject({ status: "settled", outcome: "complete" }));
+    expect(instance.snapshot().result).toBe(action === "answer"
+      ? "delivered: Answer to your question:\ndecision supplied"
+      : "first answer");
+    expect(instance.snapshot().error).toBeUndefined();
+  });
+
   it("uses the same queued and immediate boundaries for visible children", async () => {
     const instance = new VisibleChild({ definition, instructions: "visible", cwd: here, model: "openai-codex/test", effort: "low", skills: [], origin: "messaging-origin", retained: false, surface: "visible" }, "fixture-extension", "fixture-profile", {} as any);
     (instance as any).appReady = true;
