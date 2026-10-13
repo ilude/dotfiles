@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { existsSync, realpathSync, statSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { basename, isAbsolute, relative, resolve, sep } from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 import net from "node:net";
@@ -61,7 +61,7 @@ export async function reportInitialAgentPresence(env = process.env, connect = en
   return false;
 }
 
-// Only the setup-owned manifest supplies the entrypoint. Per-launch input is
+// Only the setup-owned manifest supplies the package path or explicit entrypoint. Per-launch input is
 // deliberately not an arbitrary argv or environment serialization surface.
 export function launchArguments(env = process.env) {
   if (env.PI_HERDR_CLOSEOUT_SUCCESSOR !== undefined) throw new Error("Closeout successor launch is handled by its dedicated bootstrap path");
@@ -138,8 +138,17 @@ export function successorAdmission(env = process.env) {
 }
 
 export async function main() {
-  const entry = process.argv[2];
-  if (process.argv.length !== 3 || !entry || !isAbsolute(entry) || !existsSync(entry)) throw new Error("Expected setup-owned absolute Pi entrypoint");
+  const target = process.argv[2];
+  if (process.argv.length !== 3 || !target || !isAbsolute(target) || !existsSync(target)) throw new Error("Expected setup-owned absolute Pi package or entrypoint");
+  // Resolve the stable dependency link afresh for every new process. Explicit
+  // entrypoints remain supported for existing registrations and test fixtures.
+  let entry = target;
+  if (statSync(target).isDirectory()) {
+    const metadata = JSON.parse(readFileSync(resolve(target, "package.json"), "utf8"));
+    if (typeof metadata.bin?.pi !== "string" || !metadata.bin.pi) throw new Error("Pi package requires a bin.pi entrypoint");
+    entry = resolve(target, metadata.bin.pi);
+  }
+  if (!statSync(entry).isFile()) throw new Error("Pi entrypoint must be a file");
   // This receipt belongs only to the exact prepared-plan Pi process. Do not
   // let a shell-inherited value affect ordinary, resumed, or branch launches.
   if (!process.env.PI_HERDR_PLAN_PATH) delete process.env.PI_HERDR_PLAN_RUN;

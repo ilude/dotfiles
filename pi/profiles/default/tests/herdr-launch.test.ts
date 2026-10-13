@@ -1,4 +1,4 @@
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -55,6 +55,24 @@ it.each([true, false])("spawns the real Pi entrypoint with argv/env and prefligh
   expect(data.args).toEqual([...(valid ? [] : ["--no-tools", "--no-extensions"]), "--session", session]);
   expect(data.profile).toBe(profile); expect(data.pane).toBe("new-pane"); expect(data.leaked).toBeUndefined();
 });
+it("follows a replaced package link without changing the registered launch command", () => {
+  const root = mkdtempSync(join(tmpdir(), "herdr upgrade ")); roots.push(root);
+  const profile = join(root, "fixture"); mkdirSync(profile);
+  const link = join(profile, "node_modules/@earendil-works/pi-coding-agent");
+  mkdirSync(join(profile, "node_modules/@earendil-works"), { recursive: true });
+  const command = [resolve("../../../scripts/pi-herdr-launch.mjs"), link];
+  for (const version of ["A", "B"]) {
+    const pkg = join(root, version); mkdirSync(pkg);
+    writeFileSync(join(pkg, "package.json"), JSON.stringify({ bin: { pi: "cli.mjs" } }));
+    writeFileSync(join(pkg, "cli.mjs"), `console.log(${JSON.stringify(version)})`);
+    if (version === "B") rmSync(link);
+    symlinkSync(pkg, link, process.platform === "win32" ? "junction" : "dir");
+    const run = spawnSync(process.execPath, command, { env: { ...process.env, PI_HERDR_PROFILE_DIR: profile, PI_HERDR_SESSION_FILE: "", PI_HERDR_PLAN_PATH: "", HERDR_PLUGIN_ID: "" }, encoding: "utf8" });
+    expect(run.status, run.stderr).toBe(0);
+    expect(run.stdout.trim()).toBe(version);
+  }
+});
+
 it("propagates the real Pi process exit code", () => {
   const root = mkdtempSync(join(tmpdir(), "herdr exit code ")); roots.push(root);
   const profile = join(root, "fixture"); mkdirSync(profile);

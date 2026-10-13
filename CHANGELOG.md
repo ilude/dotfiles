@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-10-13: Follow Pi upgrades in Herdr launches
+
+- Herdr plugin setup now registers the stable default-profile dependency path instead of freezing a version-specific pnpm store entrypoint. New instances, branches, and hosted children resolve the linked package’s CLI on each launch. Refresh dependency links after a global Pi upgrade; existing registrations need one setup refresh. Running sessions, explicit-entry registrations, preflight, and pane lifecycle remain unchanged.
+
 ## 2026-10-12: Discover system-wide Brave installs for Windows debugging shortcuts
 
 - Windows Brave shortcut setup now finds per-user and system-wide installations, with `BRAVE_PATH` available as an override. The previous per-user-only default skipped this machine's Program Files installation.
