@@ -81,10 +81,10 @@ Adapt routine implementation mechanisms within settled intent. Ask before changi
   - Done when checks pass, selected model/provider behavior matches the approved workflow, and restart/verification limits are explicit.
   - Evidence: 2026-10-13 default-only typecheck passed. Finite Vitest command selected 11 files / 155 tests, all passed with `--maxWorkers=4`; all named filters exist except `codex-usage.test.ts`, which is absent and selected no tests. No replacement suite or full audit was added. Native model fixtures were exercised, not legacy routing. README, existing Herdr docs, and changelog document native OpenAI login, Sol 6.1/low, discriminated startup events, and settled reload/restart limits. Settings already contain native OpenAI Sol 6.1/low, with no new settings or credential changes. T2's bounded authenticated request is retained because the implementation does not invalidate auth/provider routing. Native alias remains on the lasting target checkout, not this disposable task. Post-integration offline native/wrapped startup smoke belongs to the orchestrator after successor readiness. Interactive Herdr UX remains optional and unverified. `git diff --check` passed.
 
-- [ ] **T4: Archive, commit, integrate, and clean up authorized execution**
+- [x] **T4: Archive, commit, integrate, and clean up authorized execution**
   - Depends on: T3, authorization through `/do-it` or equivalent, and resolved provider scope.
   - Apply the closeout contract below. Leave integration/cleanup unchecked when blocked or intentionally skipped.
-  - Evidence: Implementation and agreed checks complete; whole spec archived and task commit prepared for authorized local successor integration. Integration, completion metadata, exact-origin retirement, and cleanup remain pending and owned by the Integrator successor. No push/deployment authorized.
+  - [x] Evidence: Implementation and agreed checks complete; whole spec archived and task commit integrated locally. Completion metadata committed on `main`; exact-origin retirement observed and task worktree removed. Task branch retained. No push/deployment authorized.
 
 ## Finite validation
 
@@ -100,8 +100,7 @@ Baseline: typecheck failed in 3 event-related locations; 5 focused files/69 test
 
 ## Current handoff
 
-- Status: T1 through T3 complete; authorized local closeout pending. Plan status remains ready until integration metadata is committed.
-- Next: Integrator successor integrates the task commit and archived spec into the recorded target; orchestrator runs post-integration native/wrapped startup smoke, then releases exact-origin retirement and successor cleanup. Source changes require settled `/reload` or a fresh Pi process.
+- Status: T1 through T4 complete; authorized local integration and closeout complete. Source changes require settled `/reload` or a fresh Pi process.
 - External prerequisites/open design decisions: none. Existing sessions retain their selected model until switched or restarted.
 - Execution profile: default. Legacy is excluded.
 
@@ -117,4 +116,4 @@ Final reporting starts with explicit text and the corresponding symbol: 🟢 COM
 
 ## Integration evidence
 
-Default Pi 1.2.0 typecheck passed; finite Vitest selection passed 11 files/155 tests with four workers, absent codex-usage.test.ts selected no tests; diff check passed. T2 native/wrapped Sol 6.1 low startup and bounded native authenticated request already passed. Native startup smoke to be run by origin after integration readiness. Interactive Herdr UX optional/unverified; no legacy or credentials changed; no publication authorized.
+Default Pi 1.2.0 typecheck passed after `bash scripts/pi-deps-link-setup --profile default` linked missing task-local runtime peers. Finite Vitest selection passed 11 files/155 tests with four workers; absent `codex-usage.test.ts` selected no tests. `git diff --check` passed. T2 native/wrapped Sol 6.1 low startup and bounded native authenticated request passed; the auth request was not repeated. After integration, the origin ran `node scripts/pi-setup-smoke.mjs --root C:/Users/mglenn/.dotfiles`, exit 0: Pi 1.2.0 native and wrapper load and select default `openai/gpt-6.1-sol`. This offline smoke did not make a model request or verify authentication; T2's authenticated request remains valid. Interactive Herdr UX remains optional and unverified. No legacy files or credentials changed; no publication authorized. Target `main` is at `9ca3550cb06336495281a27939cec26acb247f38` before this completion-evidence update; task commit `b4d6c913329bf444c13e70e01db6e978be1f3987` was integrated, and task branch `task/pi-1-2-extension-compatibility` is retained. Task worktree `.worktrees/pi-1-2-extension-compatibility` was removed.
