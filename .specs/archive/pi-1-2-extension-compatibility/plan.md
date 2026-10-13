@@ -1,7 +1,7 @@
 ---
 created: 2026-10-13
-status: ready
-completed: null
+status: completed
+completed: 2026-10-13
 ---
 
 # Make default Pi extensions compatible with Pi 1.2.0
@@ -114,3 +114,7 @@ For authorized `/do-it`, dispatch the Integrator from the recorded target checko
 If blocked, retain worktree/panes and record reason, next action, and action owner. Routine merge conflicts are agent-owned. If `--no-merge`, retain the committed task worktree and skip mutating integration. Manual operator UX testing is non-blocking. Do not label unavailable native authentication as verified. Integrator records completion date/status/evidence and commits metadata before removing the clean task worktree. Push/deployment require separate authorization.
 
 Final reporting starts with explicit text and the corresponding symbol: 🟢 COMPLETED, 🔴 NOT COMPLETE: MERGE BLOCKED or USER INPUT REQUIRED, 🔵 IMPLEMENTED: MERGE SKIPPED AS REQUESTED, or 🟡 CLEANUP PENDING. Blocked/pending reports lead with reason and action needed, including the owner and exact next action, before passed checks. Include concise checks, archived spec, commits, integration result, and retained paths. Do not claim integration or cleanup complete from a task commit alone.
+
+## Integration evidence
+
+Default Pi 1.2.0 typecheck passed; finite Vitest selection passed 11 files/155 tests with four workers, absent codex-usage.test.ts selected no tests; diff check passed. T2 native/wrapped Sol 6.1 low startup and bounded native authenticated request already passed. Native startup smoke to be run by origin after integration readiness. Interactive Herdr UX optional/unverified; no legacy or credentials changed; no publication authorized.
