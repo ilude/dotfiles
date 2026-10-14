@@ -1,6 +1,6 @@
 [user]
 	name = mike
-	email = michael.glenn@eagletg.com
+	email = michael.glenn@redcedartg.com
 
 [include]
 	path = ~/.gitconfig-professional-local
