@@ -36,7 +36,8 @@ is removed. Windows uses native junction operations with paths passed as data.
 Use `/login` in the actual default profile and choose native `openai` with the
 ChatGPT subscription flow. Pi 1.2.0 also supports `openai-codex` as a distinct
 legacy route; its login is not native OpenAI authentication. Do not copy or
-relabel credentials between them. Default startup remains
+relabel credentials between them. Default keeps one native OpenAI login in Pi;
+quota reporting uses the existing, separate Codex CLI sign-in. Default startup remains
 `openai/gpt-6.1-sol` at low thinking, and `/sol` remains pinned to Sol 6.1.
 Native OpenAI classifiers use the separate Decisions API, not subscription chat.
 
@@ -109,9 +110,13 @@ The operator footer shows repository, model, context, and provider usage. `[relo
 
 ## Default profile usage and context reports
 
-Codex subscription usage is shown in the transcript on fresh Pi startup and after `/new` or `/clear`. Starting with an existing conversation, including `/branch`, refreshes the footer without appending another usage report. `/usage` refreshes it on demand. Reports include quota windows and local reset times, banked reset count and expiration times, credits and reported additional limits except GPT-5.3-Codex-Spark, the OpenAI usage-page link, and the recent prompt cache-read percentage. Quota failures retain the link and show unavailable, not zero. The footer refreshes quota every five minutes, marking last-known values stale on failure. An immediate reload after `/clear` completes a pending report without duplicating a completed one. Reports are display-only custom entries, never model context.
+Subscription usage is shown in the transcript on fresh Pi startup and after `/new` or `/clear`. Starting with an existing conversation, including `/branch`, refreshes the footer without appending another usage report. `/usage` fetches live quota percentages, reset times, banked resets and their expirations, and credit balances, retaining local OpenAI prompt cache-read statistics, Bedrock estimates, and a link to [ChatGPT usage settings](https://chatgpt.com/settings/usage).
 
-Cache statistics cover the last 100 observed Codex assistant responses in the active profile, across sessions. Cache-read share is `cacheRead / (input + cacheRead)` over responses with both counts available; the report also shows observation coverage and model request mix. Only model names and those counts are appended to the gitignored `codex-cache.jsonl`; reads are bounded to its last 128 KiB. The log is append-only and may be deleted to reset history. Legacy history is not imported. No request-shape diagnostics, `/cache-doctor`, orchestration telemetry, or hidden session datetime injection is included.
+Default keeps one native `openai` subscription login in Pi for Sol 6.1 and other model requests. Live quota reporting uses the existing separate Codex CLI ChatGPT credential from `$CODEX_HOME/auth.json` or `~/.codex/auth.json`, never Pi's native token or an additional Pi `openai-codex` login. These are two credential sources, not one shared OAuth grant: the tested native token was rejected by the quota API, while the Codex route rejected Sol 6.1. Expired or rejected CLI credentials are renewed through Codex's own `app-server` account API, preserving its ownership of rotation and persistence without copying refresh tokens into Pi or launching another login. The CLI must be installed for renewal; the reporter reads its existing file-backed sign-in.
+
+The footer shows real used percentages for reported quota windows, with pacing colors. Missing windows are omitted, not invented as `0%`; a weekly-only plan displays `codex: wk 2%` when that is the reported usage. Quota requests are shared between the footer and report, cached for five minutes, and polled only with a UI. Failed refreshes mark the last good footer value `stale` or show `unavailable`; cache-read share is never substituted for quota. An immediate reload after `/clear` completes a pending report without duplicating a completed one. Reports are display-only custom entries, never model context.
+
+Cache statistics cover the last 100 observed native OpenAI assistant responses in the active profile, across sessions. Cache-read share is `cacheRead / (input + cacheRead)` over responses with both counts available. Only model names and those counts are appended to the existing gitignored `codex-cache.jsonl`; reads are bounded to its last 128 KiB. The log is append-only and may be deleted to reset history. Its filename and recorded history are preserved. Legacy history is not imported. No request-shape diagnostics, `/cache-doctor`, orchestration telemetry, or hidden session datetime injection is included.
 
 Footer line 2 shows live output throughput, first-token latency, token count and streaming duration alongside scheduler and Bedrock status. Every output delta contributes to the character-based estimate, but streaming presentation is coalesced to a 500 ms cadence, with prompt updates on the first token and at message completion. Live estimates use `~`; final throughput uses provider output counts and excludes tool execution and first-token waiting. Latency is measured from Pi's assistant-message start to its first nonempty output delta (including thinking/tool arguments), not from an independently observed HTTP send. Final values remain visible and restore on reload/resume; new sessions clear them. At narrow widths scheduler then timing take priority, with Bedrock shown at the right when space permits.
 
@@ -130,12 +135,12 @@ The default profile owns one curated `bedrock-mantle` provider while leaving Pi'
 Focused checks from `pi/profiles/default/`:
 
 ```sh
-pnpm test usage-context-tps.test.ts scheduler-footer.test.ts
+pnpm test usage-context-tps.test.ts scheduler-footer.test.ts codex-auth.test.ts
 pnpm exec tsc --noEmit -p tests/tsconfig.usage.json
 node scripts/usage-smoke.mjs
 ```
 
-The smoke check uses the installed Pi loader offline with an empty temporary profile. It does not verify live subscription credentials or the private OpenAI endpoint.
+The smoke check uses the installed Pi loader offline with an empty temporary profile. It does not verify live subscription credentials or attached TUI rendering. Verify live quota and authenticated native model access separately through the affected launch path. Reload with no active or retained subagents, or restart Pi, to load reporting changes.
 
 ## Default profile compaction
 

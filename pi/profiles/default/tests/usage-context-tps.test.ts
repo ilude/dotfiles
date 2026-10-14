@@ -8,16 +8,15 @@ import codex from "../extensions/codex-status.ts";
 import context from "../extensions/context.ts";
 import tps from "../extensions/tps-tracker.ts";
 import clear from "../extensions/clear.ts";
-import { formatCacheUsage, formatQuota, formatResetCredits, formatUsage, paceColor, readCacheUsage, recordCacheUsage, resolveCodexAuth, REFRESH_MS, RESET_CREDITS_ENDPOINT, USAGE_PAGE } from "../lib/codex-usage.ts";
+import { fetchCodexUsage, formatCacheUsage, formatQuota, formatResetCredits, formatUsage, paceColor, readCacheUsage, recordCacheUsage, resolveCodexAuth, REFRESH_MS, RESET_CREDITS_ENDPOINT, USAGE_PAGE } from "../lib/codex-usage.ts";
+import { refreshCodexCliAuth } from "../lib/codex-auth.ts";
+vi.mock("../lib/codex-auth.ts", async importOriginal => ({ ...await importOriginal<typeof import("../lib/codex-auth.ts")>(), refreshCodexCliAuth: vi.fn(async () => {}) }));
+import { summarize as summarizeBedrock } from "../lib/bedrock/ledger.ts";
 
 import { createEventBus } from "../node_modules/@earendil-works/pi-coding-agent/dist/core/event-bus.js";
 import { RELOAD_REQUEST } from "../lib/profile-reload-events.ts";
-vi.mock("node:os", async importOriginal => {
-  const original = await importOriginal<typeof import("node:os")>();
-  return { ...original, homedir: () => process.env.PI_CODING_AGENT_DIR ?? original.homedir() };
-});
 vi.mock("../lib/bedrock/ledger.ts", () => ({
-  summarize: async () => ({ month: "test", records: [], cost: 0, unpriced: 0, baseline: 0 }),
+  summarize: vi.fn(async () => ({ month: "test", records: [], cost: 0, unpriced: 0, baseline: 0 })),
   formatUsage: () => "Bedrock: no local usage recorded this month.",
 }));
 vi.mock("../lib/bedrock/claude-status-usage.ts", () => ({ readClaudeLocalContribution: async () => 0 }));
@@ -77,26 +76,52 @@ beforeEach(() => {
   vi.useFakeTimers();
   dir = mkdtempSync(join(tmpdir(), "pi-usage-port-"));
   vi.stubEnv("PI_CODING_AGENT_DIR", dir);
+  vi.stubEnv("CODEX_HOME", join(dir, ".codex"));
+  mkdirSync(join(dir, ".codex"));
   const access = `header.${Buffer.from(JSON.stringify({ "https://api.openai.com/auth": { chatgpt_account_id: "synthetic-account" } })).toString("base64url")}.signature`;
-  writeFileSync(join(dir, "auth.json"), JSON.stringify({ openai: { type: "oauth", access, refresh: "synthetic-refresh", expires: Date.now() + 3600000, clientId: "synthetic-client", scopes: [] } }));
+  writeFileSync(join(dir, ".codex", "auth.json"), JSON.stringify({ auth_mode: "chatgpt", tokens: { access_token: access } }));
+  vi.mocked(refreshCodexCliAuth).mockReset().mockResolvedValue(undefined);
   vi.stubGlobal("fetch", vi.fn(async (url: string | URL) => new Response(JSON.stringify(String(url) === RESET_CREDITS_ENDPOINT ? resetCredits : usage))));
 });
 afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.restoreAllMocks(); rmSync(dir, { recursive: true, force: true }); });
 
 describe("Codex usage", () => {
-  it("uses native Pi OpenAI OAuth auth and rejects a plain API key", () => {
-    writeFileSync(join(dir, "auth.json"), JSON.stringify({ openai: { type: "api_key", key: "synthetic-key" } }));
-    expect(() => resolveCodexAuth()).toThrow("use Pi /login");
+  it("uses only the existing CLI credential, ignoring both Pi OpenAI routes", () => {
+    writeFileSync(join(dir, "auth.json"), JSON.stringify({
+      openai: { type: "oauth", access: "native-token", accountId: "native-account" },
+      "openai-codex": { type: "oauth", access: "unused-old-token", accountId: "old-account" },
+    }));
+    expect(resolveCodexAuth().accountId).toBe("synthetic-account");
+    expect(resolveCodexAuth().accessToken).not.toBe("native-token");
+    rmSync(join(dir, ".codex", "auth.json"));
+    expect(() => resolveCodexAuth()).toThrow("Codex CLI ChatGPT sign-in unavailable");
   });
 
-  it("takes the account claim from the selected native token when legacy and CLI credentials coexist", () => {
-    const access = `header.${Buffer.from(JSON.stringify({ "https://api.openai.com/auth": { chatgpt_account_id: "native-account" } })).toString("base64url")}.signature`;
-    writeFileSync(join(dir, "auth.json"), JSON.stringify({ openai: { type: "oauth", access }, "openai-codex": { access: "legacy-token", accountId: "legacy-account" } }));
-    mkdirSync(join(dir, ".codex"));
-    writeFileSync(join(dir, ".codex", "auth.json"), JSON.stringify({ tokens: { access_token: "cli-token", account_id: "cli-account" } }));
-    expect(resolveCodexAuth()).toEqual({ accessToken: access, accountId: "native-account" });
-    writeFileSync(join(dir, "auth.json"), JSON.stringify({ openai: { type: "oauth", access: "native-without-claim", accountId: "unrelated-account" }, "openai-codex": { access: "legacy-token", accountId: "legacy-account" } }));
-    expect(resolveCodexAuth()).toEqual({ accessToken: "native-without-claim", accountId: undefined });
+  it("renews an expired CLI token through its owner before requesting quotas", async () => {
+    const expired = `header.${Buffer.from(JSON.stringify({ exp: Date.now() / 1000 - 1 })).toString("base64url")}.signature`;
+    writeFileSync(join(dir, ".codex", "auth.json"), JSON.stringify({ auth_mode: "chatgpt", tokens: { access_token: expired } }));
+    vi.mocked(refreshCodexCliAuth).mockImplementationOnce(async () => {
+      writeFileSync(join(dir, ".codex", "auth.json"), JSON.stringify({ auth_mode: "chatgpt",
+        tokens: { access_token: "renewed-cli-token", account_id: "renewed-account" } }));
+    });
+    await fetchCodexUsage(new AbortController().signal);
+    expect(refreshCodexCliAuth).toHaveBeenCalledOnce();
+    expect(vi.mocked(fetch).mock.calls[0][1]?.headers).toMatchObject({
+      authorization: "Bearer renewed-cli-token", "chatgpt-account-id": "renewed-account",
+    });
+  });
+
+  it("renews once after quota rejection and retries with the CLI's updated credential", async () => {
+    vi.mocked(fetch).mockImplementation(async () => new Response("", { status: 401 }));
+    vi.mocked(refreshCodexCliAuth).mockImplementationOnce(async () => {
+      writeFileSync(join(dir, ".codex", "auth.json"), JSON.stringify({ auth_mode: "chatgpt",
+        tokens: { access_token: "renewed-cli-token", account_id: "renewed-account" } }));
+      vi.mocked(fetch).mockImplementation(async url => new Response(JSON.stringify(String(url) === RESET_CREDITS_ENDPOINT ? resetCredits : usage)));
+    });
+    expect(formatQuota(await fetchCodexUsage(new AbortController().signal))).toContain("5h 25%");
+    expect(refreshCodexCliAuth).toHaveBeenCalledOnce();
+    expect(fetch).toHaveBeenCalledTimes(4);
+    expect(vi.mocked(fetch).mock.calls[2][1]?.headers).toMatchObject({ authorization: "Bearer renewed-cli-token" });
   });
 
   it("shows a startup report outside model context, shares its fetch with the footer, and refreshes", async () => {
@@ -230,7 +255,7 @@ describe("Codex usage", () => {
     expect(readCacheUsage()).toHaveLength(100);
     expect(readFileSync(join(dir, "codex-cache.jsonl"), "utf8")).not.toContain("hello");
     const report = formatCacheUsage([{ model: "a", input: 10, cacheRead: 90 }, { model: "b", input: 900, cacheRead: 0 }, { model: "a", input: null, cacheRead: null }]);
-    expect(report).toBe("Codex cache:\n  Cache-read: 9.0%");
+    expect(report).toBe("OpenAI cache:\n  Cache-read: 9.0%");
     expect(formatCacheUsage([])).toContain("unavailable");
     recordCacheUsage({ ...assistant(0, "error"), usage: { input: 0, cacheRead: 0 } });
     expect(readCacheUsage().at(-1)).toMatchObject({ input: null, cacheRead: null });
@@ -242,7 +267,10 @@ describe("Codex usage", () => {
       { rate_limit: { secondary_window: usage.rate_limit.secondary_window } },
       (color, text) => `<${color}>${text}</${color}>`,
     );
-    expect(partial).toContain("5h <accent>0%</accent>");
+    expect(partial).not.toContain("5h");
+    expect(partial).toContain("wk");
+    expect(formatQuota({ rate_limit: { primary_window: { limit_window_seconds: 604800, used_percent: 2 } } })).toBe("codex: wk 2%");
+    expect(formatQuota({ rate_limit: { primary_window: { limit_window_seconds: 18000 } } })).toBe("codex: 5h unavailable");
     const window = { limit_window_seconds: 18000, reset_at: Date.now() / 1000 + 9000 };
     expect(paceColor({ ...window, used_percent: 25 })).toBe("success");
     expect(paceColor({ ...window, used_percent: 50 })).toBe("warning");
@@ -251,6 +279,33 @@ describe("Codex usage", () => {
     expect(formatResetCredits({ reset_credits: { available_count: 0, credits: [] } })).toBe("Banked resets: 0");
     expect(formatUsage({})).toContain(USAGE_PAGE);
   });
+  it("discards a report whose Bedrock read completes after immediate reload", async () => {
+    const summary = await summarizeBedrock();
+    let finishOld!: () => void;
+    vi.mocked(summarizeBedrock).mockImplementationOnce(() => new Promise(resolve => { finishOld = () => resolve(summary); }));
+    const r = runtime(codex);
+    await r.emit("session_start", { reason: "new" }); await flush();
+    await r.emit("session_shutdown", { reason: "reload" });
+    const replacement = runtime(codex, r.sm);
+    await replacement.emit("session_start", { reason: "reload" }); await flush();
+    expect(replacement.reports()).toHaveLength(1);
+    finishOld(); await flush();
+    expect(replacement.reports()).toHaveLength(1);
+    await replacement.emit("session_shutdown");
+  });
+
+  it("keeps quota and banked counts when optional reset details or Bedrock fail", async () => {
+    vi.mocked(fetch).mockImplementation(async url => new Response(JSON.stringify(
+      String(url) === RESET_CREDITS_ENDPOINT ? {} : { ...usage, rate_limit_reset_credits: { available_count: 3 } })));
+    vi.mocked(summarizeBedrock).mockRejectedValueOnce(new Error("ledger unavailable"));
+    const r = runtime(codex);
+    await r.emit("session_start", { reason: "startup" }); await flush();
+    expect(r.statuses.get("codex")).toBe("codex: 5h 25% | wk 75%");
+    expect((r.reports()[0] as any).data.text).toContain("Banked resets: 3");
+    expect((r.reports()[0] as any).data.text).toContain("Bedrock local estimate unavailable: ledger unavailable");
+    await r.emit("session_shutdown");
+  });
+
 });
 
 describe("context report", () => {

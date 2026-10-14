@@ -8,6 +8,7 @@
     "../extensions/clear.ts",
     "../lib/codex-usage.ts",
     "usage-context-tps.test.ts",
+    "codex-auth.test.ts",
     "scheduler-footer.test.ts",
     "pi-web-api.ts"
   ]

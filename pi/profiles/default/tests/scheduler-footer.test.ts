@@ -12,6 +12,7 @@ vi.mock("../lib/reload-monitor.ts", () => ({ ReloadMonitor: class {
 import { createEventBus } from "../node_modules/@earendil-works/pi-coding-agent/dist/core/event-bus.js";
 import registerFooter from "../extensions/operator-footer.ts";
 import { visibleWidth } from "@earendil-works/pi-tui";
+import { formatQuota } from "../lib/codex-usage.ts";
 
 afterEach(() => vi.useRealTimers());
 
@@ -57,6 +58,12 @@ it("renders the scheduler status in the actual footer alongside provider usage a
   expect(footer!.render(160).join("\n")).toContain("sched@ 9:00am");
   expect(footer!.render(160).join("\n")).toContain("bedrock:");
   expect(footer!.render(30)[1]).toContain("Onclave[4]: pi-01a082");
+  const quota = formatQuota({ rate_limit: { primary_window: { limit_window_seconds: 604800, used_percent: 2 } } });
+  statuses.set("codex", quota);
+  const weeklyFooter = footer!.render(160);
+  expect(weeklyFooter[0]).toContain("codex: wk 2%");
+  expect(weeklyFooter[0]).not.toContain("5h");
+  expect(weeklyFooter[0]).not.toContain("cache-read");
   statuses.delete("schedule");
   expect(footer!.render(160).join("\n")).not.toContain("sched@");
   await hooks.get("session_shutdown")!({}, ctx);

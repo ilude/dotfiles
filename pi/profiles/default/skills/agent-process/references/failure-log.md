@@ -1,5 +1,15 @@
 # Agent process failure log
 
+## APR-095 - Codex quota diagnosis stopped before comparing credential routes
+
+- **Reference:** Default session `01a13634-00ce-75ec-8c38-bc37e2b460d8`, operator correction, 2026-10-13.
+- **Observed:** Suggested repeating native OpenAI login after a quota 401 without checking token validity or the already configured Codex credential. Then treated token audience as an established cause without a working comparison. The operator reported having logged in that morning and feeling given the runaround.
+- **Evidence:** Side-by-side requests to the same quota endpoint returned 401 `rejected_by_access_enforcement` with unexpired native OpenAI credentials and 200 with the default profile's existing OpenAI Codex credentials. Both tokens had the same API audience, so audience alone did not establish the cause. The resolver prioritizes the rejected native credential.
+- **Correction:** Retracted the expired-token remedy and audience-only explanation. Established the credential-selection defect through live comparison; another native login is not the demonstrated remedy.
+- **Related:** APR-090, APR-086, APR-093. Existing investigation guidance covers this failure; no instruction change needed.
+- **Follow-up:** The operator repeatedly requested actual subscription stats after removal of quota reporting and substitution of cache-read values. Local-report and RPC checks established only the downgrade, not the requested repair. Existing Codex CLI credentials subsequently returned live quota and reset-credit data; the Codex model route rejected Sol 6.1. The operator authorized using that separate existing CLI credential for stats while keeping native model authentication. No new Pi login or copied refresh token was needed.
+- **Status:** Restored real quota footer values and full `/usage` reporting, including reset times, banked-reset expirations, credits, local cache history, and Bedrock accounting. Codex owns renewal of its existing file-backed credential. Missing windows are omitted rather than invented as zero usage. All 21 focused tests, usage typecheck, and real-loader smoke pass. Live Pi 1.2.0 RPC through native agent-directory resolution verified weekly quota, banked resets, credits, matching quota status, and exclusion from model context; an authenticated native Sol 6.1 request also completed. The existing attached process still requires settled-only reload or restart; attached TUI rendering is not established by RPC. Legacy remains untouched. No commit or push.
+
 ## APR-094 - Quiet commits triggered extra turns and left feedback unexplained
 
 - **Reference:** Default session `01a135a4-1364-751e-838f-9a5ab68530bf`, 2026-10-13; AIF-107, AIF-100.

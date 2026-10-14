@@ -33,20 +33,23 @@ export default function codexStatus(pi: ExtensionAPI): void {
     if (!force && cached && Date.now() - cachedAt < REFRESH_MS) return Promise.resolve(cached);
     const abort = new AbortController();
     controller = abort;
+    const epoch = generation;
     const timeout = setTimeout(() => abort.abort(), 15_000);
-    request = fetchCodexUsage(abort.signal).then(value => {
-      if (!abort.signal.aborted) { cached = value; cachedAt = Date.now(); }
+    const pending = fetchCodexUsage(abort.signal).then(value => {
+      if (!abort.signal.aborted && generation === epoch) { cached = value; cachedAt = Date.now(); }
       return value;
-    }).finally(() => { clearTimeout(timeout); request = undefined; });
-    return request;
+    }).finally(() => { clearTimeout(timeout); if (request === pending) request = undefined; });
+    request = pending;
+    return pending;
   }
   function cacheReport(): string {
     try { return formatCacheUsage(readCacheUsage()) + (cacheError ? `\n  Recording unavailable: ${cacheError}` : ""); }
-    catch { return "OpenAI Codex cache: unavailable (cannot read profile cache history)."; }
+    catch { return "OpenAI cache: unavailable (cannot read profile cache history)."; }
   }
   async function refresh(ctx: ExtensionContext, report?: { marker?: string; force?: boolean }): Promise<void> {
     const epoch = generation;
     let content: string;
+    if (!cached) ctx.ui.setStatus("codex", "codex: loading");
     try {
       const usage = await getUsage(report?.force);
       if (!alive || epoch !== generation) return;
@@ -64,7 +67,8 @@ export default function codexStatus(pi: ExtensionAPI): void {
         bedrock = formatBedrockUsage(summary, await readClaudeLocalContribution(summary.month, summary.baselineDetails));
       }
       catch (error) { bedrock = `Bedrock local estimate unavailable: ${error instanceof Error ? error.message : "cannot read ledger"}`; }
-      const cache = cacheReport().replace(/^Codex cache:\n/, "");
+      if (!alive || epoch !== generation) return;
+      const cache = cacheReport().replace(/^OpenAI cache:\n/, "");
       const lines = content.split("\n");
       const weekly = lines.findIndex(line => line.startsWith("  Weekly:"));
       const codex = lines.indexOf("Codex:");
@@ -107,6 +111,7 @@ export default function codexStatus(pi: ExtensionAPI): void {
     generation++;
     clearTimeout(timer);
     controller?.abort();
+    request = undefined;
   });
   pi.on("message_end", event => {
     if (event.message.role !== "assistant") return;

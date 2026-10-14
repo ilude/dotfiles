@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-10-13: Restore live Codex quotas without changing native model access
+
+- Restored real subscription quota percentages to the default Pi footer and reset times, banked-reset counts and expirations, and credit balances to `/usage`. This replaces the local-cache-only workaround, which did not meet the request to restore subscription stats. Only reported quota windows are displayed; a missing five-hour window is no longer shown as an invented `0%`.
+- Pi retains one native `openai` login and Sol 6.1 model access. Quotas use the operator-authorized existing, separate Codex CLI ChatGPT credential, not a shared OAuth grant or another Pi login. Native model authentication passed while the quota API rejected that credential; the Codex route could fetch quotas but rejected Sol 6.1. Codex owns renewal and persistence of its file-backed credential through its account API, without copying refresh tokens into Pi or changing the CLI's saved provider configuration.
+- Restored shared five-minute quota caching and UI-only polling, with explicit stale/unavailable states on failure. Local cache history, Bedrock accounting, display-only report persistence, and legacy remain unchanged. Reports interrupted by immediate reload are discarded or completed once. Reload with no active or retained subagents, or restart Pi, to load the change.
+
 ## 2026-10-13: Complete default extension compatibility with Pi 1.2.0
 
 - Herdr first-user tab naming now discriminates user and custom startup events before reading a prompt or consuming first-prompt state. Custom-triggered turns retain shared branch, delegation, and successor context. Updated event fixtures and added coverage for custom startup followed by a user prompt and branch context on custom runs.

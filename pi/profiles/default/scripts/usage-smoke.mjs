@@ -42,7 +42,7 @@ export default async function(pi) {
   catch { throw new Error(`Loader did not complete: ${output.stdout}\n${output.stderr}`); }
   assert(!result.error, JSON.stringify(result));
   assert.deepEqual(result.commands.sort(), ["context", "usage"]);
-  assert.deepEqual(result.renderers.sort(), ["codex-usage-report", "context-report"]);
+  assert.deepEqual(result.renderers.sort(), ["codex-usage-report", "context-report", "profile-command"]);
   assert(result.hooks.includes("message_update"));
-  console.log(`Pi ${manifest.version}: quota, context, TPS and footer registered through the real loader (offline).`);
+  console.log(`Pi ${manifest.version}: quota usage, context, TPS and footer registered through the real loader (offline).`);
 } finally { await rm(scratch, { recursive: true, force: true }); }
