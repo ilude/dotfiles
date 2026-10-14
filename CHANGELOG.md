@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-10-14: Tolerate harmless Herdr naming response formatting
+
+- Automatic tab naming now extracts title text alongside model reasoning, trims surrounding line breaks, and normalizes horizontal whitespace and case. Multiline explanations, unsupported content, punctuation, and oversized titles remain rejected.
+- Naming instructions now state the same character and length limits as validation. Failed responses record bounded shape information, not conversation text or reasoning, to distinguish formatting failures.
+- Pi model access, manual-title protection, timeouts, cooldown, and the failure cutoff are unchanged. Reload while idle with no active or retained subagents, or restart Pi, to load the change.
+
 ## 2026-10-14: Preserve commit outcomes for the next model turn
 
 - `/commit`, F9, and F10 now persist final outcomes and full failure diagnostics in model context without triggering an automatic reply or recovery. The existing single displayed result and private runner remain unchanged.

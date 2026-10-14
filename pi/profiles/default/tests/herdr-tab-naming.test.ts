@@ -116,7 +116,14 @@ describe("output validation", () => {
     expect(validateNamingOutput({ stopReason: "stop", content: [{ type: "text", text: "  " }] })).toEqual({ kind: "empty" });
   });
 
-  it("rejects prose, punctuation, thinking, and error responses", () => {
+  it("accepts surrounding newlines, horizontal whitespace, and separate reasoning", () => {
+    expect(validateNamingOutput({ stopReason: "stop", content: [
+      { type: "thinking", thinking: "private reasoning" },
+      { type: "text", text: "\r\n  Fix\t Tab   Naming  \n" },
+    ] })).toEqual({ kind: "title", title: "fix tab naming" });
+  });
+
+  it("rejects prose, punctuation, reasoning-only, and error responses", () => {
     for (const text of ["tab naming now please do this", "tab-naming", "tab naming\nmore"]) {
       expect(() => validateNamingOutput({ stopReason: "stop", content: [{ type: "text", text }] })).toThrow();
     }
@@ -126,6 +133,20 @@ describe("output validation", () => {
 });
 
 describe("owner request and guards", () => {
+  it("records rejected response shape without recording text or reasoning", async () => {
+    const herdr = herdrFixture();
+    const diagnostics = diagnosticSink();
+    const runtime = runtimeFor({ stopReason: "stop", content: [
+      { type: "thinking", thinking: "private reasoning" },
+      { type: "text", text: "private title\nexplanation" },
+    ] });
+    const owner = new HerdrTabNamingOwner({ target: { tabId: "tab" }, initialTitle: ".dotfiles", cli: herdr.cli, runtimeFactory: async () => runtime, diagnostics });
+    await expect(owner.attempt("test", entries({ role: "user", content: "private conversation" }))).resolves.toMatchObject({ outcome: "failed" });
+    expect(diagnostics.records[0].responseShape).toEqual({ stopReason: "stop", blockTypes: ["thinking", "text"], textChars: 25, trimmedChars: 25, hasLineBreaks: true });
+    expect(JSON.stringify(diagnostics.records)).not.toContain("private");
+    expect(herdr.title).toBe(".dotfiles");
+  });
+
   it("counts the feature deadline as a failure instead of lifecycle cancellation", async () => {
     const herdr = herdrFixture();
     const diagnostics = diagnosticSink();
@@ -193,7 +214,7 @@ describe("owner request and guards", () => {
   it("uses exact Luna low/no-tools/no-retries options and renames the verified tab", async () => {
     const herdr = herdrFixture();
     let request: unknown;
-    const runtime = runtimeFor({ stopReason: "stop", content: [{ type: "text", text: "Tab Naming" }] }, value => { request = value; });
+    const runtime = runtimeFor({ stopReason: "stop", content: [{ type: "thinking", thinking: "private reasoning" }, { type: "text", text: "\nTab\t Naming\n" }] }, value => { request = value; });
     const owner = new HerdrTabNamingOwner({ target: { tabId: "tab", paneId: "pane", workspaceId: "ws" }, initialTitle: ".dotfiles", cli: herdr.cli, runtimeFactory: async () => runtime, diagnostics: diagnosticSink() });
     const result = await owner.attempt("first-prompt", entries({ role: "user", content: "Name this coding task" }));
     expect(result).toEqual({ outcome: "renamed", title: "tab naming" });

@@ -26,4 +26,4 @@ agent_panel_sort = "spaces"
 prompt_new_tab_name = false
 
 [update]
-channel = "preview"
+channel = "stable"
