@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-10-14: Preserve commit outcomes for the next model turn
+
+- `/commit`, F9, and F10 now persist final outcomes and full failure diagnostics in model context without triggering an automatic reply or recovery. The existing single displayed result and private runner remain unchanged.
+- Corrects the prior completion change, which removed both redundant replies and next-turn visibility by using interface-only entries. Reload while idle or restart Pi to load the fix; previously displayed failures are not retroactively added to model context.
+
 ## 2026-10-13: Restore live Codex quotas without changing native model access
 
 - Restored real subscription quota percentages to the default Pi footer and reset times, banked-reset counts and expirations, and credit balances to `/usage`. This replaces the local-cache-only workaround, which did not meet the request to restore subscription stats. Only reported quota windows are displayed; a missing five-hour window is no longer shown as an invented `0%`.

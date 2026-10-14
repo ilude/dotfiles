@@ -29,6 +29,9 @@ export default function profileCommands(pi: ExtensionAPI): void {
 
 	function presentCommit(text: string, error: boolean, ctx: ExtensionContext): void {
 		pi.appendEntry(RESULT_ENTRY, { text, error });
+		// Keep the existing UI entry, but also persist the outcome in model context.
+		// Visibility on the next user turn must not start an automatic recovery turn.
+		pi.sendMessage({ customType: RESULT_ENTRY, content: text, display: false, details: { error } }, { triggerTurn: false });
 		if (ctx.hasUI && error) ctx.ui.notify("/commit failed; see result above", "error");
 	}
 

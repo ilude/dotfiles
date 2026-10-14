@@ -77,16 +77,16 @@ describe("profile command lifecycle", () => {
 		expect(f.tools.size).toBe(0);
 		expect(f.active()).toEqual(["read", "unrelated_tool"]);
 		expect(f.terminal.size).toBe(0);
-		expect(f.sent).toEqual([]);
+		expect(f.sent).toEqual([{ message: { customType: "profile-commit-result", content: "abc123 committed", display: false, details: { error: false } }, options: { triggerTurn: false } }]);
 		expect(f.widgets.size).toBe(0);
 	});
 
-	it("shows slash failure diagnostics without triggering model recovery", async () => {
+	it("persists full slash failure diagnostics for the next model turn without triggering recovery", async () => {
 		const f = fixture();
 		const diagnostics = "shell command failed\ncat: '/C:/repo/AGENTS.md': No such file or directory\nNo commits created.\nPush completion not confirmed.";
 		reviewer.run.mockRejectedValueOnce(new Error(diagnostics));
 		await f.commands.get("commit")!.handler("push", f.ctx);
-		expect(f.sent).toEqual([]);
+		expect(f.sent).toEqual([{ message: { customType: "profile-commit-result", content: `/commit failed: ${diagnostics}`, display: false, details: { error: true } }, options: { triggerTurn: false } }]);
 		expect(f.widgets.size).toBe(0);
 		expect(f.entries.at(-1)?.data.text).toBe(`/commit failed: ${diagnostics}`);
 	});
@@ -194,7 +194,7 @@ describe("profile command lifecycle", () => {
 		expect(stopped).toHaveBeenCalledOnce();
 		expect(f.widgets.size).toBe(0);
 		expect(f.ctx.ui.notify).not.toHaveBeenCalled();
-		expect(f.sent).toEqual([]);
+		expect(f.sent).toEqual([{ message: { customType: "profile-commit-result", content: "done", display: false, details: { error: false } }, options: { triggerTurn: false } }]);
 	});
 
 	it("shutdown aborts active runner and clears terminal input", async () => {

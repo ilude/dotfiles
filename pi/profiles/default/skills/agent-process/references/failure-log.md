@@ -1,5 +1,13 @@
 # Agent process failure log
 
+## APR-096 - Quiet commit results were removed from next-turn model context
+
+- **Reference:** Operator screenshot and correction, 2026-10-14; APR-094, AIF-107.
+- **Observed:** A displayed `/commit push` failure was unavailable to the main model on the next user turn. The model asked the operator to provide diagnostics already visible in the interface.
+- **Finding:** The earlier redundant-turn fix used only `appendEntry`, which excludes data from model context. Its lifecycle test required no message dispatch, conflating no automatic response with no next-turn visibility.
+- **Correction:** Preserve the existing UI entry and send the full final outcome as a hidden custom message with `triggerTurn: false`. Success and failure tests assert content and non-triggering delivery.
+- **Status:** All 12 command lifecycle tests and default typecheck pass. Running Pi requires idle reload or restart; old interface-only results are not retroactively projected. Screenshot's separate invalid WSL shell path remains outside this visibility correction. No commit or push.
+
 ## APR-095 - Codex quota diagnosis stopped before comparing credential routes
 
 - **Reference:** Default session `01a13634-00ce-75ec-8c38-bc37e2b460d8`, operator correction, 2026-10-13.
