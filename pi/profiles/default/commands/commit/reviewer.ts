@@ -82,10 +82,11 @@ export function formatPublicationEligibility(push: boolean, branch: string): str
 }
 
 export function buildCommitTask(push: boolean, root: string, inventory: readonly string[]): string {
-	return `Execute the commit workflow now. ${push ? "Use only each inventory entry's deterministic Publication annotation. For eligible attached repositories, check outgoing commits after local commit work and push deepest-first using --recurse-submodules=no origin HEAD:refs/heads/<own-branch>. This includes clean initialized submodules with outgoing referenced commits. Silently skip detached entries without branch, outgoing, upstream, remote, or push checks or output. Push parents only after children. No force-push, tags, other branches, or automatic merge/rebase." : "Push was NOT requested. Do not run publication-related branch, upstream, outgoing, remote, or push checks or commands."}
+	return `Execute the commit workflow now. ${push ? "Use only each inventory entry's deterministic Publication annotation. For eligible attached repositories, check outgoing commits after local commit work and publish deepest-first with publish_repository, which runs --recurse-submodules=no origin HEAD:refs/heads/<own-branch> and records Git's actual result. This includes clean initialized submodules with outgoing referenced commits. Silently skip detached entries without branch, outgoing, upstream, remote, or push checks or output. Push parents only after children. No force-push, tags, other branches, or automatic merge/rebase." : "Push was NOT requested. Do not run publication-related branch, upstream, outgoing, remote, or push checks or commands."}
 
 Location (JSON-quoted absolute path; decode and shell-quote as data):
 Repository root: ${JSON.stringify(root)}
+Host platform: ${process.platform}. Bash runs locally on this host. Use the supplied paths as data; on Windows this is not WSL: prefer root-relative paths or forward-slash Windows paths, not invented /mnt/c paths.
 
 Repository inventory (boundaries and initial state, not a candidate list; work deepest-first, running git add -A in each repository before staged review, then shape commits; stage parent gitlinks after child commits):
 ${inventory.join("\n\n")}`;
@@ -121,7 +122,8 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 			let outcome = "";
 			const activeTools = new Map<string, { description: string; startedAt: number; terminal: boolean }>();
 			const leftOut: string[] = [];
-			let publicationTargets = 0;
+			const publicationBranches = new Map<string, { path: string; branch: string }>();
+			let successfulPushes = 0;
 			const usage: Usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
 			const git = async (args: string[], requestSignal?: AbortSignal, cwd?: string) => {
 				const result = await pi.exec("git", ["-C", cwd ?? root ?? ctx.cwd, ...args], { signal: requestSignal, timeout: 15000 });
@@ -148,7 +150,7 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 					const status = formatStatus(await git(["status", "--porcelain=v1", "-z", "--untracked-files=all"], combined, repository));
 					const instructions = (await git(["ls-files", "--", "AGENTS.md", ":(glob)**/AGENTS.md"], combined, repository)).split("\n").filter(Boolean);
 					const branch = push ? await git(["branch", "--show-current"], combined, repository) : "";
-					if (branch) publicationTargets++;
+					if (branch) publicationBranches.set(relative(root, repository) || ".", { path: repository, branch });
 					const publication = formatPublicationEligibility(push, branch);
 					inventory.push(`Repository: ${relative(root, repository) || "."}\nInstruction files: ${instructions.length ? instructions.join(", ") : "none"}${publication ? `\n${publication}` : ""}\n${status}`);
 				}
@@ -171,6 +173,19 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 						model, thinkingLevel: "low",
 						systemPrompt: readFileSync(join(dirname(fileURLToPath(import.meta.url)), "reviewer.md"), "utf8"),
 						tools: [
+							...(push ? [{
+								name: "publish_repository", label: "Publish repository",
+								description: "Push an eligible inventory repository's captured branch to origin. Use instead of shell git push so the runner records Git's actual result. Call deepest-first after outgoing checks.",
+								parameters: Type.Object({ repo: Type.String() }),
+								execute: async (_id: string, input: unknown) => {
+									const { repo } = input as { repo: string };
+									const target = publicationBranches.get(repo);
+									if (!target) throw new Error(`No attached publication target in inventory: ${repo}`);
+									const output = await git(["push", "--recurse-submodules=no", "origin", `HEAD:refs/heads/${target.branch}`], combined, target.path);
+									successfulPushes++;
+									return { content: [{ type: "text" as const, text: output || "Push succeeded." }], details: {} };
+								},
+							}] : []),
 							{ ...shell, execute: (id, args, toolSignal, update) => shell.execute(id, { ...(args as Parameters<typeof shell.execute>[1]), timeout: 15 }, toolSignal, update) },
 							{ ...read, execute: async (id, input, toolSignal, update) => {
 								const args = input as Parameters<typeof read.execute>[1];
@@ -227,7 +242,7 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 				unsubscribe = agent.subscribe((event) => {
 					if (event.type === "tool_execution_start") {
 						progress(event.toolName === "bash" ? "Running Git/shell command…" : event.toolName === "read" ? "Reading repository instructions and changes…" : "Preparing ignore-file decision…");
-						activeTools.set(event.toolCallId, { description: describeCommitTool(event.toolName, event.args), startedAt: Date.now(), terminal: event.toolName === "ask_ignore" || (event.toolName === "bash" && !isCommitInspection(String((event.args as { command?: unknown }).command ?? ""))) });
+						activeTools.set(event.toolCallId, { description: describeCommitTool(event.toolName, event.args), startedAt: Date.now(), terminal: event.toolName === "ask_ignore" || event.toolName === "publish_repository" || (event.toolName === "bash" && !isCommitInspection(String((event.args as { command?: unknown }).command ?? ""))) });
 					}
 					if (event.type === "tool_execution_end") {
 						const active = activeTools.get(event.toolCallId);
@@ -320,7 +335,11 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 					summary = [commits.join("\n") || "No commits created.", remaining.length ? `Remaining changes:\n${remaining.join("\n")}` : ""].filter(Boolean).join("\n");
 				} catch (error) { failure = [failure, `Status reporting failed: ${error instanceof Error ? error.message : String(error)}`].filter(Boolean).join("\n"); }
 			}
-			const publication = push && publicationTargets > 0 ? (/^Pushed\.?$/i.test(outcome.split("\n")[0] ?? "") ? "Pushed." : "Push completion not confirmed.") : "";
+			const publication = push && publicationBranches.size > 0
+				? successfulPushes > 0
+					? failure ? `${successfulPushes} push${successfulPushes === 1 ? "" : "es"} succeeded before the workflow stopped.` : "Pushed."
+					: "No pushes performed."
+				: "";
 			const preserved = outcome.split("\n").filter(line => line.startsWith("Preserved index content: ")).join("\n");
 			const exclusions = outcome.split("\n").filter(line => line.startsWith("Left out: "));
 			const report = [summary, preserved, leftOut.length ? `Left out: ${leftOut.join(", ")}` : "", ...exclusions, publication].filter(Boolean).join("\n");

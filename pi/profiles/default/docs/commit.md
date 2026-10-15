@@ -19,7 +19,7 @@ In each repository, `git add -A` stages eligible tracked/untracked changes befor
 
 Every initialized submodule is reviewed independently. Dirty submodules are staged/reviewed/committed deepest-first, followed by refreshed and staged parent gitlinks. Local child and parent-pin commits require neither pulling nor publication. Detached repositories remain eligible for local commits but are silently skipped for publication. When push is requested, clean attached submodules with outgoing commits referenced by the parent are also published before parents.
 
-Bare `/commit` performs no publication-related branch, upstream, outgoing, remote, or push checks. `/commit push` captures that invocation's push choice directly from its arguments. Eligible repositories use their attached branch and `git push --recurse-submodules=no origin HEAD:refs/heads/<own-branch>`. Force-push, tags, other branches, and automatic merge/rebase remain excluded. This command option does not limit separately authorized ordinary Git work.
+Bare `/commit` performs no publication-related branch, upstream, outgoing, remote, or push checks. `/commit push` captures that invocation's push choice directly from its arguments. Eligible repositories use the private `publish_repository` tool, which runs `git push --recurse-submodules=no origin HEAD:refs/heads/<own-branch>` with the captured branch. Publication reporting comes from that command's result, not the model's completion wording; no extra remote check is added. Force-push, tags, other branches, and automatic merge/rebase remain excluded. This command option does not limit separately authorized ordinary Git work.
 
 ## Implementation
 

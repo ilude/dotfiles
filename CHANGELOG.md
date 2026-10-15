@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-10-14: Report commit publication and Herdr status from actual results
+
+- `/commit push` now publishes through a private Git tool and reports its actual command result instead of requiring an exact AI completion phrase. Existing child-first ordering, branch targets, failure handling, and push timeouts remain unchanged; no extra remote verification, approvals, or retries were added. The private task also identifies its local host and path conventions to avoid inventing WSL paths on Windows.
+- Herdr lifecycle reporting now checks server response envelopes and exposes failed delivery through one non-blocking warning per session and a status that clears on recovery. The existing two attempts and quiet-subagent behavior remain unchanged. Preserve this local override when refreshing Herdr's generated integration.
+- Reload while idle with no active or retained subagents, or restart Pi, to load these changes.
+
 ## 2026-10-14: Tolerate harmless Herdr naming response formatting
 
 - Automatic tab naming now extracts title text alongside model reasoning, trims surrounding line breaks, and normalizes horizontal whitespace and case. Multiline explanations, unsupported content, punctuation, and oversized titles remain rejected.

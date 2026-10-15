@@ -4,6 +4,8 @@
 // Herdr sounds on background working -> idle; children deliver results to their parent
 // and close, while blocked approval prompts must still sound. Keep the override below
 // after integration refresh; herdr-agent-state.test.ts guards against losing it.
+// LOCAL EXCEPTION: validate response envelopes and expose delivery failures as a
+// non-blocking status/warning. Preserve this alongside the quiet-child override.
 // HERDR_INTEGRATION_ID=pi
 // HERDR_INTEGRATION_VERSION=9
 // @ts-nocheck
@@ -43,18 +45,27 @@ function sendRequestAttempt(request: unknown, timeoutMs: number): Promise<boolea
     const socket = net.createConnection(socketEndpoint!);
     socket.on("error", () => finish(false));
     socket.on("connect", () => socket.write(`${JSON.stringify(request)}\n`));
-    socket.on("data", () => finish(true));
+    let response = "";
+    socket.on("data", (chunk) => {
+      response += chunk.toString();
+      const newline = response.indexOf("\n");
+      if (newline < 0) return;
+      try {
+        const envelope = JSON.parse(response.slice(0, newline));
+        finish(Boolean(envelope?.result) && !envelope?.error);
+      } catch { finish(false); }
+    });
     socket.on("end", () => finish(false));
     timeout = setTimeout(() => finish(false), timeoutMs);
     timeout.unref?.();
   });
 }
 
+let reportDelivery: ((delivered: boolean) => void) | undefined;
+
 async function sendRequest(request: unknown): Promise<void> {
-  if (await sendRequestAttempt(request, 500)) {
-    return;
-  }
-  await sendRequestAttempt(request, 1500);
+  const delivered = await sendRequestAttempt(request, 500) || await sendRequestAttempt(request, 1500);
+  reportDelivery?.(delivered);
 }
 
 type AgentState = "working" | "blocked" | "idle" | "unknown";
@@ -190,6 +201,7 @@ export default function (pi) {
   let lastState: AgentState | undefined;
   let lastMessage: string | undefined;
   let rootSession = false;
+  let warned = false;
   const subagentSession = Boolean(process.env.PI_SUBAGENT_AUTHORITY);
 
   function desiredState() {
@@ -239,11 +251,24 @@ export default function (pi) {
       return;
     }
     rootSession = true;
+    warned = false;
+    reportDelivery = delivered => {
+      ctx.ui?.setStatus?.("herdr-reporting", delivered ? undefined : "Herdr status reporting unavailable");
+      if (!delivered && !warned) {
+        warned = true;
+        ctx.ui?.notify?.("Herdr status reporting failed after retrying. Pi will continue normally.", "warning");
+      }
+    };
     updateSessionRef(ctx);
     await reportSession(event?.reason);
     // A reload can replace this extension mid-run without emitting another agent_start.
     agentActive = ctx?.isIdle?.() === false;
     publishState(true);
+  });
+
+  pi.on("session_shutdown", () => {
+    reportDelivery = undefined;
+    rootSession = false;
   });
 
   pi.on("agent_start", (_event, ctx) => {

@@ -86,6 +86,7 @@ beforeEach(() => {
 		else if (operation[0] === "status") stdout = "";
 		else if (operation[0] === "submodule" || operation[0] === "ls-files") stdout = "";
 		else if (operation[0] === "branch") stdout = "main";
+		else if (operation[0] === "push") stdout = "";
 		else throw new Error(`Unexpected Git operation: ${operation.join(" ")}`);
 		return { stdout, stderr: "", code: 0, killed: false };
 	});
@@ -210,7 +211,7 @@ it("shares the original active deadline across retries and backoff", async () =>
 });
 
 it("retains captured push permission and annotations through recovery", async () => {
-	responses.push({ message: failed() }, { message: message([{ type: "text", text: "Pushed" }]) });
+	responses.push({ message: failed() }, { message: message([{ type: "toolCall", id: "publish", name: "publish_repository", arguments: { repo: "." } }], "toolUse") }, { message: done() });
 	const { run } = start(undefined, true);
 	const result = await run;
 	expect(requests[1]).toEqual(requests[0]);
@@ -220,7 +221,7 @@ it("retains captured push permission and annotations through recovery", async ()
 });
 
 it("reports a retained index reference without losing confirmed publication", async () => {
-	responses.push({ message: message([{ type: "text", text: "Pushed\nPreserved index content: stash@{0}" }]) });
+	responses.push({ message: message([{ type: "toolCall", id: "publish", name: "publish_repository", arguments: { repo: "." } }], "toolUse") }, { message: message([{ type: "text", text: "Done\nPreserved index content: stash@{0}" }]) });
 	const result = await start(undefined, true).run;
 	expect(result.text).toBe("No commits created.\nPreserved index content: stash@{0}\nPushed.");
 });

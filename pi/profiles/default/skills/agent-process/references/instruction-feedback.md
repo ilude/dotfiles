@@ -1,5 +1,13 @@
 # Agent instruction feedback log
 
+## AIF-bundle-reduction-gate - Do not turn a beneficial result into another approval stop
+
+- **Reference:** Default session `01a13bcb-e5f7-73a0-b69f-c1054db8165c`; related AIF-103, AIF-102-local and APR-bundle-reduction-gate.
+- **Feedback:** The operator accepted a measured bundle reduction and rejected the size limit as agent-invented.
+- **Evidence:** The assistant stopped over a 3,198-byte gzip reduction because ticket text used a symmetric 2 KB range. The text's presence did not establish its origin or operator endorsement. There was no size growth or added chunk.
+- **Decision:** Remove the completion gate and retain the measured improvement as evidence. Existing proportionality and scope guidance applies; no new numerical requirement or executable instruction change.
+- **Status:** Operator correction applied to the local acceptance report. Feedback recorded without committing it or changing project scope.
+
 ## AIF-107 - Commit progress, completion, and feedback handling
 
 - **Reference:** Default session `01a135a4-1364-751e-838f-9a5ab68530bf`, 2026-10-13; related AIF-100.

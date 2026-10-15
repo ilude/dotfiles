@@ -97,18 +97,26 @@ it("keeps the local quiet-subagent override across Herdr integration refreshes",
   await vi.waitFor(() => expect(requests.filter(request => request.method === "pane.report_agent").at(-1)?.params.state).toBe("unknown"));
 });
 
-it("treats any socket response as delivery", async () => {
+it("retries rejected reports, warns once, and clears status after recovery", async () => {
   socketResponse = { error: { type: "invalid_request" } };
   vi.resetModules();
   const { default: register } = await import("../extensions/herdr-agent-state.ts");
   const handlers: Record<string, (...args: any[]) => any> = {};
   register({ on(name: string, handler: any) { handlers[name] = handler; }, events: { on: vi.fn() } } as any);
   const sessionFile = resolve("sessions/current.jsonl");
-  await handlers.session_start({ reason: "startup" }, {
-    mode: "tui", isIdle: () => true,
+  const ui = { notify: vi.fn(), setStatus: vi.fn() };
+  const ctx = {
+    mode: "tui", isIdle: () => true, ui,
     sessionManager: { getSessionFile: () => sessionFile, getSessionId: () => "session-id" },
-  });
-  await vi.waitFor(() => expect(requests.length).toBeGreaterThanOrEqual(2));
-  expect(requests.filter(({ method }) => method === "pane.report_agent_session")).toHaveLength(1);
-  expect(requests.filter(({ method }) => method === "pane.report_agent")).toHaveLength(1);
+  };
+  await handlers.session_start({ reason: "startup" }, ctx);
+  await vi.waitFor(() => expect(requests).toHaveLength(4));
+  expect(requests.filter(({ method }) => method === "pane.report_agent_session")).toHaveLength(2);
+  expect(requests.filter(({ method }) => method === "pane.report_agent")).toHaveLength(2);
+  expect(ui.notify).toHaveBeenCalledTimes(1);
+  expect(ui.setStatus).toHaveBeenCalledWith("herdr-reporting", "Herdr status reporting unavailable");
+  socketResponse = { result: { type: "ok" } };
+  handlers.agent_start({}, ctx);
+  await vi.waitFor(() => expect(ui.setStatus).toHaveBeenLastCalledWith("herdr-reporting", undefined));
+  expect(ui.notify).toHaveBeenCalledTimes(1);
 });

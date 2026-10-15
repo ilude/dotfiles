@@ -8,12 +8,15 @@ it("supplies boundaries, stage-first ordering, and captured publication permissi
 	const inventory = ['Repository: .\n M "first.txt"', 'Repository: child\n?? "new.txt"'];
 	const task = buildCommitTask(false, "C:/work/repo with spaces", inventory);
 	expect(task).toContain('Repository root: "C:/work/repo with spaces"');
+	expect(task).toContain(`Host platform: ${process.platform}`);
+	expect(task).toContain("not invented /mnt/c paths");
 	expect(task).toContain(inventory.join("\n\n"));
 	expect(task).toContain("running git add -A in each repository before staged review");
 	expect(task).toContain("Push was NOT requested");
 	expect(task).not.toContain("commit_git_review");
 	expect(buildCommitTask(true, ".", inventory)).toContain("clean initialized submodules with outgoing referenced commits");
 	expect(buildCommitTask(true, ".", inventory)).toContain("--recurse-submodules=no origin HEAD:refs/heads/<own-branch>");
+	expect(buildCommitTask(true, ".", inventory)).toContain("publish_repository");
 });
 
 it("retains deterministic attached and detached publication behavior", () => {

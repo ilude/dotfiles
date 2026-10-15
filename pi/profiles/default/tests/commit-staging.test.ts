@@ -172,6 +172,28 @@ it("cancels an ignore question retaining already staged work", async () => {
 	expect(git(root, "diff", "--cached", "--name-only").trim()).toBe("cache.txt");
 });
 
+it("reports actual local-remote push results independently of completion wording", async () => {
+	const remote = `${root}-publication-remote`;
+	try {
+		git(root, "init", "--quiet", "--bare", remote);
+		git(root, "remote", "add", "origin", remote);
+		completion = "Finished.\nDone";
+		steps.push({ name: "publish_repository", arguments: { repo: "." } });
+		expect((await run(true)).text).toContain("Pushed.");
+		expect(git(remote, "rev-parse", "refs/heads/main").trim()).toBe(git(root, "rev-parse", "HEAD").trim());
+		git(root, "remote", "set-url", "origin", `${remote}-missing`);
+		steps.push({ name: "publish_repository", arguments: { repo: "." } });
+		await expect(run(true)).rejects.toThrow(/Git push failed/);
+	} finally { rmSync(remote, { recursive: true, force: true }); }
+}, 30_000);
+
+it("does not infer publication from the model's completion wording", async () => {
+	completion = "Pushed";
+	const report = await run(true);
+	expect(report.text).toContain("No pushes performed.");
+	expect(report.text).not.toContain("Pushed.");
+});
+
 it.each([false, true])("commits child before parent gitlink and publishes clean outgoing children only on request (push=%s)", async push => {
 	const source = join(root, "..", `${root.split(/[\\/]/).at(-1)}-child`);
 	const childRemote = `${source}-remote`; const parentRemote = `${source}-parent`;
@@ -186,22 +208,24 @@ it.each([false, true])("commits child before parent gitlink and publishes clean 
 		writeFileSync(join(child, "new.txt"), "child change\n");
 		steps.push(bash(inRepo(child, "add -A")), bash(inRepo(child, "diff --cached")), bash(inRepo(child, "commit -m child-change")),
 			bash("git add -A"), bash("git diff --cached"), bash("git commit -m parent-pin"));
-		if (push) steps.push(bash(inRepo(child, "push --recurse-submodules=no origin HEAD:refs/heads/work")), bash("git push --recurse-submodules=no origin HEAD:refs/heads/main"));
-		await run(push);
+		if (push) steps.push({ name: "publish_repository", arguments: { repo: "child" } }, { name: "publish_repository", arguments: { repo: "." } });
+		completion = "Finished publishing.\nDone";
+		const report = await run(push);
+		if (push) expect(report.text).toContain("Pushed.");
 		expect(git(root, "rev-parse", "HEAD:child").trim()).toBe(git(child, "rev-parse", "HEAD").trim());
 		if (push) {
 			expect(git(childRemote, "rev-parse", "refs/heads/work").trim()).toBe(git(child, "rev-parse", "HEAD").trim());
 			// No local changes, but the clean child's outgoing commit still publishes.
 			git(child, "commit", "--quiet", "--allow-empty", "-m", "outgoing");
 			git(root, "add", "child"); git(root, "commit", "--quiet", "-m", "outgoing pin");
-			steps.push(bash(inRepo(child, "add -A")), bash(inRepo(child, "push --recurse-submodules=no origin HEAD:refs/heads/work")), bash("git add -A"), bash("git push --recurse-submodules=no origin HEAD:refs/heads/main"));
+			steps.push(bash(inRepo(child, "add -A")), { name: "publish_repository", arguments: { repo: "child" } }, bash("git add -A"), { name: "publish_repository", arguments: { repo: "." } });
 			await run(true);
 			expect(git(childRemote, "rev-parse", "refs/heads/work").trim()).toBe(git(child, "rev-parse", "HEAD").trim());
 			const publishedParent = git(parentRemote, "rev-parse", "refs/heads/main").trim();
 			git(child, "commit", "--quiet", "--allow-empty", "-m", "unpublished");
 			git(root, "add", "child"); git(root, "commit", "--quiet", "-m", "unpublished pin");
 			git(child, "remote", "set-url", "origin", `${source}-missing`);
-			steps.push([bash(inRepo(child, "push --recurse-submodules=no origin HEAD:refs/heads/work")), bash("git push --recurse-submodules=no origin HEAD:refs/heads/main")]);
+			steps.push([{ name: "publish_repository", arguments: { repo: "child" } }, { name: "publish_repository", arguments: { repo: "." } }]);
 			await expect(run(true)).rejects.toThrow(/Stopped/);
 			expect(git(parentRemote, "rev-parse", "refs/heads/main").trim()).toBe(publishedParent);
 		} else expect(execs.some(args => args[2] === "branch")).toBe(false);

@@ -22,7 +22,7 @@ Never commit `.pi/settings.json` outside the `~/.dotfiles` repository. Apply thi
 
 Without push, do not run publication-related branch, upstream, outgoing, remote, or push checks. In push mode use the supplied deterministic Publication annotations, not branch rediscovery. Check outgoing commits for eligible attached repositories, including clean children whose outgoing commits are referenced by the parent. Publish children before parents; a failed child push stops dependent publication. Detached entries are silently skipped without branch/outgoing/upstream/remote checks, pushes, or output.
 
-For each eligible repository use its annotated branch: `git -C "<repository>" push --recurse-submodules=no origin "HEAD:refs/heads/<own-branch>"`. This overrides inherited on-demand recursion, not child publication. Never force-push, push tags/other branches, switch branches, or automatically merge/rebase. Local parent gitlink commits do not require publication or pulling.
+For each eligible repository call `publish_repository` with its exact inventory `repo` label, for example `.` or `modules/example`. This runs `git push --recurse-submodules=no origin HEAD:refs/heads/<own-branch>` with the captured branch and records the actual Git result. Use this tool instead of shell push commands. This overrides inherited on-demand recursion, not child publication. Never force-push, push tags/other branches, switch branches, or automatically merge/rebase. Local parent gitlink commits do not require publication or pulling.
 
 ## Errors and completion
 
@@ -30,4 +30,4 @@ Correct routine read/search/Git inspection errors and continue. A meaningful no-
 
 Preserve successful commits and remaining changes. Never reset/discard worktree contents, amend, rewrite history, or undo successful work. No extra tests, lint, builds, diff --check, secret scans, group approvals, validation phase, reports, or staging framework.
 
-End with `Pushed` if all requested publication succeeded, otherwise `Done`. For each reviewer-selected exclusion, add `Left out: <repository-relative path>: <reason>` (prefix child repository paths). Operator ignore decisions are already recorded by the runner. If exceptional index-content preservation was needed, also add `Preserved index content: <retained Git reference>`. Actual hashes, remaining changes, and failures are collected automatically; do not write a second summary.
+End with a brief completion acknowledgement; its wording does not determine publication status. For each reviewer-selected exclusion, add `Left out: <repository-relative path>: <reason>` (prefix child repository paths). Operator ignore decisions are already recorded by the runner. If exceptional index-content preservation was needed, also add `Preserved index content: <retained Git reference>`. Actual hashes, remaining changes, and failures are collected automatically; do not write a second summary.

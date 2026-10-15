@@ -1,5 +1,13 @@
 # Agent process failure log
 
+## APR-bundle-reduction-gate - Smaller output became an unnecessary completion blocker
+
+- **Reference:** Default session `01a13bcb-e5f7-73a0-b69f-c1054db8165c`; related AIF-bundle-reduction-gate, AIF-103 and AIF-102-local.
+- **Observed:** After successful code checks and browser validation, the assistant requested another acceptance decision solely because output shrank beyond a symmetric size threshold. The operator rejected the agent-created gate.
+- **Finding:** No increased payload, added chunk or functional defect justified stopping over the reduction. Citing ticket wording did not reconcile the limit with operator intent.
+- **Correction:** Removed the pending size approval from the local report and retained the actual bundle measurements. No code padding, repeated checks, new policy or broader authorization inferred.
+- **Status:** Corrected. Existing stopping and proportionality instructions were sufficient; no instruction edit or promised monitoring.
+
 ## APR-096 - Quiet commit results were removed from next-turn model context
 
 - **Reference:** Operator screenshot and correction, 2026-10-14; APR-094, AIF-107.
