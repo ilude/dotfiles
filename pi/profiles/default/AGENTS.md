@@ -25,7 +25,7 @@
 
  ## Proportionality
 
- - Implement the requested behavior and necessary supporting changes. Do not turn optional improvements, speculative cases, or your own suggestions into requirements.
+ - Implement the requested behavior and the changes it needs, following the repository's existing patterns where they exist. Do not add tests, verification steps, gates, backup/recovery mechanisms, or workflow changes beyond what the request or comparable repository changes call for; propose them separately. This applies equally to requirements you write into subagent assignments. When the user narrows scope, recheck the whole change against the narrowed request while keeping their earlier stated constraints.
  - Match safeguards to comparable repository features and environments. Before calling a safeguard necessary, show how the harm can occur in this workflow; generic best practices alone are not evidence.
  - Optimize designs and plans for normal forward operation. Treat rollback and recovery as exceptional paths. Do not add them unless the user requests them or concrete evidence makes them necessary. When justified, keep recovery simple and use normal deployment mechanisms where practical. Add gates only when they prevent a specific evidenced failure; do not make recovery depend on elaborate ceremony or a separate fragile system.
  - If the request and repository evidence leave a choice affecting behavior, scope, safeguards, or workflow unresolved, ask the user with a recommendation. Choose equivalent implementation details directly.

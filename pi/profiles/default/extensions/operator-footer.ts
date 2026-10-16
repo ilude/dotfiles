@@ -21,6 +21,7 @@ const ANSI = {
 const usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 };
 let requestFooterRender: (() => void) | undefined;
 const cachedStatusDirectories = new Map<string, string>();
+const cachedWorktreeStatus = new Map<string, boolean>();
 
 interface ExtensionAPI {
 	events: import("@earendil-works/pi-coding-agent").ExtensionAPI["events"];
@@ -101,6 +102,19 @@ function normalizePathForDisplay(inputPath: string): string {
 		.replace(/^\/mnt\/[a-z]\//, "/");
 }
 
+function isLinkedWorktree(cwd: string): boolean {
+	return cachedWorktreeStatus.get(cwd) ?? false;
+}
+
+function prewarmLocationMetadata(cwd: string): void {
+	if (!cachedWorktreeStatus.has(cwd)) {
+		const gitDir = runCommand(["git", "-C", cwd, "rev-parse", "--absolute-git-dir"]);
+		const commonDir = runCommand(["git", "-C", cwd, "rev-parse", "--path-format=absolute", "--git-common-dir"]);
+		cachedWorktreeStatus.set(cwd, Boolean(gitDir && commonDir && path.resolve(gitDir) !== path.resolve(commonDir)));
+	}
+	formatStatusDirectory(cwd);
+}
+
 function formatStatusDirectory(cwd: string): string {
 	const cached = cachedStatusDirectories.get(cwd);
 	if (cached !== undefined) return cached;
@@ -158,6 +172,15 @@ function colorBranch(branchName: string | null): string {
 	return branchName ? `${ANSI.white}[${ANSI.cyan}${branchName}${ANSI.white}]${ANSI.reset}` : "";
 }
 
+function issueNumber(branchName: string | null): string | null {
+	return branchName?.match(/^(\d+)(?:[-_/]|$)/)?.[1] ?? null;
+}
+
+function formatWorktreeLabel(branchName: string | null): string {
+	const branch = branchName ? issueNumber(branchName) ?? branchName : null;
+	return `${ANSI.pink}worktree${ANSI.reset}${branch ? `${ANSI.white}[${ANSI.cyan}${branch}${ANSI.white}]${ANSI.reset}` : ""}`;
+}
+
 function rightAnchor(left: string, right: string | null, width: number): string {
 	if (!right) return left;
 	const gap = width - visibleWidth(left) - visibleWidth(right);
@@ -189,7 +212,9 @@ function formatMainFooter(options: {
 	rightStatus: string | null;
 	width: number;
 }): string {
+	const worktree = isLinkedWorktree(options.cwd);
 	const directory = formatStatusDirectory(options.cwd);
+	const issue = issueNumber(options.branch);
 	const branch = colorBranch(options.branch);
 	const model = formatModelName(options.model);
 	const provider = formatProviderName(options.model?.provider);
@@ -198,10 +223,17 @@ function formatMainFooter(options: {
 	const providerLabel = provider ? `${ANSI.dim}${ANSI.grey}${provider}/${ANSI.reset}` : "";
 	const contextLabel = formatContextUsageSegment(options.contextUsage);
 	const versionLabel = `${ANSI.dim}π v${VERSION}${ANSI.reset}${formatReloadIndicator(options.reloadNeeded, options.reloadError)}`;
-	let left = `${ANSI.green}${directory}${ANSI.reset}${branch} | ${providerLabel}${ANSI.orange}${model}${ANSI.reset}${thinkingLabel}`;
+	const location = worktree ? formatWorktreeLabel(options.branch) : `${ANSI.green}${directory}${ANSI.reset}${branch}`;
+	let left = `${location} | ${providerLabel}${ANSI.orange}${model}${ANSI.reset}${thinkingLabel}`;
 	if (contextLabel) left += ` | ${contextLabel}`;
 	left += ` | ${versionLabel}`;
 	let composed = rightAnchor(left, options.rightStatus, options.width);
+	if (!worktree && issue && (visibleWidth(composed) > options.width || composed === left && options.rightStatus !== null)) {
+		left = `${ANSI.green}${directory}${ANSI.reset}${colorBranch(issue)} | ${providerLabel}${ANSI.orange}${model}${ANSI.reset}${thinkingLabel}`;
+		if (contextLabel) left += ` | ${contextLabel}`;
+		left += ` | ${versionLabel}`;
+		composed = rightAnchor(left, options.rightStatus, options.width);
+	}
 	if (options.rightStatus && composed === left && contextLabel) composed = rightAnchor(contextLabel, options.rightStatus, options.width);
 	if (options.rightStatus && composed === contextLabel) composed = rightAlign(options.rightStatus, options.width);
 	const reloadIndicator = formatReloadIndicator(options.reloadNeeded, options.reloadError);
@@ -267,6 +299,7 @@ function refreshStatuses(ctx: ExtensionContext): void {
 
 function installFooter(ctx: ExtensionContext, pi: ExtensionAPI, reloadState: () => ReloadState): boolean {
 	if (typeof ctx.ui.setFooter !== "function") return false;
+	prewarmLocationMetadata(ctx.cwd);
 	ctx.ui.setFooter((tui, _theme: unknown, footerData: ReadonlyFooterDataProvider) => {
 		requestFooterRender = () => tui.requestRender();
 		return {

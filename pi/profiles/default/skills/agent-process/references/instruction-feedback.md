@@ -229,6 +229,28 @@
 - **Remediation:** Removed that section and agent-specific wording; added concise project guidance routing history to changelogs and run results to reports/artifacts. Related AIF-039 addresses useful changelog content; AIF-084 concerns architectural knowledge, not routine run history.
 - **Recurrence (2026-09-28):** After discussing repeat hotfix packaging, the assistant interpreted “make it so” as a request to add a release-process narrative to the EISA README instead of changing the packaging workflow. The operator corrected the same placement pattern. The uncommitted README addition was removed. Existing project placement guidance was already sufficient; this was an adherence failure, not a missing-instruction problem.
 
+## README scope question (2026-10-16)
+
+- **Feedback:** Operator questioned an unsolicited README addition during deployment-script work requested to follow existing repository standards.
+- **Observed:** The assistant expanded an existing placeholder README and added a nested README with overlapping usage documentation. Neither was required for the functional change.
+- **Related evidence:** The README run-history correction concerns content placement; this incident concerns unrequested scope and duplication, not run history.
+- **Decision/status:** Explain the documentation choice without treating it as a requirement or inferring a blanket ban on READMEs. No instruction change or file removal authorized by the question alone.
+- **Follow-up:** Operator clarified that removing both documentation additions did not mean deleting the tracked original README. Restored the original; the added nested README remains removed.
+
+## Deployment backup complexity feedback (2026-10-16)
+
+- **Feedback:** Operator found the implementation too complicated after reviewing backup changes.
+- **Observed:** An approved backup-safety fix changed failure handling and cleanup timing, plus backup storage, naming, permissions, archive validation, and retry behavior. Some changes address concrete failure paths; that does not establish that the combined design is proportionate.
+- **Related evidence:** AIF-095 and the development-environment proportionality feedback distinguish justified outcomes from excessive supporting machinery.
+- **Clarification:** Operator requires backups only for certificates actually overwritten and configuration files actually changed, reusing existing deployment backups where sufficient. Do not turn that outcome into a general backup-system redesign.
+- **Evidence:** Generation-specific certificate stores avoid overwriting existing stores; existing full-product archives include configuration. Source inspection shows Tomcat can mask archive/upload failures, but no such live failure was observed. A possible legacy failure path does not establish that new deployment gates are required for the certificate task.
+- **Follow-up:** Operator challenged retaining Tomcat gates without observed failures. The assistant had continued proposing a safeguard after the operator narrowed scope, instead of distinguishing source-derived risk from incident evidence.
+- **Decision/status:** Operator explicitly restricted the task to certificate integration. Removed the backup redesign and its tests, restored all five backup scripts and original shared backup/cleanup behavior, and retained the certificate integration. No replacement backup gates or instruction changes.
+- **Further feedback:** Operator identified the numeric pipeline-ID prerequisite as more gold plating and asked how many similar gates remained. Inspection also found exact registry/package membership, password shape, exact permission modes, and versioned product-home restrictions. These must be distinguished from certificate validity and actual operation failures; their presence in the implementation does not make them requirements. Removing exact version matching from the CI shell did not remove versioned-home enforcement in the helper.
+- **Investigation:** Targeted default-profile session review (01a14550-4285-7664-9817-3ba25d70cf9f) traced the requested existing-pattern integration (df5192d9) to enlarged strategist and developer assignments (06ae555b, b635fba9). The orchestrator explicitly required tests, manifests, check/verify phases, strict policies and live probes before worker implementation. Later review assessed that enlarged contract rather than its authorization. This establishes assignment inflation, not a specialist independently imposing those requirements.
+- **Independent assessment:** User-requested Opus advisor agreed; identified conversion of preservation constraints into verification work, reviewer anchoring, and partial rather than whole-change scope resets. Recommended a first-bullet replacement covering comparable repository practice, outbound subagent requirements, and retaining earlier constraints during scope reduction. Rejected the proposed 'demonstrated blocker' wording as too restrictive for ordinary supporting implementation.
+- **Current disposition:** Opus established no necessary certificate-code correction from its read-only review. Baseline environment/key logging, redundant dashboard transfer, failed-deploy staging leftovers and the ephemeral-runner assumption were disclosed separately; no new gates inferred. Prompt replacement and any removal of legacy logging remain operator decisions. Investigation made no application-code or active-instruction changes.
+
 ## AIF-084 - Preserve architectural understanding rather than operational skill boilerplate
 
 - **Reference:** Operator corrections during service-skill creation and subsequent knowledge-maintenance discussion.
