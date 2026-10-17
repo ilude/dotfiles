@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-10-17: Manage Zomboid sandbox and spawn choices
+
+- The game deployment can enforce selected sandbox settings, built-in spawn towns and the PvP rule from BWS inventory. It patches only selected settings and restarts only the game when configuration differs, preserving other options and services.
+- Normal redeployment never resets the world. An explicitly requested regeneration removes only the named multiplayer save, including characters and world progress, while retaining server configuration and account credentials. Starter kits affect new characters, including replacements after death.
+
 ## 2026-10-17: Separate portable repository IDs from native paths
 
 - Default Pi now has shared repository-ID helpers alongside its platform-aware absolute-path comparison. IDs use forward-slash separators and `.` for the root; Windows tool inputs accept native separator spelling without changing POSIX literal backslashes, case, or path segments. Filesystem paths and shell-specific conversions remain separate.
