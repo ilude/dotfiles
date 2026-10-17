@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-10-17: Install and update Herdr from the Bash installer
+
+- `./install` now installs or updates Herdr on Linux, macOS, WSL, and Git Bash, matching `install.ps1`. It updates only when the installed version is older than the latest stable GitHub release (minimum 0.9.0 when GitHub is unreachable), using the official `herdr.dev` installers: `install.sh` on Unix (`~/.local/bin` unless `HERDR_INSTALL_DIR` is set) and `install.ps1` through PowerShell on Windows.
+- Failure is soft: an existing Herdr keeps working and the step is reported as skipped. `install.ps1` behavior is unchanged.
+
 ## 2026-10-14: Report commit publication and Herdr status from actual results
 
 - `/commit push` now publishes through a private Git tool and reports its actual command result instead of requiring an exact AI completion phrase. Existing child-first ordering, branch targets, failure handling, and push timeouts remain unchanged; no extra remote verification, approvals, or retries were added. The private task also identifies its local host and path conventions to avoid inventing WSL paths on Windows.

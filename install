@@ -540,6 +540,62 @@ else
 fi
 completed_steps+=("Pi coding agent install")
 
+current_step="Herdr install"
+# Herdr ships through its official direct installers rather than a package
+# manager. Mirror install.ps1 Install-Herdr: update only when older than the
+# latest stable release. Soft failure: an existing Herdr keeps working.
+herdr_min_version=0.9.0
+if ! herdr_target_version=$("$PYTHON_BIN" "${BASEDIR}/scripts/get_latest_agent_version.py" herdr 2>/dev/null); then
+    echo "Warning: could not resolve the latest Herdr GitHub release; enforcing minimum ${herdr_min_version}"
+    herdr_target_version="$herdr_min_version"
+fi
+herdr_version_of() {
+    "$1" --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n 1
+}
+herdr_is_current() {
+    [[ -n "$1" && "$(printf '%s\n' "$herdr_target_version" "$1" | sort -V | head -n 1)" == "$herdr_target_version" ]]
+}
+herdr_installed_version=""
+if command -v herdr &>/dev/null; then
+    herdr_installed_version=$(herdr_version_of herdr)
+fi
+if herdr_is_current "$herdr_installed_version"; then
+    echo "Herdr: ${herdr_installed_version}"
+    completed_steps+=("Herdr install")
+else
+    echo "Installing/updating Herdr to ${herdr_target_version}..."
+    herdr_tmp=$(mktemp -d)
+    if is_windows; then
+        herdr_bin="${LOCALAPPDATA}/Programs/Herdr/bin/herdr.exe"
+        herdr_ps=$(command -v pwsh || command -v powershell.exe || true)
+        if [[ -n "$herdr_ps" ]] && curl -fsSL https://herdr.dev/install.ps1 -o "${herdr_tmp}/install.ps1"; then
+            "$herdr_ps" -NoProfile -ExecutionPolicy Bypass -File "$(cygpath -w "${herdr_tmp}/install.ps1")" ||
+                echo "Warning: Herdr installer failed"
+        else
+            echo "Warning: could not download the Herdr installer or find PowerShell"
+        fi
+    else
+        herdr_bin="${HERDR_INSTALL_DIR:-$HOME/.local/bin}/herdr"
+        if curl -fsSL https://herdr.dev/install.sh -o "${herdr_tmp}/install.sh"; then
+            sh "${herdr_tmp}/install.sh" || echo "Warning: Herdr installer failed"
+        else
+            echo "Warning: could not download the Herdr installer"
+        fi
+    fi
+    rm -rf "$herdr_tmp"
+    herdr_new_version=""
+    if [[ -x "$herdr_bin" ]]; then
+        herdr_new_version=$(herdr_version_of "$herdr_bin")
+    fi
+    if herdr_is_current "$herdr_new_version"; then
+        echo "Herdr: ${herdr_new_version} installed (open a new shell to pick up PATH changes)"
+        completed_steps+=("Herdr install")
+    else
+        echo "Warning: Herdr ${herdr_target_version} or newer was not installed; keeping existing install (${herdr_installed_version:-none})" >&2
+        skipped_steps+=("Herdr install (failed)")
+    fi
+fi
+
 current_step="Onclave adapter dependencies"
 # Soft failure: the Onclave adapter is optional tooling, and the pi extension
 # link, pi agent link, and Claude/OpenCode setup steps all follow this one. They
