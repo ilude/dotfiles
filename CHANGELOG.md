@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-10-17: Separate portable repository IDs from native paths
+
+- Default Pi now has shared repository-ID helpers alongside its platform-aware absolute-path comparison. IDs use forward-slash separators and `.` for the root; Windows tool inputs accept native separator spelling without changing POSIX literal backslashes, case, or path segments. Filesystem paths and shell-specific conversions remain separate.
+- `/commit` uses that contract consistently for inventory, publication, ignore decisions, and result labels. This fixes Windows failures where `modules/onclave` did not match the native `modules\\onclave` inventory key. Captured branches, attached/detached eligibility, child-first publication, and stopping after an actual failed push are unchanged.
+- Focused tests cover Windows/UNC and POSIX semantics on either host, plus multi-component child repository publication and ignore decisions with real temporary Git repositories. Reload while idle with no active or retained subagents, or restart Pi, to load the change. Legacy remains untouched.
+
+## 2026-10-17: Enforce the managed Zomboid join password
+
+- The homelab game deployment now loads the player join password from its own BWS runtime key, distinct from administrator, player-account and RCON credentials. Missing or empty join credentials stop deployment instead of removing the password.
+- Ansible updates the password through Zomboid only when the persisted setting differs. The live change also saves the server configuration, without a restart or replacing other server options; password tasks and command responses are excluded from logs.
+
 ## 2026-10-17: Manage a Zomboid game stack on an existing Docker host
 
 - Homelab infrastructure adds a targeted deployment for the Broccoli Project Zomboid server, authenticated Dozzle logs, and browser-based RCON administration on a separate existing Docker host. Deployment uses a dedicated Compose project and does not provision a VM or reuse the managed Apphost target.

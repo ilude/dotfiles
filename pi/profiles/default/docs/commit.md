@@ -21,6 +21,12 @@ Every initialized submodule is reviewed independently. Dirty submodules are stag
 
 Bare `/commit` performs no publication-related branch, upstream, outgoing, remote, or push checks. `/commit push` captures that invocation's push choice directly from its arguments. Eligible repositories use the private `publish_repository` tool, which runs `git push --recurse-submodules=no origin HEAD:refs/heads/<own-branch>` with the captured branch. Publication reporting comes from that command's result, not the model's completion wording; no extra remote check is added. Force-push, tags, other branches, and automatic merge/rebase remain excluded. This command option does not limit separately authorized ordinary Git work.
 
+## Repository IDs and filesystem paths
+
+Inventory entries, publication targets, ignore decisions, and result labels share the repository-ID helpers in `lib/path-identity.ts`. IDs use forward-slash separators, for example `modules/onclave`, with `.` for the root. On Windows, private-tool lookup also accepts native backslash spelling. On POSIX, literal backslashes and case remain significant. Lookup stays limited to discovered inventory entries; normalization does not resolve arbitrary paths or change publication eligibility.
+
+Native absolute paths are retained separately and passed to filesystem and Git operations. Windows, Git Bash, and WSL path conversion is not done by rewriting repository IDs. Existing absolute-path comparisons use the separate platform-aware helper.
+
 ## Implementation
 
 `extensions/commands.ts` calls `runCommitReviewer()` in `commands/commit/reviewer.ts`. The runner owns one awaited, in-memory Pi `Agent`, uses the profile's catalog/auth, and supplies repository inventory, initial status, tracked AGENTS.md paths, and the absolute repository root. It does not change the selected conversation model. Luna uses ordinary read/bash tools and the ignore-file UI. Status and staged diff inspection use normal Git commands; focused discovery is permitted. The inventory defines repository boundaries, not a separate proposed-file list. There is no custom inspection tool or replacement paging protocol. Read/search and recognized inspection-command errors are recoverable; mixed inspection/mutation and unknown shell failures remain terminal. Inspection and mutation calls are kept separate. Exclusion decisions perform their own Git index mutations and stop on failure.

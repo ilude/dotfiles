@@ -197,35 +197,44 @@ it("does not infer publication from the model's completion wording", async () =>
 it.each([false, true])("commits child before parent gitlink and publishes clean outgoing children only on request (push=%s)", async push => {
 	const source = join(root, "..", `${root.split(/[\\/]/).at(-1)}-child`);
 	const childRemote = `${source}-remote`; const parentRemote = `${source}-parent`;
+	const childId = "modules/child";
+	const nativeToolId = process.platform === "win32" ? "modules\\child" : childId;
 	try {
 		git(root, "init", "--quiet", source); init(source);
-		git(root, "-c", "protocol.file.allow=always", "submodule", "add", "--quiet", source, "child");
+		git(root, "-c", "protocol.file.allow=always", "submodule", "add", "--quiet", source, childId);
 		git(root, "commit", "--quiet", "-am", "child baseline");
-		const child = realpathSync(join(root, "child")); git(child, "checkout", "--quiet", "-b", "work");
+		const child = realpathSync(join(root, childId)); git(child, "checkout", "--quiet", "-b", "work");
 		git(child, "config", "user.name", "Offline"); git(child, "config", "user.email", "offline@example.invalid");
 		git(root, "init", "--quiet", "--bare", childRemote); git(root, "init", "--quiet", "--bare", parentRemote);
 		git(child, "remote", "set-url", "origin", childRemote); git(root, "remote", "add", "origin", parentRemote);
 		writeFileSync(join(child, "new.txt"), "child change\n");
-		steps.push(bash(inRepo(child, "add -A")), bash(inRepo(child, "diff --cached")), bash(inRepo(child, "commit -m child-change")),
-			bash("git add -A"), bash("git diff --cached"), bash("git commit -m parent-pin"));
-		if (push) steps.push({ name: "publish_repository", arguments: { repo: "child" } }, { name: "publish_repository", arguments: { repo: "." } });
+		writeFileSync(join(child, "cache.txt"), "generated child cache\n");
+		answers.push("Add to .gitignore");
+		steps.push(bash(inRepo(child, "add -A")), bash(inRepo(child, "diff --cached")),
+			{ name: "ask_ignore", arguments: { ...ask("cache.txt").arguments, repo: push ? nativeToolId : childId } },
+			bash(inRepo(child, "commit -m child-change")), bash("git add -A"), bash("git diff --cached"), bash("git commit -m parent-pin"));
+		if (push) steps.push({ name: "publish_repository", arguments: { repo: childId } }, { name: "publish_repository", arguments: { repo: "." } });
 		completion = "Finished publishing.\nDone";
 		const report = await run(push);
 		if (push) expect(report.text).toContain("Pushed.");
-		expect(git(root, "rev-parse", "HEAD:child").trim()).toBe(git(child, "rev-parse", "HEAD").trim());
+		expect(JSON.stringify(provider.stream.mock.calls[0][1].messages)).toContain(`Repository: ${childId}`);
+		expect(report.text).toContain(`child-change (${childId})`);
+		expect(report.text).toContain(`Left out: ${childId}/cache.txt`);
+		expect(git(child, "show", "HEAD:.gitignore").trim()).toBe("cache.txt");
+		expect(git(root, "rev-parse", `HEAD:${childId}`).trim()).toBe(git(child, "rev-parse", "HEAD").trim());
 		if (push) {
 			expect(git(childRemote, "rev-parse", "refs/heads/work").trim()).toBe(git(child, "rev-parse", "HEAD").trim());
 			// No local changes, but the clean child's outgoing commit still publishes.
 			git(child, "commit", "--quiet", "--allow-empty", "-m", "outgoing");
-			git(root, "add", "child"); git(root, "commit", "--quiet", "-m", "outgoing pin");
-			steps.push(bash(inRepo(child, "add -A")), { name: "publish_repository", arguments: { repo: "child" } }, bash("git add -A"), { name: "publish_repository", arguments: { repo: "." } });
+			git(root, "add", childId); git(root, "commit", "--quiet", "-m", "outgoing pin");
+			steps.push(bash(inRepo(child, "add -A")), { name: "publish_repository", arguments: { repo: nativeToolId } }, bash("git add -A"), { name: "publish_repository", arguments: { repo: "." } });
 			await run(true);
 			expect(git(childRemote, "rev-parse", "refs/heads/work").trim()).toBe(git(child, "rev-parse", "HEAD").trim());
 			const publishedParent = git(parentRemote, "rev-parse", "refs/heads/main").trim();
 			git(child, "commit", "--quiet", "--allow-empty", "-m", "unpublished");
-			git(root, "add", "child"); git(root, "commit", "--quiet", "-m", "unpublished pin");
+			git(root, "add", childId); git(root, "commit", "--quiet", "-m", "unpublished pin");
 			git(child, "remote", "set-url", "origin", `${source}-missing`);
-			steps.push([{ name: "publish_repository", arguments: { repo: "child" } }, { name: "publish_repository", arguments: { repo: "." } }]);
+			steps.push([{ name: "publish_repository", arguments: { repo: childId } }, { name: "publish_repository", arguments: { repo: "." } }]);
 			await expect(run(true)).rejects.toThrow(/Stopped/);
 			expect(git(parentRemote, "rev-parse", "refs/heads/main").trim()).toBe(publishedParent);
 		} else expect(execs.some(args => args[2] === "branch")).toBe(false);

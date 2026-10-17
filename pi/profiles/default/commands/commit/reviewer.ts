@@ -1,5 +1,5 @@
 import { lstatSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
-import { basename, dirname, join, relative } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import timers from "node:timers/promises";
 import { Agent } from "@earendil-works/pi-agent-core";
@@ -8,6 +8,7 @@ import { createBashTool, createReadTool, type ExtensionAPI, type ExtensionContex
 import { createProfileModelRuntime } from "../../lib/model-runtime.ts";
 import { resolveLatestCodexModelFromRuntime } from "../../lib/model-selection.ts";
 import { compareModelVersions, modelFamilyVersion } from "../../lib/model-family.ts";
+import { normalizeRepositoryId, repositoryId } from "../../lib/path-identity.ts";
 import { Type } from "typebox";
 import { formatStatus } from "./tools.ts";
 
@@ -145,14 +146,17 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 				const repositories = [root, ...discovered.split("\0").filter(Boolean).map((path) => realpathSync(path))]
 					.filter((path, index, all) => all.indexOf(path) === index);
 				const inventory: string[] = [];
+				const repositoriesById = new Map<string, string>();
 				for (const repository of repositories) {
+					const id = repositoryId(root, repository);
+					repositoriesById.set(id, repository);
 					baselines.set(repository, await head(combined, repository));
 					const status = formatStatus(await git(["status", "--porcelain=v1", "-z", "--untracked-files=all"], combined, repository));
 					const instructions = (await git(["ls-files", "--", "AGENTS.md", ":(glob)**/AGENTS.md"], combined, repository)).split("\n").filter(Boolean);
 					const branch = push ? await git(["branch", "--show-current"], combined, repository) : "";
-					if (branch) publicationBranches.set(relative(root, repository) || ".", { path: repository, branch });
+					if (branch) publicationBranches.set(id, { path: repository, branch });
 					const publication = formatPublicationEligibility(push, branch);
-					inventory.push(`Repository: ${relative(root, repository) || "."}\nInstruction files: ${instructions.length ? instructions.join(", ") : "none"}${publication ? `\n${publication}` : ""}\n${status}`);
+					inventory.push(`Repository: ${id}\nInstruction files: ${instructions.length ? instructions.join(", ") : "none"}${publication ? `\n${publication}` : ""}\n${status}`);
 				}
 				progress("Resolving commit model…");
 				const runtime = await createProfileModelRuntime(combined);
@@ -179,7 +183,7 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 								parameters: Type.Object({ repo: Type.String() }),
 								execute: async (_id: string, input: unknown) => {
 									const { repo } = input as { repo: string };
-									const target = publicationBranches.get(repo);
+									const target = publicationBranches.get(normalizeRepositoryId(repo));
 									if (!target) throw new Error(`No attached publication target in inventory: ${repo}`);
 									const output = await git(["push", "--recurse-submodules=no", "origin", `HEAD:refs/heads/${target.branch}`], combined, target.path);
 									successfulPushes++;
@@ -204,7 +208,8 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 								execute: async (_id, input) => {
 									const { repo, candidate, reason, pattern } = input as { repo: string; candidate: string; reason: string; pattern: string };
 									if (!ctx.hasUI) throw new Error(`User input required for ${candidate}: ${reason}. Run /commit interactively.`);
-									const repository = repositories.find((path) => (relative(root!, path) || ".") === repo);
+									const id = normalizeRepositoryId(repo);
+									const repository = repositoriesById.get(id);
 									if (!repository) throw new Error(`Repository is not in the supplied inventory: ${repo}`);
 									if (!candidate || /^[\\/]/.test(candidate) || /^[A-Za-z]:/.test(candidate) || candidate.split(/[\\/]+/).includes(".."))
 										throw new Error(`Candidate must be repository-relative: ${candidate}`);
@@ -222,9 +227,9 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 											// rm --cached also works before the repository's first commit.
 											await git(["--literal-pathspecs", "rm", "--cached", "--", candidate], combined, repository);
 											if (answer === "Add to .gitignore") await git(["add", "--", ".gitignore"], combined, repository);
-											leftOut.push(`${repo === "." ? "" : `${repo}/`}${candidate}: ${answer} (${reason})`);
+											leftOut.push(`${id === "." ? "" : `${id}/`}${candidate}: ${answer} (${reason})`);
 										}
-										return { content: [{ type: "text" as const, text: `${answer}: ${repo}/${candidate}` }], details: {} };
+										return { content: [{ type: "text" as const, text: `${answer}: ${id}/${candidate}` }], details: {} };
 									} finally { resumeTimer(); progress("Reviewing changes…"); }
 								},
 							},
@@ -323,7 +328,7 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 					const commits: string[] = [];
 					const remaining: string[] = [];
 					for (const [repository, base] of [...baselines].sort(([a], [b]) => b.length - a.length)) {
-						const label = relative(root, repository) || ".";
+						const label = repositoryId(root, repository);
 						const current = await head(undefined, repository);
 						if (current && current !== base) {
 							const log = await git(["log", "--reverse", "--format=%h %s", ...(base ? [`${base}..${current}`] : [current])], undefined, repository);

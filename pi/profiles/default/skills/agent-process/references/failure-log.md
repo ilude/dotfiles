@@ -8,6 +8,14 @@
 - **Correction:** Removed the pending size approval from the local report and retained the actual bundle measurements. No code padding, repeated checks, new policy or broader authorization inferred.
 - **Status:** Corrected. Existing stopping and proportionality instructions were sufficient; no instruction edit or promised monitoring.
 
+## APR-commit-windows-publication-label - Publication lookup rejected slash-separated child paths
+
+- **Reference:** Operator-reported `/commit push` failure, 2026-10-17; related APR-094 and APR-096.
+- **Observed:** Local child/parent commits completed, then `publish_repository` rejected `modules/onclave` with no matching attached inventory target. No pushes ran.
+- **Evidence:** `commands/commit/reviewer.ts` keys publication targets with native `path.relative`, which produces `modules\\onclave` on Windows, but looks up the model-supplied label verbatim. A read-only replay on this host reproduced the failed lookup for `modules/onclave` and successful lookup for the native separator spelling. Onclave is currently attached to its required branch. Existing publication tests use the single-component path `child`, which cannot expose separator mismatch. The private publication tool was added in `e3cf265f`.
+- **Correction:** The operator authorized a shared path contract rather than another isolated separator patch. Added repository-ID creation and boundary normalization alongside absolute-path identity helpers; `/commit` uses them for inventory, publication, ignore decisions, and result labels while preserving native filesystem paths. The ignore lookup had the same defect and is fixed. Reviewed comparable script-trust, scoped-instruction, and plan snapshot lookups; those already use consistent representations and were left unchanged. No broad path rewrite or new prompt rule was added.
+- **Status:** All 57 focused path/commit tests and full default-profile typecheck passed. Helper cases exercise Windows, UNC, and POSIX semantics on either host; existing real-Git tests now use a multi-component child path and cover both Windows separator spellings, ignore decisions, and child-first publication. Reload while idle or restart is required. No production commit/push or module edits were performed. Earlier invalid model-generated Git inspections remain separate from this lookup defect.
+
 ## APR-096 - Quiet commit results were removed from next-turn model context
 
 - **Reference:** Operator screenshot and correction, 2026-10-14; APR-094, AIF-107.
