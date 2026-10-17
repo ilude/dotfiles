@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-10-17: Manage a Zomboid game stack on an existing Docker host
+
+- Homelab infrastructure adds a targeted deployment for the Broccoli Project Zomboid server, authenticated Dozzle logs, and browser-based RCON administration on a separate existing Docker host. Deployment uses a dedicated Compose project and does not provision a VM or reuse the managed Apphost target.
+- BWS owns host configuration and administration credentials. Game installation and world/configuration data persist separately; RCON stays inside the game network, while the two web interfaces use the host's existing Caddy HTTPS ingress. Only the game UDP ports are published directly. A player-facing hostname uses a public DNS-only A record and a managed LAN override, avoiding reliance on router NAT loopback; the public record must be updated if the WAN address changes.
+- Existing services and deliberately stopped containers retain their lifecycle state. Caddy receives a bounded managed configuration block and graceful reload without replacing its single-file bind-mounted configuration. DNS certificate credentials are scoped to their respective sites, preserving the existing wildcard site's token rather than replacing it with a token for a different zone.
+
 ## 2026-10-17: Keep Codex quota authentication inside Pi
 
 - Default Pi quota reporting now uses the active profile's existing `openai-codex` OAuth credential through Pi's authentication APIs. Pi handles storage and locked renewal across sessions; the reporter no longer depends on Codex CLI installation, its credential files, or an `app-server` subprocess. The prior CLI-only fix worked only on machines with that separate external sign-in.
