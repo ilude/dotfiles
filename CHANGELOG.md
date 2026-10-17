@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-10-17: Prompt for SSH config reads
+
+- Default Pi Damage Control now asks for approval to read `~/.ssh/config` instead of hard-blocking it. Writes, deletion, and reads of other SSH files remain blocked. Canonical target protections still apply to symlinks.
+- Reload while idle with no active or retained subagents, or restart Pi, to load the change. Legacy behavior is unchanged.
+
 ## 2026-10-17: Install and update Herdr from the Bash installer
 
 - `./install` now installs or updates Herdr on Linux, macOS, WSL, and Git Bash, matching `install.ps1`. It updates only when the installed version is older than the latest stable GitHub release (minimum 0.9.0 when GitHub is unreachable), using the official `herdr.dev` installers: `install.sh` on Unix (`~/.local/bin` unless `HERDR_INSTALL_DIR` is set) and `install.ps1` through PowerShell on Windows.

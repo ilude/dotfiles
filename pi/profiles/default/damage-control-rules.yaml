@@ -1977,6 +1977,7 @@ paths:
     - .cursor/mcp.json
     - ~/.claude/commands/
   readConfirm:
+    - ~/.ssh/config
     - "*.tfvars"
     - terraform.tfvars
     - "*.auto.tfvars"

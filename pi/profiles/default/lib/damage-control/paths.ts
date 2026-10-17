@@ -122,6 +122,9 @@ export function pathMatches(target: string, operation: "read" | "metadata" | "wr
   const add = (key: keyof PathPolicy, action: RuleMatch["action"], reason: string) => {
     policy[key].forEach(pattern => {
       const anchor = expanded(pattern, facts);
+      // Only the SSH directory rule yields to approval for the exact config read.
+      // Other protections (including a canonicalized credential target) still apply.
+      if (key === "zeroAccess" && operation === "read" && comparable(anchor, facts).replace(/\/$/, "") === comparable(facts.home + "/.ssh", facts) && comparable(target, facts) === comparable(facts.home + "/.ssh/config", facts)) return;
       const deletesAncestor = (operation === "delete" || operation === "truncate") && !anchor.includes("*") && /^(?:\/|[a-z]:\/)/i.test(anchor) && contains(target, anchor, facts);
       if (matchesPath(pattern, target, facts) || deletesAncestor) result.push({ ruleId: semanticId(key, pattern), action, applicability: "confirmed", reason: `${reason}; pattern: ${pattern}`, effects: [effectId] });
     });

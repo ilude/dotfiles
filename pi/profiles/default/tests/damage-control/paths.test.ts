@@ -18,6 +18,18 @@ it("uses semantic protection IDs rather than list ordinals", () => {
   expect(matches).toEqual([expect.objectContaining({ ruleId: "path-nodelete-git" })]);
 });
 
+it("requires approval only for SSH config reads while retaining SSH blocks", () => {
+  expect(pathMatches("/home/operator/.ssh/config", "read", policy.paths, facts, "e")).toEqual([
+    expect.objectContaining({ action: "user" }),
+  ]);
+  for (const operation of ["write", "delete", "truncate"] as const) {
+    expect(pathMatches("/home/operator/.ssh/config", operation, policy.paths, facts, "e")).toContainEqual(expect.objectContaining({ action: "block" }));
+  }
+  for (const name of ["id_ed25519", "config.backup", "config.d/host"]) {
+    expect(pathMatches("/home/operator/.ssh/" + name, "read", policy.paths, facts, "e")).toContainEqual(expect.objectContaining({ action: "block" }));
+  }
+});
+
 it("pairs recoverable artifacts with retained disclosure and recovery floors", () => {
   expect(pathMatches("/work/serviceAccountKey.json", "read", policy.paths, facts, "e")[0].action).toBe("block");
   expect(pathMatches("/work/public-cert.pem", "read", policy.paths, facts, "e")).toEqual([]);
