@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-10-17: Keep Codex quota authentication inside Pi
+
+- Default Pi quota reporting now uses the active profile's existing `openai-codex` OAuth credential through Pi's authentication APIs. Pi handles storage and locked renewal across sessions; the reporter no longer depends on Codex CLI installation, its credential files, or an `app-server` subprocess. The prior CLI-only fix worked only on machines with that separate external sign-in.
+- Machines without quota authorization use Pi's built-in `/login openai-codex` browser/device flow, then `/usage`. Existing Pi credentials need no new login. Native `openai` model authentication, selected models, quota caching, report contents, and legacy behavior are preserved; credentials are not copied between providers or machines.
+- The footer now distinguishes missing login, renewal failure, rejected authorization, network/timeouts, and API failures, retaining explicitly stale quotas after failed refreshes. Reload while idle with no active or retained subagents, or restart Pi, to load the change.
+
 ## 2026-10-17: Prompt for SSH config reads
 
 - Default Pi Damage Control now asks for approval to read `~/.ssh/config` instead of hard-blocking it. Writes, deletion, and reads of other SSH files remain blocked. Canonical target protections still apply to symlinks.

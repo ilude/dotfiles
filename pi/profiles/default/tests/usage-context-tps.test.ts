@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync, appendFileSync, readFileSync } from "node:fs";
+import { mkdtempSync, rmSync, appendFileSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
@@ -8,9 +8,9 @@ import codex from "../extensions/codex-status.ts";
 import context from "../extensions/context.ts";
 import tps from "../extensions/tps-tracker.ts";
 import clear from "../extensions/clear.ts";
-import { fetchCodexUsage, formatCacheUsage, formatQuota, formatResetCredits, formatUsage, paceColor, readCacheUsage, recordCacheUsage, resolveCodexAuth, REFRESH_MS, RESET_CREDITS_ENDPOINT, USAGE_PAGE } from "../lib/codex-usage.ts";
-import { refreshCodexCliAuth } from "../lib/codex-auth.ts";
-vi.mock("../lib/codex-auth.ts", async importOriginal => ({ ...await importOriginal<typeof import("../lib/codex-auth.ts")>(), refreshCodexCliAuth: vi.fn(async () => {}) }));
+import { fetchCodexUsage, formatCacheUsage, formatQuota, formatResetCredits, formatUsage, paceColor, readCacheUsage, recordCacheUsage, REFRESH_MS, RESET_CREDITS_ENDPOINT, USAGE_PAGE } from "../lib/codex-usage.ts";
+import { CODEX_QUOTA_PROVIDER } from "../lib/codex-auth.ts";
+const quotaRegistry = { getProviderAuth: vi.fn() };
 import { summarize as summarizeBedrock } from "../lib/bedrock/ledger.ts";
 
 import { createEventBus } from "../node_modules/@earendil-works/pi-coding-agent/dist/core/event-bus.js";
@@ -33,7 +33,7 @@ function runtime(register: (pi: ExtensionAPI) => void, sm = SessionManager.inMem
     notify: vi.fn(), setWidget: vi.fn(),
   };
   const ctx = {
-    mode: "tui", hasUI: true, sessionManager: sm, ui,
+    mode: "tui", hasUI: true, sessionManager: sm, ui, modelRegistry: quotaRegistry,
     waitForIdle: async () => {},
     getSystemPrompt: () => "x".repeat(40),
     getSystemPromptOptions: () => ({ contextFiles: [{ path: "AGENTS.md", content: "rules" }], selectedTools: ["read"], skills: [] }),
@@ -76,52 +76,31 @@ beforeEach(() => {
   vi.useFakeTimers();
   dir = mkdtempSync(join(tmpdir(), "pi-usage-port-"));
   vi.stubEnv("PI_CODING_AGENT_DIR", dir);
-  vi.stubEnv("CODEX_HOME", join(dir, ".codex"));
-  mkdirSync(join(dir, ".codex"));
   const access = `header.${Buffer.from(JSON.stringify({ "https://api.openai.com/auth": { chatgpt_account_id: "synthetic-account" } })).toString("base64url")}.signature`;
-  writeFileSync(join(dir, ".codex", "auth.json"), JSON.stringify({ auth_mode: "chatgpt", tokens: { access_token: access } }));
-  vi.mocked(refreshCodexCliAuth).mockReset().mockResolvedValue(undefined);
+  quotaRegistry.getProviderAuth.mockReset().mockResolvedValue({ auth: { apiKey: access }, source: "OAuth" });
   vi.stubGlobal("fetch", vi.fn(async (url: string | URL) => new Response(JSON.stringify(String(url) === RESET_CREDITS_ENDPOINT ? resetCredits : usage))));
 });
 afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.restoreAllMocks(); rmSync(dir, { recursive: true, force: true }); });
 
 describe("Codex usage", () => {
-  it("uses only the existing CLI credential, ignoring both Pi OpenAI routes", () => {
-    writeFileSync(join(dir, "auth.json"), JSON.stringify({
-      openai: { type: "oauth", access: "native-token", accountId: "native-account" },
-      "openai-codex": { type: "oauth", access: "unused-old-token", accountId: "old-account" },
-    }));
-    expect(resolveCodexAuth().accountId).toBe("synthetic-account");
-    expect(resolveCodexAuth().accessToken).not.toBe("native-token");
-    rmSync(join(dir, ".codex", "auth.json"));
-    expect(() => resolveCodexAuth()).toThrow("Codex CLI ChatGPT sign-in unavailable");
+  it("gets quota authorization from Pi's native auth lifecycle", async () => {
+    expect(formatQuota(await fetchCodexUsage(quotaRegistry, new AbortController().signal))).toContain("5h 25%");
+    expect(quotaRegistry.getProviderAuth).toHaveBeenCalledWith(CODEX_QUOTA_PROVIDER);
+    expect(fetch).toHaveBeenCalledTimes(2);
   });
 
-  it("renews an expired CLI token through its owner before requesting quotas", async () => {
-    const expired = `header.${Buffer.from(JSON.stringify({ exp: Date.now() / 1000 - 1 })).toString("base64url")}.signature`;
-    writeFileSync(join(dir, ".codex", "auth.json"), JSON.stringify({ auth_mode: "chatgpt", tokens: { access_token: expired } }));
-    vi.mocked(refreshCodexCliAuth).mockImplementationOnce(async () => {
-      writeFileSync(join(dir, ".codex", "auth.json"), JSON.stringify({ auth_mode: "chatgpt",
-        tokens: { access_token: "renewed-cli-token", account_id: "renewed-account" } }));
-    });
-    await fetchCodexUsage(new AbortController().signal);
-    expect(refreshCodexCliAuth).toHaveBeenCalledOnce();
-    expect(vi.mocked(fetch).mock.calls[0][1]?.headers).toMatchObject({
-      authorization: "Bearer renewed-cli-token", "chatgpt-account-id": "renewed-account",
-    });
-  });
-
-  it("renews once after quota rejection and retries with the CLI's updated credential", async () => {
-    vi.mocked(fetch).mockImplementation(async () => new Response("", { status: 401 }));
-    vi.mocked(refreshCodexCliAuth).mockImplementationOnce(async () => {
-      writeFileSync(join(dir, ".codex", "auth.json"), JSON.stringify({ auth_mode: "chatgpt",
-        tokens: { access_token: "renewed-cli-token", account_id: "renewed-account" } }));
-      vi.mocked(fetch).mockImplementation(async url => new Response(JSON.stringify(String(url) === RESET_CREDITS_ENDPOINT ? resetCredits : usage)));
-    });
-    expect(formatQuota(await fetchCodexUsage(new AbortController().signal))).toContain("5h 25%");
-    expect(refreshCodexCliAuth).toHaveBeenCalledOnce();
-    expect(fetch).toHaveBeenCalledTimes(4);
-    expect(vi.mocked(fetch).mock.calls[2][1]?.headers).toMatchObject({ authorization: "Bearer renewed-cli-token" });
+  it("reports a missing quota login and recovers after Pi login without a reload", async () => {
+    const ready = await quotaRegistry.getProviderAuth();
+    quotaRegistry.getProviderAuth.mockResolvedValue(undefined);
+    const r = runtime(codex);
+    await r.emit("session_start", { reason: "startup" }); await flush();
+    expect(r.statuses.get("codex")).toBe("codex: login needed");
+    expect((r.reports()[0] as any).data.text).toContain("/login openai-codex");
+    expect(fetch).not.toHaveBeenCalled();
+    quotaRegistry.getProviderAuth.mockResolvedValue(ready);
+    await r.commands.get("usage").handler("", r.ctx);
+    expect(r.statuses.get("codex")).toContain("5h 25%");
+    await r.emit("session_shutdown");
   });
 
   it("shows a startup report outside model context, shares its fetch with the footer, and refreshes", async () => {
@@ -238,8 +217,24 @@ describe("Codex usage", () => {
     await r.emit("session_shutdown");
     const fresh = runtime(codex);
     await fresh.emit("session_start", { reason: "new" }); await flush();
-    expect(fresh.statuses.get("codex")).toBe("codex: unavailable");
+    expect(fresh.statuses.get("codex")).toBe("codex: authorization rejected");
     await fresh.emit("session_shutdown");
+  });
+
+  it("distinguishes network, API and auth renewal failures", async () => {
+    const r = runtime(codex);
+    await r.emit("session_start", { reason: "startup" }); await flush();
+    vi.mocked(fetch).mockRejectedValue(new TypeError("fetch failed"));
+    await r.commands.get("usage").handler("", r.ctx);
+    expect(r.statuses.get("codex")).toContain("stale (network error)");
+    vi.mocked(fetch).mockImplementation(async () => new Response("", { status: 503 }));
+    await r.commands.get("usage").handler("", r.ctx);
+    expect(r.statuses.get("codex")).toContain("stale (API error)");
+    quotaRegistry.getProviderAuth.mockRejectedValue(new Error("private-token-response"));
+    await r.commands.get("usage").handler("", r.ctx);
+    expect(r.statuses.get("codex")).toContain("stale (auth renewal failed)");
+    expect((r.reports().at(-1) as any).data.text).not.toContain("private-token-response");
+    await r.emit("session_shutdown");
   });
 
   it("does not start quota polling in headless mode", async () => {

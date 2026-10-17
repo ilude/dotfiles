@@ -4,6 +4,7 @@ import { fetchCodexUsage, formatCacheUsage, formatQuota, formatUsage, readCacheU
 import { formatUsage as formatBedrockUsage, summarize as summarizeBedrock } from "../lib/bedrock/ledger.ts";
 import { readClaudeLocalContribution } from "../lib/bedrock/claude-status-usage.ts";
 import { registerProfileCommand } from "../lib/profile-command.ts";
+import { CodexAuthError, type CodexAuthRegistry } from "../lib/codex-auth.ts";
 
 const REPORT = "codex-usage-report";
 const START = "codex-usage-start";
@@ -28,14 +29,14 @@ export default function codexStatus(pi: ExtensionAPI): void {
 
   pi.registerEntryRenderer(REPORT, entry => new Text(reportLinks((entry.data as { text: string }).text), 0, 0));
 
-  function getUsage(force = false): Promise<CodexUsage> {
+  function getUsage(registry: CodexAuthRegistry, force = false): Promise<CodexUsage> {
     if (request) return request;
     if (!force && cached && Date.now() - cachedAt < REFRESH_MS) return Promise.resolve(cached);
     const abort = new AbortController();
     controller = abort;
     const epoch = generation;
     const timeout = setTimeout(() => abort.abort(), 15_000);
-    const pending = fetchCodexUsage(abort.signal).then(value => {
+    const pending = fetchCodexUsage(registry, abort.signal).then(value => {
       if (!abort.signal.aborted && generation === epoch) { cached = value; cachedAt = Date.now(); }
       return value;
     }).finally(() => { clearTimeout(timeout); if (request === pending) request = undefined; });
@@ -51,14 +52,17 @@ export default function codexStatus(pi: ExtensionAPI): void {
     let content: string;
     if (!cached) ctx.ui.setStatus("codex", "codex: loading");
     try {
-      const usage = await getUsage(report?.force);
+      const usage = await getUsage(ctx.modelRegistry, report?.force);
       if (!alive || epoch !== generation) return;
       ctx.ui.setStatus("codex", formatQuota(usage, (color, text) => ctx.ui.theme.fg(color, text)));
       content = formatUsage(usage);
     } catch (error) {
       if (!alive || epoch !== generation) return;
-      ctx.ui.setStatus("codex", cached ? `${formatQuota(cached)} stale` : "codex: unavailable");
-      content = `Codex usage unavailable: ${error instanceof Error ? error.message : "request failed"}\n${USAGE_PAGE}`;
+      const status = error instanceof CodexAuthError ? error.status
+        : controller?.signal.aborted ? "request timed out"
+        : error instanceof TypeError ? "network error" : "API error";
+      ctx.ui.setStatus("codex", cached ? `${formatQuota(cached)} stale (${status})` : `codex: ${status}`);
+      content = `Codex usage ${status}: ${error instanceof Error ? error.message : "request failed"}\n${USAGE_PAGE}`;
     }
     if (report) {
       let bedrock: string;

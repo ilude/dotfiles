@@ -1,7 +1,6 @@
 // Quota display adapted from legacy codex-status.ts, inspired by lhl/pi-codex-status.
 import { appendFileSync, closeSync, mkdirSync, openSync, readSync, fstatSync } from "node:fs";
-import { resolveCodexAuth, refreshCodexCliAuth } from "./codex-auth.ts";
-export { resolveCodexAuth } from "./codex-auth.ts";
+import { CodexAuthError, CODEX_QUOTA_LOGIN, resolveCodexAuth, type CodexAuthRegistry } from "./codex-auth.ts";
 import { join } from "node:path";
 import { getAgentDir as profileDir } from "@earendil-works/pi-coding-agent";
 
@@ -43,10 +42,8 @@ function resets(value: unknown): ResetCredits | undefined {
     return credit ? [{ status: text(credit.status), expires_at: text(credit.expires_at) }] : [];
   }) : undefined } : undefined;
 }
-export async function fetchCodexUsage(signal: AbortSignal): Promise<CodexUsage> {
-  let auth = resolveCodexAuth(), renewed = false;
-  const renew = async () => { await refreshCodexCliAuth(signal); auth = resolveCodexAuth(); renewed = true; };
-  if (auth.expiresAt !== undefined && auth.expiresAt <= Date.now() + 60_000) await renew();
+export async function fetchCodexUsage(registry: CodexAuthRegistry, signal: AbortSignal): Promise<CodexUsage> {
+  const auth = await resolveCodexAuth(registry, signal);
   const request = () => {
     const headers = { authorization: `Bearer ${auth.accessToken}`, ...(auth.accountId ? { "chatgpt-account-id": auth.accountId } : {}),
       accept: "application/json", "user-agent": "dotfiles-pi-usage/1" };
@@ -55,9 +52,10 @@ export async function fetchCodexUsage(signal: AbortSignal): Promise<CodexUsage> 
       fetch(RESET_CREDITS_ENDPOINT, { signal, headers }).catch(() => undefined),
     ]);
   };
-  let [response, resetResponse] = await request();
-  if (response.status === 401 && !renewed) { await renew(); [response, resetResponse] = await request(); }
-  if (!response.ok) throw new Error(`HTTP ${response.status} from Codex usage; check the existing Codex CLI sign-in or the usage page.`);
+  const [response, resetResponse] = await request();
+  if (response.status === 401 || response.status === 403)
+    throw new CodexAuthError("authorization rejected", `HTTP ${response.status}: Codex quota authorization rejected. Use ${CODEX_QUOTA_LOGIN} in Pi, then /usage. Your native OpenAI model login is unchanged.`);
+  if (!response.ok) throw new Error(`HTTP ${response.status} from Codex usage; try /usage again or check the usage page.`);
   const value = object(await response.json());
   if (!value) throw new Error("Invalid Codex usage response.");
   const credits = object(value.credits), resetCounts = object(value.rate_limit_reset_credits);
