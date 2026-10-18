@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-10-18: Keep empty vault lookups valid in Pi history
+
+- Onclave's Pi adapter now serializes an unmatched YouTube video lookup as `null` instead of a text block with a missing value. The malformed block previously persisted in session history and caused subsequent OpenAI request preparation to fail, including after resuming the session.
+- A regression test covers the empty lookup and its structured output contract. Restart Pi to load the adapter fix; existing affected history needs a separate targeted repair before resuming. Other lookup results and legacy configuration are unchanged.
+
 ## 2026-10-18: Refresh Webshare connections for transcript retries
 
 - Onclave transcript fetching uses attempt-scoped Webshare proxy agents so rate-limit retries request a fresh connection instead of reusing a potentially rejected tunnel. Concurrent fetches do not share those agents; existing retry limits, backoff and request deadlines remain in place.
