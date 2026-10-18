@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-10-18: Refresh Webshare connections for transcript retries
+
+- Onclave transcript fetching uses attempt-scoped Webshare proxy agents so rate-limit retries request a fresh connection instead of reusing a potentially rejected tunnel. Concurrent fetches do not share those agents; existing retry limits, backoff and request deadlines remain in place.
+- Fresh connections allow the configured rotating proxy pool to select another exit IP, but do not guarantee a distinct IP or success when the pool is blocked. Credentials remain private and unchanged. The source change requires a published image and managed deployment before it affects the running service.
+
+## 2026-10-18: Add an optional Playit game relay
+
+- The game deployment can run the requested Playit agent as a persistent, digest-pinned container, with its key sourced privately from BWS. Host networking lets the agent forward configured tunnels to the existing game UDP ports without changing router rules or restarting the game.
+- Playit tunnel allocation and local targets remain provider-side configuration; starting an authenticated agent alone does not establish a working player connection. Existing direct access, world settings and server credentials remain unchanged.
+
 ## 2026-10-17: Manage Zomboid sandbox and spawn choices
 
 - The game deployment can enforce selected sandbox settings, built-in spawn towns and the PvP rule from BWS inventory. It patches only selected settings and restarts only the game when configuration differs, preserving other options and services.
