@@ -53,6 +53,12 @@
 - `./install` now installs or updates Herdr on Linux, macOS, WSL, and Git Bash, matching `install.ps1`. It updates only when the installed version is older than the latest stable GitHub release (minimum 0.9.0 when GitHub is unreachable), using the official `herdr.dev` installers: `install.sh` on Unix (`~/.local/bin` unless `HERDR_INSTALL_DIR` is set) and `install.ps1` through PowerShell on Windows.
 - Failure is soft: an existing Herdr keeps working and the step is reported as skipped. `install.ps1` behavior is unchanged.
 
+## 2026-10-16: Add context-sensitive default Pi code review
+
+- Added a `code-review` skill for reviews inside Pi with the selected model, including Codex subscription models, and assigned it to the existing independent reviewer role. Reviews investigate candidate defects, challenge their evidence, and distinguish confidence from practical importance and fix/defer/discuss recommendations.
+- Priorities reflect the project's actual use, exposure, constraints, and accepted limitations. Confirmed minor issues can be deferred; relevant unconfirmed concerns can be discussed without becoming mandatory work. Generic best practices and hypothetical future scale do not create enterprise requirements for personal projects.
+- Invoke `/skill:code-review` with the target and relevant context, or request an independent reviewer. Reload with no active or retained subagents, or restart Pi, to discover the skill and updated role. Existing model/effort defaults and repository-specific rules remain unchanged. No new command, Codex CLI integration, automatic fixes, mandatory check phase, or Claude/legacy changes.
+
 ## 2026-10-14: Report commit publication and Herdr status from actual results
 
 - `/commit push` now publishes through a private Git tool and reports its actual command result instead of requiring an exact AI completion phrase. Existing child-first ordering, branch targets, failure handling, and push timeouts remain unchanged; no extra remote verification, approvals, or retries were added. The private task also identifies its local host and path conventions to avoid inventing WSL paths on Windows.

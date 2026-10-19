@@ -194,6 +194,22 @@ Default Pi loads the shared Onclave adapter for orchestrator-to-orchestrator com
 
 The default profile provides Markdown-defined `subagent` delegation with frozen tool and delegation authority, retained conversations, origin-scoped results, Team Lead roles, and explicitly requested councils. Permitted coordinators may launch leaves in any valid existing working directory while origin and delegate checks remain enforced. Children use native Herdr panes by default inside Herdr and RPC elsewhere; visible registration requires exact pane membership, session identity, and lifecycle state, while headless helpers remain excluded. Explicit user intervention has explicit handback. Ordinary visible-child input stays native and parent-coordinated without taking ownership, while direct operator `!` shell input uses Pi's native path without adding a model-callable shell tool. Parent and child exchanges use native queued steering by default, with explicit immediate redirection and question-answer correlation; a successful question leaves a clear waiting state instead of a polling tool. Out-of-role model tool calls are blocked recoverably, Damage Control and tool ceilings remain in force, automatic outcomes arrive without acknowledgement chatter, and genuine terminating tool errors retain their actual provenance. Operators do not run `/reload` while subagents are active; the existing settled-only reload ends settled ownership without active-child migration or recovery. The bounded 2026-09-13 visible/headless run passed its new registration assertions but later hit a pre-existing unrelated `userOwned` assertion, reproduced on unmodified main; it is not an entire live-suite pass or proof from unit tests. See [definitions, tools, lifecycle, and limitations](profiles/default/docs/subagents.md).
 
+## Default profile code review
+
+The default profile's `code-review` skill reviews changes read-only, using the selected Pi model, including native OpenAI Codex subscription models. It distinguishes confidence from project-specific importance and recommends fixing, deferring, or discussing findings rather than treating every issue as a blocker. Repository instructions own local constraints; the skill does not add enterprise-scale requirements to personal projects.
+
+After adding the skill, run `/reload` with no active or retained subagents, or restart Pi. Invoke it explicitly in the current conversation:
+
+```text
+/skill:code-review Review all my uncommitted changes. This is a personal local utility.
+/skill:code-review Review my branch against main. This service is publicly accessible.
+/skill:code-review Review commit abc123 for regressions. Report only; do not fix anything.
+```
+
+Replace the target and context with the actual project. Ordinary requests such as “review my staged changes” can also load the skill automatically. Explicit invocation makes loading deterministic; it does not switch models or launch another agent. To request an independent review, ask “Have the reviewer review my branch against main,” including relevant intent and accepted limitations. Newly launched reviewer agents are assigned this skill and instructed to read it; they use the existing Sol model and low-effort defaults unless explicitly overridden. Findings do not authorize fixes, and shell read-only behavior is instruction policy, not a sandbox.
+
+See [the skill](profiles/default/skills/code-review/SKILL.md). There is no new `/review` command, Codex CLI installation, automatic fix loop, or mandatory check phase. The Claude and legacy profiles are unchanged.
+
 ## Default profile commands
 
 - `/branch` opens a branched copy of the current session in a new terminal tab.

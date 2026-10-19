@@ -129,6 +129,8 @@
 
 ## AIF-095 - Apply proportionality before proposing replacement machinery
 
+- **Review-design clarification (2026-10-16):** During local Pi/Codex code-review research, the operator emphasized that all review, not only adversarial review, must account for project type, intended use, exposure, and comparable repository practice when assessing importance. Reviewers may identify concerns for discussion, including minor issues that can reasonably be deferred; identifying a problem does not make fixing it mandatory. Do not turn generic best practices or hypothetical risks into enterprise-scale requirements for personal-use projects. The assistant initially narrowed this to adversarial review and overcorrected toward suppressing optional concerns; the operator clarified that context-sensitive prioritization, not blanket omission, is the requested outcome. Existing proportionality guidance applies; no executable instruction or review-system change authorized.
+
 - **Recurrence (2026-10-09):** In default session `01a11d2b-e005-7757-9e1c-98fdbe0eb0b3`, the operator challenged duplicate suppression, automatic retries, and failure visibility presented as setup needs for a small internal repository-notification feed. No CI implementation was authorized or built. Treat custom retry/dedup machinery as optional, distinguish GitHub's existing failed-run visibility from a new monitoring feature, and prefer one publish attempt with manual rerun unless observed failures justify more. Discussion correction only; no instruction edits or removal of previously approved tooling.
 
 - **Reference:** Pi extension CPU and recurring-work review, 2026-09-27.
