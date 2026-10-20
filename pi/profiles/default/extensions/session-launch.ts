@@ -1,4 +1,4 @@
-import { execFile, spawnSync } from "node:child_process";
+import { execFile, execFileSync, spawnSync } from "node:child_process";
 import { promisify } from "node:util";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -366,6 +366,49 @@ export async function launchPreparedHerdrPlan(input: { originCheckoutPath: strin
 		catch (error) { throw new HerdrPiTabLaunchError(`Pi tab ${receipt.tabId} exists, but focus could not be confirmed after initial-shell cleanup. Do not relaunch. ${String(error)}`, { mayHaveLaunched: true, tabId: receipt.tabId, paneId: receipt.paneId, workspaceId: workspace }); }
 	}
 	return { ...receipt, workspaceId: workspace, taskWorktreePath: preparedRun.taskWorktreePath, taskBranch: preparedRun.taskBranch, preparedRun };
+}
+
+export interface BranchWorktree {
+	branch: string;
+	path: string;
+	created: boolean;
+}
+
+function git(cwd: string, ...args: string[]): string {
+	return execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+}
+
+export function listLocalBranches(cwd: string): Array<{ branch: string; worktreePath?: string }> {
+	const root = git(cwd, "rev-parse", "--show-toplevel");
+	const worktrees = git(root, "worktree", "list", "--porcelain").split(/\r?\n/);
+	const paths = new Map<string, string>();
+	let currentPath: string | undefined;
+	for (const line of worktrees) {
+		if (line.startsWith("worktree ")) currentPath = line.slice("worktree ".length);
+		else if (line.startsWith("branch refs/heads/")) {
+			if (currentPath) paths.set(line.slice("branch refs/heads/".length), currentPath);
+		} else if (!line) currentPath = undefined;
+	}
+	return git(root, "for-each-ref", "--format=%(refname:short)", "refs/heads").split(/\r?\n/).filter(Boolean)
+		.map(branch => ({ branch, ...(paths.has(branch) ? { worktreePath: paths.get(branch) } : {}) }));
+}
+
+export function prepareBranchWorktree(cwd: string, branch: string): BranchWorktree {
+	if (!branch || branch.startsWith("-") || branch.includes("\\") || branch.startsWith("/") || branch.endsWith("/")) throw new Error(`Invalid local branch name: ${branch}`);
+	const root = git(cwd, "rev-parse", "--show-toplevel");
+	const branches = listLocalBranches(root);
+	const existing = branches.find(item => item.branch === branch);
+	if (!existing) throw new Error(`Local branch not found: ${branch}. Remote-only branches are not supported.`);
+	if (existing.worktreePath) return { branch, path: existing.worktreePath, created: false };
+	const checkoutPath = path.join(root, ".worktrees", encodeURIComponent(branch));
+	const registered = git(root, "worktree", "list", "--porcelain").split(/\r?\n/).some(line => line.startsWith("worktree ") && path.resolve(line.slice("worktree ".length)) === path.resolve(checkoutPath));
+	if (registered) throw new Error(`Worktree path is registered but not associated with local branch ${branch}: ${checkoutPath}`);
+	try {
+		git(root, "worktree", "add", checkoutPath, branch);
+	} catch (error) {
+		throw new Error(`Could not create worktree for ${branch} at ${checkoutPath}: ${error instanceof Error ? error.message : String(error)}`);
+	}
+	return { branch, path: checkoutPath, created: true };
 }
 
 function isHerdr(): boolean {

@@ -1,5 +1,13 @@
 # Agent process failure log
 
+## APR-commit-compound-inspection - Read-only shell failure stopped quiet commits
+
+- **Reference:** Default session `01a15446-5770-7481-945d-31db7ca67acb`, 2026-10-18; related APR-commit-windows-publication-label and APR-096.
+- **Observed:** `/commit` stopped with exit 1 after compound read-only Git commands. Its command description cut off the tail. The exact final command was not retained; `git check-ignore` was a hypothesis, not an established cause. The assistant initially restated the visible failure instead of investigating.
+- **Evidence:** The runner classified every command containing `&&` as terminal, including inspections. A normal `git check-ignore` no-match returns 1 and reproduces the failure path without any mutation failure.
+- **Correction:** Replaced shell-text classification with separate native-shell inspection and mutation tools. Failed `inspect` calls return to the private agent; failed `bash` calls stop queued work. The model selects the tool; the runner does not identify mutations from command text. Full command diagnostics are retained. No new global instructions or telemetry.
+- **Status:** All 50 focused commit tests and default-profile typecheck passed, including real-Git compound no-match recovery through a commit and existing hook/mutation stops. Requires idle reload or restart; live model tool selection remains unverified. Existing operator edits preserved; no production commit or push.
+
 ## APR-bundle-reduction-gate - Smaller output became an unnecessary completion blocker
 
 - **Reference:** Default session `01a13bcb-e5f7-73a0-b69f-c1054db8165c`; related AIF-bundle-reduction-gate, AIF-103 and AIF-102-local.

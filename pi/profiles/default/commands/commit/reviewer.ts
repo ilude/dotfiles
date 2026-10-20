@@ -29,13 +29,6 @@ export async function resolveFallbackModel(runtime: Pick<ModelRuntime, "getAvail
 	return model;
 }
 
-// Only recognize the inspection commands used by this workflow. Unknown shell
-// failures remain terminal; this is not a shell permission or safety classifier.
-export function isCommitInspection(command: string): boolean {
-	if (/[;\n|<>]|&&|\$\(|`/.test(command)) return false;
-	return /^\s*(?:git(?:\s+(?:--no-pager|--literal-pathspecs)|\s+(?:-C|-c)\s+(?:"[^"]*"|'[^']*'|\S+))*\s+(?:status|diff|show|log|ls-files|rev-parse|check-ignore)\b|(?:grep|rg|find|ls|pwd|head|tail|wc)\b)/.test(command);
-}
-
 export function validateGitignorePattern(pattern: string): string {
 	if (!pattern || pattern.includes("\n") || pattern.includes("\r") || pattern.trim() !== pattern)
 		throw new Error("Proposed .gitignore rule must be one trimmed line.");
@@ -66,9 +59,9 @@ export function appendGitignoreRule(repoPath: string, pattern: string, signal?: 
 
 export function describeCommitTool(name: string, args: unknown): string {
 	const input = args && typeof args === "object" ? args as Record<string, unknown> : {};
-	if (name === "bash") {
-		const command = String(input.command ?? "").replace(/\s+/g, " ").trim();
-		return `shell command${command ? `: ${command.slice(0, 300)}${command.length > 300 ? "…" : ""}` : ""}`;
+	if (name === "bash" || name === "inspect") {
+		const command = String(input.command ?? "");
+		return `shell command${command ? `: ${command}` : ""}`;
 	}
 	if (name === "read") return `file read: ${String(input.path ?? "unknown")}`;
 	if (name === "ask_ignore") return `ignore decision: ${String(input.repo ?? ".")}/${String(input.candidate ?? input.path ?? "unknown")}`;
@@ -190,7 +183,16 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 									return { content: [{ type: "text" as const, text: output || "Push succeeded." }], details: {} };
 								},
 							}] : []),
-							{ ...shell, execute: (id, args, toolSignal, update) => shell.execute(id, { ...(args as Parameters<typeof shell.execute>[1]), timeout: 15 }, toolSignal, update) },
+							{
+								...shell, name: "inspect", label: "Inspect repository",
+								description: "Run read-only shell inspections, including Git status/diff/check-ignore and searches. Compound commands and pipes are allowed. Nonzero exits return to you for interpretation or correction, including normal no-match results. Never stage, unstage, write files, commit, or push here; use bash for mutations. " + shell.description,
+								execute: (id, args, toolSignal, update) => shell.execute(id, { ...(args as Parameters<typeof shell.execute>[1]), timeout: 15 }, toolSignal, update),
+							},
+							{
+								...shell,
+								description: "Run repository mutations, including staging, unstaging, index preservation, and commits with normal hooks. Any failure stops this workflow and blocks queued tools. Keep read-only inspections in inspect, not in mutation calls. " + shell.description,
+								execute: (id, args, toolSignal, update) => shell.execute(id, { ...(args as Parameters<typeof shell.execute>[1]), timeout: 15 }, toolSignal, update),
+							},
 							{ ...read, execute: async (id, input, toolSignal, update) => {
 								const args = input as Parameters<typeof read.execute>[1];
 								try { return await read.execute(id, args, toolSignal, update); }
@@ -246,8 +248,8 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 				});
 				unsubscribe = agent.subscribe((event) => {
 					if (event.type === "tool_execution_start") {
-						progress(event.toolName === "bash" ? "Running Git/shell command…" : event.toolName === "read" ? "Reading repository instructions and changes…" : "Preparing ignore-file decision…");
-						activeTools.set(event.toolCallId, { description: describeCommitTool(event.toolName, event.args), startedAt: Date.now(), terminal: event.toolName === "ask_ignore" || event.toolName === "publish_repository" || (event.toolName === "bash" && !isCommitInspection(String((event.args as { command?: unknown }).command ?? ""))) });
+						progress(event.toolName === "bash" || event.toolName === "inspect" ? "Running Git/shell command…" : event.toolName === "read" ? "Reading repository instructions and changes…" : "Preparing ignore-file decision…");
+						activeTools.set(event.toolCallId, { description: describeCommitTool(event.toolName, event.args), startedAt: Date.now(), terminal: event.toolName === "ask_ignore" || event.toolName === "publish_repository" || event.toolName === "bash" });
 					}
 					if (event.type === "tool_execution_end") {
 						const active = activeTools.get(event.toolCallId);

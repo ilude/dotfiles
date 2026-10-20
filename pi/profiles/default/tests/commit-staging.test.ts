@@ -27,6 +27,7 @@ let execs: string[][];
 let completion: string;
 const git = (cwd: string, ...args: string[]) => execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8", timeout: 15000, windowsHide: true });
 const bash = (command: string): Call => ({ name: "bash", arguments: { command } });
+const inspect = (command: string): Call => ({ name: "inspect", arguments: { command } });
 const inRepo = (cwd: string, command: string) => `git -C '${cwd.replace(/\\/g, "/")}' ${command}`;
 const ask = (candidate: string): Call => ({ name: "ask_ignore", arguments: { repo: ".", candidate, reason: "Generated cache with uncertain repository policy", pattern: candidate } });
 function init(cwd: string) {
@@ -42,7 +43,7 @@ beforeEach(() => {
 		results = context.messages.filter(m => m.role === "toolResult") as typeof results;
 		const step = steps.shift();
 		const calls = step ? (Array.isArray(step) ? step : [step]) : [];
-		for (const call of calls) if (call.name === "bash") commands.push(String(call.arguments.command));
+		for (const call of calls) if (call.name === "bash" || call.name === "inspect") commands.push(String(call.arguments.command));
 		const message: AssistantMessage = {
 			role: "assistant", content: calls.length ? calls.map((call, index) => ({ type: "toolCall", id: `call-${commands.length}-${index}`, ...call })) : [{ type: "text", text: completion }],
 			stopReason: calls.length ? "toolUse" : "stop", model: model.id, api: model.api, provider: model.provider, timestamp: Date.now(),
@@ -134,10 +135,30 @@ it("preserves sole index content with normal Git before blanket staging", async 
 });
 
 it("recovers a bad inspection and no-match, allowing discovery and corrected Git inspection", async () => {
-	steps.push(bash("git diff --invalid-inspection-option"), bash("git diff --cached"), bash("grep no-such-match base.txt"), bash("find . -name base.txt"),
+	steps.push(inspect("git diff --invalid-inspection-option"), inspect("git diff --cached"), inspect("grep no-such-match base.txt"), inspect("find . -name base.txt"),
 		{ name: "read", arguments: { path: "missing-file.txt" } }, { name: "read", arguments: { path: "base.txt" } }, bash("git add -A"));
 	await run(); expect(results[0]?.isError).toBe(true); expect(results[1]?.isError).toBe(false);
 	expect(results[2]?.isError).toBe(true); expect(results[4]?.isError).toBe(true); expect(results[5]?.isError).toBe(false); expect(commands).toHaveLength(5);
+});
+
+it("continues after a compound inspection ends with a normal check-ignore no-match", async () => {
+	writeFileSync(join(root, "new.txt"), "commit me\n");
+	steps.push(
+		inspect("pwd && git status --short --branch && git diff --cached -- base.txt && git diff -- base.txt && git ls-files --stage -- base.txt && git check-ignore new.txt"),
+		bash("git add -A"), inspect("git diff --cached"), bash("git commit -m after-inspection"),
+	);
+	const report = await run();
+	expect(results[0]?.isError).toBe(true);
+	expect(JSON.stringify(results[0]?.content)).toContain("code 1");
+	expect(report.text).toContain("after-inspection");
+	expect(git(root, "show", "HEAD:new.txt")).toBe("commit me\n");
+});
+
+it("reports the complete failed mutation command even beyond 300 characters", async () => {
+	const command = `git add -- '${"missing".repeat(60)}'`;
+	steps.push([bash(command), bash("git commit -m forbidden")]);
+	await expect(run()).rejects.toThrow(`shell command: ${command} failed`);
+	expect(git(root, "log", "-1", "--format=%s").trim()).toBe("baseline");
 });
 
 it.each(["add -- nonexistent.txt", "restore --staged -- nonexistent.txt", "commit -m empty", "push --recurse-submodules=no nonexistent HEAD:refs/heads/main"])("stops on failed mutation and blocks queued mutations: %s", async operation => {

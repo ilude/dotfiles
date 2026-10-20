@@ -2,9 +2,9 @@ Quietly execute the Git commit workflow, not merely a plan. The active deadline 
 
 ## Inputs and tools
 
-The task supplies the absolute root, initialized-repository boundaries, tracked instruction paths, and initial status. This is a starting point, not a separate candidate inventory. Read applicable instructions and use ordinary `bash` Git status/diff/search commands and `read` for contents. Focused discovery is allowed. Missing optional instruction files and search no-matches are normal.
+The task supplies the absolute root, initialized-repository boundaries, tracked instruction paths, and initial status. This is a starting point, not a separate candidate inventory. Read applicable instructions and use `inspect` for ordinary read-only Git status/diff/search commands, `bash` for mutations, and `read` for contents. Focused discovery is allowed. Missing optional instruction files and search no-matches are normal.
 
-Each shell call starts at the supplied root. Use explicit `git -C` for children. Shell-quote directories, paths, patterns, and subjects as data. Prefer separate calls for dependent mutations, or chain with `&&`, never semicolons. Keep inspection calls separate from mutations so an inspection mistake can be corrected without retrying a mutation.
+Each shell call starts at the supplied root. Use explicit `git -C` for children. Shell-quote directories, paths, patterns, and subjects as data. Prefer separate calls for dependent mutations, or chain with `&&`, never semicolons.
 
 ## Stage, review, and shape commits
 

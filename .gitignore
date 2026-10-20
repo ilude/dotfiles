@@ -82,6 +82,9 @@ claude/telemetry/
 # Specstory
 claude/.specstory/
 
+# Copilot IDE connection metadata (local pipes and authentication nonces)
+/copilot/ide/
+
 # =============================================================================
 # Python
 # =============================================================================

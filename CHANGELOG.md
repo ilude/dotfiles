@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-10-18: Keep commit inspections from aborting the workflow
+
+- Default Pi's `/commit` now separates ordinary read-only shell inspections from mutation calls instead of guessing from command text. Compound inspections and normal no-match results such as `git check-ignore` exit 1 return to the private agent for interpretation or correction rather than stopping the commit workflow.
+- Failed staging, unstaging, ignore-file changes, commits/hooks, and publication still stop dependent work without undoing successful work. Failure diagnostics retain the full command instead of truncating the part most likely to explain the failure. Both shell tools retain the native executor and existing timeouts; the inspection tool is not a shell sandbox.
+- Focused regressions cover compound inspection recovery through a real commit, complete failure commands, and existing mutation/hook failure handling. Reload while idle with no active or retained subagents, or restart Pi, to load the change. Legacy remains untouched.
+
 ## 2026-10-18: Keep empty vault lookups valid in Pi history
 
 - Onclave's Pi adapter now serializes an unmatched YouTube video lookup as `null` instead of a text block with a missing value. The malformed block previously persisted in session history and caused subsequent OpenAI request preparation to fail, including after resuming the session.

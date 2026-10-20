@@ -2,7 +2,7 @@ import { expect, it } from "vitest";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { appendGitignoreRule, buildCommitTask, describeCommitTool, formatPublicationEligibility, isCommitInspection, validateGitignorePattern } from "../commands/commit/reviewer.ts";
+import { appendGitignoreRule, buildCommitTask, describeCommitTool, formatPublicationEligibility, validateGitignorePattern } from "../commands/commit/reviewer.ts";
 
 it("supplies boundaries, stage-first ordering, and captured publication permission", () => {
 	const inventory = ['Repository: .\n M "first.txt"', 'Repository: child\n?? "new.txt"'];
@@ -39,12 +39,8 @@ it("validates and appends one ignore rule without duplicates", async () => {
 	} finally { rmSync(repo, { recursive: true, force: true }); }
 });
 
-it("recognizes recoverable inspections, not mixed/unknown mutation failures", () => {
-	for (const command of ['git -C "child" diff --bad-option', 'git status', 'rg missing .', 'find . -name AGENTS.md', 'ls -R']) expect(isCommitInspection(command)).toBe(true);
-	for (const command of ['git add -A', 'git commit', 'git restore --staged .', 'git push', 'echo rule >> .gitignore', 'git diff && git add -A', 'unknown']) expect(isCommitInspection(command)).toBe(false);
-});
-
-it("bounds failure descriptions", () => {
+it("retains complete failure commands, including the tail and original whitespace", () => {
 	expect(describeCommitTool("read", { path: "AGENTS.md" })).toBe("file read: AGENTS.md");
-	expect(describeCommitTool("bash", { command: `git commit -m "${"x".repeat(400)}"` }).length).toBeLessThan(330);
+	const command = `pwd && git diff -- '${"x".repeat(400)}'\n&& git check-ignore 'file with  spaces.lock'`;
+	for (const name of ["bash", "inspect"]) expect(describeCommitTool(name, { command })).toBe(`shell command: ${command}`);
 });
