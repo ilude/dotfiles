@@ -161,11 +161,43 @@ it("reports the complete failed mutation command even beyond 300 characters", as
 	expect(git(root, "log", "-1", "--format=%s").trim()).toBe("baseline");
 });
 
-it.each(["add -- nonexistent.txt", "restore --staged -- nonexistent.txt", "commit -m empty", "push --recurse-submodules=no nonexistent HEAD:refs/heads/main"])("stops on failed mutation and blocks queued mutations: %s", async operation => {
+it.each(["add -- nonexistent.txt", "restore --staged -- nonexistent.txt", "-C nonexistent commit -m failure", "push --recurse-submodules=no nonexistent HEAD:refs/heads/main"])("stops on failed mutation and blocks queued mutations: %s", async operation => {
 	writeFileSync(join(root, "new.txt"), "remaining\n");
 	steps.push([bash(`git ${operation}`), bash("git add -A")]);
 	await expect(run()).rejects.toThrow(/Stopped; existing commits and changes were not undone/);
 	expect(git(root, "ls-files", "new.txt")).toBe("");
+});
+
+it.each([false, true])("skips an empty child index and continues committing the parent (unstaged child changes=%s)", async dirty => {
+	const source = `${root}-clean-child-source`;
+	try {
+		mkdirSync(source); init(source);
+		git(root, "-c", "protocol.file.allow=always", "submodule", "add", "--quiet", source, "modules/clean-child");
+		git(root, "commit", "--quiet", "-am", "child baseline");
+		const child = realpathSync(join(root, "modules/clean-child"));
+		const childHead = git(child, "rev-parse", "HEAD").trim();
+		if (dirty) writeFileSync(join(child, "base.txt"), "unstaged child work\n");
+		writeFileSync(join(root, "base.txt"), "parent change\n");
+		if (dirty) steps.push(bash(inRepo(child, 'commit -m "empty child"')), bash("git add -A"), inspect("git diff --cached"), bash("git commit -m parent-change"));
+		else steps.push(bash(`${inRepo(child, 'commit -m "empty child"')} && git add -A && git commit -m parent-change`));
+		const report = await run();
+		expect(results[0]?.isError).toBe(false);
+		expect(JSON.stringify(results[0]?.content)).toContain("No staged changes; commit skipped.");
+		expect(git(child, "rev-parse", "HEAD").trim()).toBe(childHead);
+		expect(git(root, "log", "-1", "--format=%s").trim()).toBe("parent-change");
+		expect(report.text).toContain("parent-change");
+		if (dirty) expect(readFileSync(join(child, "base.txt"), "utf8")).toBe("unstaged child work\n");
+	} finally { rmSync(source, { recursive: true, force: true }); }
+});
+
+it("skips an unborn empty index, then commits newly staged contents normally", async () => {
+	git(root, "checkout", "--quiet", "--orphan", "unborn"); git(root, "rm", "--quiet", "-rf", ".");
+	writeFileSync(join(root, "first.txt"), "first commit contents\n");
+	steps.push(bash("git -c core.quotePath=false commit -m empty"), bash("git add -A"), bash("git commit -m first-commit"));
+	const report = await run();
+	expect(results[0]?.isError).toBe(false);
+	expect(report.text).toContain("first-commit");
+	expect(git(root, "show", "HEAD:first.txt")).toBe("first commit contents\n");
 });
 
 it("stops a failed hook without running a queued commit", async () => {

@@ -9,8 +9,10 @@ import context from "../extensions/context.ts";
 import tps from "../extensions/tps-tracker.ts";
 import clear from "../extensions/clear.ts";
 import { fetchCodexUsage, formatCacheUsage, formatQuota, formatResetCredits, formatUsage, paceColor, readCacheUsage, recordCacheUsage, REFRESH_MS, RESET_CREDITS_ENDPOINT, USAGE_PAGE } from "../lib/codex-usage.ts";
-import { CODEX_QUOTA_PROVIDER } from "../lib/codex-auth.ts";
-const quotaRegistry = { getProviderAuth: vi.fn() };
+import { CODEX_QUOTA_LOGIN_REQUEST, CODEX_QUOTA_PROVIDER } from "../lib/codex-auth.ts";
+import { loginForCodexUsage } from "../lib/codex-login.ts";
+vi.mock("../lib/codex-login.ts", () => ({ loginForCodexUsage: vi.fn() }));
+const quotaRegistry = { getProviderAuth: vi.fn(), refresh: vi.fn() };
 import { summarize as summarizeBedrock } from "../lib/bedrock/ledger.ts";
 
 import { createEventBus } from "../node_modules/@earendil-works/pi-coding-agent/dist/core/event-bus.js";
@@ -78,6 +80,8 @@ beforeEach(() => {
   vi.stubEnv("PI_CODING_AGENT_DIR", dir);
   const access = `header.${Buffer.from(JSON.stringify({ "https://api.openai.com/auth": { chatgpt_account_id: "synthetic-account" } })).toString("base64url")}.signature`;
   quotaRegistry.getProviderAuth.mockReset().mockResolvedValue({ auth: { apiKey: access }, source: "OAuth" });
+  quotaRegistry.refresh.mockReset().mockResolvedValue(undefined);
+  vi.mocked(loginForCodexUsage).mockReset().mockResolvedValue(false);
   vi.stubGlobal("fetch", vi.fn(async (url: string | URL) => new Response(JSON.stringify(String(url) === RESET_CREDITS_ENDPOINT ? resetCredits : usage))));
 });
 afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.restoreAllMocks(); rmSync(dir, { recursive: true, force: true }); });
@@ -100,6 +104,57 @@ describe("Codex usage", () => {
     quotaRegistry.getProviderAuth.mockResolvedValue(ready);
     await r.commands.get("usage").handler("", r.ctx);
     expect(r.statuses.get("codex")).toContain("5h 25%");
+    await r.emit("session_shutdown");
+  });
+
+  it.each(["command", "footer"])("signs in from the %s and immediately refreshes quota without changing the model", async (source) => {
+    const ready = await quotaRegistry.getProviderAuth();
+    quotaRegistry.getProviderAuth.mockResolvedValue(undefined);
+    const r = runtime(codex);
+    await r.emit("session_start", { reason: "startup" }); await flush();
+    const model = r.ctx.model;
+    vi.mocked(loginForCodexUsage).mockImplementation(async () => {
+      quotaRegistry.getProviderAuth.mockResolvedValue(ready);
+      return true;
+    });
+    if (source === "command") await r.commands.get("usage").handler("login", r.ctx);
+    else { r.pi.events.emit(CODEX_QUOTA_LOGIN_REQUEST, undefined); await flush(); }
+    expect(loginForCodexUsage).toHaveBeenCalledOnce();
+    expect(quotaRegistry.refresh).toHaveBeenCalledWith(expect.objectContaining({ allowNetwork: false, providers: ["openai-codex"] }));
+    expect(r.statuses.get("codex")).toContain("5h 25%");
+    expect(r.ctx.model).toBe(model);
+    expect(r.reports()).toHaveLength(1); // Sign-in itself is not a model prompt or another usage report.
+    await r.emit("session_shutdown");
+  });
+
+  it("keeps one sign-in active, cancels it on shutdown, and removes its footer listener", async () => {
+    quotaRegistry.getProviderAuth.mockResolvedValue(undefined);
+    const r = runtime(codex);
+    await r.emit("session_start", { reason: "startup" }); await flush();
+    let loginSignal: AbortSignal;
+    vi.mocked(loginForCodexUsage).mockImplementation((_ctx, signal) => {
+      loginSignal = signal;
+      return new Promise(resolve => signal.addEventListener("abort", () => resolve(false), { once: true }));
+    });
+    r.pi.events.emit(CODEX_QUOTA_LOGIN_REQUEST, undefined);
+    r.pi.events.emit(CODEX_QUOTA_LOGIN_REQUEST, undefined);
+    expect(loginForCodexUsage).toHaveBeenCalledOnce();
+    expect(r.statuses.get("codex")).toBe("codex: signing in");
+    await r.emit("session_shutdown"); await flush();
+    expect(loginSignal!.aborted).toBe(true);
+    r.pi.events.emit(CODEX_QUOTA_LOGIN_REQUEST, undefined);
+    expect(loginForCodexUsage).toHaveBeenCalledOnce();
+    expect(quotaRegistry.refresh).not.toHaveBeenCalled();
+  });
+
+  it("returns to the actionable footer after cancelled sign-in", async () => {
+    quotaRegistry.getProviderAuth.mockResolvedValue(undefined);
+    const r = runtime(codex);
+    await r.emit("session_start", { reason: "startup" }); await flush();
+    await r.commands.get("usage").handler("login", r.ctx);
+    expect(r.statuses.get("codex")).toBe("codex: login needed");
+    expect(quotaRegistry.refresh).not.toHaveBeenCalled();
+    expect(r.ctx.ui.notify).not.toHaveBeenCalled();
     await r.emit("session_shutdown");
   });
 

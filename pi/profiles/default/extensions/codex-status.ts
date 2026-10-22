@@ -4,7 +4,8 @@ import { fetchCodexUsage, formatCacheUsage, formatQuota, formatUsage, readCacheU
 import { formatUsage as formatBedrockUsage, summarize as summarizeBedrock } from "../lib/bedrock/ledger.ts";
 import { readClaudeLocalContribution } from "../lib/bedrock/claude-status-usage.ts";
 import { registerProfileCommand } from "../lib/profile-command.ts";
-import { CodexAuthError, type CodexAuthRegistry } from "../lib/codex-auth.ts";
+import { CodexAuthError, CODEX_QUOTA_LOGIN_REQUEST, CODEX_QUOTA_PROVIDER, type CodexAuthRegistry } from "../lib/codex-auth.ts";
+import { loginForCodexUsage } from "../lib/codex-login.ts";
 
 const REPORT = "codex-usage-report";
 const START = "codex-usage-start";
@@ -26,6 +27,33 @@ export default function codexStatus(pi: ExtensionAPI): void {
   let cachedAt = 0;
   let generation = 0;
   let cacheError: string | undefined;
+  let loginController: AbortController | undefined;
+  let unsubscribeLogin: (() => void) | undefined;
+
+  async function login(ctx: ExtensionContext): Promise<void> {
+    if (loginController) return;
+    if (ctx.mode !== "tui") {
+      ctx.ui.notify("Use /login openai-codex in interactive Pi, then /usage.", "info");
+      return;
+    }
+    const abort = new AbortController();
+    loginController = abort;
+    controller?.abort();
+    request = undefined;
+    ctx.ui.setStatus("codex", "codex: signing in");
+    try {
+      if (await loginForCodexUsage(ctx, abort.signal)) {
+        await ctx.modelRegistry.refresh({ allowNetwork: false, providers: [CODEX_QUOTA_PROVIDER], signal: abort.signal });
+        cached = undefined;
+        cachedAt = 0;
+      }
+    } catch {
+      if (!abort.signal.aborted) ctx.ui.notify("Could not complete Codex sign-in. Retry /usage login or use /login openai-codex.", "error");
+    } finally {
+      if (loginController === abort) loginController = undefined;
+      if (alive && !abort.signal.aborted) await refresh(ctx);
+    }
+  }
 
   pi.registerEntryRenderer(REPORT, entry => new Text(reportLinks((entry.data as { text: string }).text), 0, 0));
 
@@ -48,16 +76,17 @@ export default function codexStatus(pi: ExtensionAPI): void {
     catch { return "OpenAI cache: unavailable (cannot read profile cache history)."; }
   }
   async function refresh(ctx: ExtensionContext, report?: { marker?: string; force?: boolean }): Promise<void> {
+    if (loginController) return;
     const epoch = generation;
     let content: string;
     if (!cached) ctx.ui.setStatus("codex", "codex: loading");
     try {
       const usage = await getUsage(ctx.modelRegistry, report?.force);
-      if (!alive || epoch !== generation) return;
+      if (!alive || epoch !== generation || loginController) return;
       ctx.ui.setStatus("codex", formatQuota(usage, (color, text) => ctx.ui.theme.fg(color, text)));
       content = formatUsage(usage);
     } catch (error) {
-      if (!alive || epoch !== generation) return;
+      if (!alive || epoch !== generation || loginController) return;
       const status = error instanceof CodexAuthError ? error.status
         : controller?.signal.aborted ? "request timed out"
         : error instanceof TypeError ? "network error" : "API error";
@@ -94,6 +123,8 @@ export default function codexStatus(pi: ExtensionAPI): void {
     alive = true;
     generation++;
     if (!ctx.hasUI) return;
+    unsubscribeLogin?.();
+    unsubscribeLogin = pi.events.on(CODEX_QUOTA_LOGIN_REQUEST, () => { void login(ctx); });
     const entries = ctx.sessionManager.getEntries();
     const sessionId = ctx.sessionManager.getSessionId();
     // A clear may immediately reload. Persist a pending marker so the new runtime
@@ -114,6 +145,9 @@ export default function codexStatus(pi: ExtensionAPI): void {
     alive = false;
     generation++;
     clearTimeout(timer);
+    unsubscribeLogin?.();
+    unsubscribeLogin = undefined;
+    loginController?.abort();
     controller?.abort();
     request = undefined;
   });
@@ -123,9 +157,10 @@ export default function codexStatus(pi: ExtensionAPI): void {
     catch { cacheError = "cannot append profile cache history"; }
   });
   registerProfileCommand(pi, "usage", {
-    description: "Show Codex subscription limits and recent prompt-cache usage",
+    description: "Show Codex subscription limits and recent prompt-cache usage; /usage login signs in",
     handler: async (args, ctx) => {
-      if (args.trim()) throw new Error("Usage: /usage");
+      if (args.trim() === "login") return login(ctx);
+      if (args.trim()) throw new Error("Usage: /usage [login]");
       await refresh(ctx, { force: true });
     },
   });

@@ -2,6 +2,7 @@ import type { ModelRegistry } from "@earendil-works/pi-coding-agent";
 
 export const CODEX_QUOTA_PROVIDER = "openai-codex";
 export const CODEX_QUOTA_LOGIN = `/login ${CODEX_QUOTA_PROVIDER}`;
+export const CODEX_QUOTA_LOGIN_REQUEST = "default:codex-quota:login";
 export type CodexAuthRegistry = Pick<ModelRegistry, "getProviderAuth">;
 type CodexAuthStatus = "login needed" | "auth renewal failed" | "authorization rejected";
 export class CodexAuthError extends Error {

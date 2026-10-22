@@ -5,7 +5,7 @@ beforeEach(() => {
   vi.stubEnv("HERDR_ENV", "1"); vi.stubEnv("HERDR_PANE_ID", "w1:p1"); vi.stubEnv("HERDR_TAB_ID", "w1:t1");
   vi.stubEnv("HERDR_WORKSPACE_ID", "w1"); vi.stubEnv("HERDR_SOCKET_PATH", "fixture"); vi.stubEnv("HERDR_BIN_PATH", "fixture-herdr");
   vi.stubEnv("PI_SUBAGENT_AUTHORITY", ""); vi.stubEnv("PI_HERDR_SUBAGENT", ""); vi.stubEnv("PI_HERDR_TAB_LABEL", "");
-  vi.stubEnv("PI_HERDR_TAB_TITLE", ""); vi.stubEnv("PI_HERDR_TAB_TITLE_EXPLICIT", "");
+  vi.stubEnv("PI_HERDR_TAB_TITLE", ""); vi.stubEnv("PI_HERDR_TAB_TITLE_EXPLICIT", ""); vi.stubEnv("PI_UPDATE_RESTART", "");
 });
 afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 
@@ -36,6 +36,15 @@ it("labels the startup pane and establishes the child-owned base title", async (
   expect(f.exec.mock.calls.slice(0, 2).map(call => call[1])).toEqual([
     ["pane", "rename", "w1:p1", "Orchestrator"], ["tab", "rename", "w1:t1", ".dotfiles"],
   ]);
+});
+
+it("keeps existing labels and saved manual naming ownership on an update restart", async () => {
+  vi.stubEnv("PI_UPDATE_RESTART", "1");
+  const f = fixture();
+  Object.assign(f.ctx.sessionManager, { getBranch: () => [{ type: "custom", customType: "herdr-update-title", data: { ownedTitle: "manual name", failures: 0, breakerOpen: false, ownershipPaused: true } }] });
+  await f.start();
+  expect(f.exec).not.toHaveBeenCalled();
+  f.handlers.session_shutdown({ reason: "quit" });
 });
 
 it("preserves an explicit launch title literally and performs no naming request", async () => {

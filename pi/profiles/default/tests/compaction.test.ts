@@ -72,6 +72,7 @@ describe("unified compaction", () => {
     expect(summarize.mock.calls[0][3]).toEqual({ "x-fixture": "header" });
     expect(summarize.mock.calls[0][5]).toBe(input.signal);
     expect(summarize.mock.calls[0][6]).toBe("low");
+    expect(summarize.mock.calls[0][7]).toBeTypeOf("function");
     expect(summarize.mock.calls[0][8]).toEqual({ FIXTURE: "value" });
     expect(summarize.mock.calls[0][9]).toBeDefined();
     expect(JSON.stringify(requests[0])).toContain("FOCUS_SENTINEL");

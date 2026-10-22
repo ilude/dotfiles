@@ -9,7 +9,9 @@
     "../lib/codex-usage.ts",
     "usage-context-tps.test.ts",
     "codex-auth.test.ts",
+    "codex-login.test.ts",
     "scheduler-footer.test.ts",
+    "release-indicators.test.ts",
     "pi-web-api.ts"
   ]
 }

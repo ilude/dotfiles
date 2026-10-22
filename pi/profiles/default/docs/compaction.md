@@ -30,8 +30,11 @@ without mutating session entries or replaying historical messages.
 Pi still owns compaction triggers, cut-point selection, persistence, cancellation,
 and continuation. The extension uses the current model and thinking level, resolved
 registry authentication/headers/endpoint/environment, and configured retry settings
-from the active profile and trusted project. It does not switch models or add retry
-policy. The native helper uses fresh routing and disables cache writes for its
+from the active profile and trusted project. Summary generation dispatches through
+the model registry's `streamSimple()` path, not the native helper's direct API
+stream. This preserves request-time provider authentication for providers such as
+Bedrock Mantle that legitimately resolve to AWS credential-chain environment with
+no static API key. It does not switch models or add retry policy. The native helper uses fresh routing and disables cache writes for its
 one-off summary request. No standing orchestrator instruction is added; only the
 compaction request and resulting checkpoint change. Live cache effects are unmeasured.
 

@@ -2,7 +2,9 @@ import * as childProcess from "node:child_process";
 import * as os from "node:os";
 import * as path from "node:path";
 import { VERSION } from "@earendil-works/pi-coding-agent";
-import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { truncateToWidth, visibleWidth, type TuiMouseEvent, type TuiMouseEventResult } from "@earendil-works/pi-tui";
+import { CODEX_QUOTA_LOGIN_REQUEST } from "../lib/codex-auth.ts";
+import { cachedReleases, checkReleases, releaseLag, releaseUrl, RELEASE_CHECK_INTERVAL } from "../lib/release-indicators.ts";
 import { RELOAD_CHANGED, requestReloadState, type ReloadState } from "../lib/profile-reload-events.ts";
 
 const ANSI = {
@@ -53,6 +55,7 @@ interface ReadonlyFooterDataProvider {
 interface FooterComponent {
 	invalidate: () => void;
 	render: (width: number) => string[];
+	handleMouse: (event: TuiMouseEvent) => TuiMouseEventResult | undefined;
 }
 
 interface ContextUsage {
@@ -91,6 +94,17 @@ function runCommand(args: string[], cwd?: string): string {
 		return result.status === 0 ? `${result.stdout ?? ""}${result.stderr ?? ""}`.trim() : "";
 	} catch {
 		return "";
+	}
+}
+
+function connectedHerdrVersion(): string | undefined {
+	if (process.env.HERDR_ENV !== "1") return undefined;
+	try {
+		const status = JSON.parse(runCommand(["herdr", "status", "--json"]));
+		const version: unknown = status.server?.version;
+		return status.server?.running === true && typeof version === "string" && /^[0-9][0-9A-Za-z.+-]*$/.test(version) ? version : undefined;
+	} catch {
+		return undefined;
 	}
 }
 
@@ -210,6 +224,10 @@ function formatMainFooter(options: {
 	reloadNeeded: boolean;
 	reloadError?: string;
 	rightStatus: string | null;
+	herdrVersion?: string;
+	piLag?: number;
+	piLatest?: string;
+	herdrLag?: number;
 	width: number;
 }): string {
 	const worktree = isLinkedWorktree(options.cwd);
@@ -222,7 +240,14 @@ function formatMainFooter(options: {
 	const thinkingLabel = `${ANSI.white}[${colorForThinkingLevel(model, thinking)}${thinking}${ANSI.white}]${ANSI.reset}`;
 	const providerLabel = provider ? `${ANSI.dim}${ANSI.grey}${provider}/${ANSI.reset}` : "";
 	const contextLabel = formatContextUsageSegment(options.contextUsage);
-	const versionLabel = `${ANSI.dim}π v${VERSION}${ANSI.reset}${formatReloadIndicator(options.reloadNeeded, options.reloadError)}`;
+	const releaseLabel = (product: "pi" | "herdr", version: string, lag: number | undefined, label: string): string => {
+		const color = lag === undefined || lag === 0 ? ANSI.grey : lag === 1 ? ANSI.yellow : ANSI.red;
+		const displayVersion = product === "herdr" ? version.replace(/(-preview)\..*$/, "$1") : version;
+		const text = `${color}${label} v${displayVersion}${ANSI.reset}`;
+		return lag ? `\x1b]8;;${releaseUrl(product, version, options.piLatest)}\x1b\\${text}\x1b]8;;\x1b\\` : text;
+	};
+	const versions = [options.herdrVersion ? releaseLabel("herdr", options.herdrVersion, options.herdrLag, `η`) : "", releaseLabel("pi", VERSION, options.piLag, "π")].filter(Boolean).join(`${ANSI.dim} | ${ANSI.reset}`);
+	const versionLabel = `${versions}${formatReloadIndicator(options.reloadNeeded, options.reloadError)}`;
 	const location = worktree ? formatWorktreeLabel(options.branch) : `${ANSI.green}${directory}${ANSI.reset}${branch}`;
 	let left = `${location} | ${providerLabel}${ANSI.orange}${model}${ANSI.reset}${thinkingLabel}`;
 	if (contextLabel) left += ` | ${contextLabel}`;
@@ -297,17 +322,32 @@ function refreshStatuses(ctx: ExtensionContext): void {
 	ctx.ui.setStatus("usage", undefined);
 }
 
-function installFooter(ctx: ExtensionContext, pi: ExtensionAPI, reloadState: () => ReloadState): boolean {
+function installFooter(ctx: ExtensionContext, pi: ExtensionAPI, reloadState: () => ReloadState, releaseState: () => { pi?: number; piLatest?: string; herdr?: number }, herdrVersion: string | undefined): boolean {
 	if (typeof ctx.ui.setFooter !== "function") return false;
 	prewarmLocationMetadata(ctx.cwd);
 	ctx.ui.setFooter((tui, _theme: unknown, footerData: ReadonlyFooterDataProvider) => {
 		requestFooterRender = () => tui.requestRender();
+		let loginBounds: { start: number; end: number } | undefined;
+		let versionBounds: { start: number; end: number; url: string }[] = [];
 		return {
-		invalidate: () => {},
+		invalidate: () => { loginBounds = undefined; versionBounds = []; },
+		handleMouse: (event: TuiMouseEvent) => {
+			if (event.type !== "click" || event.button !== "left" || event.y !== 0) return undefined;
+			const target = versionBounds.find(bounds => event.x >= bounds.start && event.x < bounds.end);
+			if (target) {
+				const command = process.platform === "win32" ? ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", `Start-Process '${target.url.replaceAll("'", "''")}'`] : process.platform === "darwin" ? ["open", target.url] : ["xdg-open", target.url];
+				childProcess.execFile(command[0], command.slice(1), { timeout: 5000, windowsHide: true }, () => {});
+				return { handled: true };
+			}
+			if (!loginBounds || event.x < loginBounds.start || event.x >= loginBounds.end) return undefined;
+			if (!footerData.getExtensionStatuses().get("codex")?.includes("login needed")) return undefined;
+			pi.events.emit(CODEX_QUOTA_LOGIN_REQUEST, undefined);
+			return { handled: true };
+		},
 		render: (width: number) => {
 			const statuses = footerData.getExtensionStatuses();
 			const codexStatus = statusText(statuses.get("codex")) || null;
-			const main = formatMainFooter({
+			let main = formatMainFooter({
 				cwd: ctx.cwd,
 				branch: footerData.getGitBranch(),
 				model: ctx.model,
@@ -316,8 +356,29 @@ function installFooter(ctx: ExtensionContext, pi: ExtensionAPI, reloadState: () 
 				reloadNeeded: reloadState().needed,
 				reloadError: reloadState().error,
 				rightStatus: codexStatus,
+				herdrVersion,
+				piLag: releaseState().pi,
+				piLatest: releaseState().piLatest,
+				herdrLag: releaseState().herdr,
 				width,
 			});
+			loginBounds = undefined;
+			versionBounds = [];
+			for (const [product, symbol, version, lag] of [["pi", "π", VERSION, releaseState().pi], ["herdr", "η", herdrVersion, releaseState().herdr]] as const) {
+				if (!version || !lag) continue;
+				const label = `${symbol} v${version}`;
+				const index = main.indexOf(label);
+				if (index < 0) continue;
+				const start = visibleWidth(main.slice(0, index));
+				versionBounds.push({ start, end: start + visibleWidth(label), url: releaseUrl(product, version, releaseState().piLatest) });
+			}
+			const loginLabel = "login needed";
+			const loginIndex = codexStatus?.includes(loginLabel) ? main.lastIndexOf(loginLabel) : -1;
+			if (loginIndex >= 0) {
+				const start = visibleWidth(main.slice(0, loginIndex));
+				loginBounds = { start, end: start + visibleWidth(loginLabel) };
+				main = `${main.slice(0, loginIndex)}${ANSI.cyan}\x1b[4m${loginLabel}\x1b[24m${ANSI.reset}${main.slice(loginIndex + loginLabel.length)}`;
+			}
 			const second = formatSecondFooterLine(
 				Array.from(statuses.entries())
 					.filter(([key]) => key !== "codex" && key !== "bedrock" && key !== "pi")
@@ -338,22 +399,53 @@ function installFooter(ctx: ExtensionContext, pi: ExtensionAPI, reloadState: () 
 
 export default function operatorFooter(pi: ExtensionAPI): void {
 	let unsubscribeReload: (() => void) | undefined;
+	let releaseController: AbortController | undefined;
+	let releaseTimer: ReturnType<typeof setInterval> | undefined;
+	let releaseState: { pi?: number; piLatest?: string; herdr?: number } = {};
 	let reloadState: ReloadState = { needed: false };
 	pi.on("session_start", async (_event: { reason?: string }, ctx: ExtensionContext) => {
 		unsubscribeReload?.();
+		releaseController?.abort();
+		if (releaseTimer) clearInterval(releaseTimer);
+		releaseController = new AbortController();
+		releaseState = {};
+		const signal = releaseController.signal;
+		void cachedReleases().then(({ cache, fresh }) => {
+			if (signal.aborted) return;
+			if (cache) releaseState = { pi: releaseLag(VERSION, cache.latest.pi), piLatest: cache.latest.pi?.at(-1), herdr: herdrVersion ? releaseLag(herdrVersion, cache.latest.herdr) : undefined };
+			requestFooterRender?.();
+			if (!fresh) void checkReleases(signal).then(latest => {
+				if (signal.aborted) return;
+				releaseState = { pi: releaseLag(VERSION, latest.pi), piLatest: latest.pi?.at(-1), herdr: herdrVersion ? releaseLag(herdrVersion, latest.herdr) : undefined };
+				requestFooterRender?.();
+			}).catch(() => {});
+		}).catch(() => {});
+		releaseTimer = setInterval(() => {
+			if (signal.aborted) return;
+			void checkReleases(signal).then(latest => {
+				if (signal.aborted) return;
+				releaseState = { pi: releaseLag(VERSION, latest.pi), piLatest: latest.pi?.at(-1), herdr: herdrVersion ? releaseLag(herdrVersion, latest.herdr) : undefined };
+				requestFooterRender?.();
+			}).catch(() => {});
+		}, RELEASE_CHECK_INTERVAL);
 		unsubscribeReload = pi.events.on(RELOAD_CHANGED, data => {
 			reloadState = data as ReloadState;
 			requestFooterRender?.();
 		});
 		reloadState = requestReloadState(pi) ?? { needed: false };
 		initializeUsage(ctx);
-		if (!installFooter(ctx, pi, () => reloadState)) ctx.ui.setStatus("pi", `π v${VERSION}`);
+		const herdrVersion = connectedHerdrVersion();
+		if (!installFooter(ctx, pi, () => reloadState, () => releaseState, herdrVersion)) ctx.ui.setStatus("pi", `π v${VERSION}`);
 		refreshStatuses(ctx);
 	});
 
 	pi.on("session_shutdown", async () => {
 		unsubscribeReload?.();
 		unsubscribeReload = undefined;
+		releaseController?.abort();
+		releaseController = undefined;
+		if (releaseTimer) clearInterval(releaseTimer);
+		releaseTimer = undefined;
 		requestFooterRender = undefined;
 	});
 

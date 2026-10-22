@@ -1,5 +1,33 @@
 # Agent process failure log
 
+## APR-commit-empty-index - Clean submodule commit aborted eligible parent work
+
+- **Reference:** `/commit` operator failure, 2026-10-22; related APR-commit-compound-inspection.
+- **Observed:** The private model attempted a commit in a clean initialized submodule. Git returned exit 1 for nothing to commit, and the mutation runner stopped before committing pending parent changes. The existing prompt already said to skip empty indexes.
+- **Correction:** Added an execution-time staged-index check in the private mutation shell's Git function. Empty commits become successful skips; actual Git/index/hook errors retain terminal behavior. The check uses shell-parsed arguments rather than parsing command strings or matching failure prose.
+- **Status:** Regression coverage added for clean/unstaged-only children, continued parent commits, and unborn repositories. Existing staged and working contents preserved; no operator commit or push performed.
+
+## APR-update-existing-sessions - Future-only support missed the requested migration
+
+- **Reference:** `/update` implementation, operator correction, 2026-10-22.
+- **Observed:** The operator requested updating existing Pi sessions across Herdr. The first implementation supported only newly supervised launches and required manual migration, prioritizing exact-pane retention over the requested existing-session workflow.
+- **Correction:** Added a reloadable cooperative compatibility endpoint and same-tab replacement handoff. The replacement waits for original process exit before opening its saved conversation. Existing eligibility checks and caller-last ordering remain.
+- **Status:** Compatibility implementation added with focused offline coverage. Existing sessions must load the extension with `/reload`; live operator-session migration remains untested. No new global instruction needed.
+
+## APR-internal-ssh-trust - Transport-specific trust constraint became a workstation blocker
+
+- **Reference:** Remote Herdr readiness investigation, operator correction, 2026-10-20.
+- **Observed:** The assistant generalized a managed transport's host-key handoff constraint to workstation SSH enrollment, then described routine LAN enrollment as requiring a policy exception.
+- **Correction:** Operator approved concise automatic enrollment/replacement for inventory-managed LAN hosts, preserving dedicated deployment trust contracts. Scoped the transport wording accordingly.
+- **Status:** Policy corrected; remote readiness investigation resumed.
+
+## APR-footer-login-hint - Clickable status gained unrequested command text
+
+- **Reference:** Default-profile footer sign-in change, operator correction, 2026-10-20.
+- **Observed:** The operator requested a clickable `login needed` label. The implementation also displayed `(/usage login)` in the footer; the operator rejected that addition.
+- **Correction:** Remove the displayed hint while retaining the clickable label and keyboard command. Availability of a fallback does not require displaying it persistently. Existing scope and proportionality instructions apply; no new instruction proposed.
+- **Status:** Footer text and focused assertions corrected; running Pi needs a reload or restart.
+
 ## APR-commit-compound-inspection - Read-only shell failure stopped quiet commits
 
 - **Reference:** Default session `01a15446-5770-7481-945d-31db7ca67acb`, 2026-10-18; related APR-commit-windows-publication-label and APR-096.

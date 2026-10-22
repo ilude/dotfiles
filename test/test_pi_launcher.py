@@ -22,6 +22,7 @@ def _repository(tmp_path: Path, shell: str) -> Path:
     for name in [
         "pi-profile-launch",
         "pi-profile-launch.ps1",
+        "pi-update-host.mjs",
         "pi-damage-control-preflight.mjs",
         "pi-damage-control-recovery.js",
     ]:
@@ -29,6 +30,13 @@ def _repository(tmp_path: Path, shell: str) -> Path:
     bootstrap = repository / "pi/profiles/default/extensions/damage-control/index.js"
     bootstrap.parent.mkdir(parents=True)
     bootstrap.write_text("export default function fixture() {}\n", encoding="utf-8")
+    package = repository / "pi/profiles/default/node_modules/@earendil-works/pi-coding-agent"
+    package.mkdir(parents=True)
+    (package / "package.json").write_text(json.dumps({"bin": {"pi": "cli.mjs"}}), encoding="utf-8")
+    (package / "cli.mjs").write_text(
+        "console.log(JSON.stringify({dir:process.env.PI_CODING_AGENT_DIR,args:process.argv.slice(2)}));\n",
+        encoding="utf-8",
+    )
     return repository
 
 

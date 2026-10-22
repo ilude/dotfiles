@@ -48,9 +48,11 @@ beforeEach(() => {
 	commits = [];
 	progress = [];
 	doubles.getAvailable.mockReset().mockResolvedValue([{ ...model, id: "gpt-5.6-luna" }, model]);
-	doubles.shell.mockReset().mockImplementation(async (_id, { command }) => {
-		commits.push(command);
-		return { content: [{ type: "text", text: `completed ${command}` }], details: {} };
+	doubles.shell.mockReset().mockImplementation(async (id) => {
+		// Fixture IDs are the logical operation labels; the shell now receives
+		// a Git guard prefix, whose real behavior is covered by staging tests.
+		commits.push(id);
+		return { content: [{ type: "text", text: `completed ${id}` }], details: {} };
 	});
 	doubles.stream.mockReset().mockImplementation((_model, context, options) => {
 		expect(options?.maxRetries).toBe(0);

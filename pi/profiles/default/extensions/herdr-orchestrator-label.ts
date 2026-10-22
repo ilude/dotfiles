@@ -45,6 +45,10 @@ export default function herdrOrchestratorLabel(pi: ExtensionAPI): void {
     pi.sendMessage({ customType: "herdr-rename-command", content: `${invocation}\n${outcome}`, display: false }, { triggerTurn: false });
   };
 
+  pi.events?.on("default:update:prepare", () => {
+    if (owner) pi.appendEntry("herdr-update-title", owner.snapshot());
+  });
+
   pi.events?.on(HERDR_TAB_TITLE_OWNED, data => {
     const event = data as HerdrTabTitleOwnedEvent;
     if (owner && typeof event?.title === "string") owner.claim(event.title, event.explicit);
@@ -94,14 +98,22 @@ export default function herdrOrchestratorLabel(pi: ExtensionAPI): void {
     cwdTitle = basename(resolve(ctx.cwd)) || "pi";
     const inheritedTitle = process.env.PI_HERDR_TAB_TITLE || process.env.PI_HERDR_TAB_LABEL || undefined;
     const inheritedExplicit = process.env.PI_HERDR_TAB_TITLE_EXPLICIT === "1" || Boolean(process.env.PI_HERDR_TAB_LABEL);
-    const restored = ["reload", "resume", "fork"].includes(event.reason) ? reloadStore().get(key()) : undefined;
+    const updating = event.reason === "startup" && process.env.PI_UPDATE_RESTART === "1";
+    const savedTitle = updating ? [...ctx.sessionManager.getBranch()].reverse().find(entry => entry.type === "custom" && entry.customType === "herdr-update-title") : undefined;
+    const value = savedTitle?.type === "custom" ? savedTitle.data : undefined;
+    const saved = value && typeof value === "object" && "ownedTitle" in value && typeof value.ownedTitle === "string"
+      && "failures" in value && typeof value.failures === "number" && "breakerOpen" in value && typeof value.breakerOpen === "boolean"
+      && "ownershipPaused" in value && typeof value.ownershipPaused === "boolean"
+      ? { ownedTitle: value.ownedTitle, failures: value.failures, breakerOpen: value.breakerOpen, ownershipPaused: value.ownershipPaused,
+          ...("lastAttemptStarted" in value && typeof value.lastAttemptStarted === "number" ? { lastAttemptStarted: value.lastAttemptStarted } : {}) } : undefined;
+    const restored = updating ? saved : ["reload", "resume", "fork"].includes(event.reason) ? reloadStore().get(key()) : undefined;
     reloadStore().delete(key());
     const initialTitle = event.reason === "new" ? cwdTitle : (restored?.ownedTitle ?? inheritedTitle ?? cwdTitle);
     const initialExplicit = event.reason !== "new" && !restored && inheritedExplicit;
     const commands: string[][] = [];
-    if (event.reason === "startup" && !process.env.PI_HERDR_TAB_LABEL) commands.push(["pane", "rename", pane, "Orchestrator"]);
-    // Plugin tab creation has no label option, so the child establishes its initial title.
-    if (!restored) commands.push(["tab", "rename", tab, initialTitle]);
+    if (!updating && event.reason === "startup" && !process.env.PI_HERDR_TAB_LABEL) commands.push(["pane", "rename", pane, "Orchestrator"]);
+    // An update keeps the existing pane and tab labels, including manual names.
+    if (!restored && !updating) commands.push(["tab", "rename", tab, initialTitle]);
     for (const args of commands) {
       try { await cliFor(pi)(args, { timeoutMs: 2_000 }); }
       catch { /* Label failures are deliberately silent and do not block startup. */ }
@@ -113,7 +125,7 @@ export default function herdrOrchestratorLabel(pi: ExtensionAPI): void {
       cli: cliFor(pi),
     });
     if (initialExplicit) owner.claim(initialTitle);
-    if (!initialExplicit && ["startup", "resume", "fork"].includes(event.reason) && entries(ctx).length) {
+    if (!updating && !initialExplicit && ["startup", "resume", "fork"].includes(event.reason) && entries(ctx).length) {
       background(`restored-${event.reason}`, entries(ctx));
     }
   });

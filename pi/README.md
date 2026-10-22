@@ -116,7 +116,7 @@ Subscription usage is shown in the transcript on fresh Pi startup and after `/ne
 
 Default keeps native `openai` subscription login in Pi for Sol 6.1 and other model requests. Live quota reporting resolves the active profile's `openai-codex` OAuth credential through Pi's model registry. Pi owns storage and automatic renewal, including its cross-process refresh lock. No Codex CLI, CLI credential file, subprocess, token copying, or machine-specific credential path is used. These remain separate OAuth grants: the native model credential was rejected by the quota endpoint, while the Pi `openai-codex` credential returned quota data.
 
-On a machine without quota authorization, run `/login openai-codex` inside the affected Pi profile, then `/usage`. This built-in Pi flow supports browser login and device-code login for remote/headless machines. Existing Pi quota credentials are reused without a new sign-in; login does not switch the selected model or replace native `openai` credentials. A new machine/profile needs its own authorization, not credentials committed or copied through dotfiles. Cancellation stops the usage reader while Pi finishes any already-started token rotation and persists its result.
+On a machine without quota authorization, click the underlined `login needed` label in Pi's fullscreen footer, or run `/usage login` in either terminal mode. This uses Pi's built-in Codex flow and refreshes the footer immediately afterward. It skips the method menu: local Windows/macOS and graphical Linux sessions use browser login; SSH/Mosh sessions and headless Linux use device-code login. Detection uses the session environment, not a guarantee that a working default browser is configured; `/login openai-codex` still lets you choose manually. Regular terminal mode leaves mouse handling to the terminal, so use the command there. The existing `/login openai-codex`, then `/usage` path remains available, including device-code login for remote/headless machines. Existing Pi quota credentials are reused without a new sign-in; login does not switch the selected model or replace native `openai` credentials. A new machine/profile needs its own authorization, not credentials committed or copied through dotfiles. Cancellation stops the usage reader while Pi finishes any already-started token rotation and persists its result.
 
 The footer shows real used percentages for reported quota windows, with pacing colors. Missing windows are omitted, not invented as `0%`; a weekly-only plan displays `codex: wk 2%` when that is the reported usage. Quota requests are shared between the footer and report, cached for five minutes, and polled only with a UI. Failures mark the last good footer value `stale` with the failure category, or show `login needed`, `auth renewal failed`, `authorization rejected`, `network error`, `request timed out`, or `API error` when no quota is cached. `/usage` gives the corresponding retry or Pi login instruction without persisting provider token responses; cache-read share is never substituted for quota. An immediate reload after `/clear` completes a pending report without duplicating a completed one. Reports are display-only custom entries, never model context.
 
@@ -139,7 +139,7 @@ The default profile owns one curated `bedrock-mantle` provider while leaving Pi'
 Focused checks from `pi/profiles/default/`:
 
 ```sh
-pnpm test usage-context-tps.test.ts scheduler-footer.test.ts codex-auth.test.ts
+pnpm test usage-context-tps.test.ts scheduler-footer.test.ts codex-auth.test.ts codex-login.test.ts
 pnpm exec tsc --noEmit -p tests/tsconfig.usage.json
 node scripts/usage-smoke.mjs
 ```
@@ -171,6 +171,14 @@ Existing JSONL remains authoritative. Search/header discovery do not load DuckDB
 ## Default profile web tools
 
 The default profile provides `web_search` (SearXNG with Serper and Brave Search rate-limit fallback) and `web_fetch` (local readable extraction with automatic public-URL Jina fallback). A tool-free Luna call screens results before they enter context; clean content has no banner, while content Luna flags as prompt injection is blocked. See [setup, behavior, and limitations](profiles/default/docs/web-tools.md).
+
+## Default profile updates
+
+`/update` installs the latest stable Pi with pnpm, refreshes the default runtime links, and makes one pass over Pi sessions across the connected Herdr server. Each eligible process exits gracefully and resumes its exact saved conversation, cwd, and profile; the invoking session goes last after reporting peer results. Supervised sessions retain their pane. Existing sessions without that host migrate to a replacement pane in the same tab. Existing tab/pane labels and naming ownership survive. Outside Herdr, only the invoking session is considered.
+
+Busy sessions, active prompts, queued messages, unsent editor text, active or retained subagents, and sessions without a saved conversation are skipped. There is no background retry or Herdr update. Only cooperative sessions using the same default profile are restarted. Existing sessions load cooperation with `/reload`; sessions that have not loaded it and other profiles are skipped. Installation or runtime-link failure prevents all restarts.
+
+The Bash/PowerShell default launchers and ordinary Herdr bootstrap now keep a lightweight Node host around the real Pi CLI so it can replace the child without closing its terminal. Existing Herdr sessions can use `/reload` to load `/update` without exiting. Their first update opens a waiting replacement in the same tab, then gracefully shuts down the original. The replacement waits for the old process to exit before opening its conversation, retires any leftover old pane, and confirms the resumed session/version. Subsequent updates keep that new pane. Outside Herdr, direct native executable launches without the host still require relaunching through bare `pi`. Recovery mode and legacy are unchanged. Automated tests use fake Pi children and mocked installers; actual package updates and attached-client restart behavior need a deliberate live run.
 
 ## Default profile Herdr
 

@@ -56,9 +56,15 @@ export function registerCompaction(pi: ExtensionAPI, summarize: typeof compact =
       const instructions = event.customInstructions
         ? `${HANDOFF_INSTRUCTIONS}\n\nUser compaction focus:\n${event.customInstructions}`
         : HANDOFF_INSTRUCTIONS;
+      // The native compact helper calls completeSimple, which dispatches directly to
+      // the provider stream and requires an API key for OpenAI-compatible APIs.
+      // Route through ModelRegistry instead so request-time auth can mint Bedrock
+      // Mantle tokens from the selected profile's AWS credential chain.
+      const stream = (requestModel: typeof model, context: Parameters<typeof ctx.modelRegistry.streamSimple>[1], options: Parameters<typeof ctx.modelRegistry.streamSimple>[2]) =>
+        ctx.modelRegistry.streamSimple(requestModel, context, options);
       const result = await summarize(
         unifiedPreparation(event), model, auth.apiKey, headers, instructions,
-        event.signal, pi.getThinkingLevel(), undefined, auth.env, settings.getRetrySettings(),
+        event.signal, pi.getThinkingLevel(), stream, auth.env, settings.getRetrySettings(),
       );
       if (event.signal.aborted) return { cancel: true };
       if (!result.summary.trim()) throw new Error("Compaction returned an empty summary");

@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { basename, isAbsolute, relative, resolve, sep } from "node:path";
-import { spawn, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import net from "node:net";
 import { fileURLToPath } from "node:url";
+import { runUpdateHost } from "./pi-update-host.mjs";
+import { admitMigration } from "./pi-update-migration.mjs";
 
 function herdrSocketEndpoint(socketPath) {
   return process.platform === "win32" ? `\\\\.\\pipe\\${socketPath}` : socketPath;
@@ -104,25 +106,6 @@ export function retirePluginPane(env = process.env, run = spawnSync) {
   run(env.HERDR_BIN_PATH || "herdr", ["plugin", "pane", "close", env.HERDR_PANE_ID], { env, stdio: "ignore", windowsHide: true, timeout: 2000 });
 }
 
-function forwardSignal(child, signal) {
-  if (child.exitCode === null && child.signalCode === null) child.kill(signal);
-}
-
-async function runPi(entry, args, env) {
-  const child = spawn(process.execPath, [entry, ...args], { cwd: process.cwd(), env, stdio: "inherit", shell: false });
-  const signals = ["SIGINT", "SIGTERM", "SIGHUP"];
-  const handlers = new Map(signals.map(signal => [signal, () => forwardSignal(child, signal)]));
-  for (const [signal, handler] of handlers) process.once(signal, handler);
-  try {
-    return await new Promise((resolve, reject) => {
-      child.once("error", reject);
-      child.once("close", (code, signal) => resolve({ code, signal }));
-    });
-  } finally {
-    for (const [signal, handler] of handlers) process.removeListener(signal, handler);
-  }
-}
-
 export function successorAdmission(env = process.env) {
   if (env.PI_HERDR_CLOSEOUT_SUCCESSOR === undefined) return undefined;
   if (env.PI_HERDR_CLOSEOUT_SUCCESSOR !== "1") throw new Error("Invalid closeout successor launch flag");
@@ -184,7 +167,13 @@ export async function main() {
   const launchEnv = { ...process.env };
   let outcome;
   try {
-    outcome = await runPi(entry, args, launchEnv);
+    const migration = launchEnv.PI_UPDATE_MIGRATION;
+    outcome = await runUpdateHost({ target, args, env: launchEnv,
+      beforeStart: migration ? async descriptor => {
+        if (args.length) throw new Error("Migration requires an ordinary, preflight-valid Pi launch");
+        return admitMigration(migration, descriptor, launchEnv);
+      } : undefined,
+    });
   } finally {
     retirePluginPane(launchEnv);
   }

@@ -1,5 +1,43 @@
 # Changelog
 
+## 2026-10-23: Preserve AWS credential-chain auth during default Pi compaction
+
+- Default Pi's unified compaction now dispatches its summary through the model registry's request-time stream path. Bedrock Mantle routes using the AWS credential chain can therefore mint their normal request token even though registry authentication has no static API key. The selected model, provider, and AWS environment remain unchanged; no model fallback, fake key, or credential copying is introduced.
+- Restart Pi or reload the default profile while settled to activate the extension change. Existing context is retained on a compaction failure; live AWS/Bedrock access and summary quality were not exercised.
+
+## 2026-10-22: Skip empty indexes without aborting quiet commits
+
+- Default Pi's `/commit` now checks the target repository's staged index at execution time before a normal Git commit. An empty index is a successful skip, so an unnecessary clean-submodule commit attempt no longer blocks eligible parent changes.
+- The guard preserves repository/global Git options, handles unborn repositories and compound shell calls, and leaves unstaged contents untouched. Nonempty commits still run normal hooks; actual staging, index, commit/hook, and publication failures remain terminal. No blanket exit-code suppression or extra staging is added.
+- Real-Git regressions cover clean and unstaged-only submodules followed by parent commits, an unborn empty index followed by its first staged commit, and existing hook-failure behavior. Reload Pi while no subagents are active or retained to load the command-runner change. No operator commits or pushes were performed.
+
+## 2026-10-22: Update Pi and restart eligible Herdr sessions
+
+- Default Pi adds `/update`: install the latest stable Pi with pnpm, refresh its runtime links, then make one explicit pass across the connected Herdr server. Eligible sessions resume their exact saved conversations, cwd, and profile; peer results are reported before the invoking session restarts last. Supervised sessions retain their pane; existing sessions migrate to a replacement pane in the same tab. Outside Herdr, only that session is considered.
+- Busy sessions, active prompts, queued messages, unsent editor text, active or retained subagents, unsaved sessions, and unsupported launchers are skipped. There is no background retry, Herdr update, or forced termination. Failed installation or link refresh prevents restarts.
+- Default shell and ordinary Herdr launches now retain a small Node host around the real Pi process. Existing Herdr sessions can load compatibility support with `/reload`, without manually exiting or reopening a tab. Their replacement waits for the original process to exit before opening the conversation, then confirms its exact session and updated version. Sessions that have not loaded support remain skipped rather than receiving injected terminal commands. Pane/tab labels and naming ownership survive update restarts, while normal exits still retire plugin-owned panes. Legacy and explicit recovery mode are unchanged.
+- Focused offline tests cover installation ordering, eligibility, connected-server scope, caller-last reporting, real fake-child replacement, compatibility admission and old-process exit ordering, same-tab migration, session/version confirmation, and shell argument forwarding. No live package update or operator-session restart was performed during implementation.
+
+## 2026-10-20: Allow routine internal SSH host enrollment
+
+- Inventory-managed hosts on the trusted LAN allow automatic enrollment and replacement of SSH host keys, limited to matching known-host entries. Host-key checking stays enabled; dedicated deployment-managed trust stores retain their own contracts.
+
+## 2026-10-20: Show stable release lag in Pi's footer
+
+- The default footer checks stable Pi and Herdr releases against the running Pi and connected Herdr server versions, using a four-hour active-profile cache. Current versions are grey; one stable release behind is muted yellow; further behind is muted red. Outdated labels link to the corresponding release notes.
+- Herdr preview labels omit date/hash suffixes, for example `η v0.9.3-preview`; full versions remain available for release comparisons and links. Preview versions compare against subsequent stable releases. Checks run outside footer rendering and stop on session shutdown; nothing installs, restarts, or prompts automatically. Reload with no active or retained subagents, or restart Pi to load the change. Legacy remains unchanged.
+
+## 2026-10-20: Sign in from Pi's missing-quota footer
+
+- Default Pi's underlined `login needed` footer label starts Codex sign-in when clicked in fullscreen mode. `/usage login` provides the same action from the keyboard in either terminal mode; regular mode leaves mouse handling to the terminal.
+- Sign-in skips the method menu using session-environment detection: browser login for local Windows/macOS and graphical Linux, device-code login for SSH/Mosh and headless Linux. Pi's native browser/device-code flow and active-profile credential storage are reused, then quota refreshes immediately. A configured, working default browser is not guaranteed by detection; the built-in `/login openai-codex` retains manual method selection. Cancellation closes the dialog, and duplicate clicks do not start competing logins. Native OpenAI authentication and selected model routing remain unchanged, so quota still requires the separate Codex grant. No Codex CLI or browser-cookie access is added; legacy remains untouched.
+- Reload while idle with no active or retained subagents, or restart Pi, to load the change. Existing `/login openai-codex` followed by `/usage` remains available.
+
+## 2026-10-20: Show the connected Herdr version in Pi's footer
+
+- Default Pi now shows `η v<server-version>` before its existing `π` version when running inside Herdr. It reads the connected server, not the installed CLI, so older running servers remain distinguishable after an update.
+- The bounded lookup runs once when the footer is installed, not during rendering. Outside Herdr or when status is unavailable, the segment is omitted. Reload while no subagents are active or retained, or restart Pi, to load it; legacy remains unchanged.
+
 ## 2026-10-18: Keep commit inspections from aborting the workflow
 
 - Default Pi's `/commit` now separates ordinary read-only shell inspections from mutation calls instead of guessing from command text. Compound inspections and normal no-match results such as `git check-ignore` exit 1 return to the private agent for interpretation or correction rather than stopping the commit workflow.

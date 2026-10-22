@@ -10,7 +10,7 @@ import { resolveLatestCodexModelFromRuntime } from "../../lib/model-selection.ts
 import { compareModelVersions, modelFamilyVersion } from "../../lib/model-family.ts";
 import { normalizeRepositoryId, repositoryId } from "../../lib/path-identity.ts";
 import { Type } from "typebox";
-import { formatStatus } from "./tools.ts";
+import { commitShellCommand, formatStatus } from "./tools.ts";
 
 const MODEL_FAMILY = "luna";
 const FALLBACK_PROVIDER = "anthropic";
@@ -190,8 +190,11 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 							},
 							{
 								...shell,
-								description: "Run repository mutations, including staging, unstaging, index preservation, and commits with normal hooks. Any failure stops this workflow and blocks queued tools. Keep read-only inspections in inspect, not in mutation calls. " + shell.description,
-								execute: (id, args, toolSignal, update) => shell.execute(id, { ...(args as Parameters<typeof shell.execute>[1]), timeout: 15 }, toolSignal, update),
+								description: "Run repository mutations, including staging, unstaging, index preservation, and commits with normal hooks. Git commit automatically skips an empty staged index. Any actual failure stops this workflow and blocks queued tools. Keep read-only inspections in inspect, not in mutation calls. " + shell.description,
+								execute: (id, args, toolSignal, update) => {
+									const input = args as Parameters<typeof shell.execute>[1];
+									return shell.execute(id, { ...input, command: commitShellCommand(input.command), timeout: 15 }, toolSignal, update);
+								},
 							},
 							{ ...read, execute: async (id, input, toolSignal, update) => {
 								const args = input as Parameters<typeof read.execute>[1];

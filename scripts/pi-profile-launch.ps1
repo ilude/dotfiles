@@ -143,7 +143,7 @@ if ($profileName -eq 'default') {
     }
     Write-Error 'pi: recovery helper is unavailable; starting tools-disabled, extensions-disabled repair mode'
   } elseif (Test-DamageControlJavaScript $preflight $bootstrap) {
-    & $piExecutablePath @piArguments
+    & node (Join-Path $PSScriptRoot 'pi-update-host.mjs') -- @piArguments
     exit $LASTEXITCODE
   } else {
     Write-Error 'pi: default damage-control bootstrap is unavailable; starting tools-disabled, extensions-disabled repair mode'

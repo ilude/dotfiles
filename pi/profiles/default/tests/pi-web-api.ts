@@ -9,6 +9,7 @@ export { ModelRuntime } from "../node_modules/@earendil-works/pi-coding-agent/di
 export { ModelRegistry } from "../node_modules/@earendil-works/pi-coding-agent/dist/core/model-registry.js";
 export { resolveCliModel } from "../node_modules/@earendil-works/pi-coding-agent/dist/core/model-resolver.js";
 export { keyHint } from "../node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/components/keybinding-hints.js";
+export { LoginDialogComponent } from "../node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/components/login-dialog.js";
 export { getMarkdownTheme } from "../node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/theme/theme.js";
 export { truncateHead } from "../node_modules/@earendil-works/pi-coding-agent/dist/core/tools/truncate.js";
 export { createBashTool } from "../node_modules/@earendil-works/pi-coding-agent/dist/core/tools/bash.js";
