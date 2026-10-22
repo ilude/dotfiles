@@ -342,6 +342,7 @@ export class BrowserPageProtocol {
 		const options = this.settings(), identity = options.identity();
 		if (this.sessionId !== state.sessionId || (this.identity && !samePolicyIdentity(this.identity, identity))) this.dispose();
 		this.sessionId = state.sessionId; this.identity = { ...identity };
+		if (this.transport?.signal.aborted) this.dispose();
 		if (!this.transport) {
 			if (!this.connecting) this.connecting = (async () => {
 				const lease = options.lease?.();

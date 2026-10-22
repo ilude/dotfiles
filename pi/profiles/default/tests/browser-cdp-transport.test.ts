@@ -154,6 +154,93 @@ describe("session-owned managed identity", () => {
 		expect(wire.commands.some((command) => command.method === "Target.setAutoAttach" && !command.sessionId)).toBe(false);
 	});
 
+	it("waits for the exact root attachment even when CDP emits it after the command response", async () => {
+		const { wire, transport, registrations } = await managedFixture();
+		wire.setHandler((command) => {
+			if (command.method !== "Target.autoAttachRelated") return false;
+			wire.send({ id: command.id, result: {} });
+			setTimeout(() => wire.send({ method: "Target.attachedToTarget", params: { sessionId: "late-root-session", waitingForDebugger: false, targetInfo: { targetId: command.params.targetId, type: "page", url: "https://task.example/" } } }), 10);
+			return true;
+		});
+		await expect(transport.manage("late-root")).resolves.toMatchObject({ targetId: "late-root" });
+		expect(registrations).toEqual(["late-root"]);
+	});
+
+	it("rejects a failed auto-attach command without an unhandled rejection", async () => {
+		const { wire, transport } = await managedFixture();
+		wire.setHandler((command) => { if (command.method !== "Target.autoAttachRelated") return false; wire.send({ id: command.id, error: { message: "synthetic attach failure" } }); return true; });
+		const unhandled: unknown[] = [];
+		const listener = (reason: unknown) => unhandled.push(reason);
+		process.on("unhandledRejection", listener);
+		try {
+			await expect(transport.manage("failed-root")).rejects.toMatchObject({ code: "cdp_failed" });
+			await new Promise((resolve) => setImmediate(resolve));
+			expect(unhandled).toEqual([]);
+		} finally { process.off("unhandledRejection", listener); }
+	});
+
+	it("rejects an attachment waiter when disposed without an unhandled rejection", async () => {
+		const { wire, transport } = await managedFixture(); wire.setHandler((command) => command.method === "Target.autoAttachRelated");
+		const unhandled: unknown[] = [], listener = (reason: unknown) => unhandled.push(reason);
+		process.on("unhandledRejection", listener);
+		try {
+			const managing = transport.manage("disposed-root");
+			const rejected = expect(managing).rejects.toMatchObject({ code: "cdp_disconnected" });
+			await waitFor(() => wire.commands.some((command) => command.method === "Target.autoAttachRelated"));
+			transport.dispose(); await rejected; await new Promise((resolve) => setImmediate(resolve));
+			expect(unhandled).toEqual([]);
+		} finally { process.off("unhandledRejection", listener); }
+	});
+
+	it("times out when auto-attach succeeds without attaching the exact target", async () => {
+		vi.useFakeTimers();
+		try {
+			const { wire, transport } = await managedFixture(); wire.setHandler((command) => { if (command.method !== "Target.autoAttachRelated") return false; wire.send({ id: command.id, result: {} }); return true; });
+			const managing = transport.manage("missing-root");
+			await vi.waitFor(() => expect(wire.commands.some((command) => command.method === "Target.autoAttachRelated")).toBe(true));
+			const rejected = expect(managing).rejects.toMatchObject({ code: "cdp_timeout" });
+			await vi.advanceTimersByTimeAsync(5000); await rejected;
+		} finally { vi.useRealTimers(); }
+	});
+
+	it("rejects a root destroyed before its attachment", async () => {
+		const { wire, transport } = await managedFixture(); wire.setHandler((command) => { if (command.method !== "Target.autoAttachRelated") return false; wire.send({ id: command.id, result: {} }); return true; });
+		const managing = transport.manage("destroyed-root");
+		await waitFor(() => wire.commands.some((command) => command.method === "Target.autoAttachRelated"));
+		wire.send({ method: "Target.targetDestroyed", params: { targetId: "destroyed-root" } });
+		await expect(managing).rejects.toMatchObject({ code: "target_missing" });
+	});
+
+	it("settles a caller cancellation and lets a retry complete the shared attachment", async () => {
+		const { wire, transport } = await managedFixture(); let attempts = 0;
+		wire.setHandler((command) => {
+			if (command.method !== "Target.autoAttachRelated") return false;
+			attempts++;
+			wire.send({ id: command.id, result: {} });
+			return true;
+		});
+		const caller = new AbortController(), first = transport.manage("retry-root", caller.signal);
+		const rejected = expect(first).rejects.toMatchObject({ code: "cancelled" });
+		await waitFor(() => attempts === 1); caller.abort(); await rejected;
+		const retry = transport.manage("retry-root");
+		wire.send({ method: "Target.attachedToTarget", params: { sessionId: "retry-session", waitingForDebugger: false, targetInfo: { targetId: "retry-root", type: "page", url: "https://task.example/" } } });
+		await expect(retry).resolves.toMatchObject({ targetId: "retry-root", sessionId: "retry-session" });
+		expect(attempts).toBe(1);
+	});
+
+	it("accepts a delayed reattachment after detaching the same target ID", async () => {
+		const { wire, transport } = await managedFixture(); await transport.manage("same-root");
+		wire.send({ method: "Target.detachedFromTarget", params: { sessionId: "session-same-root", targetId: "same-root" } });
+		await waitFor(() => transport.managedTargets().length === 0);
+		wire.setHandler((command) => {
+			if (command.method !== "Target.autoAttachRelated") return false;
+			wire.send({ id: command.id, result: {} });
+			setTimeout(() => wire.send({ method: "Target.attachedToTarget", params: { sessionId: "reattached-session", waitingForDebugger: false, targetInfo: { targetId: command.params.targetId, type: "page", url: "https://task.example/" } } }), 10);
+			return true;
+		});
+		await expect(transport.manage("same-root")).resolves.toMatchObject({ targetId: "same-root", sessionId: "reattached-session" });
+	});
+
 	it("coalesces simultaneous management of the same exact target", async () => {
 		const { wire, transport, registrations } = await managedFixture();
 		const selected = await Promise.all([transport.manage("root"), transport.manage("root")]);

@@ -1,5 +1,12 @@
 # Agent process failure log
 
+## APR-retained-pane-closeout - Finished delegates left visible panes open
+
+- **Reference:** Operator correction during server configuration discussion, 2026-10-22; related AIF-089.
+- **Observed:** Retained developers supported follow-up work, but the orchestrator did not call `finish` after consuming their final results. An exited developer also retained its visible pane.
+- **Correction:** Called `finish` for all four delegates owned by this conversation. Each cleanup result confirmed its pane and launcher closed.
+- **Status:** Cleaned up. Recurrence of the lifecycle problem already recorded in AIF-089; no instruction changes made.
+
 ## APR-commit-empty-index - Clean submodule commit aborted eligible parent work
 
 - **Reference:** `/commit` operator failure, 2026-10-22; related APR-commit-compound-inspection.

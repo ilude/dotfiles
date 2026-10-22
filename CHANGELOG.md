@@ -5,6 +5,12 @@
 - Default Pi's unified compaction now dispatches its summary through the model registry's request-time stream path. Bedrock Mantle routes using the AWS credential chain can therefore mint their normal request token even though registry authentication has no static API key. The selected model, provider, and AWS environment remain unchanged; no model fallback, fake key, or credential copying is introduced.
 - Restart Pi or reload the default profile while settled to activate the extension change. Existing context is retained on a compaction failure; live AWS/Bedrock access and summary quality were not exercised.
 
+## 2026-10-22: Make the co-op Zomboid configuration explicit
+
+- The game deployment now owns complete server, sandbox, and spawn-region templates based on the existing world's configuration instead of patching selected fields into generated defaults. Credentials and private server identity remain in BWS; the old overlapping world-settings overrides are removed.
+- The co-op settings show players on the map and allow player safehouse claims and safehouse respawning. Faster book reading remains enabled; XP, other gameplay choices, safehouse access rules, world saves, and character/account data are preserved. The trash-bin Delete All button stays disabled.
+- Configuration changes use the existing targeted deployment and normal game save/stop/start lifecycle. This does not add world resets, game upgrades, router changes, or backup automation.
+
 ## 2026-10-22: Skip empty indexes without aborting quiet commits
 
 - Default Pi's `/commit` now checks the target repository's staged index at execution time before a normal Git commit. An empty index is a successful skip, so an unnecessary clean-submodule commit attempt no longer blocks eligible parent changes.

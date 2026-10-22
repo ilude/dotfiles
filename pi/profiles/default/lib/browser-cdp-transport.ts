@@ -166,6 +166,7 @@ export class BrowserCdpTransport {
 	private readonly sessions = new Map<string, ManagedCdpTarget>();
 	private readonly frames = new Map<string, CdpFrame>();
 	private readonly requestedRoots = new Set<string>();
+	private readonly rootAttachments = new Map<string, { resolve: () => void; reject: (error: Error) => void; promise: Promise<void> }>();
 	private readonly managing = new Map<string, Promise<Readonly<ManagedCdpTarget>>>();
 	private readonly registrations = new Map<string, Promise<void>>();
 	private readonly listeners = new Set<(event: CdpEvent) => void | Promise<void>>();
@@ -237,13 +238,19 @@ export class BrowserCdpTransport {
 	private async manageRoot(targetId: string): Promise<Readonly<ManagedCdpTarget>> {
 		if (!this.targets.has(targetId)) {
 			this.requestedRoots.add(targetId);
+			let resolve!: () => void, reject!: (error: Error) => void;
+			const promise = new Promise<void>((yes, no) => { resolve = yes; reject = no; });
+			void promise.catch(() => {});
+			const attached = { resolve, reject, promise };
+			this.rootAttachments.set(targetId, attached);
+			const timeout = setTimeout(() => reject(failure("cdp_timeout", "CDP target attachment timed out.")), 5000);
 			try {
-				// Root-scoped auto-attachment, never browser-global setAutoAttach.
 				await this.connection.command("Target.autoAttachRelated", { targetId, waitForDebuggerOnStart: true }, undefined, { signal: this.signal });
-			} catch (error) { this.dispose(); throw error; }
+				await cancellable(promise, this.signal);
+			} finally { clearTimeout(timeout); if (this.rootAttachments.get(targetId) === attached) this.rootAttachments.delete(targetId); }
 		}
 		const registration = this.registrations.get(targetId);
-		if (!registration) { this.dispose(); throw failure("target_missing", "CDP did not attach the exact requested target."); }
+		if (!registration) throw failure("target_missing", "CDP did not register the exact requested target.");
 		await registration;
 		await this.revalidate();
 		const target = this.targets.get(targetId);
@@ -312,6 +319,7 @@ export class BrowserCdpTransport {
 		if (event.method === "Target.targetDestroyed") {
 			const targetId = string(event.params.targetId), target = targetId ? this.targets.get(targetId) : undefined;
 			if (target) this.remove(target);
+			else if (targetId) this.rootAttachments.get(targetId)?.reject(failure("target_missing", "Target was destroyed before attachment."));
 			return;
 		}
 		if (event.method === "Target.detachedFromTarget") {
@@ -380,6 +388,7 @@ export class BrowserCdpTransport {
 		if (existing) { if (existing.sessionId !== sessionId) this.dispose(); return; }
 		const target: ManagedCdpTarget = { targetId, sessionId, type: string(info.type) ?? "unknown", url: typeof info.url === "string" ? info.url : "", rootTargetId: root ? targetId : (parent ?? opener)!.rootTargetId, parentTargetId: (parent ?? opener)?.targetId, openerId, waitingForDebugger: event.params.waitingForDebugger === true };
 		this.targets.set(targetId, target); this.sessions.set(sessionId, target);
+		if (root) this.rootAttachments.get(targetId)?.resolve();
 		this.initializingEvents.set(targetId, []);
 		this.queuedEvents.set(targetId, []);
 		const registration = this.register(target);
@@ -436,6 +445,7 @@ export class BrowserCdpTransport {
 		for (const [context, frame] of this.contexts) if (frame === key) this.contexts.delete(context);
 	}
 	private remove(target: ManagedCdpTarget): void {
+		this.rootAttachments.get(target.targetId)?.reject(failure("target_missing", "Target detached before attachment completed."));
 		for (const child of [...this.targets.values()]) if (child.parentTargetId === target.targetId) this.remove(child);
 		this.connection.rejectSession(target.sessionId);
 		this.initializingEvents.delete(target.targetId); this.queuedEvents.delete(target.targetId);
@@ -450,6 +460,7 @@ export class BrowserCdpTransport {
 		this.lifetime.abort(); this.connection.close();
 		if (this.externalAbort) this.options.signal?.removeEventListener("abort", this.externalAbort);
 		this.initializingEvents.clear(); this.queuedEvents.clear();
-		this.targets.clear(); this.sessions.clear(); this.frames.clear(); this.contexts.clear(); this.registrations.clear(); this.requestedRoots.clear(); this.managing.clear(); this.listeners.clear();
+		for (const attachment of this.rootAttachments.values()) attachment.reject(failure("cdp_disconnected", "CDP connection closed before target attachment."));
+		this.rootAttachments.clear(); this.targets.clear(); this.sessions.clear(); this.frames.clear(); this.contexts.clear(); this.registrations.clear(); this.requestedRoots.clear(); this.managing.clear(); this.listeners.clear();
 	}
 }
