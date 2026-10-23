@@ -14,7 +14,7 @@ const identity = { sessionId: "synthetic-session", branchId: "branch", generatio
 interface Command { id: number; method: string; params: Record<string, unknown>; sessionId?: string }
 
 /** Real HTTP version endpoint and RFC6455 wire, with synthetic Chromium request-paused events. */
-async function fixture(options: Partial<BrowserRequestPolicyOptions> & { initialSecurity?: Record<string, unknown>; earlyRequest?: boolean } = {}) {
+async function fixture(options: Partial<BrowserRequestPolicyOptions> & { initialSecurity?: Record<string, unknown>; earlyRequest?: boolean; children?: boolean } = {}) {
   let socket: Duplex | undefined;
   const commands: Command[] = [], effects: BrowserEffect[] = [];
   const send = (message: unknown) => {
@@ -43,6 +43,14 @@ async function fixture(options: Partial<BrowserRequestPolicyOptions> & { initial
         const command = JSON.parse(body.toString()) as Command; commands.push(command);
         if (command.method === "Target.autoAttachRelated") send({ method: "Target.attachedToTarget", params: { sessionId: "root-session", waitingForDebugger: false, targetInfo: { targetId: "root", type: "page", url: "https://task.example/" } } });
         if (command.method === "Fetch.enable" && command.sessionId === "root-session" && options.earlyRequest) send({ method: "Fetch.requestPaused", sessionId: "root-session", params: { requestId: "early", frameId: "root-frame", resourceType: "Document", request: { url: "https://public.example/", method: "GET" } } });
+        if (options.children && command.method === "Target.setAutoAttach" && command.sessionId === "root-session") {
+          // Chromium reports OOPIF and dedicated-worker children; the iframe is also reported again by the browser session.
+          send({ method: "Target.attachedToTarget", sessionId: "root-session", params: { sessionId: "iframe-session", waitingForDebugger: true, targetInfo: { targetId: "iframe", type: "iframe", url: "https://idp.example/login", parentId: "root" } } });
+          send({ method: "Target.attachedToTarget", sessionId: "root-session", params: { sessionId: "worker-session", waitingForDebugger: true, targetInfo: { targetId: "worker", type: "worker", url: "https://task.example/worker.js" } } });
+          send({ method: "Target.attachedToTarget", params: { sessionId: "duplicate-iframe-session", waitingForDebugger: true, targetInfo: { targetId: "iframe", type: "iframe", url: "https://idp.example/login", parentId: "root" } } });
+        }
+        const unsupported = options.children && ((command.method === "Fetch.enable" && command.sessionId === "worker-session") || (command.method === "Security.enable" && command.sessionId !== "root-session"));
+        if (unsupported) { send({ id: command.id, sessionId: command.sessionId, error: { code: command.method === "Fetch.enable" ? -32601 : -32000, message: "synthetic unsupported" } }); continue; }
         if (command.method === "Security.enable" && options.initialSecurity) send({ method: "Security.visibleSecurityStateChanged", sessionId: command.sessionId, params: { visibleSecurityState: options.initialSecurity } });
         const result = command.method === "Page.getFrameTree" ? { frameTree: { frame: { id: command.sessionId === "popup-session" ? "popup-frame" : "root-frame", url: "https://task.example/", securityOrigin: "https://task.example", loaderId: "loader" }, childFrames: [{ frame: { id: "idp-frame", parentId: "root-frame", url: "https://idp.example/login", securityOrigin: "https://idp.example", loaderId: "idp-loader" } }] } } : {};
         send({ id: command.id, ...(command.sessionId ? { sessionId: command.sessionId } : {}), result });
@@ -78,6 +86,15 @@ describe("canonical browser destinations", () => {
 });
 
 describe("persistent intercepted destinations", () => {
+  it("manages pages with cross-site iframes, dedicated workers and duplicate child attachments", async () => {
+    const f = await fixture({ children: true });
+    await vi.waitFor(() => expect(f.transport.managedTargets().map(target => target.targetId).sort()).toEqual(["iframe", "root", "worker"]));
+    expect(f.transport.signal.aborted).toBe(false);
+    expect(f.commands.some(c => c.method === "Security.enable" && c.sessionId === "iframe-session")).toBe(false);
+    expect(f.commands.some(c => c.method === "Fetch.enable" && c.sessionId === "iframe-session")).toBe(true);
+    await vi.waitFor(() => expect(f.commands.some(c => c.method === "Target.detachFromTarget" && c.params.sessionId === "duplicate-iframe-session")).toBe(true));
+    await vi.waitFor(() => expect(f.commands.filter(c => c.method === "Runtime.runIfWaitingForDebugger").map(c => c.sessionId).sort()).toEqual(["iframe-session", "worker-session"]));
+  });
   it("continues public IdP/CDN reading and separately fails a private redirect before continue", async () => {
     const f = await fixture();
     f.pause("public", "https://cdn.example/asset.js", { resourceType: "Script" });

@@ -154,6 +154,26 @@ it("continues after a compound inspection ends with a normal check-ignore no-mat
 	expect(git(root, "show", "HEAD:new.txt")).toBe("commit me\n");
 });
 
+it("treats a nonzero read-only check in a mutation chain as a result and continues", async () => {
+	writeFileSync(join(root, "base.txt"), "staged edit\n"); git(root, "add", "base.txt");
+	steps.push(bash("git diff --cached --quiet -- base.txt && git restore --staged -- base.txt"), bash("git commit -m after-check"));
+	const report = await run();
+	expect(results[0]?.isError).toBe(false);
+	expect(JSON.stringify(results[0]?.content)).toContain("Read-only git diff returned 1");
+	expect(report.text).toContain("after-check");
+	expect(git(root, "show", "HEAD:base.txt")).toBe("staged edit\n");
+});
+
+it.each(["restore --worktree -- base.txt", "restore -- base.txt", "restore -SW -- base.txt", "checkout -- base.txt", "reset --hard", "clean -fd"])("refuses working-tree discard without stopping the workflow: %s", async operation => {
+	writeFileSync(join(root, "base.txt"), "working edit\n");
+	steps.push(bash(`git ${operation} && git add -A`), bash("git add -A"), bash("git commit -m kept"));
+	const report = await run();
+	expect(results[0]?.isError).toBe(false);
+	expect(JSON.stringify(results[0]?.content)).toContain("Refused git");
+	expect(readFileSync(join(root, "base.txt"), "utf8")).toBe("working edit\n");
+	expect(report.text).toContain("kept");
+});
+
 it("reports the complete failed mutation command even beyond 300 characters", async () => {
 	const command = `git add -- '${"missing".repeat(60)}'`;
 	steps.push([bash(command), bash("git commit -m forbidden")]);

@@ -224,23 +224,50 @@ async function waitForCdp(port: number, onProbe: (probe: CdpProbeResult) => void
 	throw new BrowserControlError(errorCode, `Brave CDP endpoint did not become available within 15 seconds.`);
 }
 
+const PROCESS_VERIFICATION_REUSE_MS = 2_000;
+
 export class BrowserRuntime {
 	private readonly processes: ProcessAdapter;
 	private transport?: BrowserCdpTransport;
 	private transportGeneration = 0;
 	private readonly stateReader: () => BrowserSessionState | undefined;
-	constructor(processes: ProcessAdapter = createProcessAdapter(), stateReader: () => BrowserSessionState | undefined = loadBrowserState) { this.processes = processes; this.stateReader = stateReader; }
+	// Windows process inspection spawns PowerShell (about 1-2 s). Every CDP command revalidates, so
+	// concurrent commands would otherwise spawn many simultaneous inspections, exceed their timeout,
+	// and be misreported as a stale or cancelled session. Concurrent callers share one in-flight
+	// inspection, and a successful match is reused briefly while the same CDP connection stays open.
+	// A replaced browser process closes that connection, which already disposes the transport; the
+	// saved session tuple is still reread on every call, and every new connection re-inspects.
+	private inspecting?: { key: string; promise: Promise<boolean> };
+	private verifiedProcess?: { key: string; at: number };
+	private readonly processReuseMs: number;
+	constructor(processes: ProcessAdapter = createProcessAdapter(), stateReader: () => BrowserSessionState | undefined = loadBrowserState, processReuseMs = PROCESS_VERIFICATION_REUSE_MS) { this.processes = processes; this.stateReader = stateReader; this.processReuseMs = processReuseMs; }
 
 	/** Check saved session identity and current OS tuple before every executor operation. Never recover implicitly. */
 	async revalidateSession(expected: BrowserSessionState, signal?: AbortSignal): Promise<void> {
 		if (signal?.aborted) throw new BrowserControlError("cancelled", "Browser operation was cancelled.");
 		const same = sameSessionTuple(expected, this.stateReader());
-		const observed = same ? await this.processes.inspect(expected.pid) : undefined;
-		if (!same || !processMatches(expected, observed) || !sameSessionTuple(expected, this.stateReader())) {
+		const matched = same && await this.processVerified(expected);
+		if (!same || !matched || !sameSessionTuple(expected, this.stateReader())) {
 			this.disposeTransport();
 			throw new BrowserControlError("session_stale", "Browser process/session identity changed. Use a normal verified attach to reconnect.");
 		}
 		if (signal?.aborted) throw new BrowserControlError("cancelled", "Browser operation was cancelled.");
+	}
+
+	private async processVerified(expected: BrowserSessionState): Promise<boolean> {
+		const key = JSON.stringify([expected.sessionId, expected.pid, expected.processStartTime, expected.executablePath, expected.userDataDir, expected.profileDirectory, expected.cdpPort, expected.sessionMode, expected.launchMarker]);
+		if (this.verifiedProcess?.key === key && Date.now() - this.verifiedProcess.at < this.processReuseMs) return true;
+		if (this.inspecting?.key !== key) {
+			const generation = this.transportGeneration;
+			const promise = this.processes.inspect(expected.pid).then((observed) => processMatches(expected, observed), () => false);
+			const inspecting = { key, promise };
+			this.inspecting = inspecting;
+			void promise.then((matched) => {
+				if (this.inspecting === inspecting) this.inspecting = undefined;
+				if (matched && generation === this.transportGeneration) this.verifiedProcess = { key, at: Date.now() };
+			});
+		}
+		return await this.inspecting!.promise;
 	}
 
 	/** The owning extension creates once, retains this instance, and disposes on session invalidation/reload. */
@@ -255,7 +282,7 @@ export class BrowserRuntime {
 	}
 
 	/** Resource shutdown only. In particular, attached operator browsers and every tab are preserved. */
-	disposeTransport(): void { this.transportGeneration++; this.transport?.dispose(); this.transport = undefined; }
+	disposeTransport(): void { this.transportGeneration++; this.verifiedProcess = undefined; this.transport?.dispose(); this.transport = undefined; }
 
 	async status(_signal?: AbortSignal): Promise<BrowserCommandResult> {
 		const state = loadBrowserState();

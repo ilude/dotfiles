@@ -120,8 +120,16 @@ export class BrowserRequestPolicy {
   register = async (setup: ManagedTargetSetup): Promise<void> => {
     this.setups.set(setup.target.targetId, setup);
     setup.signal.addEventListener("abort", () => { this.setups.delete(setup.target.targetId); this.warnings.delete(setup.target.targetId); this.interstitials.delete(setup.target.targetId); }, { once: true });
-    await setup.command("Fetch.enable", { patterns: [{ urlPattern: "*", requestStage: "Request" }] });
-    if (setup.target.type === "page" || setup.target.type === "iframe") await setup.command("Security.enable");
+    try { await setup.command("Fetch.enable", { patterns: [{ urlPattern: "*", requestStage: "Request" }] }); }
+    catch (error) {
+      // Chromium does not expose Fetch on dedicated worker sessions. Refusing them disconnected every
+      // page that starts a worker; their requests remain outside managed interception (documented limit).
+      if (!(setup.target.type === "worker" && (error as { code?: string }).code === "cdp_unsupported")) throw error;
+    }
+    // The Security domain reports the tab's visible security state and is available only on page
+    // sessions. Chromium rejects Security.enable on out-of-process iframe sessions, which previously
+    // failed registration and disconnected every page with a cross-site iframe.
+    if (setup.target.type === "page") await setup.command("Security.enable");
   };
 
   assertSafe(targetId: string): void {

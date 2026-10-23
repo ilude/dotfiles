@@ -82,7 +82,8 @@ async function managedFixture(register?: Parameters<typeof BrowserCdpTransport.c
 	let current: BrowserSessionState | undefined = saved;
 	let info: ProcessInfo | undefined = processInfo(saved);
 	const processes: ProcessAdapter = { inspect: vi.fn(async () => info), list: vi.fn(async () => info ? [info] : []), terminate: vi.fn(async () => {}) };
-	const runtime = new BrowserRuntime(processes, () => current);
+	// Strict per-command inspection here; the reuse window has its own focused test.
+	const runtime = new BrowserRuntime(processes, () => current, 0);
 	const registrations: string[] = [];
 	const transport = await runtime.connectTransport(saved, { signal, register: register ?? (async ({ target, command }) => { registrations.push(target.targetId); await command("Fetch.enable", { patterns: [{ urlPattern: "*" }] }); }) });
 	cleanup.push(() => runtime.disposeTransport());
@@ -132,7 +133,11 @@ describe("persistent CDP wire", () => {
 	it("sanitizes CDP errors instead of returning raw page/secret strings", async () => {
 		const wire = await fixture(); wire.setHandler((command) => { wire.send({ id: command.id, error: { message: "synthetic-secret-value" } }); return true; });
 		const connection = new CdpConnection(wire.endpoint); cleanup.push(() => connection.close());
-		await expect(connection.command("failed")).rejects.toMatchObject({ code: "cdp_failed", message: "CDP command failed." });
+		const rejection = connection.command("failed").catch((error: Error) => error);
+		expect(await rejection).toMatchObject({ code: "cdp_failed", message: "CDP command failed failed." });
+		expect((await rejection as Error).message).not.toContain("synthetic-secret-value");
+		wire.setHandler((command) => { wire.send({ id: command.id, error: { code: -32601, message: "synthetic-secret-value" } }); return true; });
+		await expect(connection.command("Fetch.enable")).rejects.toMatchObject({ code: "cdp_unsupported", message: "CDP command Fetch.enable failed (code -32601)." });
 	});
 });
 
@@ -422,6 +427,43 @@ describe("session-owned managed identity", () => {
 		expect(rm).toHaveBeenCalledWith(browserControl.getBrowserStatePath(), { force: true });
 		expect(transport.signal.aborted).toBe(true); expect(processes.terminate).not.toHaveBeenCalled();
 		expect(wire.commands.some((command) => ["Browser.close", "Target.closeTarget"].includes(command.method))).toBe(false);
+	});
+
+	it("coalesces concurrent process inspections so slow Windows checks do not stale a page operation", async () => {
+		const wire = await fixture(), saved = state(wire.port);
+		let inspections = 0;
+		const runtime = new BrowserRuntime({ inspect: async () => { inspections++; await new Promise((resolve) => setTimeout(resolve, 50)); return processInfo(saved); }, list: async () => [], terminate: async () => {} }, () => saved, 0);
+		await Promise.all(Array.from({ length: 20 }, () => runtime.revalidateSession(saved)));
+		expect(inspections).toBe(1);
+		await runtime.revalidateSession(saved);
+		expect(inspections).toBe(2);
+	});
+
+	it("reuses a verified process briefly, then re-inspects and detects a replaced process", async () => {
+		const wire = await fixture(), saved = state(wire.port);
+		let info: ProcessInfo = processInfo(saved), inspections = 0;
+		const runtime = new BrowserRuntime({ inspect: async () => { inspections++; return info; }, list: async () => [], terminate: async () => {} }, () => saved, 2_000);
+		const now = vi.spyOn(Date, "now");
+		try {
+			now.mockReturnValue(1_000);
+			await runtime.revalidateSession(saved);
+			await runtime.revalidateSession(saved);
+			expect(inspections).toBe(1);
+			info = { ...info, creationTime: "replaced" };
+			now.mockReturnValue(3_001);
+			await expect(runtime.revalidateSession(saved)).rejects.toMatchObject({ code: "session_stale" });
+			expect(inspections).toBe(2);
+		} finally { now.mockRestore(); }
+	});
+
+	it("re-inspects the process for every new connection", async () => {
+		const wire = await fixture(), saved = state(wire.port);
+		let inspections = 0;
+		const runtime = new BrowserRuntime({ inspect: async () => { inspections++; return processInfo(saved); }, list: async () => [], terminate: async () => {} }, () => saved, 60_000);
+		await runtime.revalidateSession(saved);
+		runtime.disposeTransport();
+		await runtime.revalidateSession(saved);
+		expect(inspections).toBe(2);
 	});
 
 	it("shutdown while connecting cannot publish a stale transport", async () => {

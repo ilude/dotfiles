@@ -28,7 +28,7 @@ async function cancellable<T>(work: Promise<T>, signal?: AbortSignal): Promise<T
 export class CdpConnection {
 	private nextId = 0;
 	private closed = false;
-	private readonly pending = new Map<number, { finish: (error?: Error, result?: unknown) => void; sessionId?: string }>();
+	private readonly pending = new Map<number, { finish: (error?: Error, result?: unknown) => void; sessionId?: string; method: string }>();
 	private readonly listeners = new Set<(event: CdpEvent) => void>();
 	private readonly disconnectListeners = new Set<() => void>();
 	private readonly socket: WebSocket;
@@ -75,7 +75,7 @@ export class CdpConnection {
 				settled = true; clearTimeout(timer); signal?.removeEventListener("abort", abort); this.pending.delete(id);
 				if (error) reject(error); else resolve(result as T);
 			};
-			this.pending.set(id, { finish, sessionId });
+			this.pending.set(id, { finish, sessionId, method });
 			signal?.addEventListener("abort", abort, { once: true });
 			void this.ready.then(() => {
 				if (settled) return;
@@ -98,8 +98,11 @@ export class CdpConnection {
 			const pending = this.pending.get(message.id);
 			if (!pending) return;
 			if (message.sessionId !== pending.sessionId) { this.close(); return; }
-			// Browser error strings can contain page values; never surface them.
-			pending.finish(message.error ? failure("cdp_failed", "CDP command failed.") : undefined, message.result);
+			// Browser error strings can contain page values; never surface them. The command method and
+			// numeric protocol error code are local, value-free diagnostics.
+			const protocolCode = record(message.error)?.code, code = typeof protocolCode === "number" ? ` (code ${protocolCode})` : "";
+			// -32601: the domain/method does not exist for this target type (for example Fetch on a dedicated worker).
+			pending.finish(message.error ? failure(protocolCode === -32601 ? "cdp_unsupported" : "cdp_failed", `CDP command ${pending.method} failed${code}.`) : undefined, message.result);
 		} else if (typeof message.method === "string") {
 			const params = record(message.params) ?? {};
 			for (const listener of [...this.listeners]) {
@@ -385,7 +388,12 @@ export class BrowserCdpTransport {
 		const root = this.requestedRoots.has(targetId);
 		if (!root && !parent && !opener) { this.dispose(); return; } // Unexpected auto-attachment is not silently adopted.
 		const existing = this.targets.get(targetId);
-		if (existing) { if (existing.sessionId !== sessionId) this.dispose(); return; }
+		if (existing) {
+			// Root autoAttachRelated and a parent's setAutoAttach can both report the same child frame or
+			// worker. Keep the managed session and release the duplicate, which may be waiting for a debugger.
+			if (existing.sessionId !== sessionId) void this.connection.command("Target.detachFromTarget", { sessionId }, event.sessionId, { signal: this.signal }).catch(() => {});
+			return;
+		}
 		const target: ManagedCdpTarget = { targetId, sessionId, type: string(info.type) ?? "unknown", url: typeof info.url === "string" ? info.url : "", rootTargetId: root ? targetId : (parent ?? opener)!.rootTargetId, parentTargetId: (parent ?? opener)?.targetId, openerId, waitingForDebugger: event.params.waitingForDebugger === true };
 		this.targets.set(targetId, target); this.sessions.set(sessionId, target);
 		if (root) this.rootAttachments.get(targetId)?.resolve();

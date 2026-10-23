@@ -190,7 +190,7 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 							},
 							{
 								...shell,
-								description: "Run repository mutations, including staging, unstaging, index preservation, and commits with normal hooks. Git commit automatically skips an empty staged index. Any actual failure stops this workflow and blocks queued tools. Keep read-only inspections in inspect, not in mutation calls. " + shell.description,
+								description: "Run repository mutations, including staging, unstaging, index preservation, and commits with normal hooks. Git commit automatically skips an empty staged index. A nonzero read-only Git check or a refused working-tree discard ends the call with an explanation instead of failing. Any actual mutation failure stops this workflow and blocks queued tools. Keep read-only inspections in inspect, not in mutation calls. " + shell.description,
 								execute: (id, args, toolSignal, update) => {
 									const input = args as Parameters<typeof shell.execute>[1];
 									return shell.execute(id, { ...input, command: commitShellCommand(input.command), timeout: 15 }, toolSignal, update);

@@ -156,6 +156,21 @@ describe("page form interaction", () => {
 });
 
 describe("session and page boundaries", () => {
+	it("disconnects idle interception at run end without stopping Brave or closing tabs", async () => {
+		const disconnect = vi.spyOn(browserControl.BrowserSessionProtocol.prototype, "disposeTransport");
+		const stop = vi.spyOn(browserControl.BrowserSessionProtocol.prototype, "stop");
+		const close = vi.spyOn(browserControl.BrowserPageProtocol.prototype, "close");
+		const pi = createMockPi();
+		registerBrowserControl(pi as never);
+		const hooks = pi._getHook("agent_end");
+		expect(hooks).toHaveLength(1);
+		await hooks[0]!.handler({ type: "agent_end", messages: [] });
+		await hooks[0]!.handler({ type: "agent_end", messages: [] });
+		expect(disconnect).toHaveBeenCalledTimes(2);
+		expect(stop).not.toHaveBeenCalled();
+		expect(close).not.toHaveBeenCalled();
+	});
+
 	it("returns schema-valid discovery candidates rather than only a count", async () => {
 		vi.spyOn(browserControl, "readBrowserConfig").mockReturnValue({ version: 1, profiles: {} });
 		vi.spyOn(browserControl, "discoverBraveProfiles").mockReturnValue([{ userDataDir: "/public/brave", profileDirectory: "Default", displayName: "Personal" }]);

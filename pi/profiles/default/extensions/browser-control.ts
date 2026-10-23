@@ -188,6 +188,9 @@ export default function registerBrowserControl(pi: ExtensionAPI) {
 	let state: BrowserSessionState | undefined;
 	const dispose = () => { pages.dispose(); credentials?.clear(); credentials = undefined; credentialConfig = undefined; credentialLifetime.abort(); credentialLifetime = new AbortController(); credentialIdentity = undefined; };
 	pi.on("session_start", () => { dispose(); state = loadBrowserState(); });
+	// CDP interception must not outlive the run and open approvals for idle page traffic.
+	// Disposal disconnects tooling only; the browser and its tabs remain operator-owned.
+	pi.on("agent_end", dispose);
 	pi.on("session_before_switch", dispose);
 	pi.on("session_tree", dispose);
 	pi.on("input", event => { if ((event.source === "interactive" || event.source === "rpc") && !event.streamingBehavior) dispose(); });

@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-10-23: Disconnect browser interception when a Pi run ends
+
+- Default Pi now releases its CDP connection, request interception, and pending browser approvals when the agent run ends. SharePoint and Office background telemetry previously kept triggering short-lived damage-control dialogs in an otherwise idle session.
+- Brave and its open tabs are preserved. The next browser operation reconnects through the existing policy checks; this does not grant background traffic policy approval or turn the tooling into a browser-wide network sandbox.
+
+## 2026-10-23: Let quiet commits recover from read-only checks
+
+- Default Pi's `/commit` mutation shell now treats a nonzero read-only Git check, such as `git diff --cached --quiet` finding differences, as a result returned to the reviewer instead of a terminal failure. The call ends at that point and the reviewer continues, matching the workflow's existing recovery rule. Previously such a check in a mutation chain aborted the whole run with no commits.
+- The same shell refuses working-tree discards (`git restore` without `--staged`, `checkout`, `switch`, `clean`, and `reset --hard/--merge/--keep`) without running them, since the workflow never discards working contents. Actual staging, commit/hook, and publication failures remain terminal.
+- Reload Pi while no subagents are active or retained to load the change.
+
 ## 2026-10-23: Preserve AWS credential-chain auth during default Pi compaction
 
 - Default Pi's unified compaction now dispatches its summary through the model registry's request-time stream path. Bedrock Mantle routes using the AWS credential chain can therefore mint their normal request token even though registry authentication has no static API key. The selected model, provider, and AWS environment remain unchanged; no model fallback, fake key, or credential copying is introduced.
