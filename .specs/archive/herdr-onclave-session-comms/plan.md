@@ -1,7 +1,7 @@
 ---
 created: 2026-10-23
-status: ready
-completed: null
+status: completed
+completed: 2026-10-23
 ---
 
 # Use native Herdr for same-server session communication
@@ -121,3 +121,7 @@ For authorized `/do-it`, dispatch Integrator from the recorded target checkout a
 Integrator verifies integration/archive, records completion metadata in a commit, and removes the clean task worktree. Manual/live testing is a non-blocking limit. Push and deployment remain separately authorized.
 
 Final reporting starts with explicit outcome: 🟢 COMPLETED, 🔴 NOT COMPLETE: MERGE BLOCKED or USER INPUT REQUIRED, 🔵 IMPLEMENTED: MERGE SKIPPED AS REQUESTED, or 🟡 CLEANUP PENDING. For blocked/pending outcomes lead with the reason, action needed, and owner before passed checks. Include checks, spec location, commits, integration result, and any retained worktree. No success claim from archive or checks alone.
+
+## Integration evidence
+
+T1/T2 implemented; final default pnpm test herdr-tools.test.ts: 31 passed; pnpm run typecheck passed. Onclave pnpm run check: typecheck and 398 tests passed, one skipped. Scoped prose composition/diff and diff --check passed. Onclave 8196cd8 committed on required feature/v2-broker-core and already fast-forwarded locally into target module checkout (clean), preserving origin tracking; no push/deployment authorized. Parent task e581339c pins that commit. Unrelated target feedback-log changes and browser-agent-reliability spec must remain preserved. Real attached-client interaction is a non-blocking limit. Archive T3 remains unchecked solely for task commit/integration/metadata and retirement/cleanup; update evidence/checklists at actual closeout. No new planning/review phase.
