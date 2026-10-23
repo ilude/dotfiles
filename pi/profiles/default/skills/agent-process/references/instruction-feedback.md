@@ -1,5 +1,30 @@
 # Agent instruction feedback log
 
+## AIF-azrebalance-durability - A live fix is not reproducible infrastructure
+
+- **Reference:** Default session `01a16541-5bc4-7600-8926-cf5d646491a9`, operator corrections, 2026-10-23; related AIF-alert-plan-explanation.
+- **Feedback:** After authorizing a simple AWS-aligned fix, the operator objected to learning that the applied setting was manual and absent from automated rebuilds. Repeated jargon explanations and acknowledgments did not resolve the missing implementation.
+- **Finding:** The assistant intentionally narrowed execution to a one-time mutation plus documentation without settling durability with the operator. Documentation did not substitute for deployment ownership.
+- **Decision:** Treat live state and reproducible setup as separate completion claims. Investigate the existing deployment path, disclose the smallest durable mechanism and its boundary, and obtain agreement where it changes workflow. No new instruction policy proposed.
+- **Status:** The operator explicitly approved the existing-deployment integration with “yes please.” Implemented one shared post-EKS-apply helper for the full/scoped GitLab commands, seven focused CLI-boundary tests, and corrected documentation. Syntax/lint/tests passed; live helper verification at16:13Z confirmed only AZRebalance suspended, unchanged4/4/4 and identical four instances. No broad apply, rollout, commit or push.
+
+## AIF-alert-plan-explanation - Explain proposed behavior before requesting a decision
+
+- **Reference:** Default session `01a16541-5bc4-7600-8926-cf5d646491a9`, 2026-10-23; related investigation-reconfirmation entry and prior planning communication feedback.
+- **Feedback:** Operator asked to be included in what the alert remediation plan does after receiving findings, an artifact link, and an isolated operational approval question.
+- **Finding:** The assistant did not make the complete proposed behavior and boundaries understandable in conversation. Explaining the investigation again did not answer the request for an implementation walkthrough.
+- **Decision:** Explain each proposed change, expected operator-visible result, tradeoff, and deferred work before seeking a decision. No instruction change proposed; existing communication requirements suffice.
+- **Further constraint:** Operator requires a proportionate solution aligned with current AWS operational guidance, not overengineered monitoring or incidental infrastructure redesign. AWS-documented behavior must be distinguished from a proposed local exception, including suspension of AZRebalance.
+- **Status:** Correcting the task response; no new implementation authority inferred.
+
+## AIF-investigation-reconfirmation - Continue an already-directed investigation
+
+- **Reference:** Default session `01a16541-5bc4-7600-8926-cf5d646491a9`, operator correction, 2026-10-23; related AIF-103.
+- **Feedback:** The operator rejected being asked to authorize the investigation they had just directed.
+- **Finding:** The assistant repeatedly recommended diagnosing underlying behavior instead of continuing available read-only diagnosis. No material scope or authority change required another stop.
+- **Decision:** Continue the directed evidence gathering; keep later behavior changes and deployment authority distinct. Existing instructions already cover this, so no new policy proposed.
+- **Status:** Investigation resumed with parallel read-only teams and parent-owned synthesis.
+
 ## AIF-bundle-reduction-gate - Do not turn a beneficial result into another approval stop
 
 - **Reference:** Default session `01a13bcb-e5f7-73a0-b69f-c1054db8165c`; related AIF-103, AIF-102-local and APR-bundle-reduction-gate.
@@ -206,6 +231,7 @@
 - **Finding:** Herdr officially supports agent-to-agent orchestration through `agent start`, `agent prompt`, `agent read`, `agent wait`, and `agent send-keys`, plus raw pane input. This profile deliberately withholds general Herdr tools from children and routes results through its authenticated subagent runtime. Existing local documentation states that restriction, but the answer incorrectly presented a local policy boundary as Herdr's capability. The broader design opportunity is unresolved: Herdr-native coordination could complement the subagent protocol, but raw terminal control would weaken authenticated identity, outcome, authority, and cleanup guarantees if substituted directly.
 - **Recommendation:** Explain product capability before local restrictions. Present design options and obtain operator approval before implementation.
 - **Follow-up correction:** The first recommendation immediately overdesigned a narrow authenticated bridge, ownership restrictions, staged read-only rollout, and terminal fallback semantics without establishing concrete harm in this workflow. The operator identified this as inflexible safety gating against a hypothetical threat. Start from Herdr's native agent automation surface and the requested flexible agent-to-agent operation; add restrictions only for a demonstrated problem or an explicit operator requirement. Existing structured subagent messaging can coexist without becoming a mandatory gateway.
+- **2026-10-23 recurrence:** During same-Herdr-server versus Onclave routing planning, the proposed plan added a peer envelope, receiver extension, correlation, and message action before establishing that native prompt/read/wait could not serve the requested workflow. The operator again questioned the over-engineering. Start with routing/instruction consistency and demonstrated wrapper defects; treat richer messaging as a separate proposal, not a prerequisite.
 - **Status:** Feedback recorded; no runtime or instruction change authorized.
 
 ## Seed documentation confused runtime evidence with developer guidance (2026-09-23)

@@ -1,5 +1,27 @@
 # Agent process failure log
 
+## APR-azrebalance-durability - Closed out a manual exception as the implementation
+
+- **Reference:** Default session `01a16541-5bc4-7600-8926-cf5d646491a9`, 2026-10-23; AIF-azrebalance-durability.
+- **Observed:** Assistant suspended the intended AWS process and documented it, but left it outside automated setup. It called the narrow operation done, then needed several operator corrections to explain the rebuild limitation. Its acknowledgment loop did not present a concrete durable completion path.
+- **Evidence:** Existing GitLab deployment routes apply the EKS layer in both scoped and full workflows. Neither reapplies the setting. The independent runner ASG expresses its own setting directly in Terraform, unlike the EKS-managed hosting ASG.
+- **Correction:** Explain that deployment integration is missing, propose using the existing deployment paths without another service, and distinguish source implementation from an already-applied live setting. Do not infer additional workflow authority solely from frustration.
+- **Status:** After explicit operator approval, completed the existing-deployment integration rather than leaving a manual caveat. One helper runs after the EKS apply in both named deployment routes and is usable alone. Seven focused tests plus shell syntax/lint passed; the real helper succeeded at16:13Z without capacity/instance changes. No broad apply or rollout was needed.
+
+## APR-alert-plan-explanation - Findings substituted for a plan walkthrough
+
+- **Reference:** Default session `01a16541-5bc4-7600-8926-cf5d646491a9`, 2026-10-23; AIF-alert-plan-explanation.
+- **Observed:** Assistant presented extensive causal findings and a draft link, then asked for one operational choice without plainly explaining the whole proposed implementation. Its next response summarized findings again, prompting another operator correction.
+- **Correction:** Give a direct change-by-change walkthrough, distinguish recommendations from settled changes, describe practical outcomes/tradeoffs, and keep separate cutover work outside incidental alert deployment.
+- **Status:** Recorded; no policy edits or implementation performed.
+
+## APR-investigation-reconfirmation - Proposed the requested diagnosis instead of doing it
+
+- **Reference:** Default session `01a16541-5bc4-7600-8926-cf5d646491a9`, 2026-10-23; related AIF-investigation-reconfirmation and AIF-103.
+- **Observed:** After the operator directed investigation of underlying service behavior, the assistant ended with another recommendation to investigate, adding correction burden without a concrete blocker.
+- **Correction:** Resumed bounded read-only diagnosis and the subsequently requested parallel investigations. No runtime or instruction changes.
+- **Status:** Recorded; task continues. Further implementation and deployment are not inferred from investigative authority.
+
 ## APR-retained-pane-closeout - Finished delegates left visible panes open
 
 - **Reference:** Operator correction during server configuration discussion, 2026-10-22; related AIF-089.
