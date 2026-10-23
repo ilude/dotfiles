@@ -111,7 +111,6 @@ export function registerGate(pi: ExtensionAPI, profile: string, repo: string, de
     if (decision.outcome === "user") {
       const answer = await promptDecision(decision, request, analysis, { ...ctx, signal });
       if (answer.status !== "approved" || signal.aborted || context.generation !== call.generation) return { outcome: "deny" as const, reason: "Action not approved or context expired." };
-      if (context.bindBrowserDecision(effect)) persistIntent();
     }
     return { outcome: "allow" as const, reason: "Scoped action authorized." };
   };
@@ -266,7 +265,6 @@ export function registerGate(pi: ExtensionAPI, profile: string, repo: string, de
           const answer = await promptDecision(decision, request, analysis, { ...ctx, signal, allowReview: !inspection && !!dependencies.scriptReview && !!reviewableScript });
           if (answer.status !== "approved") return blocked(answer.reason);
           if (!fresh()) return blocked("Approval context expired; action not executed");
-          if (contextual && context.bindBrowserDecision(contextual)) persistIntent();
           reviewFuture = answer.review === true;
         }
         if (!fresh()) return blocked("Pending call changed or cancelled; action not executed");

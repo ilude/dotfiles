@@ -8,7 +8,7 @@ import type { BrowserCdpTransport, CdpFrame } from "./browser-cdp-transport.js";
 import { BrowserRequestPolicy, hostVisibility, type BrowserRequestFacts, type BrowserRequestProjection } from "./browser-request-policy.js";
 import { samePolicyIdentity, type BrowserEffect, type BrowserEffectKind, type BrowserPolicyHandler, type PolicyIdentity } from "./browser-effect-contract.js";
 import type { CredentialTarget } from "./browser-credentials.js";
-import { BROWSER_TEXT_EXPRESSION, projectBrowserText } from "./browser-observations.js";
+import { BROWSER_CONTROL_STATE, browserTextExpression, projectBrowserText } from "./browser-observations.js";
 
 export const MAX_OUTPUT = 50_000;
 export const MAX_ITEMS = 100;
@@ -18,7 +18,7 @@ export type ProfileMode = "isolated" | "real";
 export type SessionMode = "owned" | "attached";
 export type ExtensionMode = "enabled" | "disabled";
 export type SessionAction = "discover" | "status" | "start" | "attach" | "restart" | "stop";
-export type PageAction = "list" | "open" | "select" | "snapshot" | "screenshot" | "click" | "fill" | "close";
+export type PageAction = "list" | "open" | "select" | "snapshot" | "scroll" | "screenshot" | "click" | "fill" | "close";
 
 export interface BrowserProfileConfig {
 	profileDirectory: string;
@@ -291,12 +291,101 @@ export interface BrowserPageOptions {
 	observations?: BrowserObservationHooks;
 	resolveHost?: (host: string) => Promise<readonly string[]>;
 }
+/** Wait for caller/owner cancellation without imposing an automated-operation deadline. */
+async function actionWork<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
+	return await new Promise<T>((resolve, reject) => {
+		const abort = () => reject(new BrowserControlError("cancelled", "Browser action cancelled or context expired."));
+		signal.addEventListener("abort", abort, { once: true });
+		if (signal.aborted) abort();
+		void work.then(resolve, reject).finally(() => signal.removeEventListener("abort", abort));
+	});
+}
 export type BrowserFill = { value?: string; secret_ref?: string; frame_id?: string };
-type ControlFacts = { tag: string; type: string; name: string; autocomplete: string; label: string; form: string; href: string; captcha: boolean; password: boolean; loginForm: boolean };
+type ControlFacts = { tag: string; type: string; name: string; autocomplete: string; label: string; form: string; href: string; captcha: boolean; password: boolean; loginForm: boolean; disabled: boolean; visible: boolean; readOnly: boolean };
+type ControlResult = { ok: boolean; error?: string; visible?: boolean };
+export type BrowserActionResult = { visible: boolean };
+export type BrowserScroll = { scroll_mode?: "by" | "into_view"; selector?: string; delta_x?: number; delta_y?: number; frame_id?: string };
+export type BrowserScrollPosition = { x: number; y: number };
+export type BrowserScrollMovement = {
+	document: boolean; before: BrowserScrollPosition; after: BrowserScrollPosition; delta: BrowserScrollPosition;
+	min: BrowserScrollPosition; max: BrowserScrollPosition;
+	boundary: { left: boolean; right: boolean; top: boolean; bottom: boolean };
+};
+export type BrowserScrollResult = { moved: boolean; movements: BrowserScrollMovement[]; inView?: boolean; ancestorsTruncated: boolean };
+
+function validateScroll(input: BrowserScroll): void {
+	const mode = input.scroll_mode ?? "by";
+	if (!["by", "into_view"].includes(mode) || (input.selector !== undefined && (typeof input.selector !== "string" || !input.selector.trim() || input.selector.length > 2000))) throw new BrowserControlError("scroll_invalid", "Scroll requires mode by or into_view and a non-empty selector of at most 2000 characters when supplied.");
+	if (mode === "into_view") {
+		if (!input.selector || input.delta_x !== undefined || input.delta_y !== undefined) throw new BrowserControlError("scroll_invalid", "into_view requires selector and no deltas; each ancestor movement is bounded to 2000 pixels per axis.");
+	} else if ([input.delta_x ?? 0, input.delta_y ?? 0].some(value => !Number.isInteger(value) || Math.abs(value) > 2000) || !(input.delta_x || input.delta_y)) throw new BrowserControlError("scroll_invalid", "by requires at least one nonzero integer delta_x/delta_y, each between -2000 and 2000 pixels.");
+}
+
+/** Fixed scroll implementation. Never traverses out of the selected frame document. */
+export function browserScrollExpression(input: BrowserScroll): string {
+	validateScroll(input);
+	return `(() => {
+		const mode = ${JSON.stringify(input.scroll_mode ?? "by")};
+		const selector = ${JSON.stringify(input.selector ?? null)};
+		let element;
+		if (selector !== null) {
+			let matches; try { matches = document.querySelectorAll(selector); } catch { return { error: 'selector_invalid' }; }
+			if (matches.length !== 1) return { error: matches.length ? 'selector_ambiguous' : 'selector_missing' };
+			element = matches[0];
+		}
+		const root = document.scrollingElement;
+		if (!root) return { error: 'scroll_unavailable' };
+		const movements = [];
+		const clamp = value => Math.max(-2000, Math.min(2000, value));
+		if (mode === 'by' && element && typeof element.scrollTo !== 'function') return { error: 'scroll_unavailable' };
+		const move = (container, dx, dy) => {
+			const before = { x: container.scrollLeft, y: container.scrollTop };
+			container.scrollTo({ left: before.x + clamp(dx), top: before.y + clamp(dy), behavior: 'instant' });
+			const after = { x: container.scrollLeft, y: container.scrollTop };
+			const width = Math.max(0, container.scrollWidth - container.clientWidth), height = Math.max(0, container.scrollHeight - container.clientHeight);
+			const rtl = getComputedStyle(container).direction === 'rtl';
+			const min = { x: rtl ? -width : 0, y: 0 }, max = { x: rtl ? 0 : width, y: height };
+			movements.push({ document: container === root, before, after, delta: { x: after.x - before.x, y: after.y - before.y }, min, max,
+				boundary: { left: after.x <= min.x + 1, right: after.x >= max.x - 1, top: after.y <= 1, bottom: after.y >= max.y - 1 } });
+		};
+		let ancestorsTruncated = false, inView;
+		if (mode === 'by') move(element || root, ${input.delta_x ?? 0}, ${input.delta_y ?? 0});
+		else {
+			const containers = []; let inspected = 0;
+			for (let parent = element.parentElement; parent && parent !== root; parent = parent.parentElement) {
+				if (++inspected > 256) { ancestorsTruncated = true; break; }
+				const style = getComputedStyle(parent);
+				if ((parent.scrollHeight > parent.clientHeight && /auto|scroll|hidden|overlay/.test(style.overflowY)) || (parent.scrollWidth > parent.clientWidth && /auto|scroll|hidden|overlay/.test(style.overflowX))) containers.push(parent);
+				if (containers.length === 16) { ancestorsTruncated = true; break; }
+			}
+			if (!ancestorsTruncated) containers.push(root);
+			const viewport = container => container === root ? { left: 0, top: 0, right: root.clientWidth, bottom: root.clientHeight } : (() => { const rect = container.getBoundingClientRect(); const left = rect.left + container.clientLeft, top = rect.top + container.clientTop; return { left, top, right: left + container.clientWidth, bottom: top + container.clientHeight }; })();
+			const distance = (start, end, low, high) => start < low ? start - low : end > high ? Math.min(end - high, start - low) : 0;
+			for (const container of containers) {
+				const rect = element.getBoundingClientRect(), view = viewport(container);
+				move(container, distance(rect.left, rect.right, view.left, view.right), distance(rect.top, rect.bottom, view.top, view.bottom));
+			}
+			const rect = element.getBoundingClientRect();
+			inView = !ancestorsTruncated && element.getClientRects().length > 0 && getComputedStyle(element).visibility !== 'hidden' && containers.every(container => { const view = viewport(container); return rect.right > view.left && rect.left < view.right && rect.bottom > view.top && rect.top < view.bottom; });
+		}
+		return { moved: movements.some(item => item.delta.x !== 0 || item.delta.y !== 0), movements, ...(inView === undefined ? {} : { inView }), ancestorsTruncated };
+	})()`;
+}
+
+function sameControlFacts(left: ControlFacts, right: ControlFacts): boolean {
+	// Rendering can change during a human decision. Report the execution-time fact
+	// rather than turning a visibility change into a new blanket refusal.
+	return JSON.stringify({ ...left, visible: undefined }) === JSON.stringify({ ...right, visible: undefined });
+}
+
+/** All action resolutions use the same document-wide, exact-frame uniqueness semantics. */
+function uniqueControlExpression(selector: string): string {
+	return `let matches; try { matches = document.querySelectorAll(${JSON.stringify(selector)}); } catch { return { ok: false, error: 'selector_invalid' }; } if (matches.length !== 1) return { ok: false, error: matches.length ? 'selector_ambiguous' : 'selector_missing' }; const element = matches[0]; const state = ${BROWSER_CONTROL_STATE}(element); if (state.disabled) return { ok: false, error: 'control_disabled' };`;
+}
 
 /** Fixed native setter remains independent of framework instance value trackers. */
 export function browserFillExpression(selector: string, value: string, facts?: ControlFacts): string {
-	return `(() => { const element = document.querySelector(${JSON.stringify(selector)}); if (!element) return { ok: false }; ${facts ? `if (element.tagName.toLowerCase() !== ${JSON.stringify(facts.tag)} || (element.getAttribute('type') || '').toLowerCase() !== ${JSON.stringify(facts.type)} || (element.getAttribute('name') || '') !== ${JSON.stringify(facts.name)} || (element.getAttribute('autocomplete') || '') !== ${JSON.stringify(facts.autocomplete)} || element.disabled || element.readOnly || (element.form ? element.form.action : '') !== ${JSON.stringify(facts.form)}) return { ok: false };` : ""} element.focus(); const prototype = element instanceof HTMLInputElement ? HTMLInputElement.prototype : element instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : undefined; const setter = prototype && Object.getOwnPropertyDescriptor(prototype, 'value')?.set; if (!setter) return { ok: false }; setter.call(element, ${JSON.stringify(value)}); element.dispatchEvent(new Event('input', { bubbles: true })); element.dispatchEvent(new Event('change', { bubbles: true })); return { ok: true }; })()`;
+	return `(() => { ${uniqueControlExpression(selector)} if (element.readOnly) return { ok: false, error: 'control_readonly' }; ${facts ? `if (element.tagName.toLowerCase() !== ${JSON.stringify(facts.tag)} || (element.getAttribute('type') || '').toLowerCase() !== ${JSON.stringify(facts.type)} || (element.getAttribute('name') || '') !== ${JSON.stringify(facts.name)} || (element.getAttribute('autocomplete') || '') !== ${JSON.stringify(facts.autocomplete)} || (element.form ? element.form.action : '') !== ${JSON.stringify(facts.form)}) return { ok: false, error: 'control_changed' };` : ""} element.focus(); const prototype = element instanceof HTMLInputElement ? HTMLInputElement.prototype : element instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : undefined; const setter = prototype && Object.getOwnPropertyDescriptor(prototype, 'value')?.set; if (!setter) return { ok: false, error: 'control_invalid' }; setter.call(element, ${JSON.stringify(value)}); element.dispatchEvent(new Event('input', { bubbles: true })); element.dispatchEvent(new Event('change', { bubbles: true })); return { ok: true, visible: state.visible }; })()`;
 }
 
 /** Bounded executor URL-route evidence, not a claim to identify every private account UI. */
@@ -407,6 +496,7 @@ export class BrowserPageProtocol {
 	}
 	async open(state: BrowserSessionState, url: string, signal?: AbortSignal): Promise<BrowserTarget> {
 		const transport = await this.connection(state, signal);
+		signal = this.actionSignal(transport, signal);
 		const target = await transport.create(signal);
 		const destination = await this.guard!.authorizeNavigation(target.targetId, url, signal);
 		await transport.command(target.targetId, "Page.navigate", { url: destination.url }, { signal });
@@ -439,13 +529,28 @@ export class BrowserPageProtocol {
 		const frames = await Promise.all(ids.map(id => transport.frame(targetId, id, signal)));
 		return frames.map(frame => ({ id: frame.frameId, targetId: frame.targetId, origin: this.filter(frameOrigin(frame)) }));
 	}
-	async snapshot(state: BrowserSessionState, targetId: string, signal?: AbortSignal, frameId?: string): Promise<string> {
+	async snapshot(state: BrowserSessionState, targetId: string, signal?: AbortSignal, frameId?: string, selector?: string): Promise<string> {
 		const transport = await this.target(state, targetId, signal), frame = await this.frame(transport, targetId, frameId, signal);
 		await this.observePrivacy(transport, frame, signal);
 		await this.authorize(targetId, frame, "read", { kind: "none" }, "Observe rendered page labels without control values", undefined, signal);
-		const text = await this.evaluate<string>(transport, frame, BROWSER_TEXT_EXPRESSION, signal);
+		const text = await this.evaluate<string | { error: string }>(transport, frame, browserTextExpression(selector), signal);
+		await transport.revalidateFrame(frame, signal);
+		if (typeof text !== "string") this.controlFailure(text.error, frame, targetId);
 		const filtered = this.filter(text);
 		return this.settings().observations?.text ? await this.settings().observations!.text!(filtered, { targetId, frameId: frame.frameId, origin: frameOrigin(frame) }, [...this.protectedValues], signal) : filtered;
+	}
+	async scroll(state: BrowserSessionState, targetId: string, input: BrowserScroll, signal?: AbortSignal): Promise<BrowserScrollResult> {
+		validateScroll(input);
+		const transport = await this.target(state, targetId, signal), frame = await this.frame(transport, targetId, input.frame_id, signal);
+		signal = this.actionSignal(transport, signal);
+		const identity = { ...this.settings().identity() };
+		await this.observePrivacy(transport, frame, signal);
+		await this.authorize(targetId, frame, "read", { kind: "none" }, "Scroll bounded exact-frame viewport; lazy-loading may generate normal page traffic; movement does not mean content was read", undefined, signal);
+		await this.revalidateAction(identity, targetId, frame, signal);
+		const result = await this.evaluate<BrowserScrollResult | { error: string }>(transport, frame, browserScrollExpression(input), signal);
+		if ("error" in result) this.controlFailure(result.error, frame, targetId);
+		await this.revalidateAction(identity, targetId, frame, signal);
+		return result;
 	}
 	async screenshot(state: BrowserSessionState, targetId: string, outputPath: string, signal?: AbortSignal): Promise<{ origin: string; classification: "public" | "private" }> {
 		const transport = await this.target(state, targetId, signal);
@@ -481,9 +586,14 @@ export class BrowserPageProtocol {
 		const key = JSON.stringify([frame.targetId, frame.frameId]);
 		if (browserAccountRoute(frame.url) || privateControl === true) this.privateFrames.add(key); else this.privateFrames.delete(key);
 	}
-	private async inspect(transport: BrowserCdpTransport, frame: Readonly<CdpFrame>, selector: string, signal?: AbortSignal): Promise<ControlFacts> {
-		const facts = await this.evaluate<ControlFacts | null>(transport, frame, `(() => { const element = document.querySelector(${JSON.stringify(selector)}); if (!element) return null; const captcha = !!element.closest('.g-recaptcha,.h-captcha') || (element.tagName === 'IFRAME' && (() => { try { const url = new URL(element.src); return ((url.hostname === 'www.google.com' || url.hostname === 'www.recaptcha.net') && url.pathname.startsWith('/recaptcha/')) || url.hostname === 'hcaptcha.com' || url.hostname.endsWith('.hcaptcha.com'); } catch { return false; } })()); return { tag: element.tagName.toLowerCase(), type: (element.getAttribute('type') || '').toLowerCase(), name: (element.getAttribute('name') || '').slice(0, 100), autocomplete: (element.getAttribute('autocomplete') || '').slice(0,100), label: (element.getAttribute('aria-label') || element.textContent || '').slice(0,200), form: element.form ? element.form.action : '', href: element.href || '', captcha, loginForm: !!element.form?.querySelector('input[type="password"],input[autocomplete="current-password"]'), password: element.getAttribute('type') === 'password' || element.getAttribute('autocomplete') === 'current-password' || element.getAttribute('autocomplete') === 'new-password' }; })()`, signal);
-		if (!facts) throw new BrowserControlError("selector_missing", "Selector did not match an element.");
+	private controlFailure(error: string | undefined, frame: Readonly<CdpFrame>, targetId: string): never {
+		const messages: Record<string, string> = { selector_invalid: "Invalid CSS selector.", selector_missing: "Selector did not match an element.", selector_ambiguous: "Selector matches multiple elements; use one uniquely verified selector.", control_disabled: "Control is disabled; choose an enabled control after observing current state.", control_readonly: "Control is read-only.", control_invalid: "Control is not editable.", control_changed: "Control changed before execution.", scroll_unavailable: "The exact frame has no scrolling document." };
+		const code = error && Object.hasOwn(messages, error) ? error : "control_changed";
+		throw new BrowserControlError(code, `${messages[code]} Snapshot target_id=${JSON.stringify(this.filter(targetId))} frame_id=${JSON.stringify(this.filter(frame.frameId))} again; for a missing/ambiguous subtree root, omit selector first. Do not guess or automatically retry the action.`);
+	}
+	private async inspect(transport: BrowserCdpTransport, frame: Readonly<CdpFrame>, targetId: string, selector: string, signal?: AbortSignal): Promise<ControlFacts> {
+		const facts = await this.evaluate<ControlFacts | ControlResult>(transport, frame, `(() => { ${uniqueControlExpression(selector)} const captcha = !!element.closest('.g-recaptcha,.h-captcha') || (element.tagName === 'IFRAME' && (() => { try { const url = new URL(element.src); return ((url.hostname === 'www.google.com' || url.hostname === 'www.recaptcha.net') && url.pathname.startsWith('/recaptcha/')) || url.hostname === 'hcaptcha.com' || url.hostname.endsWith('.hcaptcha.com'); } catch { return false; } })()); return { tag: element.tagName.toLowerCase(), type: (element.getAttribute('type') || '').toLowerCase(), name: (element.getAttribute('name') || '').slice(0, 100), autocomplete: (element.getAttribute('autocomplete') || '').slice(0,100), label: (element.getAttribute('aria-label') || Array.from(element.labels || []).map(label => label.textContent || '').join(' ') || (['INPUT','TEXTAREA','SELECT'].includes(element.tagName) ? '' : element.textContent) || '').slice(0,200), form: element.form ? element.form.action : '', href: element.href || '', ...state, readOnly: !!element.readOnly, captcha, loginForm: !!element.form?.querySelector('input[type="password"],input[autocomplete="current-password"]'), password: element.getAttribute('type') === 'password' || element.getAttribute('autocomplete') === 'current-password' || element.getAttribute('autocomplete') === 'new-password' }; })()`, signal);
+		if ("ok" in facts) this.controlFailure(facts.error, frame, targetId);
 		if (facts.captcha || actualCaptchaFrame(frame.url)) throw new BrowserControlError("manual_captcha", "Complete the actual CAPTCHA manually; other page controls remain available.");
 		return facts;
 	}
@@ -500,51 +610,72 @@ export class BrowserPageProtocol {
 		if (originVisibility(frameOrigin(frame)) === "local") return "dev-form";
 		return fill ? "export" : facts.href ? "navigate" : "export";
 	}
-	private async authorize(targetId: string, frame: Readonly<CdpFrame>, kind: BrowserEffectKind, payload: BrowserEffect["payload"], expectedEffect: string, facts?: ControlFacts, signal?: AbortSignal): Promise<void> {
-		const options = this.settings(), identity = { ...options.identity() };
-		if (kind === "read" && frame.url.startsWith("file:")) {
-			const bounded = AbortSignal.any([this.lifetime.signal, AbortSignal.timeout(20_000), ...(signal ? [signal] : [])]);
-			if (!options.localFile || (await options.localFile(fileURLToPath(new URL(frame.url)), bounded)).outcome !== "allow" || bounded.aborted || !samePolicyIdentity(identity, options.identity())) throw new BrowserControlError("action_refused", "Local file observation requires current filesystem-policy authorization.");
-			await this.transport!.revalidateFrame(frame, bounded); this.guard!.assertSafe(targetId); return;
-		}
+	private actionSignal(transport: BrowserCdpTransport, signal?: AbortSignal): AbortSignal {
+		return AbortSignal.any([this.lifetime.signal, transport.signal, ...(signal ? [signal] : [])]);
+	}
+	private controlDestination(targetId: string, frame: Readonly<CdpFrame>, facts?: ControlFacts): URL {
 		const destination = new URL(facts?.form || facts?.href || frame.url);
 		if (destination.username || destination.password || !["http:", "https:", "file:"].includes(destination.protocol)) throw new BrowserControlError("destination_refused", "Control destinations require HTTP/HTTPS or an explicitly authorized local file, without embedded credentials.");
 		destination.hostname = destination.hostname.replace(/\.+$/, "");
 		if ([frameOrigin(frame), destination.origin, targetId, frame.frameId].some(value => this.filter(value) !== value)) throw new BrowserControlError("protected_metadata", "Protected data cannot enter browser policy metadata.");
+		return destination;
+	}
+	private async revalidateAction(identity: PolicyIdentity, targetId: string, frame: Readonly<CdpFrame>, signal: AbortSignal): Promise<void> {
+		if (signal.aborted || !samePolicyIdentity(identity, this.settings().identity())) throw new BrowserControlError("cancelled", "Browser task changed.");
+		const bounded = AbortSignal.any([signal, AbortSignal.timeout(20_000)]);
+		await actionWork(this.transport!.revalidateFrame(frame, bounded), bounded); this.guard!.assertSafe(targetId);
+		if (signal.aborted || !samePolicyIdentity(identity, this.settings().identity())) throw new BrowserControlError("cancelled", "Browser task changed.");
+	}
+	private async authorize(targetId: string, frame: Readonly<CdpFrame>, kind: BrowserEffectKind, payload: BrowserEffect["payload"], expectedEffect: string, facts?: ControlFacts, signal?: AbortSignal): Promise<void> {
+		const options = this.settings(), identity = { ...options.identity() };
+		const pending = this.actionSignal(this.transport!, signal);
+		if (pending.aborted) throw new BrowserControlError("cancelled", "Browser action cancelled.");
+		if (kind === "read" && frame.url.startsWith("file:")) {
+			if (!options.localFile || (await actionWork(options.localFile(fileURLToPath(new URL(frame.url)), pending), pending)).outcome !== "allow") throw new BrowserControlError("action_refused", "Local file observation requires current filesystem-policy authorization.");
+			await this.revalidateAction(identity, targetId, frame, pending); return;
+		}
+		const destination = this.controlDestination(targetId, frame, facts);
 		const effect: BrowserEffect = { id: `browser-control-${++this.sequence}`, identity, kind, action: facts ? "control" : "observe", target: { targetId, frameId: frame.frameId, origin: frameOrigin(frame), visibility: this.privateFrames.has(JSON.stringify([frame.targetId, frame.frameId])) ? "private" : originVisibility(frameOrigin(frame)), ...(facts ? { control: this.filter(`${facts.tag} ${facts.type} ${facts.name} ${facts.label}`).slice(0, 300) } : {}) }, destination: { origin: destination.origin, resource: this.filter(destination.pathname), visibility: hostVisibility(destination.hostname) }, payload, expectedEffect, taskScoped: false };
-		const bounded = signal ? AbortSignal.any([signal, AbortSignal.timeout(20_000)]) : AbortSignal.timeout(20_000);
-		const decision = await options.policy(effect, bounded);
+		const decision = await actionWork(options.policy(effect, pending), pending);
 		if (decision.outcome !== "allow") throw new BrowserControlError("action_refused", decision.reason);
-		if (bounded.aborted || !samePolicyIdentity(identity, options.identity())) throw new BrowserControlError("cancelled", "Browser task changed.");
-		await this.transport!.revalidateFrame(frame, bounded); this.guard!.assertSafe(targetId);
+		await this.revalidateAction(identity, targetId, frame, pending);
 	}
-	async click(state: BrowserSessionState, targetId: string, selector: string, signal?: AbortSignal, frameId?: string): Promise<void> {
-		const transport = await this.target(state, targetId, signal), frame = await this.frame(transport, targetId, frameId, signal), facts = await this.inspect(transport, frame, selector, signal);
-		await this.authorize(targetId, frame, this.classify(facts, frame, false), { kind: "none" }, "Click actual control; resulting transfers are independently guarded", facts, signal);
+	async click(state: BrowserSessionState, targetId: string, selector: string, signal?: AbortSignal, frameId?: string): Promise<BrowserActionResult> {
+		const transport = await this.target(state, targetId, signal), frame = await this.frame(transport, targetId, frameId, signal), facts = await this.inspect(transport, frame, targetId, selector, signal);
+		signal = this.actionSignal(transport, signal);
+		await this.authorize(targetId, frame, this.classify(facts, frame, false), { kind: "none" }, state.sessionMode === "attached" ? "Click actual control; attached page traffic is not intercepted or independently approved" : "Click actual control; resulting intercepted transfers are independently guarded", facts, signal);
 		const navigation = facts.href ? await this.guard!.authorizeNavigation(targetId, facts.href, signal) : undefined;
-		const current = await this.inspect(transport, frame, selector, signal);
-		if (JSON.stringify(current) !== JSON.stringify(facts)) throw new BrowserControlError("control_changed", "Control changed during authorization; inspect it again.");
-		const result = await this.evaluate<{ ok: boolean }>(transport, frame, `(() => { const element = document.querySelector(${JSON.stringify(selector)}); if (!element) return { ok: false }; ${navigation ? `element.href = ${JSON.stringify(navigation.url)};` : ""} element.click(); return { ok: true }; })()`, signal);
-		if (!result.ok) throw new BrowserControlError("selector_missing", "Selector no longer matches.");
+		const current = await this.inspect(transport, frame, targetId, selector, signal);
+		if (!sameControlFacts(current, facts)) this.controlFailure("control_changed", frame, targetId);
+		const result = await this.evaluate<ControlResult>(transport, frame, `(() => { ${uniqueControlExpression(selector)} ${navigation ? `element.href = ${JSON.stringify(navigation.url)};` : ""} element.click(); return { ok: true, visible: state.visible }; })()`, signal);
+		if (!result.ok) this.controlFailure(result.error, frame, targetId);
+		return { visible: result.visible === true };
 	}
-	async fill(state: BrowserSessionState, targetId: string, selector: string, input: string | BrowserFill, signal?: AbortSignal): Promise<void> {
+	async fill(state: BrowserSessionState, targetId: string, selector: string, input: string | BrowserFill, signal?: AbortSignal): Promise<BrowserActionResult> {
 		const fill = typeof input === "string" ? { value: input } : input;
 		if ((fill.value === undefined) === (fill.secret_ref === undefined)) throw new BrowserControlError("value_required", "Fill requires exactly one of value or secret_ref.");
-		const transport = await this.target(state, targetId, signal), frame = await this.frame(transport, targetId, fill.frame_id, signal), facts = await this.inspect(transport, frame, selector, signal);
+		const transport = await this.target(state, targetId, signal), frame = await this.frame(transport, targetId, fill.frame_id, signal), facts = await this.inspect(transport, frame, targetId, selector, signal);
+		signal = this.actionSignal(transport, signal);
+		const identity = { ...this.settings().identity() };
+		if (facts.readOnly) this.controlFailure("control_readonly", frame, targetId);
 		if (!["input", "textarea"].includes(facts.tag) || ["file", "hidden", "checkbox", "radio", "submit", "button"].includes(facts.type)) throw new BrowserControlError("control_invalid", "Fill requires an actual editable input or textarea.");
 		const sources = fill.value === undefined ? { sourceObservationIds: [], containsProtectedData: false } : this.settings().observations?.payload?.(fill.value) ?? { sourceObservationIds: [], containsProtectedData: false };
 		const payload: BrowserEffect["payload"] = fill.secret_ref !== undefined ? { kind: "secret-ref", reference: fill.secret_ref, purpose: "login" } : { kind: "redacted", sourceObservationIds: sources.sourceObservationIds, containsProtectedData: sources.containsProtectedData || [...this.protectedValues].some(value => fill.value!.includes(value)) };
 		const observedKind = this.classify(facts, frame, true);
 		const kind = fill.secret_ref !== undefined && observedKind === "dev-form" && (facts.password || facts.loginForm || facts.autocomplete === "username") ? "login" : observedKind;
-		await this.authorize(targetId, frame, kind, payload, "Fill actual field; input/change handlers can immediately transmit", facts, signal);
+		await this.authorize(targetId, frame, kind, payload, state.sessionMode === "attached" ? "Fill actual field; input/change handlers can immediately transmit; attached page traffic is not intercepted or independently approved" : "Fill actual field; input/change handlers can immediately transmit; resulting intercepted transfers are independently guarded", facts, signal);
 		// Reinspect exact field/form immediately before local resolution, then again before setter.
-		if (JSON.stringify(await this.inspect(transport, frame, selector, signal)) !== JSON.stringify(facts)) throw new BrowserControlError("control_changed", "Control changed during authorization.");
+		if (!sameControlFacts(await this.inspect(transport, frame, targetId, selector, signal), facts)) this.controlFailure("control_changed", frame, targetId);
 		let value = fill.value;
 		if (fill.secret_ref !== undefined) {
 			if (kind !== "login" || !this.settings().resolveCredential) throw new BrowserControlError("credential_unavailable", "Credential references require a bound login field.");
 			const root = await this.frame(transport, targetId, undefined, signal);
-			try { value = await this.settings().resolveCredential!(fill.secret_ref, { origin: root.securityOrigin, frameOrigin: frame.securityOrigin, field: facts.password ? "password" : facts.autocomplete === "username" ? "username" : facts.name || facts.autocomplete || facts.type, ...(facts.form ? { formOrigin: new URL(facts.form).origin } : {}) }, AbortSignal.any([this.lifetime.signal, ...(signal ? [signal] : []), AbortSignal.timeout(20_000)])); }
-			catch { throw new BrowserControlError("credential_unavailable", "Bound browser credential is unavailable or the destination is not authorized."); }
+			try {
+				const bounded = AbortSignal.any([signal, AbortSignal.timeout(20_000)]);
+				value = await actionWork(this.settings().resolveCredential!(fill.secret_ref, { origin: root.securityOrigin, frameOrigin: frame.securityOrigin, field: facts.password ? "password" : facts.autocomplete === "username" ? "username" : facts.name || facts.autocomplete || facts.type, ...(facts.form ? { formOrigin: new URL(facts.form).origin } : {}) }, bounded), bounded);
+				// A child login frame does not establish that its top-level credential origin survived resolution.
+				await actionWork(transport.revalidateFrame(root, bounded), bounded);
+			} catch { throw new BrowserControlError("credential_unavailable", "Bound browser credential is unavailable or the destination is not authorized."); }
 		}
 		const destination = new URL(facts.form || frame.url);
 		const origins = fill.secret_ref ? this.settings().credentialOrigins?.(fill.secret_ref) ?? [canonicalPageOrigin(destination.origin)] : [canonicalPageOrigin(destination.origin)];
@@ -554,11 +685,15 @@ export class BrowserPageProtocol {
 			this.protectedValues.add(value!); const controls = this.protectedControls.get(frame.frameId) ?? new Set<string>(); controls.add(selector); this.protectedControls.set(frame.frameId, controls);
 			this.settings().observations?.protect?.(value!, targetId, frame.frameId, selector);
 		}
-		await this.authorize(targetId, frame, kind, payload, "Immediate fill-time input/change transfer boundary", facts, signal);
-		if (JSON.stringify(await this.inspect(transport, frame, selector, signal)) !== JSON.stringify(facts)) throw new BrowserControlError("control_changed", "Control changed before fill.");
-		const result = await this.evaluate<{ ok: boolean }>(transport, frame, browserFillExpression(selector, value!, facts), signal);
+		// Keep the complete post-secret boundary without making a second policy decision.
+		// Newly resolved secrets can match origins/IDs that were safe before resolution.
+		this.controlDestination(targetId, frame, facts);
+		await this.revalidateAction(identity, targetId, frame, signal);
+		if (!sameControlFacts(await this.inspect(transport, frame, targetId, selector, signal), facts)) this.controlFailure("control_changed", frame, targetId);
+		const result = await this.evaluate<ControlResult>(transport, frame, browserFillExpression(selector, value!, facts), signal);
 		value = undefined;
-		if (!result.ok) throw new BrowserControlError("control_changed", "Exact editable control changed before filling.");
+		if (!result.ok) this.controlFailure(result.error, frame, targetId);
+		return { visible: result.visible === true };
 	}
 	async close(state: BrowserSessionState, targetId: string, signal?: AbortSignal): Promise<void> {
 		const transport = await this.target(state, targetId, signal);

@@ -39,8 +39,13 @@ Every `browser_page` call includes the current session ID. Actions other than `l
 - `open` returns the newly created raw target ID, even when restored tabs or duplicate URLs exist.
 - `select` binds subsequent operator intent to that exact ID.
 - A closed, replaced, stale, or cross-session target fails. Never substitute the focused tab or a matching URL.
+- Snapshot the exact target/frame before acting. Use emitted unique control selectors and inspect disabled/visibility facts; never guess an omitted selector. Separate text/control budgets report truncation. Focus omitted content with snapshot's optional unique subtree `selector`.
+- Use bounded `scroll`, then snapshot again: default `scroll_mode: "by"` uses integer `delta_x`/`delta_y` from -2000 to 2000 (at least one nonzero), with optional unique container `selector`. `scroll_mode: "into_view"` requires an element selector and no deltas; inspect actual movement, `inView`, and ancestor truncation because movement is bounded within the exact frame. Movement is not proof that all virtualized content was read. Prefer current state/selector evidence over network-idle waits on Office pages.
+- Click/fill reject ambiguous or disabled controls without automatic retargeting or mutating retries. For stale/missing controls, re-snapshot the named target/frame. Non-rendered controls are reported, not universally refused.
 - Use `snapshot` before `screenshot` when the surface is safe.
 - Cookie/storage APIs and arbitrary model-callable evaluation are unavailable. Snapshots omit control values; supported sensitive controls are masked for screenshots. This cannot remove arbitrary reflected pixels or guarantee complete visual screening.
+
+Explicit human approvals wait for a decision or cancellation/invalidation, independently of bounded automated checks. Allow once covers only the pending action, including private-data export through another tool; it creates no reusable manual authority. Owned-browser background-request prompts still expire at the retained 10-second network deadline and fail closed. Attached page traffic remains unintercepted. Repeated consequential actions can still require independent review.
 
 Actual CAPTCHA challenges require manual completion; challenge words elsewhere do not block ordinary page use. Login/reading authorization does not authorize posting, messaging, purchases, deletion, or security changes. Native TLS/Safe Browsing warnings are not bypassed. Localhost development is supported; other private-network destinations need direct request or local configuration. See the operation guide for recovery and residual network/model-review limits.
 

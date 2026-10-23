@@ -7,6 +7,13 @@
 - Layout labels and lifecycle-result rendering now reflect native responses. Prompt submission and settled-state observation no longer claim a correlated answer or completed work. Guidance uses ordinary prompts, bounded waits, and terminal reads, preserving native busy/blocked/draft behavior rather than adding a messaging protocol.
 - Reload default Pi with no active or retained subagents, or restart it, to activate wrapper and guidance changes. Offline checks do not establish real attached-client interaction. No publication or deployment is included.
 
+## 2026-10-23: Make browser approvals and page interactions actionable
+
+- Explicit browser approvals now separate human decision time from bounded automated checks. Allow once covers only the pending action, including cross-tool private exports; historical manual grants no longer authorize later actions. Fill retains post-secret validation without a second policy decision.
+- Bounded snapshots expose uniquely targetable controls, visibility/disabled facts, separate text/control budgets, explicit truncation, and subtree focusing. Click/fill refuse ambiguous and disabled targets rather than silently choosing the first match. Bounded exact-frame scrolling reports actual movement and boundaries for a fresh snapshot.
+- Attached Brave traffic remains normal, unintercepted page traffic. Pi-owned background-request prompts retain the 10-second deadline and can still expire closed. Neither mode is a network sandbox, and generated selectors can become stale after rerenders.
+- Reload or restart Pi to load the tools. Synthetic checks do not establish live Office/SharePoint usability; no live browser run or publication is included.
+
 ## 2026-10-23: Preserve normal page traffic in operator-attached browsers
 
 - Attached Brave sessions no longer intercept each page-generated network request. Office/SharePoint internal POSTs previously appeared as exports and produced repeated approval dialogs that expired while the operator was working.

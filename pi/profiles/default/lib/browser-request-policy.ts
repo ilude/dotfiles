@@ -147,30 +147,38 @@ export class BrowserRequestPolicy {
     this.fileNavigations.delete(targetId);
     this.assertSafe(targetId);
     const identity = { ...this.options.identity() };
-    await this.transport!.revalidate(signal);
-    const bounded = this.signal(targetId, signal);
+    const pending = this.actionSignal(targetId, signal);
+    const initial = this.signal(targetId, pending);
+    await boundedWork(this.transport!.revalidate(initial), initial);
+    const roots = (await boundedWork(this.transport!.frameList(targetId, initial), initial)).filter(frame => !frame.parentFrameId && frame.targetId === targetId);
+    if (roots.length !== 1) refused("Navigation requires the exact main frame.");
+    const frame = roots[0]!;
     const destination = parseBrowserDestination(raw, this.options.cdpPort);
     if (destination.filePath !== undefined) {
       this.project({ targetId, sessionId: this.setups.get(targetId)!.target.sessionId, sourceOrigin: destination.origin, destination, method: "GET", resourceType: "Document", hasBody: false, hasQuery: new URL(destination.url).search.length > 0, redirected: false, rawUrl: raw });
-      if (!this.options.localFile || (await boundedWork(this.options.localFile(destination.filePath, bounded), bounded)).outcome !== "allow") refused("This local file read requires filesystem-policy authorization.");
-      const roots = (await this.transport!.frameList(targetId, bounded)).filter(frame => !frame.parentFrameId && frame.targetId === targetId);
-      if (roots.length !== 1) refused("Local file navigation requires the exact main frame.");
-      this.fileNavigations.set(targetId, { identity, url: destination.url, nativePath: destination.filePath, frame: roots[0]!, signal: bounded });
+      if (!this.options.localFile || (await boundedWork(this.options.localFile(destination.filePath, pending), pending)).outcome !== "allow") refused("This local file read requires filesystem-policy authorization.");
     } else {
       const facts: BrowserRequestFacts = { targetId, sessionId: this.setups.get(targetId)!.target.sessionId, sourceOrigin: destination.origin, destination, method: "GET", resourceType: "Document", hasBody: false, hasQuery: new URL(destination.url).search.length > 0, redirected: false, rawUrl: raw };
       const projection = this.project(facts);
-      await this.classify(destination, bounded);
-      const decision = await this.decide(facts, bounded, projection);
+      await this.classify(destination, this.signal(targetId, pending));
+      if (pending.aborted || !samePolicyIdentity(identity, this.options.identity())) refused("Browser navigation cancelled or task changed.");
+      const decision = await this.decide(facts, pending, projection, identity, "Explicit navigation to the checked destination; subsequent page traffic is not intercepted in attached mode.");
       if (decision.outcome !== "allow") refused(decision.reason);
     }
+    if (pending.aborted || !samePolicyIdentity(identity, this.options.identity())) refused("Browser navigation cancelled or task changed.");
+    const bounded = this.signal(targetId, pending);
+    await boundedWork(this.transport!.revalidateFrame(frame, bounded), bounded);
     this.assertSafe(targetId);
-    await this.transport!.revalidate(bounded);
     if (!samePolicyIdentity(identity, this.options.identity()) || bounded.aborted) refused("Browser navigation cancelled or task changed.");
+    if (destination.filePath !== undefined) this.fileNavigations.set(targetId, { identity, url: destination.url, nativePath: destination.filePath, frame, signal: bounded });
     return destination;
   }
 
+  private actionSignal(targetId: string, caller?: AbortSignal): AbortSignal {
+    return AbortSignal.any([this.lifetime.signal, this.setups.get(targetId)!.signal, ...(caller ? [caller] : [])]);
+  }
   private signal(targetId: string, caller?: AbortSignal): AbortSignal {
-    return AbortSignal.any([this.lifetime.signal, this.setups.get(targetId)!.signal, AbortSignal.timeout(this.options.timeoutMs ?? 10_000), ...(caller ? [caller] : [])]);
+    return AbortSignal.any([this.actionSignal(targetId, caller), AbortSignal.timeout(this.options.timeoutMs ?? 10_000)]);
   }
   private async classify(destination: BrowserDestination, signal: AbortSignal): Promise<BrowserDestination> {
     if (destination.filePath !== undefined || isIP(destination.host)) return destination;
@@ -188,13 +196,13 @@ export class BrowserRequestPolicy {
       return this.options.effect?.(facts) ?? { kind: facts.method === "GET" || facts.method === "HEAD" ? "read" : "export", payload: facts.hasBody ? { kind: "redacted", sourceObservationIds: [], containsProtectedData: false } : { kind: "none" }, taskScoped: false };
     } catch { return refused("The local browser request inspection refused this transfer."); }
   }
-  private async decide(facts: BrowserRequestFacts, signal: AbortSignal, projection: BrowserRequestProjection): Promise<BrowserPolicyDecision> {
+  private async decide(facts: BrowserRequestFacts, signal: AbortSignal, projection: BrowserRequestProjection, identity = this.options.identity(), expectedEffect?: string): Promise<BrowserPolicyDecision> {
     const effect: BrowserEffect = {
-      id: `browser-request-${++this.sequence}`, identity: { ...this.options.identity() },
+      id: `browser-request-${++this.sequence}`, identity: { ...identity },
       kind: projection.kind, payload: projection.payload, taskScoped: projection.taskScoped, action: `${facts.method} ${facts.resourceType}${facts.redirected ? " redirect" : ""}`,
       target: { origin: facts.sourceOrigin, visibility: projection.targetVisibility ?? hostVisibility(new URL(facts.sourceOrigin).hostname), targetId: facts.targetId, ...(facts.frameId ? { frameId: facts.frameId } : {}) },
       destination: { origin: facts.destination.origin, resource: facts.destination.resource, visibility: projection.destinationVisibility ?? facts.destination.visibility },
-      expectedEffect: facts.initialization ? "Initial Document navigation from opaque blank; target is the arriving destination, not a source observation. Body, headers and query omitted." : "Transfer to the intercepted destination; body, headers and query omitted.",
+      expectedEffect: expectedEffect ?? (facts.initialization ? "Initial Document navigation from opaque blank; target is the arriving destination, not a source observation. Body, headers and query omitted." : "Transfer to the intercepted destination; body, headers and query omitted."),
     };
     if (signal.aborted) return deny("Browser request cancelled.");
     // Bound a callback even if a reviewer or DNS dependency ignores cancellation.

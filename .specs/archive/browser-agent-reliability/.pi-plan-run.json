@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "specRelativePath": ".specs/browser-agent-reliability/plan.md",
+  "specStub": "browser-agent-reliability",
+  "taskWorktreePath": "C:\\Users\\mglenn\\.dotfiles\\.worktrees\\browser-agent-reliability",
+  "taskBranch": "task/browser-agent-reliability",
+  "originCheckoutPath": "C:\\Users\\mglenn\\.dotfiles",
+  "originBranch": "main",
+  "startingTargetCommit": "c5ef1012873e28fb6e3062000e8a88c223863bd9",
+  "sourceSpecSnapshot": {
+    "version": 1,
+    "files": [
+      {
+        "path": "plan.md",
+        "sha256": "a71d78a338b2cedcde4a61d9f35ee9b516858d40a90bbd343f6af9ee97b2c7a1"
+      }
+    ]
+  }
+}
