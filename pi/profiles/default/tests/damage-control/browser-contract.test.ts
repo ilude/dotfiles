@@ -147,7 +147,7 @@ describe("browser trusted intent contract", () => {
   it("honors exact requested writes without a second approval and does not equate an origin with a recipient", () => {
     const c = context();
     c.recordBrowserRequest("write", "interactive", "Post the report as a reply to thread 42.");
-    c.bindBrowserIntent("write", "Post the report", { kinds: ["post"], origins: ["https://account.example"], resource: "reply/42" }, "operator-decision");
+    c.bindBrowserIntent("write", "Post the report", { kinds: ["post"], origins: ["https://account.example"], resource: "reply/42" }, "independent-interpretation");
     expect(effectCandidate(c.browserEvidence(effect(c, "post"))).outcome).toBe("allow");
     const other = effect(c, "post"); other.destination!.resource = "reply/attacker";
     expect(effectCandidate(c.browserEvidence(other)).outcome).toBe("review");
@@ -179,10 +179,33 @@ describe("browser trusted intent contract", () => {
     c.recordBrowserObservation(observation(c));
     const post = effect(c, "post"); post.payload = { kind: "redacted", sourceObservationIds: ["source"], containsProtectedData: false };
     expect(effectCandidate(c.browserEvidence(post)).outcome).toBe("review");
-    c.bindBrowserIntent("report", "Post the private report", { ...scope, allowPrivateTransfer: true }, "operator-decision");
+    c.bindBrowserIntent("report", "Post the private report", { ...scope, allowPrivateTransfer: true }, "independent-interpretation");
     expect(effectCandidate(c.browserEvidence(post)).outcome).toBe("allow");
     post.kind = "export"; post.payload = { kind: "secret-ref", reference: "synthetic-login", purpose: "login" };
     expect(effectCandidate(c.browserEvidence(post)).outcome).toBe("deny");
+  });
+
+  it("rejects reusable manual scope and parses historical manual grants without restoring authority", () => {
+    const c = context();
+    const text = "Log into the account and post the report.";
+    c.recordBrowserRequest("request", "interactive", text);
+    const manualScope = { kinds: ["post" as const], origins: ["https://account.example"], resource: "reply/42", allowPrivateTransfer: true };
+    expect(c.bindBrowserIntent("request", text, manualScope, "operator-decision")).toBe(false);
+    expect(effectCandidate(c.browserEvidence(effect(c, "post"))).outcome).toBe("review");
+    const historical = { version: 1, request: { id: "request", source: "interactive", text }, bindings: [
+      { requestId: "request", basis: "operator-decision", directSpan: text, scope: manualScope },
+      { requestId: "request", basis: "independent-interpretation", directSpan: "Log into the account", scope: { kinds: ["login"], origins: ["https://account.example"] } },
+    ] };
+    c.restoreBrowserIntent({ sessionId: "synthetic-session", branchId: "branch-a" }, [historical]);
+    expect(c.currentBrowserRequest()?.id).toBe("request");
+    expect(c.browserEvidence(effect(c)).bindings).toHaveLength(1);
+    expect(effectCandidate(c.browserEvidence(effect(c))).outcome).toBe("allow");
+    expect(effectCandidate(c.browserEvidence(effect(c, "post"))).outcome).toBe("review");
+    const reloaded = context();
+    reloaded.restoreBrowserIntent({ sessionId: "synthetic-session", branchId: "branch-a" }, c.browserIntentRecords());
+    expect(effectCandidate(reloaded.browserEvidence(effect(reloaded, "post"))).outcome).toBe("review");
+    expect(effectCandidate(reloaded.browserEvidence(effect(reloaded))).outcome).toBe("allow");
+    expect(JSON.stringify(reloaded.browserIntentRecords())).not.toContain("operator-decision");
   });
 
   it("reconstructs captured active-branch authority across reload, not summary assertions", () => {

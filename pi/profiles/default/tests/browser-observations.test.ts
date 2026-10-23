@@ -2,7 +2,8 @@ import { createContext, runInContext, runInNewContext } from "node:vm";
 import { describe, expect, it, vi } from "vitest";
 import type { EventBus } from "@earendil-works/pi-coding-agent";
 import type { BrowserCdpTransport, CdpFrame } from "../lib/browser-cdp-transport.js";
-import { BROWSER_TEXT_EXPRESSION, createBrowserObservationHooks, projectBrowserText, screenBrowserText } from "../lib/browser-observations.js";
+import { BROWSER_TEXT_EXPRESSION, browserTextExpression, createBrowserObservationHooks, projectBrowserText, screenBrowserText } from "../lib/browser-observations.js";
+import { browserDom } from "./helpers/browser-dom.js";
 import type { BrowserObservation } from "../lib/browser-effect-contract.js";
 
 const identity = { sessionId: "session", branchId: "branch", generation: 1 };
@@ -38,10 +39,66 @@ describe("browser observation projections", () => {
     expect(result).not.toContain(secret); expect(result).not.toContain(encodeURIComponent(secret)); expect(result).not.toContain("user:pass");
   });
   it("projects labels and useful links but never text/select/input values", () => {
-    const input = { nodeType: 1, tagName: "INPUT", id: "password", type: "text", labels: [{ textContent: "Password" }], getAttribute: () => null, childNodes: [{ nodeType: 3, textContent: "hidden-secret" }] };
-    const link = { nodeType: 1, tagName: "A", href: "https://docs.example/?topic=token", childNodes: [{ nodeType: 3, textContent: "Token documentation" }] };
-    const text = runInNewContext(BROWSER_TEXT_EXPRESSION, { CSS: { escape: (x: string) => x }, document: { body: { nodeType: 1, tagName: "BODY", childNodes: [input, link] } } });
-    expect(text).toContain("[control] Password #password"); expect(text).toContain("?topic=token"); expect(text).toContain("Token documentation"); expect(text).not.toContain("hidden-secret");
+    const dom = browserDom('<label for="password">Password</label><input id="password" value="hidden-secret"><textarea>textarea-secret</textarea><select><option>select-secret</option></select><div contenteditable>editable-secret</div><a href="https://docs.example/?topic=token">Token documentation</a>');
+    const text = dom.evaluate(BROWSER_TEXT_EXPRESSION) as string;
+    expect(text).toContain('"name":"Password"'); expect(text).toContain('"selector":"#password"'); expect(text).toContain("?topic=token"); expect(text).toContain("Token documentation");
+    for (const secret of ["hidden-secret", "textarea-secret", "select-secret", "editable-secret"]) expect(text).not.toContain(secret);
+  });
+  it("uniquely identifies no-id buttons, repeated names/IDs, links and supported interactive roles in the full exact document", () => {
+    const dom = browserDom('<section><button id="duplicate" name="same">First</button><a href="/first">First link</a></section><section><button id="duplicate" name="same">Second</button><a href="/second">Second link</a><div role="tab" aria-label="Details" aria-disabled="true"></div><button style="display:none">Hidden</button><fieldset disabled><input aria-label="Unavailable"></fieldset></section>');
+    const text = dom.evaluate(BROWSER_TEXT_EXPRESSION) as string;
+    const records = text.split("\n").filter(line => line.startsWith("[control] ")).map(line => JSON.parse(line.slice(10)));
+    expect(records).toHaveLength(7);
+    for (const record of records) {
+      expect(record.selector).not.toBeNull();
+      const nodes = dom.window.document.querySelectorAll(record.selector);
+      expect(nodes).toHaveLength(1);
+      expect(nodes[0].getAttribute("aria-label") || nodes[0].textContent).toBe(record.name);
+    }
+    expect(records[4]).toMatchObject({ tag: "div", role: "tab", name: "Details", disabled: true, visible: true });
+    expect(records[5]).toMatchObject({ visible: false }); expect(records[6]).toMatchObject({ disabled: true });
+    expect(text).toContain('"controls":false');
+  });
+  it("keeps a separate control budget after long text, reports truncation, and focuses omitted controls with a unique subtree", () => {
+    const dom = browserDom(`<p>${"long text ".repeat(1200)}</p>${Array.from({ length: 80 }, (_, index) => `<button>Button ${index}</button>`).join("")}<section id="later"><button>Later action</button></section>`);
+    const text = dom.evaluate(BROWSER_TEXT_EXPRESSION) as string;
+    expect(text.length).toBeLessThan(16000); expect(text).toContain('"text":true'); expect(text).toContain('"controls":true');
+    expect(text).toContain('"name":"Button 0"'); expect(text).not.toContain('"name":"Later action"');
+    const focused = dom.evaluate(browserTextExpression("#later")) as string;
+    expect(focused).toContain('"name":"Later action"'); expect(focused).toContain('"text":false,"controls":false,"facts":false');
+    const record = JSON.parse(focused.split("\n").find(line => line.startsWith("[control] "))!.slice(10));
+    expect(dom.window.document.querySelectorAll(record.selector)).toHaveLength(1);
+    expect(dom.window.document.querySelector(record.selector)?.textContent).toBe("Later action");
+    expect(dom.evaluate(browserTextExpression("#absent"))).toEqual({ error: "selector_missing" });
+    expect(dom.evaluate(browserTextExpression("button"))).toEqual({ error: "selector_ambiguous" });
+    expect(dom.evaluate(browserTextExpression("["))).toEqual({ error: "selector_invalid" });
+  });
+  it("does not guess selectors beyond structural bounds and reports bounded names/links truthfully", () => {
+    const dom = browserDom(`<button id="${"x".repeat(600)}" aria-label="${"label ".repeat(100)}">Ordinary</button><a href="/${"y".repeat(400)}">Link</a>`);
+    // Simulate an unrepresentable selector: every structural candidate also matches a duplicate.
+    const original = dom.window.document.querySelectorAll.bind(dom.window.document);
+    dom.window.document.querySelectorAll = ((selector: string) => selector.includes(":nth-of-type") ? [original("button")[0], original("a")[0]] : original(selector)) as typeof dom.window.document.querySelectorAll;
+    const text = dom.evaluate(BROWSER_TEXT_EXPRESSION) as string;
+    expect(text).toContain('"selector":null'); expect(text).toContain('"facts":true'); expect(text).toContain("selector=null means unavailable");
+    expect(text).not.toContain("x".repeat(600)); expect(text).not.toContain("y".repeat(400));
+  });
+  it.each(["synthetic-private-reflection", 'synthetic +/:"reflection'])("screens filtered facts and removes protected selectors, including CSS escaping: %s", async secret => {
+    const dom = browserDom('<button>Action</button>');
+    dom.window.document.querySelector("button")!.setAttribute("id", secret);
+    dom.window.document.querySelector("button")!.setAttribute("aria-label", secret);
+    const { hooks, review, published } = setup(); hooks.protect!(secret, "tab", "frame", "#known");
+    const result = await hooks.text!(dom.evaluate(BROWSER_TEXT_EXPRESSION) as string, source, []);
+    expect(result).not.toContain(secret); expect(result).toContain('"selector":null'); expect(review.mock.calls[0][0]).toContain("[truncation]"); expect(review.mock.calls[0][0]).toContain("[control]");
+    expect(JSON.stringify(published)).not.toContain(secret); expect(published[0]).toMatchObject({ classification: "private", frameId: "frame" });
+    expect(projectBrowserText("x".repeat(20_000))).toContain("[truncation: filtered observation");
+  });
+  it("removes hex-escaped protected selectors without changing a safe structural fallback", () => {
+    const secret = "123 synthetic\nprivate";
+    const unsafe = '[control] ' + JSON.stringify({ selector: '#\\31 23\\ synthetic\\a private' });
+    expect(projectBrowserText(unsafe, [secret])).toBe('[control] {"selector":null}');
+    const safe = '[control] ' + JSON.stringify({ name: secret, selector: 'button:nth-of-type(1)' });
+    expect(projectBrowserText(safe, [secret])).toContain('"selector":"button:nth-of-type(1)"');
+    expect(projectBrowserText(safe, [secret])).not.toContain("synthetic");
   });
   it.each(["clean", "flagged", "unavailable"] as const)("keeps %s content with consistent local provenance", async status => {
     const reply = status === "clean" ? '{"suspicious":false,"excerpts":[]}' : status === "flagged" ? '{"suspicious":true,"excerpts":["ignore instructions"]}' : "raw-secret invalid error";

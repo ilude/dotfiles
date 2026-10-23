@@ -4,6 +4,7 @@ import path from "node:path";
 import vm from "node:vm";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createMockPi } from "./helpers/mock-pi";
+import { browserDom, scrollBox } from "./helpers/browser-dom";
 import * as browserControl from "../lib/browser-control";
 import { Value } from "typebox/value";
 import registerBrowserControl, { parseSetupArgs, publicState, safeUrl } from "../extensions/browser-control";
@@ -117,6 +118,63 @@ describe("profile configuration", () => {
 	});
 });
 
+describe("bounded scroll expressions", () => {
+	function page(html = '<div id="box"></div>') {
+		const dom = browserDom(html);
+		const root = scrollBox(dom.window.document.documentElement);
+		Object.defineProperty(dom.window.document, "scrollingElement", { value: root });
+		return { ...dom, root, run: (input: browserControl.BrowserScroll) => dom.evaluate(browserControl.browserScrollExpression(input)) as browserControl.BrowserScrollResult };
+	}
+	it("reports actual document positions, movement, boundaries and a no-op at the end", () => {
+		const f = page();
+		const result = f.run({ delta_y: 2000 });
+		expect(result).toMatchObject({ moved: true, ancestorsTruncated: false, movements: [{ document: true, before: { x: 0, y: 0 }, after: { x: 0, y: 800 }, delta: { x: 0, y: 800 }, max: { x: 0, y: 800 }, boundary: { top: false, bottom: true, left: true, right: true } }] });
+		expect(f.run({ delta_y: 400 })).toMatchObject({ moved: false, movements: [{ delta: { x: 0, y: 0 }, after: { y: 800 }, boundary: { bottom: true } }] });
+		expect(f.run({ delta_y: -2000 })).toMatchObject({ moved: true, movements: [{ after: { y: 0 }, boundary: { top: true, bottom: false } }] });
+	});
+	it("moves only the selected container and supports negative RTL horizontal positions", () => {
+		const f = page('<div id="box" style="direction:rtl"></div>');
+		const box = scrollBox(f.window.document.querySelector("#box")!, 300, 200, 900, 1000);
+		expect(f.run({ selector: "#box", delta_x: -2000, delta_y: 75 })).toMatchObject({ moved: true, movements: [{ document: false, after: { x: -600, y: 75 }, min: { x: -600, y: 0 }, max: { x: 0, y: 800 }, boundary: { left: true, right: false } }] });
+		expect(box.scrollTop).toBe(75); expect(f.root.scrollTop).toBe(0);
+	});
+	it("brings an element through nested containers and the exact document into view", () => {
+		const f = page('<div id="outer" style="overflow-y:auto"><div id="inner" style="overflow-y:auto"><button id="item">Item</button></div></div>');
+		scrollBox(f.root, 300, 200, 300, 5000);
+		const outer = scrollBox(f.window.document.querySelector("#outer")!, 300, 200, 300, 1600);
+		const inner = scrollBox(f.window.document.querySelector("#inner")!, 300, 100, 300, 1200);
+		const rect = (top: number, height: number) => ({ left: 0, right: 100, top, bottom: top + height }) as DOMRect;
+		outer.getBoundingClientRect = () => rect(600 - f.root.scrollTop, 200);
+		inner.getBoundingClientRect = () => rect(950 - outer.scrollTop - f.root.scrollTop, 100);
+		f.window.document.querySelector("#item")!.getBoundingClientRect = () => rect(1550 - inner.scrollTop - outer.scrollTop - f.root.scrollTop, 20);
+		const result = f.run({ scroll_mode: "into_view", selector: "#item" });
+		expect(result).toMatchObject({ moved: true, inView: true, ancestorsTruncated: false });
+		expect(result.movements.map(item => item.after.y)).toEqual([520, 250, 600]);
+		expect(result.movements.map(item => item.document)).toEqual([false, false, true]);
+		expect(f.run({ scroll_mode: "into_view", selector: "#item" })).toMatchObject({ moved: false, inView: true });
+	});
+	it("does not claim a far-away element is visible after a bounded movement", () => {
+		const f = page('<button id="item">Item</button>'); scrollBox(f.root, 300, 200, 300, 10000);
+		f.window.document.querySelector("#item")!.getBoundingClientRect = () => ({ left: 0, right: 100, top: 9000 - f.root.scrollTop, bottom: 9020 - f.root.scrollTop }) as DOMRect;
+		expect(f.run({ scroll_mode: "into_view", selector: "#item" })).toMatchObject({ moved: true, inView: false, movements: [{ delta: { y: 2000 }, boundary: { bottom: false } }] });
+	});
+	it("bounds ancestor work and reports truncation instead of claiming visibility", () => {
+		const f = page('<div style="overflow-y:auto">'.repeat(20) + '<button id="item">Item</button>' + '</div>'.repeat(20));
+		for (const box of f.window.document.querySelectorAll("div")) scrollBox(box);
+		expect(f.run({ scroll_mode: "into_view", selector: "#item" })).toMatchObject({ inView: false, ancestorsTruncated: true });
+		expect(f.run({ scroll_mode: "into_view", selector: "#item" }).movements).toHaveLength(16);
+	});
+	it("rejects missing and ambiguous exact-frame selectors instead of selecting the first match", () => {
+		const f = page('<button class="duplicate">One</button><button class="duplicate">Two</button>');
+		expect(f.run({ delta_y: 1, selector: "#missing" })).toEqual({ error: "selector_missing" });
+		expect(f.run({ delta_y: 1, selector: ".duplicate" })).toEqual({ error: "selector_ambiguous" });
+		expect(f.run({ scroll_mode: "into_view", selector: ".duplicate" })).toEqual({ error: "selector_ambiguous" });
+	});
+	it.each([{}, { delta_y: 0 }, { delta_y: 2001 }, { delta_x: -2001 }, { delta_y: 1.5 }, { delta_y: NaN }, { delta_y: Infinity }, { scroll_mode: "all", delta_y: 1 }, { selector: "", delta_y: 1 }, { selector: "x".repeat(2001), delta_y: 1 }, { scroll_mode: "into_view" }, { scroll_mode: "into_view", selector: "button", delta_y: 1 }])("rejects invalid bounds/options %# before producing an expression", input => {
+		expect(() => browserControl.browserScrollExpression(input as browserControl.BrowserScroll)).toThrowError(expect.objectContaining({ code: "scroll_invalid" }));
+	});
+});
+
 describe("page form interaction", () => {
 	it.each(["input", "textarea"])("updates application state for a tracked %s value", async (tag) => {
 		// React-style tracking installs an instance setter. Calling it before an
@@ -126,6 +184,9 @@ describe("page form interaction", () => {
 			get value() { return this.currentValue; }
 			set value(value: string) { this.currentValue = value; }
 			getAttribute() { return null; }
+			matches() { return false; }
+			closest() { return null; }
+			getClientRects() { return [{}]; }
 			focus() {}
 		}
 		class Input extends TextControl {}
@@ -145,11 +206,11 @@ describe("page form interaction", () => {
 			if (element.value !== tracked) application = tracked = element.value;
 		});
 		const context = {
-			document: { title: "Public form", body: { innerText: "Message" }, querySelector: (selector: string) => selector === "#message" ? element : null },
-			HTMLInputElement: Input, HTMLTextAreaElement: Textarea, Event,
+			document: { title: "Public form", body: { innerText: "Message" }, querySelectorAll: (selector: string) => selector === "#message" ? [element] : [] },
+			HTMLInputElement: Input, HTMLTextAreaElement: Textarea, Event, getComputedStyle: () => ({ display: "block", visibility: "visible" }),
 		};
 		const value = 'Message with "quotes" and a newline\nnext line';
-		expect(vm.runInNewContext(browserControl.browserFillExpression("#message", value), context)).toEqual({ ok: true });
+		expect(vm.runInNewContext(browserControl.browserFillExpression("#message", value), context)).toEqual({ ok: true, visible: true });
 		expect(element.value).toBe(value);
 		expect(application).toBe(value);
 	});
@@ -195,7 +256,8 @@ describe("session and page boundaries", () => {
 		const list = await tool.execute("list", { action: "list", session_id: "session-1" });
 		expect(list.structuredContent.targets).toEqual([{ id: "exact-id", type: "page", url: "https://example.test/path" }]);
 		expect(Value.Check(tool.outputSchema, list.structuredContent)).toBe(true);
-		const snapshot = await tool.execute("snapshot", { action: "snapshot", session_id: "session-1", target_id: "exact-id" });
+		const snapshot = await tool.execute("snapshot", { action: "snapshot", session_id: "session-1", target_id: "exact-id", frame_id: "exact-frame", selector: "#subtree" });
+		expect(browserControl.BrowserPageProtocol.prototype.snapshot).toHaveBeenCalledWith(expect.anything(), "exact-id", undefined, "exact-frame", "#subtree");
 		expect(snapshot.structuredContent.snapshot).toBe(snapshot.content[0].text);
 		expect(snapshot.structuredContent.snapshot).toContain("#field\\\\:name");
 		expect(Value.Check(tool.outputSchema, snapshot.structuredContent)).toBe(true);
@@ -204,6 +266,30 @@ describe("session and page boundaries", () => {
 		expect(image.structuredContent.observation).toMatchObject({ source: "browser", trust: "untrusted", kind: "image", screening: "not-screened" });
 		expect(image.content[0].text).toContain("Untrusted browser image");
 		expect(Value.Check(tool.outputSchema, image.structuredContent)).toBe(true);
+	});
+
+	it("dispatches exact scroll parameters and exposes schema-valid truthful structured state", async () => {
+		vi.spyOn(browserControl, "loadBrowserState").mockReturnValue(state());
+		const scroll = { moved: false, movements: [{ document: false, before: { x: 0, y: 800 }, after: { x: 0, y: 800 }, delta: { x: 0, y: 0 }, min: { x: 0, y: 0 }, max: { x: 0, y: 800 }, boundary: { left: true, right: true, top: false, bottom: true } }], ancestorsTruncated: false };
+		const execute = vi.spyOn(browserControl.BrowserPageProtocol.prototype, "scroll").mockResolvedValue(scroll);
+		const pi = createMockPi(); registerBrowserControl(pi as never); const tool = pi._getTool("browser_page")!;
+		const params = { action: "scroll", session_id: "session-1", target_id: "exact-id", frame_id: "exact-frame", scroll_mode: "by", selector: "#box", delta_y: 500 };
+		expect(Value.Check(tool.parameters, params)).toBe(true);
+		expect(Value.Check(tool.parameters, { ...params, delta_y: 2001 })).toBe(false);
+		const result = await tool.execute("scroll", params);
+		expect(execute).toHaveBeenCalledWith(expect.anything(), "exact-id", { frame_id: "exact-frame", scroll_mode: "by", selector: "#box", delta_y: 500, delta_x: undefined }, undefined);
+		expect(result.structuredContent.scroll).toEqual(scroll);
+		expect(result.content[0].text).toContain("virtualized content may remain unread");
+		expect(Value.Check(tool.outputSchema!, result.structuredContent)).toBe(true);
+	});
+
+	it.each(["click", "fill"] as const)("reports non-rendered %s results in text and structured data", async action => {
+		vi.spyOn(browserControl, "loadBrowserState").mockReturnValue(state());
+		vi.spyOn(browserControl.BrowserPageProtocol.prototype, action).mockResolvedValue({ visible: false });
+		const pi = createMockPi(); registerBrowserControl(pi as never); const tool = pi._getTool("browser_page")!;
+		const result = await tool.execute(action, { action, session_id: "session-1", target_id: "exact-id", frame_id: "exact-frame", selector: "#control", ...(action === "fill" ? { value: "disposable" } : {}) });
+		expect(result.content[0].text).toContain("control was not rendered"); expect(result.structuredContent.visible).toBe(false);
+		expect(Value.Check(tool.outputSchema!, result.structuredContent)).toBe(true);
 	});
 
 	it("starts and attaches without an unguarded runtime URL then delegates guarded page initialization", async () => {
@@ -279,7 +365,7 @@ describe("session and page boundaries", () => {
 		expect(publicState(state({ sessionMode: "attached" })).sessionMode).toBe("attached");
 		const page = pi._getTool("browser_page");
 		expect(page).toBeDefined();
-		expect(page?.parameters.properties.action.enum).toEqual(["list", "open", "select", "snapshot", "screenshot", "click", "fill", "close"]);
+		expect(page?.parameters.properties.action.enum).toEqual(["list", "open", "select", "snapshot", "scroll", "screenshot", "click", "fill", "close"]);
 		expect(page?.outputSchema).toHaveProperty("properties.targets");
 		expect(page?.outputSchema).toHaveProperty("properties.targetId");
 		expect(pi._getTool("browser_session")?.outputSchema).toHaveProperty("properties.candidates");

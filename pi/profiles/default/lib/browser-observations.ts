@@ -10,31 +10,108 @@ import { resolveLatestCodexModelFromRuntime } from "./model-selection.js";
 const LIMIT = 16_000;
 export function projectBrowserText(text: string, protectedValues: readonly string[] = []): string {
   // Replace before bounding, including URL/JSON escaped reflections. No word-based redaction.
-  for (const value of protectedValues) if (value) {
-    for (const variant of new Set([value, encodeURIComponent(value), encodeURI(value), JSON.stringify(value).slice(1, -1)])) text = text.split(variant).join("[REDACTED]");
-  }
-  return text.replace(/https?:\/\/[^\s<>"']+/g, raw => {
-    try { const url = new URL(raw); if (url.username || url.password) return "[REDACTED URL]"; return raw; }
-    catch { return "[REDACTED URL]"; }
-  }).slice(0, LIMIT);
+  const redact = (text: string) => {
+    for (const value of protectedValues) if (value) {
+      for (const variant of new Set([value, encodeURIComponent(value), encodeURI(value), JSON.stringify(value).slice(1, -1)])) text = text.split(variant).join("[REDACTED]");
+    }
+    return text.replace(/https?:\/\/[^\s<>"']+/g, raw => {
+      try { const url = new URL(raw); if (url.username || url.password) return "[REDACTED URL]"; return raw; }
+      catch { return "[REDACTED URL]"; }
+    });
+  };
+  text = text.split("\n").map(line => {
+    if (!line.startsWith("[control] ")) return line;
+    try {
+      const record = JSON.parse(line.slice(10));
+      if (typeof record.selector !== "string") return line;
+      // A redacted selector is no longer the uniquely verified selector. Mark it
+      // unavailable, including CSS-escaped reflections, without sending secrets to the page.
+      const decoded = record.selector.replace(/\\([0-9a-f]{1,6}\s?|[^\r\n])/gi, (_: string, escape: string) => /^[0-9a-f]{1,6}\s?$/i.test(escape) ? String.fromCodePoint(Math.min(parseInt(escape.trim(), 16) || 0xfffd, 0x10ffff)) : escape);
+      if (redact(record.selector) !== record.selector || redact(decoded) !== decoded) { record.selector = null; return "[control] " + JSON.stringify(record); }
+    } catch { /* ordinary untrusted text is still filtered below */ }
+    return line;
+  }).join("\n");
+  text = redact(text);
+  const notice = "\n[truncation: filtered observation exceeded 16000 chars]";
+  return text.length > LIMIT ? text.slice(0, LIMIT - notice.length) + notice : text;
 }
 export function browserObservationError(): Error { return new Error("Browser observation could not be safely produced."); }
 
-/** Fixed internal expression only. Excludes control values, retains labels and nonsecret links/selectors. */
-export const BROWSER_TEXT_EXPRESSION = `(() => {
-  const lines = []; const walk = node => {
-    if (lines.join('\\n').length >= 16000) return;
-    if (node.nodeType === 3) { const text = node.textContent.trim(); if (text) lines.push(text.slice(0,500)); return; }
-    if (node.nodeType !== 1 || ['SCRIPT','STYLE','NOSCRIPT'].includes(node.tagName)) return;
-    if (['INPUT','TEXTAREA','SELECT'].includes(node.tagName)) {
-      const label = node.getAttribute('aria-label') || Array.from(node.labels || []).map(x => x.textContent.trim()).join(' ') || node.getAttribute('placeholder') || node.getAttribute('name') || node.type || node.tagName.toLowerCase();
-      const selector = node.id ? '#' + CSS.escape(node.id) : node.getAttribute('name') ? node.tagName.toLowerCase() + '[name=' + JSON.stringify(node.getAttribute('name')) + ']' : node.tagName.toLowerCase();
-      lines.push('[control] ' + label + ' ' + selector); return;
+/** Shared rendered/disabled facts for observations and each action resolution. */
+export const BROWSER_CONTROL_STATE = `(element => {
+  const style = getComputedStyle(element);
+  const visible = element.getClientRects().length > 0 && style.display !== 'none' && style.visibility !== 'hidden' && style.visibility !== 'collapse' && style.opacity !== '0'
+    && (typeof element.checkVisibility !== 'function' || element.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true }));
+  return { disabled: element.matches(':disabled') || !!element.closest('[aria-disabled="true"],[inert]'), visible };
+})`;
+
+/** Fixed internal projection. Text and controls have independent budgets below the outer 16K limit. */
+export function browserTextExpression(selector?: string): string {
+  return `(() => {
+  const lines = [], controls = []; let textSize = 0, controlSize = 0, textTruncated = false, controlsTruncated = false, factsTruncated = false;
+  let root = document.body;
+  ${selector === undefined ? "" : `let roots; try { roots = document.querySelectorAll(${JSON.stringify(selector)}); } catch { return { error: 'selector_invalid' }; }
+  if (roots.length !== 1) return { error: roots.length ? 'selector_ambiguous' : 'selector_missing' }; root = roots[0];`}
+  const bounded = (value, limit) => { value = String(value || ''); if (value.length > limit) factsTruncated = true; return value.slice(0, limit); };
+  const field = node => ['INPUT','TEXTAREA','SELECT'].includes(node.tagName) || node.hasAttribute('contenteditable') || ['textbox','searchbox','combobox','listbox','spinbutton','slider'].includes(node.getAttribute('role'));
+  const nameText = node => {
+    const parts = [], stack = [node]; let size = 0;
+    while (stack.length && size < 161) {
+      const item = stack.pop();
+      if (item.nodeType === 3) { const text = item.textContent.trim(); parts.push(text.slice(0, 161 - size)); size += text.length; }
+      else if (item.nodeType === 1 && !field(item) && !['SCRIPT','STYLE','NOSCRIPT'].includes(item.tagName)) for (let i = item.childNodes.length - 1; i >= 0; i--) stack.push(item.childNodes[i]);
     }
-    if (node.tagName === 'A' && node.href) lines.push('[link] ' + node.href);
-    for (const child of node.childNodes) walk(child);
-  }; walk(document.body); return lines.join('\\n').slice(0,16000);
+    if (stack.length || size > 160) factsTruncated = true;
+    return parts.join(' ').slice(0, 161);
+  };
+  const unique = (candidate, node) => {
+    if (candidate.length > 512) return false;
+    try { const matches = document.querySelectorAll(candidate); return matches.length === 1 && matches[0] === node; } catch { return false; }
+  };
+  const selectorFor = node => {
+    if (node.id) { const candidate = '#' + CSS.escape(node.id); if (unique(candidate, node)) return candidate; }
+    const tag = node.tagName.toLowerCase(), name = node.getAttribute('name');
+    if (name) { const candidate = tag + '[name="' + CSS.escape(name) + '"]'; if (unique(candidate, node)) return candidate; }
+    let current = node, parts = [];
+    for (let depth = 0; current && depth < 16; depth++, current = current.parentElement) {
+      let index = 1; for (let sibling = current.previousElementSibling; sibling; sibling = sibling.previousElementSibling) if (sibling.tagName === current.tagName) index++;
+      parts.unshift(current.tagName.toLowerCase() + ':nth-of-type(' + index + ')');
+      const candidate = parts.join(' > '); if (candidate.length > 512) break;
+      if (unique(candidate, node)) return candidate;
+    }
+    return null;
+  };
+  const roles = ['button','link','checkbox','radio','switch','tab','menuitem','menuitemcheckbox','menuitemradio','combobox','listbox','option','slider','spinbutton','textbox','searchbox','treeitem'];
+  const stack = root ? [root] : [];
+  while (stack.length) {
+    const node = stack.pop();
+    if (node.nodeType === 3) {
+      const text = node.textContent.trim(); if (!text) continue;
+      const available = Math.max(0, 6000 - textSize - 1), part = text.slice(0, Math.min(500, available));
+      if (part) { lines.push(part); textSize += part.length + 1; }
+      if (part.length < text.length) textTruncated = true;
+      continue;
+    }
+    if (node.nodeType !== 1 || ['SCRIPT','STYLE','NOSCRIPT'].includes(node.tagName)) continue;
+    const role = node.getAttribute('role') || '', isField = field(node);
+    const interactive = isField || ['BUTTON','A','SUMMARY'].includes(node.tagName) || roles.includes(role);
+    if (interactive) {
+      if (controls.length >= 64 || controlSize >= 8000) controlsTruncated = true;
+      else {
+        const label = node.getAttribute('aria-label') || Array.from(node.labels || []).map(nameText).join(' ') || node.getAttribute('placeholder') || (isField ? '' : nameText(node)) || node.getAttribute('name') || node.type || node.tagName.toLowerCase();
+        const record = { tag: bounded(node.tagName.toLowerCase(), 32), role: bounded(role, 32), name: bounded(label, 160), ...${BROWSER_CONTROL_STATE}(node), selector: selectorFor(node), ...(node.tagName === 'A' && node.href ? { href: bounded(node.href, 300) } : {}) };
+        const line = '[control] ' + JSON.stringify(record);
+        if (controlSize + line.length + 1 <= 8000) { controls.push(line); controlSize += line.length + 1; } else controlsTruncated = true;
+      }
+    }
+    if (!isField) for (let i = node.childNodes.length - 1; i >= 0; i--) stack.push(node.childNodes[i]);
+  }
+  return '[snapshot budgets: text=6000 chars; controls=8000 chars/64 records; selector=null means unavailable]\\n'
+    + '[truncation] ' + JSON.stringify({ text: textTruncated, controls: controlsTruncated, facts: factsTruncated })
+    + '\\nUse a unique subtree selector in this exact frame to focus omitted content.\\n[text]\\n' + lines.join('\\n') + '\\n[controls]\\n' + controls.join('\\n');
 })()`;
+}
+export const BROWSER_TEXT_EXPRESSION = browserTextExpression();
 
 export async function screenBrowserText(text: string, review: Reviewer, signal?: AbortSignal, timeoutMs = 15_000): Promise<BrowserObservation["screening"]> {
   const deadline = AbortSignal.timeout(timeoutMs);

@@ -60,6 +60,15 @@ describe("actual native adapters", () => {
       expect(analysis.matches).toHaveLength(0);
     }
   });
+  it("adapts scrolling as a read, never an upload or private-data source", () => {
+    for (const input of [{ action: "scroll", session_id: "s", target_id: "t", delta_y: 500 }, { action: "scroll", session_id: "s", target_id: "t", frame_id: "child", scroll_mode: "into_view", selector: "#private-label" }]) {
+      const result = adapt("browser_page", "scroll", input, "/cwd");
+      expect(result.status).toBe("adapted");
+      if (result.status !== "adapted") throw new Error();
+      expect(fileEffects(result.request)).toEqual([expect.objectContaining({ kind: "network", operation: "read", sources: [], resolution: "static" })]);
+      expect(JSON.stringify(result.request)).not.toContain("private-label");
+    }
+  });
   it("hands explicit local-file browser opens to filesystem read policy", () => {
     const document = join(tmpdir(), "document.txt");
     const result = adapt("browser_page", "file", { action: "open", url: pathToFileURL(document).href }, "/cwd");

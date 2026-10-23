@@ -8,6 +8,22 @@ Use `browser_session` with `action: "discover"` to identify live Brave profiles.
 
 Every page operation revalidates the saved process identity and current task/session. Supply the current `session_id` to every `browser_page` call; supply the exact raw `target_id` for actions other than `list` and `open`, and the exact `frame_id` when operating in an iframe. Snapshot results include bounded `frames` metadata (frame ID, owning target, and origin); use it to select the exact frame, and pass `frame_id` for an iframe snapshot or control. Do not substitute the focused tab or a URL match. If an attachment becomes stale or ownership verification fails, stop page actions. Use `status`, then perform a normal verified `attach` to the same configured profile/process if it is still running; otherwise start/attach only after the operator's browser state is correct. List targets and explicitly select the intended target again. Never silently bind another browser, profile, tab, or process, or restart an operator-owned browser.
 
+## Observe, focus, scroll, then act
+
+Use `snapshot` in the exact target/frame to obtain text and control facts, including unique selectors, disabled state, and visibility. Text and controls have separate bounded budgets; truncation is reported. If relevant content is omitted, use snapshot's optional `selector` to focus a uniquely matched subtree. A missing or ambiguous root requires a fresh exact-frame snapshot, not a guessed selector.
+
+Use `scroll` for bounded document/container movement or to bring a selected element into view, then snapshot again. The default `scroll_mode: "by"` accepts integer `delta_x`/`delta_y` pixels from -2000 to 2000, with at least one nonzero delta; an optional unique `selector` selects the container instead of the document. `scroll_mode: "into_view"` requires an element selector and no deltas. It moves at most 2000 pixels per axis for each of at most 16 ancestors within the exact frame, without scrolling parent frames. Inspect the returned actual positions, boundaries, `inView`, and ancestor truncation rather than assuming the element was reached. Movement and boundary facts describe the current viewport, not proof that all virtualized content has been read. Lazy-loading can generate normal page traffic. Prefer current state and selector evidence over network-idle waits on Office pages.
+
+Click and fill reject ambiguous selectors and disabled controls. They do not automatically retarget or retry mutations. Non-rendered controls are reported rather than universally refused. After a changed/missing control error, snapshot the named target/frame again. Unique selectors can still become stale after a rerender; not every button's effect is semantically understood.
+
+## Approval lifetime
+
+For explicit actions in either mode, human policy decisions wait for an answer, cancellation, task/session invalidation, or tooling disposal rather than expiring on an automated-operation deadline. This includes explicit navigation and local-file policy authorization. Automated interpretation/reviewer calls, CDP/DNS work, and post-approval resource checks remain bounded. Target, frame, identity, and control facts are revalidated before dispatch. One fill makes at most one policy decision while retaining post-secret checks.
+
+**Allow once** authorizes only the pending action. It does not create reusable browser or cross-tool private-export authority; old serialized manual decisions cannot authorize later actions after reload. Independent request interpretation and per-action review remain in place, so consequential repeated actions may still need review.
+
+Pi-owned background intercepted requests retain their **10-second network deadline**. Their approval prompts can still expire and fail closed. Attached normal page requests are not intercepted. These controls do not confine all network data.
+
 ## Login and credential references
 
 A direct `value` fill remains available for disposable development credentials. For stored credentials, the operator creates `browser-credentials.json` in the active Pi profile directory (the `PI_CODING_AGENT_DIR` directory when set). This file is ignored by Git. Start from the tracked, identity-free `browser-credentials.example.json`; validate the shape against `browser-credentials.schema.json`. Example shape only:

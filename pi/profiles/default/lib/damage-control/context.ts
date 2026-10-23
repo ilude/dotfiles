@@ -134,31 +134,24 @@ export class Context {
     this.requests = [request];
     return structuredClone(request);
   }
-  /** Only independent Damage Control interpretation or explicit UI calls this.
+  /** Only independent Damage Control interpretation creates reusable scope.
+   * Manual approval covers the pending action, never a future intent binding.
    * The interpreter selects an actual direct span, not a quoted instruction.
    */
   bindBrowserIntent(requestId: string, directSpan: string, scope: IntentScope, basis: IntentBinding["basis"]): boolean {
     const request = this.requests.find(item => item.id === requestId);
-    if (!request || !directSpan.trim() || !request.directText.includes(directSpan) || !samePolicyIdentity(request.identity, this.policyIdentity)
-      || !validIntentScope(scope) || (scope.localDevelopment === true && basis !== "independent-interpretation")) return false;
+    if (basis !== "independent-interpretation" || !request || !directSpan.trim() || !request.directText.includes(directSpan) || !samePolicyIdentity(request.identity, this.policyIdentity)
+      || !validIntentScope(scope)) return false;
     this.bindings.push({ requestId, identity: this.identity, basis, directSpan, scope: structuredClone(scope) });
     return true;
-  }
-  bindBrowserDecision(effect: BrowserEffect): boolean {
-    const request = this.currentBrowserRequest();
-    if (!request || !samePolicyIdentity(effect.identity, this.identity)
-      || effect.destination?.resource === "unknown" || effect.destination?.origin === "https://unknown-destination.invalid") return false;
-    const privateTransfer = effect.payload.kind === "redacted" && (effect.payload.containsProtectedData
-      || effect.payload.sourceObservationIds.some(id => !this.observations.some(o => o.id === id && o.classification === "public")));
-    return this.bindBrowserIntent(request.id, request.directText, { kinds: [effect.kind], origins: [effect.target.origin],
-      destinationOrigins: [effect.destination?.origin ?? effect.target.origin], resource: effect.destination?.resource,
-      allowPrivateTransfer: privateTransfer }, "operator-decision");
   }
   browserIntentRecords(): BrowserIntentRecord[] {
     return this.requests.map(({ identity: _identity, ...request }) => ({ version: 1, request: structuredClone(request), bindings: this.bindings.filter(b => b.requestId === request.id).map(({ identity: _bindingIdentity, ...binding }) => structuredClone(binding)) }));
   }
   /** Restore only this extension's captured records on getBranch(), never all
    * file entries or summary text. The newest direct request replaces old scope.
+   * Historical operator-decision records remain parseable, but never restore
+   * authority: their approval was only for the action pending at the time.
    * Stored metadata cannot originate from model-facing arguments.
    */
   restoreBrowserIntent(identity: Omit<PolicyIdentity, "generation">, records: readonly unknown[]): void {
@@ -169,7 +162,7 @@ export class Context {
     const { request } = record;
     if ((request.source !== "interactive" && request.source !== "rpc") || typeof request.text !== "string" || Buffer.byteLength(request.text, "utf8") > CONTEXT_BYTES) return;
     this.requests = [{ id: request.id, source: request.source, text: request.text, directText: directRequestText(request.text), identity: this.identity }];
-    this.bindings = record.bindings.filter(b => b.requestId === request.id && typeof b.directSpan === "string" && b.directSpan.trim().length > 0 && this.requests[0].directText.includes(b.directSpan) && (b.basis === "independent-interpretation" || b.basis === "operator-decision")).map(b => ({ requestId: b.requestId, basis: b.basis, directSpan: b.directSpan, scope: structuredClone(b.scope), identity: this.identity }));
+    this.bindings = record.bindings.filter(b => b.requestId === request.id && typeof b.directSpan === "string" && b.directSpan.trim().length > 0 && this.requests[0].directText.includes(b.directSpan) && b.basis === "independent-interpretation").map(b => ({ requestId: b.requestId, basis: b.basis, directSpan: b.directSpan, scope: structuredClone(b.scope), identity: this.identity }));
   }
   recordBrowserObservation(observation: BrowserObservation, protectedValues: readonly string[] = []): void {
     if (!samePolicyIdentity(observation.identity, this.policyIdentity) || observation.trust !== "untrusted") return;

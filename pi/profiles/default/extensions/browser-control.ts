@@ -31,7 +31,7 @@ import {
 } from "../lib/browser-control.js";
 
 const SESSION_ACTIONS = ["discover", "status", "start", "attach", "restart", "stop"] as const;
-const PAGE_ACTIONS = ["list", "open", "select", "snapshot", "screenshot", "click", "fill", "close"] as const;
+const PAGE_ACTIONS = ["list", "open", "select", "snapshot", "scroll", "screenshot", "click", "fill", "close"] as const;
 
 const SessionParameters = Type.Object({
 	action: StringEnum(SESSION_ACTIONS),
@@ -48,7 +48,10 @@ const PageParameters = Type.Object({
 	session_id: Type.String(),
 	target_id: Type.Optional(Type.String()),
 	url: Type.Optional(Type.String()),
-	selector: Type.Optional(Type.String()),
+	selector: Type.Optional(Type.String({ description: "Unique exact-frame CSS selector. Optional subtree root for snapshot or container for scroll by; required for click/fill and scroll into_view. Scroll selectors are limited to 2000 characters." })),
+	scroll_mode: Type.Optional(StringEnum(["by", "into_view"] as const, { description: "Scroll only: by (default) moves document or selected container by deltas; into_view moves a selected element's ancestors within this exact frame, at most 16 containers and 2000 pixels per axis each. Re-snapshot after scrolling." })),
+	delta_x: Type.Optional(Type.Integer({ minimum: -2000, maximum: 2000, description: "Scroll by only: horizontal pixels. At least one delta must be nonzero." })),
+	delta_y: Type.Optional(Type.Integer({ minimum: -2000, maximum: 2000, description: "Scroll by only: vertical pixels. into_view takes no deltas." })),
 	value: Type.Optional(Type.String()),
 	secret_ref: Type.Optional(Type.String()),
 	frame_id: Type.Optional(Type.String()),
@@ -71,6 +74,9 @@ type PageInput = {
 	target_id?: string;
 	url?: string;
 	selector?: string;
+	scroll_mode?: "by" | "into_view";
+	delta_x?: number;
+	delta_y?: number;
 	value?: string;
 	secret_ref?: string;
 	frame_id?: string;
@@ -94,6 +100,17 @@ const BrowserResultSchema = Type.Object({
 	candidateCount: Type.Optional(Type.Number()), targets: Type.Optional(Type.Array(Type.Object({ id: Type.String(), url: Type.String(), type: Type.Optional(Type.String()) }))),
 	count: Type.Optional(Type.Number()), targetId: Type.Optional(Type.String()), url: Type.Optional(Type.String()),
 	snapshot: Type.Optional(Type.String()),
+	visible: Type.Optional(Type.Boolean()),
+	scroll: Type.Optional(Type.Object({
+		moved: Type.Boolean(), ancestorsTruncated: Type.Boolean(),
+		inView: Type.Optional(Type.Boolean({ description: "Selected element intersects all inspected ancestor viewports after into_view; not proof that all content was read." })),
+		movements: Type.Array(Type.Object({
+			document: Type.Boolean(),
+			before: Type.Object({ x: Type.Number(), y: Type.Number() }), after: Type.Object({ x: Type.Number(), y: Type.Number() }),
+			delta: Type.Object({ x: Type.Number(), y: Type.Number() }), min: Type.Object({ x: Type.Number(), y: Type.Number() }), max: Type.Object({ x: Type.Number(), y: Type.Number() }),
+			boundary: Type.Object({ left: Type.Boolean(), right: Type.Boolean(), top: Type.Boolean(), bottom: Type.Boolean() }),
+		}, { additionalProperties: false }), { maxItems: 16 }),
+	}, { additionalProperties: false })),
 	frames: Type.Optional(Type.Array(Type.Object({ id: Type.String(), targetId: Type.String(), origin: Type.String() }, { additionalProperties: false }))),
 	observation: Type.Optional(Type.Object({ source: Type.Literal("browser"), trust: Type.Literal("untrusted"), kind: Type.Literal("image"), origin: Type.String(), classification: StringEnum(["public", "private"] as const), screening: Type.Literal("not-screened") }, { additionalProperties: false })),
 }, { additionalProperties: false });
@@ -305,7 +322,7 @@ export default function registerBrowserControl(pi: ExtensionAPI) {
 	pi.registerTool({
 		name: "browser_page",
 		label: "Browser Page",
-		description: "Operate on exact session/target/frame IDs with task and destination policy. Fill uses exactly one value or locally bound secret_ref. Actual CAPTCHA completion is manual; cookies, storage, arbitrary evaluation and security-warning bypass are unavailable.",
+		description: "Operate on exact session/target/frame IDs with task and destination policy. Snapshot first; use its unique selectors or focus a subtree with selector when truncated. Scroll with scroll_mode by (default), optional container selector and nonzero delta_x/delta_y (integer pixels, each -2000..2000), or into_view with required element selector and no deltas. Re-snapshot after scrolling, then act on current selector/state evidence; movement is not proof all virtualized content was read. Prefer state evidence over network-idle waits. Fill uses exactly one value or locally bound secret_ref. Actual CAPTCHA completion is manual; cookies, storage, arbitrary evaluation and security-warning bypass are unavailable.",
 		promptSnippet: "Use one exact session ID and raw CDP target ID for bounded page actions",
 		parameters: PageParameters,
 		outputSchema: BrowserResultSchema,
@@ -333,10 +350,14 @@ export default function registerBrowserControl(pi: ExtensionAPI) {
 					return toolResult(`Selected raw CDP target ${targetId}.`, { state: publicState(state) });
 				}
 				if (input.action === "snapshot") {
-					const snapshot = redactOutput(await pages.snapshot(state, targetId, signal, input.frame_id));
+					const snapshot = redactOutput(await pages.snapshot(state, targetId, signal, input.frame_id, input.selector));
 					const frames = await pages.frames(state, targetId, signal);
 					const text = `${snapshot}\nExact frames: ${JSON.stringify(frames)}`;
 					return toolResult(text, { state: publicState(state), targetId, snapshot: text, frames });
+				}
+				if (input.action === "scroll") {
+					const scroll = await pages.scroll(state, targetId, { scroll_mode: input.scroll_mode, selector: input.selector, delta_x: input.delta_x, delta_y: input.delta_y, frame_id: input.frame_id }, signal);
+					return toolResult(`${JSON.stringify(scroll)}\nScroll reports actual viewport movement only. Snapshot this exact target/frame again to observe content; virtualized content may remain unread.`, { state: publicState(state), targetId, scroll });
 				}
 				if (input.action === "screenshot") {
 					if (!input.output_path) throw new BrowserControlError("output_required", "Screenshot requires an output path.");
@@ -347,13 +368,13 @@ export default function registerBrowserControl(pi: ExtensionAPI) {
 				}
 				if (input.action === "click") {
 					if (!input.selector) throw new BrowserControlError("selector_required", "Click requires a CSS selector.");
-					await pages.click(state, targetId, input.selector, signal, input.frame_id);
-					return toolResult(`Clicked selector on target ${targetId}.`, { state: publicState(state), targetId });
+					const result = await pages.click(state, targetId, input.selector, signal, input.frame_id);
+					return toolResult(`Clicked selector on target ${targetId}.${result.visible ? "" : " Warning: the acted-on control was not rendered; snapshot this exact frame to inspect the outcome."}`, { state: publicState(state), targetId, visible: result.visible });
 				}
 				if (input.action === "fill") {
 					if (!input.selector || (input.value === undefined) === (input.secret_ref === undefined)) throw new BrowserControlError("value_required", "Fill requires a selector and exactly one value or secret_ref.");
-					await pages.fill(state, targetId, input.selector, { value: input.value, secret_ref: input.secret_ref, frame_id: input.frame_id }, signal);
-					return toolResult(`Filled selector on target ${targetId}.`, { state: publicState(state), targetId });
+					const result = await pages.fill(state, targetId, input.selector, { value: input.value, secret_ref: input.secret_ref, frame_id: input.frame_id }, signal);
+					return toolResult(`Filled selector on target ${targetId}.${result.visible ? "" : " Warning: the acted-on control was not rendered; snapshot this exact frame to inspect the outcome."}`, { state: publicState(state), targetId, visible: result.visible });
 				}
 				await pages.close(state, targetId, signal);
 				if (state.targetId === targetId) state = { ...state, targetId: undefined };

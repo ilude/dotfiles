@@ -60,6 +60,13 @@ export type IntentBinding = {
 };
 export type BrowserPolicyDecision = { outcome: "allow" | "review" | "ask" | "deny"; reason: string };
 export type BrowserPolicyEvidence = { identity: PolicyIdentity; requests: TrustedRequest[]; bindings: IntentBinding[]; observations: BrowserObservation[]; effect: BrowserEffect };
+/** The caller owns cancellation, not the human decision deadline. Explicit controls,
+ * navigation and local-file authorization pass a caller/task/session/tooling lifetime
+ * with no automated timeout. Intent/reviewer calls bound their own automated work;
+ * executors separately bound CDP/DNS and post-approval revalidation. Owned-browser
+ * background Fetch decisions still receive the intercepted request's network deadline.
+ * An allow result never replaces current identity/frame/control revalidation.
+ */
 export type BrowserPolicyHandler = (effect: BrowserEffect, signal: AbortSignal) => Promise<BrowserPolicyDecision>;
 
 export function samePolicyIdentity(a: PolicyIdentity, b: PolicyIdentity): boolean {

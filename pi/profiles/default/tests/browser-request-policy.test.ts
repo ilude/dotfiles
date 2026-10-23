@@ -9,7 +9,7 @@ import { BrowserRequestPolicy, hostVisibility, parseBrowserDestination, type Bro
 import { effectCandidate, type BrowserEffect } from "../lib/browser-effect-contract.js";
 import type { BrowserSessionState } from "../lib/browser-control.js";
 const cleanup: Array<() => void | Promise<void>> = [];
-afterEach(async () => { for (const close of cleanup.splice(0).reverse()) await close(); });
+afterEach(async () => { vi.useRealTimers(); vi.restoreAllMocks(); for (const close of cleanup.splice(0).reverse()) await close(); });
 const identity = { sessionId: "synthetic-session", branchId: "branch", generation: 1 };
 interface Command { id: number; method: string; params: Record<string, unknown>; sessionId?: string }
 
@@ -86,6 +86,71 @@ describe("canonical browser destinations", () => {
 });
 
 describe("persistent intercepted destinations", () => {
+  it.each([true, false])("keeps explicit navigation decisions beyond the network deadline (interception=%s)", async interceptRequests => {
+    let release!: () => void, pending!: AbortSignal;
+    const f = await fixture({ interceptRequests, timeoutMs: 30, policy: async (_effect, signal) => {
+      pending = signal; await new Promise<void>(resolve => { release = resolve; }); return { outcome: "allow", reason: "Manual navigation decision" };
+    } });
+    let settled = false;
+    const navigation = f.policy.authorizeNavigation("root", "https://public.example/document");
+    void navigation.then(() => { settled = true; }, () => { settled = true; });
+    await vi.waitFor(() => expect(release).toBeDefined());
+    await new Promise(resolve => setTimeout(resolve, 70));
+    expect(pending.aborted).toBe(false); expect(settled).toBe(false);
+    release(); await expect(navigation).resolves.toMatchObject({ origin: "https://public.example" });
+  });
+  it.each([true, false])("keeps local-file navigation authorization pending, then starts its bounded lease (interception=%s)", async interceptRequests => {
+    let release!: () => void, pending!: AbortSignal;
+    const f = await fixture({ interceptRequests, timeoutMs: 30, localFile: async (_path, signal) => {
+      pending = signal; await new Promise<void>(resolve => { release = resolve; }); return { outcome: "allow", reason: "Manual file decision" };
+    } });
+    const url = pathToFileURL(resolve("/synthetic/requested.html")).href;
+    let settled = false;
+    const navigation = f.policy.authorizeNavigation("root", url);
+    void navigation.then(() => { settled = true; }, () => { settled = true; });
+    await vi.waitFor(() => expect(release).toBeDefined());
+    await new Promise(resolve => setTimeout(resolve, 70));
+    expect(pending.aborted).toBe(false); expect(settled).toBe(false);
+    release(); await navigation;
+    if (interceptRequests) { f.pause("file-after-human-wait", url); expect((await f.result("file-after-human-wait")).method).toBe("Fetch.continueRequest"); }
+  });
+  it.each(["http", "file"].flatMap(kind => ["caller", "disposal", "identity", "frame", "warning"].map(invalidation => [kind, invalidation] as const)))("does not apply explicit %s navigation after %s invalidation", async (kind, invalidation) => {
+    let release!: () => void, generation = 1;
+    const decision = async () => { await new Promise<void>(resolve => { release = resolve; }); return { outcome: "allow" as const, reason: "Late navigation approval" }; };
+    const f = await fixture({ identity: () => ({ ...identity, generation }), policy: decision, localFile: decision });
+    const caller = new AbortController();
+    const navigation = f.policy.authorizeNavigation("root", kind === "file" ? pathToFileURL(resolve("/synthetic/requested.html")).href : "https://public.example/", caller.signal);
+    const rejection = expect(navigation).rejects.toThrow();
+    await vi.waitFor(() => expect(release).toBeDefined());
+    if (invalidation === "caller") caller.abort();
+    if (invalidation === "disposal") f.policy.dispose();
+    if (invalidation === "identity") generation++;
+    if (invalidation === "frame" || invalidation === "warning") {
+      f.send(invalidation === "frame"
+        ? { method: "Page.frameNavigated", sessionId: "root-session", params: { frame: { id: "root-frame", url: "https://changed.example/", securityOrigin: "https://changed.example", loaderId: "changed" } } }
+        : { method: "Page.interstitialShown", sessionId: "root-session", params: {} });
+      await f.transport.command("root", "Page.bringToFront");
+    }
+    release(); await rejection;
+    expect(f.commands.some(command => command.method === "Page.navigate")).toBe(false);
+  });
+  it("retains the owned background Fetch default 10-second deadline", async () => {
+    let pending!: AbortSignal;
+    const f = await fixture({ policy: async (_effect, signal) => { pending = signal; return await new Promise(() => {}); } });
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    vi.spyOn(AbortSignal, "timeout").mockImplementation(ms => {
+      const deadline = new AbortController(); setTimeout(() => deadline.abort(), ms); return deadline.signal;
+    });
+    f.pause("owned-background", "https://public.example/");
+    await vi.waitFor(() => expect(pending).toBeDefined());
+    await vi.advanceTimersByTimeAsync(9_000);
+    expect(pending.aborted).toBe(false);
+    expect(f.commands.some(c => c.params.requestId === "owned-background")).toBe(false);
+    await vi.advanceTimersByTimeAsync(1_001);
+    expect(pending.aborted).toBe(true);
+    vi.useRealTimers(); vi.restoreAllMocks();
+    expect((await f.result("owned-background")).method).toBe("Fetch.failRequest");
+  });
   it("leaves attached-page traffic alone while enforcing explicit navigation and native warnings", async () => {
     const review = vi.fn(async () => ({ outcome: "deny" as const, reason: "Synthetic navigation denied" }));
     const f = await fixture({ interceptRequests: false, children: true, policy: review });

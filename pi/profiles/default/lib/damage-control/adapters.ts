@@ -64,7 +64,7 @@ function adaptCustom(tool: CustomToolName, callId: string, input: unknown, cwd: 
     if (data.to !== undefined && (!Array.isArray(data.to) || data.to.length < 1 || data.to.some(value => typeof value !== "string" || !value.trim() || value.includes("\0")))) return { status: "unsupported", reason: "Adapter required or invalid onclave_message input: bounded recipients required" };
   }
   if (tool === "browser_session" && (typeof data.action !== "string" || !["discover", "status", "start", "attach", "restart", "stop"].includes(data.action))) return { status: "unsupported", reason: "Adapter required or invalid browser_session input: unsupported action" };
-  if (tool === "browser_page" && (typeof data.action !== "string" || !["list", "open", "select", "snapshot", "screenshot", "click", "fill", "close"].includes(data.action))) return { status: "unsupported", reason: "Adapter required or invalid browser_page input: unsupported action" };
+  if (tool === "browser_page" && (typeof data.action !== "string" || !["list", "open", "select", "snapshot", "scroll", "screenshot", "click", "fill", "close"].includes(data.action))) return { status: "unsupported", reason: "Adapter required or invalid browser_page input: unsupported action" };
   const request: CustomToolRequest = { tool, callId, cwd, input: projected, text: JSON.stringify(projected) };
   return { status: "adapted", request };
 }
@@ -127,7 +127,7 @@ function customEffects(request: Extract<ToolRequest, { tool: CustomToolName }>):
   }
   const recipients = tool === "onclave_message" && Array.isArray(input.to) ? input.to.filter((value): value is string => typeof value === "string") : [];
   const destination = (tool === "web_fetch" || tool === "browser_page" || tool === "browser_session") && typeof input.url === "string" ? safeUrl(input.url) : tool === "web_search" ? "https://search-provider.invalid/" : tool === "onclave_message" && recipients.length && !input.recipientsOmitted ? `onclave://peer/${recipients.join(",")}` : undefined;
-  const isRead = tool === "browser_page" && ["list", "snapshot", "screenshot"].includes(action);
+  const isRead = tool === "browser_page" && ["list", "snapshot", "scroll", "screenshot"].includes(action);
   const common = { id: `${request.callId}:${tool}`, kind: "network" as const, operation: isRead ? "read" as const : "upload" as const, sources: isRead ? [] : [{ resolution: "unknown" as const, expression: "bounded prior observations or task payload", reason: "Payload not treated as trusted or fully taint-tracked" }], targets: [], destinations: destination ? [{ resolution: "static" as const, path: destination }] : [{ resolution: "unknown" as const, expression: "recipient or page destination", reason: "Destination resolved by owning tool at execution" }], context: { cwd: request.cwd }, range: { start: 0, end: request.text.length } };
   return isRead ? [{ ...common, resolution: "static" }] : [{ ...common, resolution: "unknown", reason: "Outbound transfer candidate requires contextual review" }];
 }

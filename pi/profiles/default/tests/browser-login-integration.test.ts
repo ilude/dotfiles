@@ -17,7 +17,7 @@ import { createBrowserCredentialResolver } from "../lib/browser-credentials.js";
 const installed = realpathSync(fileURLToPath(new URL("../node_modules/@earendil-works/pi-coding-agent", import.meta.url)));
 const { createEventBus }: { createEventBus: () => EventBusController } = await import(/* @vite-ignore */ pathToFileURL(join(installed, "dist/core/event-bus.js")).href);
 const cleanup: Array<() => void | Promise<void>> = [];
-afterEach(async () => { vi.unstubAllEnvs(); for (const close of cleanup.splice(0).reverse()) await close(); });
+afterEach(async () => { vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllEnvs(); for (const close of cleanup.splice(0).reverse()) await close(); });
 type Command = { id: number; method: string; sessionId?: string; params: Record<string, unknown> };
 
 /** Actual native WebSocket wire + real independent policy event bus. Chromium DOM/CDP replies
@@ -28,11 +28,12 @@ async function fixture(origin = "https://account.example", frameOrigin = origin,
   context.bindBrowserIntent("request", "Log in and develop this form", { kinds: ["login", "read", "navigate", "dev-form"], origins: [origin, frameOrigin] }, "independent-interpretation");
   const bus = createEventBus(), effects: BrowserEffect[] = [], nativePaths: string[] = [];
   const owner = new AbortController();
-  cleanup.push(bindBrowserPolicy(bus, async effect => { effects.push(effect); return effectCandidate(context.browserEvidence(effect)); }, { identity: () => context.identity, signal: () => AbortSignal.any([owner.signal, context.policySignal]), observe: observation => context.recordBrowserObservation(observation), localFile: async request => { nativePaths.push(request.nativePath); return { outcome: "allow", reason: "Synthetic exact filesystem authorization" }; } }));
+  const fileDecision = vi.fn(async (_path: string, _signal: AbortSignal) => ({ outcome: "allow" as const, reason: "Synthetic exact filesystem authorization" }));
+  cleanup.push(bindBrowserPolicy(bus, async effect => { effects.push(effect); return effectCandidate(context.browserEvidence(effect)); }, { identity: () => context.identity, signal: () => AbortSignal.any([owner.signal, context.policySignal]), observe: observation => context.recordBrowserObservation(observation), localFile: async (request, signal) => { nativePaths.push(request.nativePath); return fileDecision(request.nativePath, signal); } }));
   let socket: Duplex | undefined, inspections = 0, valid = true, transport: BrowserCdpTransport | undefined;
   const commands: Command[] = [];
   let fillRequest: string | undefined;
-  let field = { tag: "input", type: "password", name: "password", autocomplete: "current-password", label: "Password", form: `${frameOrigin}/login`, href: "", captcha: false, password: true, loginForm: true };
+  let field = { tag: "input", type: "password", name: "password", autocomplete: "current-password", label: "Password", form: `${frameOrigin}/login`, href: "", captcha: false, password: true, loginForm: true, disabled: false, visible: true, readOnly: false };
   const send = (message: unknown) => {
     const body = Buffer.from(JSON.stringify(message)), header = Buffer.alloc(body.length < 126 ? 2 : 4); header[0] = 0x81;
     if (body.length < 126) header[1] = body.length; else { header[1] = 126; header.writeUInt16BE(body.length, 2); }
@@ -64,7 +65,7 @@ async function fixture(origin = "https://account.example", frameOrigin = origin,
         }
         if (command.method === "Runtime.evaluate" && String(command.params.expression).includes("setter.call") && fillRequest) send({ method: "Fetch.requestPaused", sessionId: "root-session", params: { requestId: "fill-time", frameId: "root-frame", resourceType: "Fetch", request: { url: fillRequest, method: "POST", postData: "password=synthetic-secret" } } });
         const result = command.method === "Page.getFrameTree" ? { frameTree: { frame: { id: "root-frame", url: `${origin}${route}`, securityOrigin: origin, loaderId: "root-loader" }, ...(frameOrigin !== origin ? { childFrames: [{ frame: { id: "idp-frame", parentId: "root-frame", url: `${frameOrigin}/login`, securityOrigin: frameOrigin, loaderId: "idp-loader" } }] } : {}) } }
-          : command.method === "Runtime.evaluate" ? { result: { value: String(command.params.expression).includes("(() => !!document.querySelector") ? false : String(command.params.expression).includes("const captcha") ? field : String(command.params.expression).includes("const lines") ? "Login Password ordinary token documentation synthetic-secret" : { ok: true } } }
+          : command.method === "Runtime.evaluate" ? { result: { value: String(command.params.expression).includes("(() => !!document.querySelector") ? false : String(command.params.expression).includes("const captcha") ? field : String(command.params.expression).includes("const lines") ? "Login Password ordinary token documentation synthetic-secret" : String(command.params.expression).includes("const mode =") ? { moved: false, movements: [], ancestorsTruncated: false } : { ok: true, visible: field.visible } } }
           : command.method === "Target.createTarget" ? { targetId: "root" } : {};
         send({ id: command.id, ...(command.sessionId ? { sessionId: command.sessionId } : {}), result });
       }
@@ -83,7 +84,7 @@ async function fixture(origin = "https://account.example", frameOrigin = origin,
   cleanup.push(async () => { owner.abort(); lifetime.abort(); pages.dispose(); socket?.destroy(); server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())); });
   const pause = (id: string, url: string, postData?: string, frameId = "root-frame", resourceType = "Fetch") => send({ method: "Fetch.requestPaused", sessionId: "root-session", params: { requestId: id, frameId, resourceType, request: { url, method: postData === undefined ? "GET" : "POST", ...(postData === undefined ? {} : { postData }) } } });
   const result = async (id: string) => { await vi.waitFor(() => expect(commands.some(c => c.params.requestId === id)).toBe(true)); return commands.find(c => c.params.requestId === id)!; };
-  return { pages, state, bus, context, effects, commands, nativePaths, cleared, exec, pause, result, send, get inspections() { return inspections; }, stale: () => { valid = false; }, fillExport: (url: string) => { fillRequest = url; }, field: (next: Partial<typeof field>) => { field = { ...field, ...next }; } };
+  return { pages, state, bus, context, effects, commands, nativePaths, fileDecision, cleared, exec, pause, result, send, roundTrip: () => transport!.command("root", "Page.bringToFront"), get inspections() { return inspections; }, stale: () => { valid = false; }, fillExport: (url: string) => { fillRequest = url; }, field: (next: Partial<typeof field>) => { field = { ...field, ...next }; } };
 }
 
 describe("authorized login executor integration", () => {
@@ -91,7 +92,7 @@ describe("authorized login executor integration", () => {
     const f = await fixture();
     await f.pages.fill(f.state, "root", "#password", { secret_ref: "login" });
     expect(f.exec).toHaveBeenCalledTimes(1);
-    expect(f.effects.map(effect => effect.kind)).toEqual(["login", "login"]);
+    expect(f.effects.map(effect => effect.kind)).toEqual(["login"]);
     expect(JSON.stringify(f.effects)).not.toContain("synthetic-secret");
     expect(f.commands.findIndex(c => c.method === "Fetch.enable")).toBeLessThan(f.commands.findIndex(c => String(c.params.expression).includes("setter.call")));
     expect(await f.pages.snapshot(f.state, "root")).toContain("ordinary token documentation [REDACTED]");
@@ -108,6 +109,35 @@ describe("authorized login executor integration", () => {
     f.pause("url", "https://forum.example/?secret=synthetic-secret");
     expect((await f.result("url")).method).toBe("Fetch.failRequest");
     expect(JSON.stringify(f.effects)).not.toContain("synthetic-secret");
+  });
+  it("refuses newly protected metadata after resolution without a second policy decision", async () => {
+    const f = await fixture("https://synthetic-secret.example");
+    await expect(f.pages.fill(f.state, "root", "#password", { secret_ref: "login" })).rejects.toMatchObject({ code: "protected_metadata" });
+    expect(f.exec).toHaveBeenCalledOnce(); expect(f.effects).toHaveLength(1);
+    expect(f.commands.some(c => String(c.params.expression).includes("setter.call"))).toBe(false);
+  });
+  it.each(["control", "frame", "root", "warning", "identity", "disposal"])("retains post-secret %s revalidation without a second decision", async change => {
+    const f = await fixture("https://account.example", "https://idp.example");
+    f.exec.mockImplementationOnce(async () => {
+      // Model an asynchronous BWS reply, after the resolver installs cancellation listeners.
+      await Promise.resolve();
+      if (change === "control") f.field({ form: "https://attacker.example/collect" });
+      if (change === "frame" || change === "root") {
+        const frameId = change === "root" ? "root-frame" : "idp-frame";
+        f.send({ method: "Page.frameNavigated", sessionId: "root-session", params: { frame: { id: frameId, ...(change === "frame" ? { parentId: "root-frame" } : {}), url: "https://attacker.example/", securityOrigin: "https://attacker.example", loaderId: "changed" } } });
+        await f.roundTrip();
+      }
+      if (change === "warning") {
+        f.send({ method: "Page.interstitialShown", sessionId: "root-session", params: {} });
+        await f.roundTrip();
+      }
+      if (change === "identity") f.context.recordBrowserRequest("replacement", "interactive", "Read documentation instead");
+      if (change === "disposal") f.pages.dispose();
+      return { code: 0, killed: false, stdout: JSON.stringify({ key: "synthetic-key", value: "synthetic-secret" }), stderr: "" };
+    });
+    await expect(f.pages.fill(f.state, "root", "#password", { secret_ref: "login", frame_id: "idp-frame" })).rejects.toThrow();
+    expect(f.effects).toHaveLength(1);
+    expect(f.commands.some(c => String(c.params.expression).includes("setter.call"))).toBe(false);
   });
   it("creates guarded blank then navigates only to the returned canonical destination", async () => {
     const f = await fixture();
@@ -137,6 +167,35 @@ describe("authorized login executor integration", () => {
     f.pause("expired", url, undefined, "root-frame", "Document");
     expect((await f.result("expired")).method).toBe("Fetch.failRequest");
   });
+  it.each(["allow", "caller", "task", "disposal", "frame"])("keeps local-file observation decisions beyond 20 seconds and handles %s", async outcome => {
+    const f = await fixture(); await f.pages.select(f.state, "root");
+    const url = pathToFileURL(join(os.tmpdir(), "synthetic-browser-observation.html")).href;
+    f.send({ method: "Page.frameNavigated", sessionId: "root-session", params: { frame: { id: "root-frame", url, securityOrigin: "null", loaderId: "file-loader" } } });
+    f.send({ method: "Runtime.executionContextCreated", sessionId: "root-session", params: { context: { id: 3, auxData: { frameId: "root-frame", isDefault: true } } } });
+    await f.roundTrip();
+    let release!: () => void, pending!: AbortSignal;
+    f.fileDecision.mockImplementationOnce(async (_path, signal) => { pending = signal; await new Promise<void>(resolve => { release = resolve; }); return { outcome: "allow", reason: "Manual local-file decision" }; });
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    vi.spyOn(AbortSignal, "timeout").mockImplementation(ms => { const deadline = new AbortController(); setTimeout(() => deadline.abort(), ms); return deadline.signal; });
+    const caller = new AbortController();
+    let settled = false;
+    const observation = f.pages.snapshot(f.state, "root", caller.signal);
+    void observation.then(() => { settled = true; }, () => { settled = true; });
+    await vi.waitFor(() => expect(release).toBeDefined());
+    await vi.advanceTimersByTimeAsync(25_000);
+    expect(pending.aborted).toBe(false); expect(settled).toBe(false);
+    vi.useRealTimers(); vi.restoreAllMocks();
+    const result = outcome === "allow" ? expect(observation).resolves.toContain("origin=file://") : expect(observation).rejects.toThrow();
+    if (outcome === "caller") caller.abort();
+    if (outcome === "task") f.context.recordBrowserRequest("replacement", "interactive", "Replace file task");
+    if (outcome === "disposal") f.pages.dispose();
+    if (outcome === "frame") {
+      f.send({ method: "Page.frameNavigated", sessionId: "root-session", params: { frame: { id: "root-frame", url, securityOrigin: "null", loaderId: "replaced-file" } } });
+      await f.roundTrip();
+    }
+    release(); await result;
+    expect(f.fileDecision).toHaveBeenCalledOnce();
+  });
   it("guards immediate input/change-handler export before the filled control returns", async () => {
     const f = await fixture(); f.fillExport("https://attacker.example/collect");
     await f.pages.fill(f.state, "root", "#password", { secret_ref: "login" });
@@ -158,6 +217,16 @@ describe("authorized login executor integration", () => {
     expect((await f.result("login-only")).method).toBe("Fetch.continueRequest");
     f.pause("private-extra", "https://account.example/api/auth", "password=synthetic-secret&memo=ordinary%20token%20documentation");
     expect((await f.result("private-extra")).method).toBe("Fetch.failRequest");
+  });
+  it("scrolls only in the requested exact frame and refuses a stale browser identity", async () => {
+    const f = await fixture("https://account.example", "https://idp.example");
+    await f.pages.scroll(f.state, "root", { frame_id: "idp-frame", selector: "#pane", delta_y: 300 });
+    const scroll = f.commands.find(command => command.method === "Runtime.evaluate" && String(command.params.expression).includes("const mode ="));
+    expect(scroll?.params.contextId).toBe(2);
+    expect(f.effects.at(-1)?.target).toMatchObject({ frameId: "idp-frame", origin: "https://idp.example" });
+    f.stale();
+    await expect(f.pages.scroll(f.state, "root", { frame_id: "idp-frame", delta_y: 300 })).rejects.toThrow();
+    expect(f.commands.filter(command => command.method === "Runtime.evaluate" && String(command.params.expression).includes("const mode ="))).toHaveLength(1);
   });
   it("supports exact separately bound iframe SSO and refuses stale frames", async () => {
     const f = await fixture("https://account.example", "https://idp.example");
