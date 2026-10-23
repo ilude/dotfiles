@@ -230,19 +230,19 @@ async function cdpOnline(port: number): Promise<boolean> {
 	return (await probeCdp(port)).status === "ready";
 }
 
-async function waitForCdp(port: number, onProbe: (probe: CdpProbeResult) => void, signal?: AbortSignal, errorCode: "launch_failed" | "attach_failed" = "launch_failed"): Promise<void> {
+async function waitForCdp(port: number, onProbe: (probe: CdpProbeResult) => void, signal?: AbortSignal, errorCode: "launch_failed" | "attach_failed" = "launch_failed", timeoutMs = CDP_STARTUP_TIMEOUT_MS): Promise<void> {
 	const startedAt = Date.now();
-	while (Date.now() - startedAt < CDP_STARTUP_TIMEOUT_MS) {
+	while (Date.now() - startedAt < timeoutMs) {
 		if (signal?.aborted) throw new BrowserControlError("cancelled", "Browser operation was cancelled.");
-		const remainingMs = CDP_STARTUP_TIMEOUT_MS - (Date.now() - startedAt);
+		const remainingMs = timeoutMs - (Date.now() - startedAt);
 		const probe = await probeCdp(port, Math.min(2_000, Math.max(1, remainingMs)));
 		onProbe(probe);
 		if (probe.status === "ready") return;
 		const elapsedMs = Date.now() - startedAt;
-		if (elapsedMs >= CDP_STARTUP_TIMEOUT_MS) break;
-		await new Promise((resolve) => setTimeout(resolve, Math.min(cdpRetryDelay(elapsedMs), CDP_STARTUP_TIMEOUT_MS - elapsedMs)));
+		if (elapsedMs >= timeoutMs) break;
+		await new Promise((resolve) => setTimeout(resolve, Math.min(cdpRetryDelay(elapsedMs), timeoutMs - elapsedMs)));
 	}
-	throw new BrowserControlError(errorCode, `Brave CDP endpoint did not become available within 15 seconds.`);
+	throw new BrowserControlError(errorCode, `Brave CDP endpoint did not become available within ${timeoutMs / 1000} seconds.`);
 }
 
 const PROCESS_VERIFICATION_REUSE_MS = 2_000;
@@ -313,7 +313,7 @@ export class BrowserRuntime {
 		return { code: 0, stdout: `status: ${state.sessionMode === "attached" ? "attached session" : "owned session"} record found\nsessionMode: ${state.sessionMode ?? "owned"}\nprofileMode: ${state.profileMode}\ncdpOnline: ${online}\nprocessTupleVerified: ${verified}`, stderr: "" };
 	}
 
-	async attach(input: { profileAlias: string; extensionMode: ExtensionMode; cdpPort?: number; url?: string; signal?: AbortSignal }): Promise<BrowserCommandResult> {
+	async attach(input: { profileAlias: string; extensionMode: ExtensionMode; cdpPort?: number; url?: string; signal?: AbortSignal; timeoutMs?: number }): Promise<BrowserCommandResult> {
 		const statePath = getBrowserStatePath();
 		const old = loadBrowserState();
 		if (old && processMatches(old, await this.processes.inspect(old.pid))) throw new BrowserControlError("session_occupied", "An owned or attached browser session is already connected.");
@@ -325,7 +325,7 @@ export class BrowserRuntime {
 		const port = validateCdpPort(input.cdpPort ?? DEFAULT_CDP_PORT);
 		const executable = findBrave();
 		if (!executable) throw new BrowserControlError("brave_missing", "Brave executable not found; the attached process cannot be verified.");
-		await waitForCdp(port, () => {}, input.signal, "attach_failed");
+		await waitForCdp(port, () => {}, input.signal, "attach_failed", input.timeoutMs);
 		const expectedRoot = path.resolve(profile.userDataDir);
 		const candidates = (await this.processes.list()).filter((item) =>
 			canonical(item.executablePath) === canonical(executable)
@@ -357,7 +357,7 @@ export class BrowserRuntime {
 		return { code: 0, stdout: `attached: ${state.sessionId}`, stderr: "" };
 	}
 
-	async start(input: { profileMode: ProfileMode; profileAlias?: string; extensionMode: ExtensionMode; allowLocalhostTlsErrors?: boolean; url?: string; signal?: AbortSignal }): Promise<BrowserCommandResult> {
+	async start(input: { profileMode: ProfileMode; profileAlias?: string; extensionMode: ExtensionMode; allowLocalhostTlsErrors?: boolean; url?: string; signal?: AbortSignal; timeoutMs?: number }): Promise<BrowserCommandResult> {
 		const statePath = getBrowserStatePath();
 		const old = loadBrowserState();
 		if (old && processMatches(old, await this.processes.inspect(old.pid))) throw new BrowserControlError("session_occupied", "An owned browser session is already running.");
@@ -385,7 +385,7 @@ export class BrowserRuntime {
 		child.stderr?.on("data", (chunk: Buffer) => { stderrBytes += chunk.length; });
 		child.on("error", (error) => { spawnError = error.name; });
 		try {
-			await waitForCdp(port, (probe) => { lastProbe = probe; }, input.signal);
+			await waitForCdp(port, (probe) => { lastProbe = probe; }, input.signal, "launch_failed", input.timeoutMs);
 		} catch (error) {
 			const observedAtFailure = await this.processes.list();
 			const markerMatches = observedAtFailure.filter((item) => item.marker === marker && item.port === String(port));

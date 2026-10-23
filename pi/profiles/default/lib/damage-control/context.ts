@@ -78,6 +78,7 @@ export class Context {
   private policyIdentity: PolicyIdentity = { sessionId: "", branchId: "", generation: this.policyEpoch };
   private requests: TrustedRequest[] = [];
   private bindings: IntentBinding[] = [];
+  private previousTask: BrowserIntentRecord | undefined;
   private observations: BrowserObservation[] = [];
   private lifetime = new AbortController();
   get identity(): PolicyIdentity { return { ...this.policyIdentity }; }
@@ -119,7 +120,8 @@ export class Context {
     return { callId, operation, operator, ...(conversation ? { conversation: conversation.messages } : {}), ...(pendingCall ? { pendingCall } : {}), untrusted: { effects, priorEffects: [], variables: variables.map(item => ({ ...item })), ...(sequence ? { sequence } : {}), matches, uncertainties }, omissions };
   }
   /** Caller passes native interactive/RPC input and its persisted request ID.
-   * A new task replaces bindings, so a previous login is not future authority.
+   * Every input expires action approvals. Only an independently interpreted
+   * continuation may carry the previous task's established scope forward.
    * Never call with tool results, assistant claims, or compaction summaries.
    */
   recordBrowserRequest(id: string, source: unknown, text: unknown): TrustedRequest | undefined {
@@ -128,11 +130,30 @@ export class Context {
     // make already model-visible private data public. Retain bounded local
     // source facts only within this native session/branch, not on restoration.
     const privateSources = this.observations.filter(o => o.classification !== "public");
+    const previousTask = this.browserIntentRecords()[0];
     this.invalidateBrowser();
+    this.previousTask = previousTask?.bindings.some(b => b.basis === "independent-interpretation") ? previousTask : undefined;
     this.observations = privateSources.map(o => ({ ...o, identity: this.identity }));
     const request: TrustedRequest = { id, source, text, directText: directRequestText(text), identity: this.identity };
     this.requests = [request];
     return structuredClone(request);
+  }
+  /** Context for the independent interpreter, never a pending-action approval. */
+  previousBrowserTask(): BrowserIntentRecord | undefined {
+    return this.previousTask ? structuredClone(this.previousTask) : undefined;
+  }
+  /** Rebind only the unchanged, independently established task after interpretation.
+   * Old signals remain aborted; manual decisions and in-flight actions never return.
+   */
+  continueBrowserTask(requestId: string): boolean {
+    const current = this.requests[0], previous = this.previousTask;
+    if (!current || current.id !== requestId || !samePolicyIdentity(current.identity, this.identity) || !previous) return false;
+    const bindings = previous.bindings.filter(b => b.basis === "independent-interpretation");
+    if (!bindings.length) return false;
+    this.requests = [{ ...structuredClone(previous.request), directText: directRequestText(previous.request.text), identity: this.identity }];
+    this.bindings = bindings.map(b => ({ ...structuredClone(b), identity: this.identity }));
+    this.previousTask = undefined;
+    return true;
   }
   /** Only independent Damage Control interpretation creates reusable scope.
    * Manual approval covers the pending action, never a future intent binding.
@@ -187,7 +208,7 @@ export class Context {
   private invalidateBrowser(): number {
     this.lifetime.abort();
     this.lifetime = new AbortController();
-    this.requests = []; this.bindings = []; this.observations = [];
+    this.requests = []; this.bindings = []; this.observations = []; this.previousTask = undefined;
     this.generationValue += 1;
     this.policyIdentity = { ...this.policyIdentity, generation: this.policyEpoch + this.generationValue };
     return this.generationValue;

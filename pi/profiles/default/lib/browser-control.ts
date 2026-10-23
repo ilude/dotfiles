@@ -437,7 +437,7 @@ export class BrowserPageProtocol {
 	constructor(options?: BrowserPageOptions) { this.options = options; }
 	setObservationHooks(hooks: BrowserObservationHooks): void { if (this.options) this.options.observations = hooks; }
 	private settings(): BrowserPageOptions { if (!this.options) throw new BrowserControlError("policy_unavailable", "Browser policy is unavailable."); return this.options; }
-	private async connection(state: BrowserSessionState, signal?: AbortSignal): Promise<BrowserCdpTransport> {
+	private async connection(state: BrowserSessionState, signal?: AbortSignal, timeoutMs?: number): Promise<BrowserCdpTransport> {
 		const options = this.settings(), identity = options.identity();
 		if (this.sessionId !== state.sessionId || (this.identity && !samePolicyIdentity(this.identity, identity))) this.dispose();
 		this.sessionId = state.sessionId; this.identity = { ...identity };
@@ -457,14 +457,14 @@ export class BrowserPageProtocol {
 				} });
 				this.guard = guard;
 				const lifetime = this.lifetime;
-				const transport = await options.runtime.connectTransport(state, { register: guard.register, signal: lifetime.signal });
+				const transport = await options.runtime.connectTransport(state, { register: guard.register, signal: lifetime.signal, timeoutMs });
 				if (lifetime.signal.aborted || !samePolicyIdentity(identity, options.identity())) { transport.dispose(); throw new BrowserControlError("cancelled", "Browser task changed during connection."); }
 				guard.bind(transport); this.transport = transport; return transport;
 			})();
 			try { await this.connecting; } catch (error) { this.dispose(); throw error; } finally { this.connecting = undefined; }
 		}
 		await this.transport!.revalidate(signal);
-		return this.transport!;
+		return timeoutMs === undefined ? this.transport! : this.transport!.withCommandTimeout(timeoutMs);
 	}
 	private requestEffect(facts: BrowserRequestFacts): BrowserRequestProjection {
 		// No active login flag: every request uses its actual destination and local payload facts.
@@ -495,28 +495,28 @@ export class BrowserPageProtocol {
 		const sources = this.options?.observations?.payload?.(`${raw}\n${body ?? ''}`) ?? { sourceObservationIds: [], containsProtectedData: false };
 		return { kind: consequential ?? (sources.containsProtectedData || sources.sourceObservationIds.length ? "export" : facts.method === "GET" || facts.method === "HEAD" ? "read" : "export"), payload: unknown || facts.hasBody || sources.containsProtectedData || sources.sourceObservationIds.length ? { kind: "redacted", sourceObservationIds: sources.sourceObservationIds, containsProtectedData: unknown || sources.containsProtectedData } : { kind: "none" }, taskScoped: false, ...(browserAccountRoute(facts.rawUrl) ? { targetVisibility: "private" as const, destinationVisibility: "private" as const } : {}) };
 	}
-	async list(state: BrowserSessionState, signal?: AbortSignal): Promise<BrowserTarget[]> {
-		const transport = await this.connection(state, signal);
+	async list(state: BrowserSessionState, signal?: AbortSignal, timeoutMs?: number): Promise<BrowserTarget[]> {
+		const transport = await this.connection(state, signal, timeoutMs);
 		const bounded = AbortSignal.any([transport.signal, AbortSignal.timeout(10_000), ...(signal ? [signal] : [])]);
 		const targets = (await fetchJson<BrowserTarget[]>(`http://127.0.0.1:${state.cdpPort}/json/list`, { signal: bounded })).filter(target => target.type === "page").slice(0, MAX_ITEMS);
 		await transport.revalidate(bounded);
 		return targets.map(target => ({ ...target, url: this.filter(target.url) }));
 	}
-	private async target(state: BrowserSessionState, targetId: string, signal?: AbortSignal): Promise<BrowserCdpTransport> {
-		const transport = await this.connection(state, signal);
+	private async target(state: BrowserSessionState, targetId: string, signal?: AbortSignal, timeoutMs?: number): Promise<BrowserCdpTransport> {
+		const transport = await this.connection(state, signal, timeoutMs);
 		await transport.manage(targetId, signal); this.guard!.assertSafe(targetId);
 		return transport;
 	}
-	async open(state: BrowserSessionState, url: string, signal?: AbortSignal): Promise<BrowserTarget> {
-		const transport = await this.connection(state, signal);
+	async open(state: BrowserSessionState, url: string, signal?: AbortSignal, timeoutMs?: number): Promise<BrowserTarget> {
+		const transport = await this.connection(state, signal, timeoutMs);
 		signal = this.actionSignal(transport, signal);
 		const target = await transport.create(signal);
 		const destination = await this.guard!.authorizeNavigation(target.targetId, url, signal);
 		await transport.command(target.targetId, "Page.navigate", { url: destination.url }, { signal });
 		return { id: target.targetId, url: destination.url, type: "page" };
 	}
-	async select(state: BrowserSessionState, targetId: string, signal?: AbortSignal): Promise<void> {
-		const transport = await this.target(state, targetId, signal);
+	async select(state: BrowserSessionState, targetId: string, signal?: AbortSignal, timeoutMs?: number): Promise<void> {
+		const transport = await this.target(state, targetId, signal, timeoutMs);
 		const frame = await this.frame(transport, targetId, undefined, signal);
 		if (/^https?:/.test(frame.securityOrigin)) await this.observePrivacy(transport, frame, signal);
 		if (/^https?:/.test(frame.securityOrigin)) await this.authorize(targetId, frame, "read", { kind: "none" }, "Select exact page account/read context", undefined, signal);
@@ -536,14 +536,14 @@ export class BrowserPageProtocol {
 		return response.result.value;
 	}
 	private filter(text: string): string { return projectBrowserText(text, [...this.protectedValues]); }
-	async frames(state: BrowserSessionState, targetId: string, signal?: AbortSignal): Promise<Array<{ id: string; targetId: string; origin: string }>> {
-		const transport = await this.target(state, targetId, signal);
+	async frames(state: BrowserSessionState, targetId: string, signal?: AbortSignal, timeoutMs?: number): Promise<Array<{ id: string; targetId: string; origin: string }>> {
+		const transport = await this.target(state, targetId, signal, timeoutMs);
 		const ids = [...new Set((await transport.frameList(targetId, signal)).map(frame => frame.frameId))].slice(0, MAX_ITEMS);
 		const frames = await Promise.all(ids.map(id => transport.frame(targetId, id, signal)));
 		return frames.map(frame => ({ id: frame.frameId, targetId: frame.targetId, origin: this.filter(frameOrigin(frame)) }));
 	}
-	async snapshot(state: BrowserSessionState, targetId: string, signal?: AbortSignal, frameId?: string, selector?: string): Promise<string> {
-		const transport = await this.target(state, targetId, signal), frame = await this.frame(transport, targetId, frameId, signal);
+	async snapshot(state: BrowserSessionState, targetId: string, signal?: AbortSignal, frameId?: string, selector?: string, timeoutMs?: number): Promise<string> {
+		const transport = await this.target(state, targetId, signal, timeoutMs), frame = await this.frame(transport, targetId, frameId, signal);
 		await this.observePrivacy(transport, frame, signal);
 		await this.authorize(targetId, frame, "read", { kind: "none" }, "Observe rendered page labels without control values", undefined, signal);
 		const text = await this.evaluate<string | { error: string }>(transport, frame, browserTextExpression(selector), signal);
@@ -552,9 +552,9 @@ export class BrowserPageProtocol {
 		const filtered = this.filter(text);
 		return this.settings().observations?.text ? await this.settings().observations!.text!(filtered, { targetId, frameId: frame.frameId, origin: frameOrigin(frame) }, [...this.protectedValues], signal) : filtered;
 	}
-	async scroll(state: BrowserSessionState, targetId: string, input: BrowserScroll, signal?: AbortSignal): Promise<BrowserScrollResult> {
+	async scroll(state: BrowserSessionState, targetId: string, input: BrowserScroll, signal?: AbortSignal, timeoutMs?: number): Promise<BrowserScrollResult> {
 		validateScroll(input);
-		const transport = await this.target(state, targetId, signal), frame = await this.frame(transport, targetId, input.frame_id, signal);
+		const transport = await this.target(state, targetId, signal, timeoutMs), frame = await this.frame(transport, targetId, input.frame_id, signal);
 		signal = this.actionSignal(transport, signal);
 		const identity = { ...this.settings().identity() };
 		await this.observePrivacy(transport, frame, signal);
@@ -565,8 +565,8 @@ export class BrowserPageProtocol {
 		await this.revalidateAction(identity, targetId, frame, signal);
 		return result;
 	}
-	async screenshot(state: BrowserSessionState, targetId: string, outputPath: string, signal?: AbortSignal): Promise<{ origin: string; classification: "public" | "private" }> {
-		const transport = await this.target(state, targetId, signal);
+	async screenshot(state: BrowserSessionState, targetId: string, outputPath: string, signal?: AbortSignal, timeoutMs?: number): Promise<{ origin: string; classification: "public" | "private" }> {
+		const transport = await this.target(state, targetId, signal, timeoutMs);
 		const root = await this.frame(transport, targetId, undefined, signal);
 		await this.observePrivacy(transport, root, signal);
 		await this.authorize(targetId, root, "read", { kind: "none" }, "Capture actual page observation with sensitive controls masked", undefined, signal);
@@ -653,8 +653,8 @@ export class BrowserPageProtocol {
 		if (decision.outcome !== "allow") throw new BrowserControlError("action_refused", decision.reason);
 		await this.revalidateAction(identity, targetId, frame, pending);
 	}
-	async click(state: BrowserSessionState, targetId: string, selector: string, signal?: AbortSignal, frameId?: string): Promise<BrowserActionResult> {
-		const transport = await this.target(state, targetId, signal), frame = await this.frame(transport, targetId, frameId, signal), facts = await this.inspect(transport, frame, targetId, selector, signal);
+	async click(state: BrowserSessionState, targetId: string, selector: string, signal?: AbortSignal, frameId?: string, timeoutMs?: number): Promise<BrowserActionResult> {
+		const transport = await this.target(state, targetId, signal, timeoutMs), frame = await this.frame(transport, targetId, frameId, signal), facts = await this.inspect(transport, frame, targetId, selector, signal);
 		signal = this.actionSignal(transport, signal);
 		await this.authorize(targetId, frame, this.classify(facts, frame, false), { kind: "none" }, state.sessionMode === "attached" ? "Click actual control; attached page traffic is not intercepted or independently approved" : "Click actual control; resulting intercepted transfers are independently guarded", facts, signal);
 		const navigation = facts.href ? await this.guard!.authorizeNavigation(targetId, facts.href, signal) : undefined;
@@ -664,10 +664,10 @@ export class BrowserPageProtocol {
 		if (!result.ok) this.controlFailure(result.error, frame, targetId);
 		return { visible: result.visible === true };
 	}
-	async fill(state: BrowserSessionState, targetId: string, selector: string, input: string | BrowserFill, signal?: AbortSignal): Promise<BrowserActionResult> {
+	async fill(state: BrowserSessionState, targetId: string, selector: string, input: string | BrowserFill, signal?: AbortSignal, timeoutMs?: number): Promise<BrowserActionResult> {
 		const fill = typeof input === "string" ? { value: input } : input;
 		if ((fill.value === undefined) === (fill.secret_ref === undefined)) throw new BrowserControlError("value_required", "Fill requires exactly one of value or secret_ref.");
-		const transport = await this.target(state, targetId, signal), frame = await this.frame(transport, targetId, fill.frame_id, signal), facts = await this.inspect(transport, frame, targetId, selector, signal);
+		const transport = await this.target(state, targetId, signal, timeoutMs), frame = await this.frame(transport, targetId, fill.frame_id, signal), facts = await this.inspect(transport, frame, targetId, selector, signal);
 		signal = this.actionSignal(transport, signal);
 		const identity = { ...this.settings().identity() };
 		if (facts.readOnly) this.controlFailure("control_readonly", frame, targetId);
@@ -708,8 +708,8 @@ export class BrowserPageProtocol {
 		if (!result.ok) this.controlFailure(result.error, frame, targetId);
 		return { visible: result.visible === true };
 	}
-	async close(state: BrowserSessionState, targetId: string, signal?: AbortSignal): Promise<void> {
-		const transport = await this.target(state, targetId, signal);
+	async close(state: BrowserSessionState, targetId: string, signal?: AbortSignal, timeoutMs?: number): Promise<void> {
+		const transport = await this.target(state, targetId, signal, timeoutMs);
 		await transport.command(targetId, "Target.closeTarget", { targetId }, { signal });
 	}
 	dispose(): void { if (this.ownerAbort) this.ownerAbort.signal.removeEventListener("abort", this.ownerAbort.handler); this.ownerAbort = undefined; this.lifetime.abort(); this.lifetime = new AbortController(); this.guard?.dispose(); this.options?.runtime.disposeTransport(); this.transport = undefined; this.guard = undefined; this.connecting = undefined; this.sessionId = undefined; this.identity = undefined; this.protectedValues.clear(); this.protectedControls.clear(); this.transfers = []; this.privateFrames.clear(); this.options?.observations?.clear?.(); }

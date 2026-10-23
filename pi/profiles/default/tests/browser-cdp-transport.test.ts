@@ -142,6 +142,21 @@ describe("persistent CDP wire", () => {
 });
 
 describe("session-owned managed identity", () => {
+	it("keeps scoped command timeouts local while using the retained owner socket and mappings", async () => {
+		const { wire, transport } = await managedFixture(); await transport.manage("root");
+		const scoped = transport.withCommandTimeout(20);
+		expect(scoped.signal).toBe(transport.signal);
+		expect(scoped.managedTargets()).toEqual(transport.managedTargets());
+		wire.setHandler(command => command.method === "slow");
+		const ordinary = transport.command("root", "slow");
+		await expect(scoped.command("root", "slow")).rejects.toMatchObject({ code: "cdp_timeout" });
+		const command = wire.commands.find(command => command.method === "slow")!;
+		wire.send({ id: command.id, sessionId: command.sessionId, result: { ordinary: true } });
+		await expect(ordinary).resolves.toEqual({ ordinary: true });
+		expect(await scoped.command("root", "fast")).toEqual({ echoed: {} });
+		expect(wire.upgrades()).toBe(1);
+	});
+
 	it("registers exact selected roots and descendant guards before activity without touching unrelated tabs", async () => {
 		const { wire, transport, registrations } = await managedFixture();
 		await transport.manage("selected-raw-id");

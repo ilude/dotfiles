@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-10-23: Carry browser task context through follow-ups and honor timeout overrides
+
+- Browser intent interpretation uses the active task and bounded recent conversation to distinguish continuation from a new, cancelled, or completed task. Reload acknowledgments and manual login-step completion can retain established scope without repeating the full request. Known private browser observations are excluded from interpretation context, and one-time approvals are not retained or renewed.
+- Explicit browser `timeout_ms` values reach CDP operations as well as the overall call deadline, so a longer call can extend the normal 30-second command limit. Overrides remain per-call; request-policy, automated-review, and resource-check deadlines remain separate.
+- Reload default Pi with no active or retained subagents, or restart it, to load these changes. No live browser interaction, login, commit, or publication is included.
+
 ## 2026-10-23: Avoid reviewing one approved browser navigation twice
 
 - An explicit HTTP/HTTPS navigation previously received a policy decision, then its intercepted initial Document could require another review under the background 10-second deadline. The same approved navigation now carries a one-shot identity/target/frame/URL-bound dispatch lease, analogous to the existing file-navigation lease.

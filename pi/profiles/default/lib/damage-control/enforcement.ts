@@ -7,13 +7,13 @@ import { analyzeRequest, type AnalysisDependencies } from "./analysis.ts";
 import { Breaker, fingerprint, type BreakerSnapshot } from "./breaker.ts";
 import { bypassEligibility } from "./bypass.ts";
 import { authorizedPlanIntegration } from "./plan-integration-authority.ts";
-import { Context, BROWSER_INTENT_ENTRY, DIRECT_INPUT_LIMIT, processVariableEvidence } from "./context.ts";
+import { Context, BROWSER_INTENT_ENTRY, DIRECT_INPUT_LIMIT, activeConversation, processVariableEvidence } from "./context.ts";
 import { decide, applyContextualEffect, contextualEffect } from "./engine.ts";
 import { classifyInspection } from "./inspection.ts";
 import { reviewInspection } from "./inspection-judge.ts";
 import { randomUUID } from "node:crypto";
 import { bindBrowserPolicy, samePolicyIdentity, type BrowserEffect, type IntentScope, type TrustedRequest } from "../browser-effect-contract.ts";
-import { interpretBrowserRequest } from "./judge.ts";
+import { interpretBrowserRequest, type BrowserIntentContext, type BrowserIntentInterpretation } from "./judge.ts";
 import { loadPolicy } from "./policy.ts";
 import type { PathFacts } from "./paths.ts";
 import { promptDecision } from "./prompt.ts";
@@ -29,7 +29,7 @@ export type GateDependencies = AnalysisDependencies & {
   scriptReview?: (request: ScriptReviewRequest) => Promise<unknown>;
   scriptScan?: (cwd: string, origin: string, notify: (message: string, level?: "info" | "warning") => void, signal?: AbortSignal) => Promise<unknown>;
   cancelScriptReviews?: () => void;
-  interpretIntent?: (request: TrustedRequest, ctx: ExtensionContext, settings: Settings, signal: AbortSignal) => Promise<IntentScope[]>;
+  interpretIntent?: (request: TrustedRequest, ctx: ExtensionContext, settings: Settings, signal: AbortSignal, context?: BrowserIntentContext) => Promise<IntentScope[] | BrowserIntentInterpretation>;
 };
 const WATCHDOG_STATE = "damage-control-watchdog";
 const JUDGE_REVIEW_LOG = "damage-control-judge-review-v1";
@@ -83,9 +83,21 @@ export function registerGate(pi: ExtensionAPI, profile: string, repo: string, de
     if (!request) return;
     persistIntent();
     const signal = context.policySignal;
-    intentReady = (dependencies.interpretIntent ?? interpretBrowserRequest)(request, ctx, dependencies.settings, signal).then(scopes => {
+    const task = context.previousBrowserTask();
+    const interpretationContext: BrowserIntentContext = { ...(task ? { task } : {}),
+      // Conversation disambiguates manual-step completion, never supplies scope.
+      // Keep known private observation text local, without summaries or backfill.
+      conversation: activeConversation(ctx.sessionManager.getBranch()).messages.slice(-8).filter(m => context.privateSources(m.text).length === 0),
+    };
+    intentReady = (dependencies.interpretIntent ?? interpretBrowserRequest)(request, ctx, dependencies.settings, signal, interpretationContext).then(result => {
       if (signal.aborted || !samePolicyIdentity(request.identity, context.identity)) return;
-      for (const scope of scopes) context.bindBrowserIntent(request.id, request.directText, scope, "independent-interpretation");
+      // Array results are standalone replacement scopes from injected interpreters.
+      // Continuation can only rebind unchanged independent scope, not model-created
+      // scopes or one-time operator decisions from a pending action.
+      if (!Array.isArray(result) && result.task === "continue") context.continueBrowserTask(request.id);
+      else if (Array.isArray(result) || result.task === "replace") {
+        for (const scope of Array.isArray(result) ? result : result.scopes) context.bindBrowserIntent(request.id, request.directText, scope, "independent-interpretation");
+      }
       persistIntent();
     }).catch(() => {});
   };

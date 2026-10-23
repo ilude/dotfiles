@@ -276,7 +276,7 @@ describe("session and page boundaries", () => {
 		expect(list.structuredContent.targets).toEqual([{ id: "exact-id", type: "page", url: "https://example.test/path" }]);
 		expect(Value.Check(tool.outputSchema, list.structuredContent)).toBe(true);
 		const snapshot = await tool.execute("snapshot", { action: "snapshot", session_id: "session-1", target_id: "exact-id", frame_id: "exact-frame", selector: "#subtree" });
-		expect(browserControl.BrowserPageProtocol.prototype.snapshot).toHaveBeenCalledWith(expect.anything(), "exact-id", undefined, "exact-frame", "#subtree");
+		expect(browserControl.BrowserPageProtocol.prototype.snapshot).toHaveBeenCalledWith(expect.anything(), "exact-id", undefined, "exact-frame", "#subtree", undefined);
 		expect(snapshot.structuredContent.snapshot).toBe(snapshot.content[0].text);
 		expect(snapshot.structuredContent.snapshot).toContain("#field\\\\:name");
 		expect(Value.Check(tool.outputSchema, snapshot.structuredContent)).toBe(true);
@@ -296,7 +296,7 @@ describe("session and page boundaries", () => {
 		expect(Value.Check(tool.parameters, params)).toBe(true);
 		expect(Value.Check(tool.parameters, { ...params, delta_y: 2001 })).toBe(false);
 		const result = await tool.execute("scroll", params);
-		expect(execute).toHaveBeenCalledWith(expect.anything(), "exact-id", { frame_id: "exact-frame", scroll_mode: "by", selector: "#box", delta_y: 500, delta_x: undefined }, undefined);
+		expect(execute).toHaveBeenCalledWith(expect.anything(), "exact-id", { frame_id: "exact-frame", scroll_mode: "by", selector: "#box", delta_y: 500, delta_x: undefined }, undefined, undefined);
 		expect(result.structuredContent.scroll).toEqual(scroll);
 		expect(result.content[0].text).toContain("virtualized content may remain unread");
 		expect(Value.Check(tool.outputSchema!, result.structuredContent)).toBe(true);
@@ -311,6 +311,35 @@ describe("session and page boundaries", () => {
 		expect(Value.Check(tool.outputSchema!, result.structuredContent)).toBe(true);
 	});
 
+	it.each(["list", "open", "select", "snapshot", "scroll", "screenshot", "click", "fill", "close"] as const)("forwards the call-local timeout for page %s", async action => {
+		vi.spyOn(browserControl, "loadBrowserState").mockReturnValue(state());
+		vi.spyOn(browserControl, "saveBrowserState").mockResolvedValue();
+		const responses = { list: [], open: { id: "exact-id", url: "https://public.example/" }, select: undefined, snapshot: "Public text", scroll: { moved: false, movements: [], ancestorsTruncated: false }, screenshot: { origin: "https://public.example", classification: "public" }, click: { visible: true }, fill: { visible: true }, close: undefined };
+		const method = vi.spyOn(browserControl.BrowserPageProtocol.prototype, action).mockResolvedValue(responses[action] as never);
+		const frames = vi.spyOn(browserControl.BrowserPageProtocol.prototype, "frames").mockResolvedValue([]);
+		const pi = createMockPi(); registerBrowserControl(pi as never);
+		const tool = pi._getTool("browser_page")!;
+		const params = { action, session_id: "session-1", target_id: "exact-id", url: "https://public.example/", selector: "#control", value: "disposable", delta_y: 100, output_path: "image.png" };
+		await tool.execute("extended", { ...params, timeout_ms: 60_000 }, undefined, undefined, { cwd: "/synthetic" } as never);
+		expect(method.mock.calls[0]?.at(-1)).toBe(60_000);
+		if (action === "snapshot") expect(frames.mock.calls[0]?.at(-1)).toBe(60_000);
+		await tool.execute("default", params, undefined, undefined, { cwd: "/synthetic" } as never);
+		expect(method.mock.calls[1]?.at(-1)).toBeUndefined();
+	});
+
+	it.each(["caller", "deadline"] as const)("keeps the outer %s abort active with an extended CDP budget", async source => {
+		vi.spyOn(browserControl, "loadBrowserState").mockReturnValue(state());
+		const caller = new AbortController(), deadline = new AbortController();
+		const timeout = vi.spyOn(AbortSignal, "timeout").mockReturnValue(deadline.signal);
+		const close = vi.spyOn(browserControl.BrowserPageProtocol.prototype, "close").mockImplementation(async (_state, _target, signal) => await new Promise<void>((_resolve, reject) => signal!.addEventListener("abort", () => reject(new BrowserControlError("cancelled", "Synthetic cancellation")), { once: true })));
+		const pi = createMockPi(); registerBrowserControl(pi as never);
+		const pending = pi._getTool("browser_page")!.execute("close", { action: "close", session_id: "session-1", target_id: "exact-id", timeout_ms: 60_000 }, caller.signal);
+		const rejected = expect(pending).rejects.toMatchObject({ code: "cancelled" });
+		expect(close.mock.calls[0]?.at(-1)).toBe(60_000);
+		expect(timeout).toHaveBeenCalledWith(60_000);
+		(source === "caller" ? caller : deadline).abort(); await rejected;
+	});
+
 	it("starts and attaches without an unguarded runtime URL then delegates guarded page initialization", async () => {
 		vi.spyOn(browserControl, "loadBrowserState").mockReturnValue(state());
 		vi.spyOn(browserControl, "resolveConfiguredProfile").mockReturnValue({ userDataDir: "/synthetic", profileDirectory: "Default", displayName: "Synthetic" });
@@ -319,11 +348,28 @@ describe("session and page boundaries", () => {
 		const open = vi.spyOn(browserControl.BrowserPageProtocol.prototype, "open").mockResolvedValue({ id: "new-exact", url: "https://account.example/login", type: "page" });
 		vi.spyOn(browserControl, "saveBrowserState").mockResolvedValue();
 		const pi = createMockPi(); registerBrowserControl(pi as never); const tool = pi._getTool("browser_session")!;
-		await tool.execute("start", { action: "start", url: "https://account.example/login", allow_localhost_tls_errors: true });
-		await tool.execute("attach", { action: "attach", profile_alias: "synthetic", url: "https://account.example/login" });
+		await tool.execute("start", { action: "start", url: "https://account.example/login", allow_localhost_tls_errors: true, timeout_ms: 60_000 });
+		await tool.execute("attach", { action: "attach", profile_alias: "synthetic", url: "https://account.example/login", timeout_ms: 90_000 });
 		expect(start.mock.calls[0]?.[0]).not.toHaveProperty("url"); expect(attach.mock.calls[0]?.[0]).not.toHaveProperty("url");
-		expect(start.mock.calls[0]?.[0]).toMatchObject({ allowLocalhostTlsErrors: true });
+		expect(start.mock.calls[0]?.[0]).toMatchObject({ allowLocalhostTlsErrors: true, timeoutMs: 60_000 });
+		expect(attach.mock.calls[0]?.[0]).toMatchObject({ timeoutMs: 90_000 });
 		expect(open).toHaveBeenCalledTimes(2);
+		expect(open.mock.calls[0]?.at(-1)).toBe(60_000);
+		expect(open.mock.calls[1]?.at(-1)).toBe(90_000);
+	});
+
+	it("forwards a restart timeout to relaunch and guarded initial navigation", async () => {
+		const saved = state();
+		vi.spyOn(browserControl, "loadBrowserState").mockReturnValue(saved);
+		vi.spyOn(browserControl, "saveBrowserState").mockResolvedValue();
+		vi.spyOn(browserControl, "resolveConfiguredProfile").mockReturnValue({ userDataDir: "/synthetic", profileDirectory: "Default", displayName: "Synthetic" });
+		vi.spyOn(browserControl.BrowserSessionProtocol.prototype, "stop").mockResolvedValue({ code: 0, stdout: "close-owned: stopped", stderr: "" });
+		const start = vi.spyOn(browserControl.BrowserSessionProtocol.prototype, "start").mockResolvedValue({ code: 0, stdout: "restarted", stderr: "" });
+		const open = vi.spyOn(browserControl.BrowserPageProtocol.prototype, "open").mockResolvedValue({ id: "new", url: "https://public.example/" });
+		const pi = createMockPi(); registerBrowserControl(pi as never);
+		await pi._getTool("browser_session")!.execute("restart", { action: "restart", restart_authorization: restartAuthorization(saved), url: "https://public.example/", timeout_ms: 60_000 });
+		expect(start.mock.calls[0]?.[0]).toMatchObject({ timeoutMs: 60_000, signal: expect.any(AbortSignal) });
+		expect(open.mock.calls[0]?.at(-1)).toBe(60_000);
 	});
 
 	it("adds only Chromium's localhost-scoped TLS exception when explicitly requested", () => {

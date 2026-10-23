@@ -35,7 +35,7 @@ const PAGE_ACTIONS = ["list", "open", "select", "snapshot", "scroll", "screensho
 
 const SessionParameters = Type.Object({
 	action: StringEnum(SESSION_ACTIONS),
-	timeout_ms: Type.Optional(Type.Integer({ minimum: 1_000, maximum: 300_000, description: "Optional overall tool-call timeout in milliseconds; default 30000." })),
+	timeout_ms: Type.Optional(Type.Integer({ minimum: 1_000, maximum: 300_000, description: "Optional overall call deadline and CDP timeout in milliseconds; CDP commands default to 30000. Policy deadlines remain separate." })),
 	profile_mode: Type.Optional(StringEnum(["isolated", "real"] as const)),
 	profile_alias: Type.Optional(Type.String()),
 	cdp_port: Type.Optional(Type.Integer({ minimum: 1, maximum: 65535 })),
@@ -47,7 +47,7 @@ const SessionParameters = Type.Object({
 
 const PageParameters = Type.Object({
 	action: StringEnum(PAGE_ACTIONS),
-	timeout_ms: Type.Optional(Type.Integer({ minimum: 1_000, maximum: 300_000, description: "Optional overall tool-call timeout in milliseconds; default 30000." })),
+	timeout_ms: Type.Optional(Type.Integer({ minimum: 1_000, maximum: 300_000, description: "Optional overall call deadline and CDP timeout in milliseconds; CDP commands default to 30000. Policy deadlines remain separate." })),
 	session_id: Type.String(),
 	target_id: Type.Optional(Type.String()),
 	url: Type.Optional(Type.String()),
@@ -222,10 +222,10 @@ export default function registerBrowserControl(pi: ExtensionAPI) {
 	pi.on("session_before_switch", dispose);
 	pi.on("session_tree", dispose);
 	pi.on("input", event => { if ((event.source === "interactive" || event.source === "rpc") && !event.streamingBehavior) dispose(); });
-	const navigateInitial = async (url: string | undefined, signal?: AbortSignal) => {
+	const navigateInitial = async (url: string | undefined, signal?: AbortSignal, timeoutMs?: number) => {
 		if (!url || !state) return;
 		try {
-			const target = await pages.open(state, url, signal); state = { ...state, targetId: target.id }; await saveBrowserState(state);
+			const target = await pages.open(state, url, signal, timeoutMs); state = { ...state, targetId: target.id }; await saveBrowserState(state);
 		} catch (error) { throw pages.diagnosticError(error); }
 	};
 
@@ -288,10 +288,10 @@ export default function registerBrowserControl(pi: ExtensionAPI) {
 					resolveConfiguredProfile(input.profile_alias);
 				}
 				dispose();
-				const command = await sessions.start({ profileMode, profileAlias: input.profile_alias, extensionMode: input.extension_mode ?? "enabled", allowLocalhostTlsErrors: input.allow_localhost_tls_errors ?? false, signal });
+				const command = await sessions.start({ profileMode, profileAlias: input.profile_alias, extensionMode: input.extension_mode ?? "enabled", allowLocalhostTlsErrors: input.allow_localhost_tls_errors ?? false, signal, timeoutMs: input.timeout_ms });
 				state = loadBrowserState();
 				if (!state) throw new BrowserControlError("state_missing", "Brave started without a complete ownership record.");
-				await navigateInitial(input.url, signal);
+				await navigateInitial(input.url, signal, input.timeout_ms);
 				return toolResult(command.stdout || "Browser session started.", { state: publicState(state) });
 			}
 
@@ -300,10 +300,10 @@ export default function registerBrowserControl(pi: ExtensionAPI) {
 				if (input.profile_mode !== undefined && input.profile_mode !== "real") throw new BrowserControlError("profile_mode_invalid", "Attach requires profile_mode real or no profile_mode.");
 				if (!input.profile_alias) throw new BrowserControlError("profile_required", "Attach requires a configured real-profile alias.");
 				dispose();
-				const command = await sessions.attach({ profileAlias: input.profile_alias, cdpPort: input.cdp_port, extensionMode: input.extension_mode ?? "enabled", signal });
+				const command = await sessions.attach({ profileAlias: input.profile_alias, cdpPort: input.cdp_port, extensionMode: input.extension_mode ?? "enabled", signal, timeoutMs: input.timeout_ms });
 				state = loadBrowserState();
 				if (!state) throw new BrowserControlError("state_missing", "Brave attached without a complete session record.");
-				await navigateInitial(input.url, signal);
+				await navigateInitial(input.url, signal, input.timeout_ms);
 				return toolResult(command.stdout || "Attached to the operator-launched Brave browser.", { state: publicState(state) });
 			}
 
@@ -319,10 +319,10 @@ export default function registerBrowserControl(pi: ExtensionAPI) {
 				if (outcome !== "stopped" && outcome !== "already_absent") throw new BrowserControlError("restart_not_safe", `Restart stopped before relaunch because close-owned reported ${outcome ?? "no proven outcome"}.`);
 				const profileAlias = prior.profileAlias ?? input.profile_alias;
 				if (prior.profileMode === "real" && profileAlias) resolveConfiguredProfile(profileAlias);
-				const started = await sessions.start({ profileMode: prior.profileMode, profileAlias, extensionMode: input.extension_mode ?? prior.extensionMode, signal });
+				const started = await sessions.start({ profileMode: prior.profileMode, profileAlias, extensionMode: input.extension_mode ?? prior.extensionMode, signal, timeoutMs: input.timeout_ms });
 				state = loadBrowserState();
 				if (!state) throw new BrowserControlError("state_missing", "Brave restarted without a complete ownership record.");
-				await navigateInitial(input.url, signal);
+				await navigateInitial(input.url, signal, input.timeout_ms);
 				return toolResult(started.stdout || "Browser session restarted.", { state: publicState(state) });
 			}
 
@@ -350,51 +350,51 @@ export default function registerBrowserControl(pi: ExtensionAPI) {
 			if (!state || input.session_id !== state.sessionId) throw new BrowserControlError("session_mismatch", "The supplied session ID is not the current ownership-verified session.");
 			try {
 				if (input.action === "list") {
-					const targets = (await pages.list(state, signal)).map((target) => ({ id: target.id, url: safeUrl(target.url), type: target.type }));
+					const targets = (await pages.list(state, signal, input.timeout_ms)).map((target) => ({ id: target.id, url: safeUrl(target.url), type: target.type }));
 					return toolResult(JSON.stringify({ targets }, null, 2), { targets, count: targets.length, state: publicState(state) });
 				}
 				if (input.action === "open") {
 					if (!input.url) throw new BrowserControlError("url_required", "Open requires a URL.");
-					const target = await pages.open(state, input.url, signal);
+					const target = await pages.open(state, input.url, signal, input.timeout_ms);
 					state = { ...state, targetId: target.id };
 					await saveBrowserState(state);
 					return toolResult(JSON.stringify({ targetId: target.id, url: safeUrl(target.url) }), { state: publicState(state), targetId: target.id, url: safeUrl(target.url) });
 				}
 				const targetId = requireTarget(input);
 				if (input.action === "select") {
-					await pages.select(state, targetId, signal);
+					await pages.select(state, targetId, signal, input.timeout_ms);
 					state = { ...state, targetId };
 					await saveBrowserState(state);
 					return toolResult(`Selected raw CDP target ${targetId}.`, { state: publicState(state) });
 				}
 				if (input.action === "snapshot") {
-					const snapshot = redactOutput(await pages.snapshot(state, targetId, signal, input.frame_id, input.selector));
-					const frames = await pages.frames(state, targetId, signal);
+					const snapshot = redactOutput(await pages.snapshot(state, targetId, signal, input.frame_id, input.selector, input.timeout_ms));
+					const frames = await pages.frames(state, targetId, signal, input.timeout_ms);
 					const text = `${snapshot}\nExact frames: ${JSON.stringify(frames)}`;
 					return toolResult(text, { state: publicState(state), targetId, snapshot: text, frames });
 				}
 				if (input.action === "scroll") {
-					const scroll = await pages.scroll(state, targetId, { scroll_mode: input.scroll_mode, selector: input.selector, delta_x: input.delta_x, delta_y: input.delta_y, frame_id: input.frame_id }, signal);
+					const scroll = await pages.scroll(state, targetId, { scroll_mode: input.scroll_mode, selector: input.selector, delta_x: input.delta_x, delta_y: input.delta_y, frame_id: input.frame_id }, signal, input.timeout_ms);
 					return toolResult(`${JSON.stringify(scroll)}\nScroll reports actual viewport movement only. Snapshot this exact target/frame again to observe content; virtualized content may remain unread.`, { state: publicState(state), targetId, scroll });
 				}
 				if (input.action === "screenshot") {
 					if (!input.output_path) throw new BrowserControlError("output_required", "Screenshot requires an output path.");
 					const outputPath = path.resolve(ctx.cwd, input.output_path);
-					const source = await pages.screenshot(state, targetId, outputPath, signal);
+					const source = await pages.screenshot(state, targetId, outputPath, signal, input.timeout_ms);
 					const observation = { ...source, source: "browser" as const, trust: "untrusted" as const, kind: "image" as const, screening: "not-screened" as const };
 					return toolResult(`Screenshot saved to ${redactOutput(outputPath)}. Untrusted browser image; origin=${source.origin}; classification=${source.classification}; visual screening not performed.`, { state: publicState(state), targetId, observation });
 				}
 				if (input.action === "click") {
 					if (!input.selector) throw new BrowserControlError("selector_required", "Click requires a CSS selector.");
-					const result = await pages.click(state, targetId, input.selector, signal, input.frame_id);
+					const result = await pages.click(state, targetId, input.selector, signal, input.frame_id, input.timeout_ms);
 					return toolResult(`Clicked selector on target ${targetId}.${result.visible ? "" : " Warning: the acted-on control was not rendered; snapshot this exact frame to inspect the outcome."}`, { state: publicState(state), targetId, visible: result.visible });
 				}
 				if (input.action === "fill") {
 					if (!input.selector || (input.value === undefined) === (input.secret_ref === undefined)) throw new BrowserControlError("value_required", "Fill requires a selector and exactly one value or secret_ref.");
-					const result = await pages.fill(state, targetId, input.selector, { value: input.value, secret_ref: input.secret_ref, frame_id: input.frame_id }, signal);
+					const result = await pages.fill(state, targetId, input.selector, { value: input.value, secret_ref: input.secret_ref, frame_id: input.frame_id }, signal, input.timeout_ms);
 					return toolResult(`Filled selector on target ${targetId}.${result.visible ? "" : " Warning: the acted-on control was not rendered; snapshot this exact frame to inspect the outcome."}`, { state: publicState(state), targetId, visible: result.visible });
 				}
-				await pages.close(state, targetId, signal);
+				await pages.close(state, targetId, signal, input.timeout_ms);
 				if (state.targetId === targetId) state = { ...state, targetId: undefined };
 				await saveBrowserState(state);
 				return toolResult(`Closed raw CDP target ${targetId}.`, { state: publicState(state), targetId });

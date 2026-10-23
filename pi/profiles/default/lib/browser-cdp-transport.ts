@@ -14,13 +14,15 @@ function record(value: unknown): Record<string, unknown> | undefined {
 	return value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
 }
 function string(value: unknown): string | undefined { return typeof value === "string" && value.length > 0 ? value : undefined; }
-async function cancellable<T>(work: Promise<T>, signal?: AbortSignal): Promise<T> {
-	if (!signal) return await work;
-	if (signal.aborted) throw failure("cancelled", "Browser operation was cancelled.");
+async function cancellable<T>(work: Promise<T>, signal?: AbortSignal, timeoutMs?: number): Promise<T> {
+	if (!signal && timeoutMs === undefined) return await work;
+	if (signal?.aborted) throw failure("cancelled", "Browser operation was cancelled.");
 	return await new Promise<T>((resolve, reject) => {
-		const abort = () => { signal.removeEventListener("abort", abort); reject(failure("cancelled", "Browser operation was cancelled.")); };
-		signal.addEventListener("abort", abort, { once: true });
-		void work.then(resolve, reject).finally(() => signal.removeEventListener("abort", abort));
+		const cleanup = () => { clearTimeout(timer); signal?.removeEventListener("abort", abort); };
+		const abort = () => { cleanup(); reject(failure("cancelled", "Browser operation was cancelled.")); };
+		const timer = timeoutMs === undefined ? undefined : setTimeout(() => { cleanup(); reject(failure("cdp_timeout", "CDP operation timed out.")); }, timeoutMs);
+		signal?.addEventListener("abort", abort, { once: true });
+		void work.then(resolve, reject).finally(cleanup);
 	});
 }
 
@@ -157,6 +159,8 @@ export interface BrowserCdpOptions {
 	/** Install Fetch/Network policy here. Failure disconnects without resuming a new target. */
 	register: (setup: ManagedTargetSetup) => Promise<void>;
 	signal?: AbortSignal;
+	/** Initial socket handshake only. Command budgets belong to each operation. */
+	timeoutMs?: number;
 	socketFactory?: CdpSocketFactory;
 }
 
@@ -169,7 +173,7 @@ export class BrowserCdpTransport {
 	private readonly sessions = new Map<string, ManagedCdpTarget>();
 	private readonly frames = new Map<string, CdpFrame>();
 	private readonly requestedRoots = new Set<string>();
-	private readonly rootAttachments = new Map<string, { resolve: () => void; reject: (error: Error) => void; promise: Promise<void> }>();
+	private readonly rootAttachments = new Map<string, { resolve: () => void; reject: (error: Error) => void; promise: Promise<void>; timeoutMs?: number }>();
 	private readonly managing = new Map<string, Promise<Readonly<ManagedCdpTarget>>>();
 	private readonly registrations = new Map<string, Promise<void>>();
 	private readonly listeners = new Set<(event: CdpEvent) => void | Promise<void>>();
@@ -183,7 +187,7 @@ export class BrowserCdpTransport {
 	private constructor(state: BrowserSessionState, endpoint: string, options: BrowserCdpOptions) {
 		this.options = options;
 		this.state = Object.freeze({ ...state });
-		this.connection = new CdpConnection(endpoint, options.socketFactory, this.lifetime.signal);
+		this.connection = new CdpConnection(endpoint, options.socketFactory, this.lifetime.signal, options.timeoutMs ?? 30_000);
 		this.connection.onEvent(this.event);
 		this.connection.onDisconnect(() => this.dispose());
 		if (options.signal) {
@@ -223,32 +227,47 @@ export class BrowserCdpTransport {
 		if (this.closed || signal?.aborted) throw failure("cancelled", "Browser operation was cancelled.");
 	}
 
+	/** Immutable call-local view over the retained socket. Bind other methods to the owner so
+	 * no transport state is copied or mutated, and background policy keeps its own budgets. */
+	withCommandTimeout(timeoutMs: number): BrowserCdpTransport {
+		const owner = this;
+		return new Proxy(this, {
+			get(target, key) {
+				if (key === "command") return <T = Record<string, unknown>>(targetId: string, method: string, params: Record<string, unknown> = {}, options: CdpCommandOptions = {}) => owner.command<T>(targetId, method, params, { ...options, timeoutMs: options.timeoutMs ?? timeoutMs });
+				if (key === "manage") return (targetId: string, signal?: AbortSignal) => owner.manage(targetId, signal, timeoutMs);
+				if (key === "create") return (signal?: AbortSignal) => owner.create(signal, timeoutMs);
+				const value = Reflect.get(target, key, target);
+				return typeof value === "function" ? value.bind(target) : value;
+			},
+		});
+	}
+
 	/** Select one exact existing target. Prior traffic in attached tabs is not controlled. */
-	async manage(targetId: string, signal?: AbortSignal): Promise<Readonly<ManagedCdpTarget>> {
+	async manage(targetId: string, signal?: AbortSignal, timeoutMs?: number): Promise<Readonly<ManagedCdpTarget>> {
 		await this.revalidate(signal);
 		if (!targetId) throw failure("target_missing", "An exact target ID is required.");
 		let work = this.managing.get(targetId);
 		if (!work) {
-			work = this.manageRoot(targetId);
+			work = this.manageRoot(targetId, timeoutMs);
 			this.managing.set(targetId, work);
 			void work.catch(() => this.dispose());
 		}
-		const result = await cancellable(work, signal);
+		const result = await cancellable(work, signal, timeoutMs ?? 30_000);
 		await this.revalidate(signal);
 		return result;
 	}
 
-	private async manageRoot(targetId: string): Promise<Readonly<ManagedCdpTarget>> {
+	private async manageRoot(targetId: string, timeoutMs?: number): Promise<Readonly<ManagedCdpTarget>> {
 		if (!this.targets.has(targetId)) {
 			this.requestedRoots.add(targetId);
 			let resolve!: () => void, reject!: (error: Error) => void;
 			const promise = new Promise<void>((yes, no) => { resolve = yes; reject = no; });
 			void promise.catch(() => {});
-			const attached = { resolve, reject, promise };
+			const attached = { resolve, reject, promise, timeoutMs };
 			this.rootAttachments.set(targetId, attached);
-			const timeout = setTimeout(() => reject(failure("cdp_timeout", "CDP target attachment timed out.")), 5000);
+			const timeout = setTimeout(() => reject(failure("cdp_timeout", "CDP target attachment timed out.")), timeoutMs ?? 5000);
 			try {
-				await this.connection.command("Target.autoAttachRelated", { targetId, waitForDebuggerOnStart: true }, undefined, { signal: this.signal });
+				await this.connection.command("Target.autoAttachRelated", { targetId, waitForDebuggerOnStart: true }, undefined, { signal: this.signal, timeoutMs });
 				await cancellable(promise, this.signal);
 			} finally { clearTimeout(timeout); if (this.rootAttachments.get(targetId) === attached) this.rootAttachments.delete(targetId); }
 		}
@@ -262,18 +281,18 @@ export class BrowserCdpTransport {
 	}
 
 	/** Initialize blank, register guards, then let the caller authorize and navigate. */
-	async create(signal?: AbortSignal): Promise<Readonly<ManagedCdpTarget>> {
+	async create(signal?: AbortSignal, timeoutMs?: number): Promise<Readonly<ManagedCdpTarget>> {
 		await this.revalidate(signal);
-		const result = await this.connection.command<{ targetId?: string }>("Target.createTarget", { url: "about:blank" }, undefined, { signal });
+		const result = await this.connection.command<{ targetId?: string }>("Target.createTarget", { url: "about:blank" }, undefined, { signal: signal ? AbortSignal.any([signal, this.signal]) : this.signal, timeoutMs });
 		if (!result.targetId) throw failure("target_missing", "CDP did not create an exact target.");
-		return await this.manage(result.targetId, signal);
+		return await this.manage(result.targetId, signal, timeoutMs);
 	}
 
 	async command<T = Record<string, unknown>>(targetId: string, method: string, params: Record<string, unknown> = {}, options: CdpCommandOptions = {}): Promise<T> {
 		await this.revalidate(options.signal);
 		const registration = this.registrations.get(targetId);
 		if (!registration) throw failure("target_missing", "Target is not managed by this session.");
-		await cancellable(registration, options.signal);
+		await cancellable(registration, options.signal, options.timeoutMs ?? 30_000);
 		await this.revalidate(options.signal);
 		const target = this.targets.get(targetId);
 		if (!target) throw failure("target_missing", "Managed target is no longer attached.");
@@ -399,7 +418,7 @@ export class BrowserCdpTransport {
 		if (root) this.rootAttachments.get(targetId)?.resolve();
 		this.initializingEvents.set(targetId, []);
 		this.queuedEvents.set(targetId, []);
-		const registration = this.register(target);
+		const registration = this.register(target, root ? this.rootAttachments.get(targetId)?.timeoutMs : undefined);
 		this.registrations.set(targetId, registration);
 		void registration.then(() => {
 			const events = this.queuedEvents.get(targetId) ?? [];
@@ -409,14 +428,19 @@ export class BrowserCdpTransport {
 		}, () => this.dispose());
 	}
 
-	private async register(target: ManagedCdpTarget): Promise<void> {
+	private async register(target: ManagedCdpTarget, timeoutMs?: number): Promise<void> {
 		await this.revalidate();
-		const command = async <T = Record<string, unknown>>(method: string, params: Record<string, unknown> = {}): Promise<T> => {
+		const command = async <T = Record<string, unknown>>(method: string, params: Record<string, unknown> = {}, options: CdpCommandOptions = { timeoutMs }): Promise<T> => {
 			await this.revalidate();
 			if (this.sessions.get(target.sessionId) !== target) throw failure("target_missing", "Managed target is no longer attached.");
-			return await this.connection.command<T>(method, params, target.sessionId, { signal: this.signal });
+			return await this.connection.command<T>(method, params, target.sessionId, { ...options, signal: this.signal });
 		};
-		await cancellable(this.options.register({ target: Object.freeze({ ...target }), signal: this.signal, command }), this.signal);
+		// Policy retains setup.command for later background request dispatch. Only initial
+		// registration inherits the selecting call's budget, never later page traffic.
+		let installing = true;
+		const setupCommand = <T = Record<string, unknown>>(method: string, params: Record<string, unknown> = {}): Promise<T> => command<T>(method, params, installing ? { timeoutMs } : {});
+		try { await cancellable(this.options.register({ target: Object.freeze({ ...target }), signal: this.signal, command: setupCommand }), this.signal); }
+		finally { installing = false; }
 		await command("Target.setAutoAttach", { autoAttach: true, waitForDebuggerOnStart: true, flatten: true });
 		if (target.type === "page" || target.type === "iframe") {
 			await command("Page.enable");

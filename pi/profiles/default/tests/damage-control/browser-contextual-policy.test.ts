@@ -132,7 +132,7 @@ it("tree switch cancels late allow and shutdown removes the bus owner", async ()
 });
 it("uses the actual tool-free independent interpreter once for native fast paths", async () => {
   const h = await harness();
-  const complete = vi.fn(async () => ({ content: [{ type: "text", text: JSON.stringify({ scopes: [{ kinds: ["login"], origins: ["https://forum.example"] }] }) }], stopReason: "stop" }));
+  const complete = vi.fn(async () => ({ content: [{ type: "text", text: JSON.stringify({ task: "replace", scopes: [{ kinds: ["login"], origins: ["https://forum.example"] }] }) }], stopReason: "stop" }));
   h.ctx.modelRegistry = { getAll: () => [{ provider: "openai", id: "gpt-5.6-luna" }], hasConfiguredAuth: () => true, complete } as unknown as ExtensionContext["modelRegistry"];
   await h.emit("input", { source: "rpc", text: "Log into https://forum.example" });
   const login = effect(h, { kind: "login", payload: { kind: "secret-ref", reference: "synthetic-login", purpose: "login" } });
