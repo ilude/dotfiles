@@ -1,7 +1,7 @@
 ---
 created: 2026-10-23
-status: ready
-completed: null
+status: completed
+completed: 2026-10-23
 ---
 
 # Reliable browser approvals and actionable Brave interactions
@@ -144,3 +144,7 @@ When executing with `/do-it`, use its authorized local worktree/commit/merge wor
 For direct execution outside `/do-it`, preserve its actual authorization boundaries; do not infer push, history rewrite, or deletion of unrelated work. Record any authorized local delivery mechanism rather than claiming integration that did not occur.
 
 Final reporting is outcome-first: 🟢 COMPLETED, 🔴 NOT COMPLETE: MERGE BLOCKED / USER INPUT REQUIRED, 🔵 IMPLEMENTED: MERGE SKIPPED AS REQUESTED, or 🟡 CLEANUP PENDING, always with explicit text. For blockers lead with reason, exact next action and owner, then concise checks, spec, commits/integration and retained paths. A live/manual check does not block authorized closeout.
+
+## Integration evidence
+
+T1A/T1B/T2/T3 implemented; final agreed focused checks plus directly affected adapter file passed 12 files/323 tests; typecheck and git diff --check passed; task clean after commit. T4 remains unchecked only because delivery is pending. No live Brave/Office/SharePoint validation; no push or deployment authorized.
