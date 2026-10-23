@@ -8,14 +8,22 @@ import { samePolicyIdentity, type BrowserEffect, type BrowserPolicyDecision, typ
 export type BrowserDestination = { url: string; origin: string; resource: string; host: string; visibility: "public" | "private" | "local"; filePath?: string };
 const deny = (reason: string): BrowserPolicyDecision => ({ outcome: "deny", reason });
 async function boundedWork<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
-  if (signal.aborted) { void work.catch(() => {}); throw new Error("Browser request cancelled."); }
+  if (signal.aborted) { void work.catch(() => {}); throw new BrowserControlError("cancelled", "Browser request cancelled."); }
   return await new Promise<T>((resolve, reject) => {
-    const abort = () => reject(new Error("Browser request cancelled."));
+    const abort = () => reject(new BrowserControlError("cancelled", "Browser request cancelled."));
     signal.addEventListener("abort", abort, { once: true });
     void work.then(resolve, reject).finally(() => signal.removeEventListener("abort", abort));
   });
 }
 function refused(reason: string): never { throw new BrowserControlError("destination_refused", reason); }
+
+export function hasNativeSecurityWarning(state: { securityState?: string; certificateSecurityState?: { certificateNetworkError?: string }; safetyTipInfo?: { safetyTipStatus?: string }; securityStateIssueIds?: string[] } | undefined, url: string, allowLocalhostTlsErrors: boolean): boolean {
+  let hostname = "";
+  try { hostname = new URL(url).hostname.toLowerCase().replace(/\\.$/, ""); } catch { /* Unknown URLs do not qualify for the exception. */ }
+  const localhost = hostname === "localhost" || hostname.endsWith(".localhost") || hostname === "127.0.0.1" || hostname === "::1";
+  const ignoredLocalhostCertificate = allowLocalhostTlsErrors && localhost && Boolean(state?.certificateSecurityState?.certificateNetworkError);
+  return (state?.securityState === "insecure-broken" && !ignoredLocalhostCertificate) || Boolean(state?.certificateSecurityState?.certificateNetworkError && !ignoredLocalhostCertificate) || Boolean(state?.securityStateIssueIds?.includes("malicious-content")) || ["badReputation", "lookalike"].includes(state?.safetyTipInfo?.safetyTipStatus ?? "");
+}
 
 /** WHATWG parsing handles IDNs, alternate IPv4 notation, escapes and authority delimiters. */
 export function parseBrowserDestination(raw: string, cdpPort: number, allowBlank = false): BrowserDestination {
@@ -75,6 +83,14 @@ export interface BrowserRequestFacts {
   postData?: string;
 }
 export type BrowserRequestProjection = Pick<BrowserEffect, "kind" | "payload" | "taskScoped"> & { targetVisibility?: BrowserEffect["target"]["visibility"]; destinationVisibility?: BrowserEffect["target"]["visibility"] };
+export type BrowserRequestFailure = {
+  phase: "navigation" | "intercepted";
+  stage: "safety" | "identity" | "destination" | "frame" | "source" | "projection" | "classification" | "policy" | "postcheck" | "dispatch";
+  code: string;
+  cancellation: "none" | "policy-disposed" | "target-disconnected" | "caller-aborted" | "deadline";
+};
+// Never serialize exception messages, arbitrary error codes, or request/frame metadata.
+const diagnosticCodes = new Set(["cancelled", "destination_refused", "cdp_disconnected", "cdp_timeout", "cdp_failed", "cdp_unsupported", "session_stale", "target_missing", "frame_missing", "frame_stale", "request_malformed", "opaque_source", "file_lease_invalid", "policy_denied"]);
 export interface BrowserRequestPolicyOptions {
   cdpPort: number;
   identity: () => PolicyIdentity;
@@ -89,8 +105,12 @@ export interface BrowserRequestPolicyOptions {
   localFile?: (path: string, signal: AbortSignal) => Promise<BrowserPolicyDecision>;
   resolveHost?: (host: string) => Promise<readonly string[]>;
   timeoutMs?: number;
+  /** Fixed, value-free diagnostics only. The observer cannot authorize a request. */
+  failure?: (failure: BrowserRequestFailure) => void;
   /** Operator-attached browsers retain normal page traffic; explicit navigation is still checked. */
   interceptRequests?: boolean;
+  /** Explicit Chromium localhost-only certificate exception for owned isolated sessions. */
+  allowLocalhostTlsErrors?: boolean;
 }
 
 /** Guards only managed targets. Fetch Request stage gates each observed redirect hop before sending.
@@ -110,6 +130,7 @@ export class BrowserRequestPolicy {
   private readonly lifetime = new AbortController();
   private sequence = 0;
   private readonly fileNavigations = new Map<string, { identity: PolicyIdentity; url: string; nativePath: string; frame: Readonly<CdpFrame>; signal: AbortSignal }>();
+  private readonly documentNavigations = new Map<string, { identity: PolicyIdentity; url: string; visibility: BrowserDestination["visibility"]; projection: BrowserRequestProjection; frame: Readonly<CdpFrame>; signal: AbortSignal }>();
   private readonly options: BrowserRequestPolicyOptions;
   constructor(options: BrowserRequestPolicyOptions) { this.options = options; }
 
@@ -121,7 +142,7 @@ export class BrowserRequestPolicy {
   /** Pass this callback to runtime.connectTransport, then bind before manage/create. */
   register = async (setup: ManagedTargetSetup): Promise<void> => {
     this.setups.set(setup.target.targetId, setup);
-    setup.signal.addEventListener("abort", () => { this.setups.delete(setup.target.targetId); this.warnings.delete(setup.target.targetId); this.interstitials.delete(setup.target.targetId); }, { once: true });
+    setup.signal.addEventListener("abort", () => { this.setups.delete(setup.target.targetId); this.warnings.delete(setup.target.targetId); this.interstitials.delete(setup.target.targetId); this.documentNavigations.delete(setup.target.targetId); }, { once: true });
     try { if (this.options.interceptRequests !== false) await setup.command("Fetch.enable", { patterns: [{ urlPattern: "*", requestStage: "Request" }] }); }
     catch (error) {
       // Chromium does not expose Fetch on dedicated worker sessions. Refusing them disconnected every
@@ -144,34 +165,61 @@ export class BrowserRequestPolicy {
 
   /** Call before Page.navigate. Blank is reserved to transport.create(), not ordinary navigation. */
   async authorizeNavigation(targetId: string, raw: string, signal?: AbortSignal): Promise<BrowserDestination> {
+    let stage: BrowserRequestFailure["stage"] = "safety", activeSignal: AbortSignal | undefined;
+    try {
     this.fileNavigations.delete(targetId);
+    this.documentNavigations.delete(targetId);
     this.assertSafe(targetId);
     const identity = { ...this.options.identity() };
     const pending = this.actionSignal(targetId, signal);
     const initial = this.signal(targetId, pending);
+    activeSignal = initial; stage = "identity";
     await boundedWork(this.transport!.revalidate(initial), initial);
+    stage = "frame";
     const roots = (await boundedWork(this.transport!.frameList(targetId, initial), initial)).filter(frame => !frame.parentFrameId && frame.targetId === targetId);
     if (roots.length !== 1) refused("Navigation requires the exact main frame.");
     const frame = roots[0]!;
+    stage = "destination";
     const destination = parseBrowserDestination(raw, this.options.cdpPort);
+    stage = "projection";
+    let navigationProjection: BrowserRequestProjection | undefined;
     if (destination.filePath !== undefined) {
       this.project({ targetId, sessionId: this.setups.get(targetId)!.target.sessionId, sourceOrigin: destination.origin, destination, method: "GET", resourceType: "Document", hasBody: false, hasQuery: new URL(destination.url).search.length > 0, redirected: false, rawUrl: raw });
+      activeSignal = pending; stage = "policy";
       if (!this.options.localFile || (await boundedWork(this.options.localFile(destination.filePath, pending), pending)).outcome !== "allow") refused("This local file read requires filesystem-policy authorization.");
     } else {
       const facts: BrowserRequestFacts = { targetId, sessionId: this.setups.get(targetId)!.target.sessionId, sourceOrigin: destination.origin, destination, method: "GET", resourceType: "Document", hasBody: false, hasQuery: new URL(destination.url).search.length > 0, redirected: false, rawUrl: raw };
       const projection = this.project(facts);
-      await this.classify(destination, this.signal(targetId, pending));
+      navigationProjection = structuredClone(projection);
+      stage = "classification"; activeSignal = this.signal(targetId, pending);
+      await this.classify(destination, activeSignal);
       if (pending.aborted || !samePolicyIdentity(identity, this.options.identity())) refused("Browser navigation cancelled or task changed.");
+      stage = "policy"; activeSignal = pending;
       const decision = await this.decide(facts, pending, projection, identity, "Explicit navigation to the checked destination; subsequent page traffic is not intercepted in attached mode.");
       if (decision.outcome !== "allow") refused(decision.reason);
     }
     if (pending.aborted || !samePolicyIdentity(identity, this.options.identity())) refused("Browser navigation cancelled or task changed.");
     const bounded = this.signal(targetId, pending);
+    stage = "postcheck"; activeSignal = bounded;
     await boundedWork(this.transport!.revalidateFrame(frame, bounded), bounded);
     this.assertSafe(targetId);
     if (!samePolicyIdentity(identity, this.options.identity()) || bounded.aborted) refused("Browser navigation cancelled or task changed.");
     if (destination.filePath !== undefined) this.fileNavigations.set(targetId, { identity, url: destination.url, nativePath: destination.filePath, frame, signal: bounded });
+    else if (navigationProjection && this.options.interceptRequests !== false) this.documentNavigations.set(targetId, { identity, url: destination.url, visibility: destination.visibility, projection: navigationProjection, frame, signal: bounded });
     return destination;
+    } catch (error) {
+      this.reportFailure("navigation", stage, error, targetId, activeSignal, signal);
+      throw error;
+    }
+  }
+
+  private reportFailure(phase: BrowserRequestFailure["phase"], stage: BrowserRequestFailure["stage"], error: unknown, targetId: string, signal?: AbortSignal, caller?: AbortSignal): void {
+    let code = error instanceof BrowserControlError && diagnosticCodes.has(error.code) ? error.code : "inspection_failed";
+    if (code === "destination_refused" && (stage === "safety" || stage === "postcheck") && (this.warnings.has(targetId) || this.interstitials.has(targetId))) code = "native_warning";
+    const cancellation: BrowserRequestFailure["cancellation"] = this.lifetime.signal.aborted ? "policy-disposed"
+      : this.transport?.signal.aborted || this.setups.get(targetId)?.signal.aborted ? "target-disconnected"
+      : caller?.aborted ? "caller-aborted" : signal?.aborted ? "deadline" : "none";
+    try { this.options.failure?.({ phase, stage, code, cancellation }); } catch { /* Diagnostics cannot change enforcement. */ }
   }
 
   private actionSignal(targetId: string, caller?: AbortSignal): AbortSignal {
@@ -222,48 +270,74 @@ export class BrowserRequestPolicy {
       const state = event.params.visibleSecurityState as { securityState?: string; certificateSecurityState?: { certificateNetworkError?: string }; safetyTipInfo?: { safetyTipStatus?: string }; securityStateIssueIds?: string[] } | undefined;
       // Chromium Security.enable emits the current visible state, including already-loaded
       // Safe Browsing findings (malicious-content) and certificate status. HTTP alone is not a warning.
-      if (state?.securityState === "insecure-broken" || state?.certificateSecurityState?.certificateNetworkError || state?.securityStateIssueIds?.includes("malicious-content") || ["badReputation", "lookalike"].includes(state?.safetyTipInfo?.safetyTipStatus ?? "")) this.warnings.add(targetId);
+      const currentUrl = this.transport?.managedTargets().find(item => item.targetId === targetId)?.url ?? "";
+      if (hasNativeSecurityWarning(state, currentUrl, this.options.allowLocalhostTlsErrors === true)) this.warnings.add(targetId);
       else if (state) this.warnings.delete(targetId);
     }
     if (event.method !== "Fetch.requestPaused" || this.options.interceptRequests === false) return;
     const requestId = event.params.requestId;
     if (typeof requestId !== "string") throw new Error("Malformed intercepted browser request.");
-    let allow = false;
+    let allow = false, signal: AbortSignal | undefined, stage: BrowserRequestFailure["stage"] = "safety";
     try {
       this.assertSafe(targetId);
-      const signal = this.signal(targetId);
+      signal = this.signal(targetId);
+      stage = "identity";
       await this.transport!.revalidate(signal);
       const request = event.params.request as { url?: unknown; method?: unknown; hasPostData?: boolean; postData?: unknown } | undefined;
-      if (typeof request?.url !== "string" || typeof request.method !== "string") throw new Error();
+      if (typeof request?.url !== "string" || typeof request.method !== "string") throw new BrowserControlError("request_malformed", "Malformed intercepted browser request.");
+      stage = "destination";
       const destination = parseBrowserDestination(request.url, this.options.cdpPort);
+      // The first observed request consumes the pending dispatch, including a mismatch.
+      // This is the already approved explicit navigation, not authority for later page traffic.
+      const navigation = this.documentNavigations.get(targetId);
+      this.documentNavigations.delete(targetId);
       const frameId = typeof event.params.frameId === "string" && event.params.frameId ? event.params.frameId : undefined;
+      stage = "frame";
       const frame = frameId ? await this.transport!.frame(targetId, frameId, signal) : undefined;
-      if (frameId && !frame) throw new Error();
+      if (frameId && !frame) throw new BrowserControlError("frame_missing", "Intercepted request frame is unavailable.");
       if (destination.filePath !== undefined) {
         const lease = this.fileNavigations.get(targetId);
         this.fileNavigations.delete(targetId);
-        if (!lease || !samePolicyIdentity(lease.identity, this.options.identity()) || lease.url !== destination.url || lease.nativePath !== destination.filePath || lease.signal.aborted || lease.frame.frameId !== frameId || event.params.resourceType !== "Document" || request.method !== "GET" || event.params.redirectedRequestId !== undefined || !frame) throw new Error();
+        if (!lease || !samePolicyIdentity(lease.identity, this.options.identity()) || lease.url !== destination.url || lease.nativePath !== destination.filePath || lease.signal.aborted || lease.frame.frameId !== frameId || event.params.resourceType !== "Document" || request.method !== "GET" || event.params.redirectedRequestId !== undefined || !frame) throw new BrowserControlError("file_lease_invalid", "No matching explicit file navigation lease.");
         await this.transport!.revalidateFrame(lease.frame, AbortSignal.any([signal, lease.signal]));
         this.assertSafe(targetId);
         allow = !signal.aborted && !lease.signal.aborted;
       } else {
+      stage = "source";
       const sourceOrigin = frame ? (/^https?:/.test(frame.securityOrigin) ? frame.securityOrigin : frame.url) : setup.target.url;
       // Blank documents have an opaque origin, not their requested destination. T1 cannot represent
       // opaque origins; use the arriving document origin only for the initial Document request.
       const initialization = sourceOrigin === "about:blank" && event.params.resourceType === "Document";
       const origin = /^https?:/.test(sourceOrigin) ? parseBrowserDestination(sourceOrigin, this.options.cdpPort).origin : initialization ? destination.origin : undefined;
-      if (!origin) throw new Error();
+      if (!origin) throw new BrowserControlError("opaque_source", "Intercepted request has no supported source origin.");
       const facts: BrowserRequestFacts = { targetId, sessionId: setup.target.sessionId, ...(frameId ? { frameId } : {}), ...(frame ? { frameLoaderId: frame.loaderId, executionContextId: frame.executionContextId } : {}), sourceOrigin: origin, destination, method: request.method, resourceType: String(event.params.resourceType ?? "Other"), hasBody: request.hasPostData === true || request.postData !== undefined, hasQuery: new URL(destination.url).search.length > 0, redirected: typeof event.params.redirectedRequestId === "string", initialization, rawUrl: request.url, ...(typeof request.postData === "string" ? { postData: request.postData } : {}) };
+      stage = "projection";
       const projection = this.project(facts);
+      stage = "classification";
       await this.classify(destination, signal);
-      const decision = await this.decide(facts, signal, projection);
+      stage = "policy";
+      const approvedDispatch = navigation && !navigation.signal.aborted && samePolicyIdentity(navigation.identity, this.options.identity())
+        && navigation.url === destination.url && navigation.visibility === destination.visibility && navigation.frame.frameId === frameId
+        && facts.method === "GET" && facts.resourceType === "Document" && !facts.hasBody && !facts.redirected && frame
+        && projection.kind === navigation.projection.kind && projection.taskScoped === navigation.projection.taskScoped
+        && projection.targetVisibility === navigation.projection.targetVisibility && projection.destinationVisibility === navigation.projection.destinationVisibility
+        && JSON.stringify(projection.payload) === JSON.stringify(navigation.projection.payload);
+      if (approvedDispatch) {
+        signal = AbortSignal.any([signal, navigation.signal]);
+        await this.transport!.revalidateFrame(navigation.frame, signal);
+      }
+      const decision = approvedDispatch ? { outcome: "allow" as const, reason: "Dispatch of the same approved explicit navigation." } : await this.decide(facts, signal, projection);
+      stage = "postcheck";
       this.assertSafe(targetId);
       if (frame) await this.transport!.revalidateFrame(frame, signal);
       else await this.transport!.revalidate(signal);
-      allow = decision.outcome === "allow" && !signal.aborted;
+      allow = decision.outcome === "allow" && !signal.aborted && (!approvedDispatch || samePolicyIdentity(navigation.identity, this.options.identity()));
+      if (!allow) this.reportFailure("intercepted", "policy", new BrowserControlError("policy_denied", "Request policy did not allow the transfer."), targetId, signal);
       }
-    } catch { allow = false; }
-    await setup.command(allow ? "Fetch.continueRequest" : "Fetch.failRequest", { requestId, ...(allow ? {} : { errorReason: "BlockedByClient" }) });
+    } catch (error) { allow = false; this.reportFailure("intercepted", stage, error, targetId, signal); }
+    try {
+      await setup.command(allow ? "Fetch.continueRequest" : "Fetch.failRequest", { requestId, ...(allow ? {} : { errorReason: "BlockedByClient" }) });
+    } catch (error) { this.reportFailure("intercepted", "dispatch", error, targetId, signal); throw error; }
   }
-  dispose(): void { this.lifetime.abort(); this.unsubscribe?.(); this.setups.clear(); this.warnings.clear(); this.interstitials.clear(); this.fileNavigations.clear(); }
+  dispose(): void { this.lifetime.abort(); this.unsubscribe?.(); this.setups.clear(); this.warnings.clear(); this.interstitials.clear(); this.fileNavigations.clear(); this.documentNavigations.clear(); }
 }

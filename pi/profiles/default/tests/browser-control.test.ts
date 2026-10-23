@@ -21,7 +21,7 @@ import {
 	validateBrowserConfig,
 	writeBrowserConfig,
 } from "../lib/browser-control";
-import { cdpRetryDelay, inspectCdpVersion, processMatches, windowsArgv } from "../lib/browser-runtime";
+import { browserLaunchArgs, cdpRetryDelay, inspectCdpVersion, processMatches, windowsArgv } from "../lib/browser-runtime";
 
 const temporary: string[] = [];
 afterEach(() => {
@@ -232,6 +232,23 @@ describe("session and page boundaries", () => {
 		expect(close).not.toHaveBeenCalled();
 	});
 
+	it("exposes request diagnostics through session status and page/start failures", async () => {
+		vi.spyOn(browserControl, "loadBrowserState").mockReturnValue(state());
+		vi.spyOn(browserControl.BrowserSessionProtocol.prototype, "status").mockResolvedValue({ code: 0, stdout: "{}", stderr: "" });
+		vi.spyOn(browserControl.BrowserSessionProtocol.prototype, "start").mockResolvedValue({ code: 0, stdout: "started", stderr: "" });
+		const failures = [{ phase: "navigation" as const, stage: "classification" as const, code: "cancelled", cancellation: "deadline" as const }];
+		vi.spyOn(browserControl.BrowserPageProtocol.prototype, "diagnostics").mockReturnValue(failures);
+		vi.spyOn(browserControl.BrowserPageProtocol.prototype, "open").mockRejectedValue(new Error("Browser request cancelled."));
+		const pi = createMockPi(); registerBrowserControl(pi as never);
+		const session = pi._getTool("browser_session")!, page = pi._getTool("browser_page")!;
+		const status = await session.execute("status", { action: "status" });
+		expect(status.structuredContent.requestFailures).toEqual(failures);
+		expect(status.content[0].text).toContain('"cancellation":"deadline"');
+		expect(Value.Check(session.outputSchema!, status.structuredContent)).toBe(true);
+		await expect(page.execute("open", { action: "open", session_id: "session-1", url: "https://public.example/" })).rejects.toThrow("Recent browser request failures:");
+		await expect(session.execute("start", { action: "start", url: "https://public.example/" })).rejects.toThrow("Recent browser request failures:");
+	});
+
 	it("returns schema-valid discovery candidates rather than only a count", async () => {
 		vi.spyOn(browserControl, "readBrowserConfig").mockReturnValue({ version: 1, profiles: {} });
 		vi.spyOn(browserControl, "discoverBraveProfiles").mockReturnValue([{ userDataDir: "/public/brave", profileDirectory: "Default", displayName: "Personal" }]);
@@ -253,7 +270,9 @@ describe("session and page boundaries", () => {
 		registerBrowserControl(pi as never);
 		const tool = pi._getTool("browser_page")!;
 		if (!tool.outputSchema) throw new Error("Missing browser page output schema");
-		const list = await tool.execute("list", { action: "list", session_id: "session-1" });
+		const list = await tool.execute("list", { action: "list", session_id: "session-1", timeout_ms: 45_000 });
+		expect(Value.Check(tool.parameters, { action: "list", session_id: "session-1", timeout_ms: 45_000 })).toBe(true);
+		expect(Value.Check(tool.parameters, { action: "list", session_id: "session-1", timeout_ms: 300_001 })).toBe(false);
 		expect(list.structuredContent.targets).toEqual([{ id: "exact-id", type: "page", url: "https://example.test/path" }]);
 		expect(Value.Check(tool.outputSchema, list.structuredContent)).toBe(true);
 		const snapshot = await tool.execute("snapshot", { action: "snapshot", session_id: "session-1", target_id: "exact-id", frame_id: "exact-frame", selector: "#subtree" });
@@ -300,10 +319,19 @@ describe("session and page boundaries", () => {
 		const open = vi.spyOn(browserControl.BrowserPageProtocol.prototype, "open").mockResolvedValue({ id: "new-exact", url: "https://account.example/login", type: "page" });
 		vi.spyOn(browserControl, "saveBrowserState").mockResolvedValue();
 		const pi = createMockPi(); registerBrowserControl(pi as never); const tool = pi._getTool("browser_session")!;
-		await tool.execute("start", { action: "start", url: "https://account.example/login" });
+		await tool.execute("start", { action: "start", url: "https://account.example/login", allow_localhost_tls_errors: true });
 		await tool.execute("attach", { action: "attach", profile_alias: "synthetic", url: "https://account.example/login" });
 		expect(start.mock.calls[0]?.[0]).not.toHaveProperty("url"); expect(attach.mock.calls[0]?.[0]).not.toHaveProperty("url");
+		expect(start.mock.calls[0]?.[0]).toMatchObject({ allowLocalhostTlsErrors: true });
 		expect(open).toHaveBeenCalledTimes(2);
+	});
+
+	it("adds only Chromium's localhost-scoped TLS exception when explicitly requested", () => {
+		const input = { cdpPort: 9222, userDataDir: "/tmp/pi-browser", profileDirectory: "Pi", marker: "marker", extensionMode: "enabled" as const };
+		expect(browserLaunchArgs(input)).not.toContain("--allow-insecure-localhost");
+		const optedIn = browserLaunchArgs({ ...input, allowLocalhostTlsErrors: true });
+		expect(optedIn).toContain("--allow-insecure-localhost");
+		expect(optedIn).not.toContain("--ignore-certificate-errors");
 	});
 
 	it("slows CDP startup polling at the configured elapsed-time thresholds", () => {

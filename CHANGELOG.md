@@ -1,5 +1,22 @@
 # Changelog
 
+## 2026-10-23: Avoid reviewing one approved browser navigation twice
+
+- An explicit HTTP/HTTPS navigation previously received a policy decision, then its intercepted initial Document could require another review under the background 10-second deadline. The same approved navigation now carries a one-shot identity/target/frame/URL-bound dispatch lease, analogous to the existing file-navigation lease.
+- Local request inspection, DNS classification, frame revalidation, native warning refusal, and the existing deadline remain in place. Changed projections or destinations, body-bearing requests, redirects, assets, and later documents do not inherit approval. There is no localhost-wide exception or reusable manual grant.
+- New direct input still replaces independently interpreted browser task scope. A follow-up such as “done” does not authorize local assets; restating the active development task may still be needed for the full page flow. Reload default Pi with no active or retained subagents, or restart it, to load the repair. Focused synthetic checks and typecheck passed; no live browser or login was exercised for this change.
+
+## 2026-10-23: Expose secret-safe browser request failure diagnostics
+
+- Owned-browser interception previously swallowed all request-check exceptions into `BlockedByClient`, leaving startup and navigation cancellation without actionable evidence. Explicit navigation and intercepted failures now retain at most eight fixed-code diagnostics with the check stage and cancellation source, not URLs, query strings, bodies, credentials, or raw exception messages.
+- Browser tool errors include recent diagnostics, and `browser_session` status exposes them in text and structured results even after tooling disconnects. Reload default Pi while no subagents are active or retained, then repeat the normal guarded operation and inspect status if failure happens asynchronously. Reload clears this in-memory history.
+- Request policy still fails closed; deadlines, exact ownership checks, opaque/error-document refusal, TLS validation, and the explicit isolated-localhost exception are unchanged. Synthetic tests and typecheck passed; the live startup cause still needs the new diagnostics from the affected operation. No browser was restarted or navigated during this change.
+
+## 2026-10-23: Normalize Windows browser process start-time identity
+
+- Browser-session state serializes Windows process start times as JSON `/Date(milliseconds)/` values, while the live CIM adapter reports ISO timestamps with sub-millisecond precision. Exact string comparison falsely marked the same Brave process stale, disconnecting page operations despite matching PID, executable, profile, CDP port, and launch marker.
+- Process identity now compares recognized date representations at millisecond precision, retaining the full tuple checks and rejecting unparseable mismatches. Reload or restart default Pi to activate the fix; no live browser operation was performed.
+
 ## 2026-10-23: Use native Herdr for same-server session communication
 
 - Explicitly directed communication with independent sessions now uses native Herdr on the same connected server, including supported non-Pi CLI agents. Onclave remains the route for supported instances outside that server; owned delegation stays on `subagent` / `subagent_control`. Registration, service/vault tools, and terminal callbacks are unchanged.

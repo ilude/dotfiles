@@ -88,6 +88,23 @@ async function fixture(origin = "https://account.example", frameOrigin = origin,
 }
 
 describe("authorized login executor integration", () => {
+  it("retains only eight value-free request failures across disposal for status/error reporting", async () => {
+    const f = await fixture();
+    await f.pages.select(f.state, "root");
+    for (let index = 0; index < 10; index++) {
+      f.pause(`invalid-${index}`, "https://username:synthetic-secret@public.example/private?token=synthetic-secret");
+      expect((await f.result(`invalid-${index}`)).method).toBe("Fetch.failRequest");
+    }
+    f.pages.dispose();
+    const failures = f.pages.diagnostics();
+    expect(failures).toHaveLength(8);
+    expect(failures[0]).toEqual({ phase: "intercepted", stage: "destination", code: "destination_refused", cancellation: "none" });
+    failures[0]!.code = "changed by caller";
+    expect(f.pages.diagnostics()[0]!.code).toBe("destination_refused");
+    const error = f.pages.diagnosticError(new Error("Browser request cancelled.")) as Error;
+    expect(error.message).toContain("Recent browser request failures:");
+    expect(error.message).not.toMatch(/secret|username|token|public.example|private/);
+  });
   it("resolves only after actual local bindings/policy, fills through guarded retained transport, and redacts observations", async () => {
     const f = await fixture();
     await f.pages.fill(f.state, "root", "#password", { secret_ref: "login" });

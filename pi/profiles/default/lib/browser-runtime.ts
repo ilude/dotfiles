@@ -52,6 +52,13 @@ function fields(argv: string[]): Partial<ProcessInfo> {
 	return result;
 }
 
+export function browserLaunchArgs(input: { cdpPort: number; userDataDir: string; profileDirectory: string; marker: string; extensionMode: ExtensionMode; allowLocalhostTlsErrors?: boolean }): string[] {
+	const args = ["--remote-debugging-address=127.0.0.1", `--remote-debugging-port=${input.cdpPort}`, `--user-data-dir=${path.resolve(input.userDataDir)}`, `--profile-directory=${input.profileDirectory}`, `--pi-launch-marker=${input.marker}`, "--no-first-run", "--no-default-browser-check"];
+	if (input.allowLocalhostTlsErrors) args.push("--allow-insecure-localhost");
+	if (input.extensionMode === "disabled") args.push("--disable-extensions", "--disable-component-extensions-with-background-pages");
+	return args;
+}
+
 export function windowsArgv(commandLine: string): string[] {
 	const output: string[] = [];
 	let token = "", quoted = false, slashes = 0;
@@ -138,9 +145,23 @@ function sameSessionTuple(expected: BrowserSessionState, current: BrowserSession
 		&& current.launchMarker === expected.launchMarker);
 }
 
+export function windowsCreationTime(value: string | number): number | undefined {
+	if (typeof value === "number") return Number.isFinite(value) ? value : undefined;
+	const serialized = /^\/Date\((-?\d+)(?:[+-]\d+)?\)\/$/.exec(value);
+	if (serialized) return Number(serialized[1]);
+	if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})$/.test(value)) return undefined;
+	const parsed = Date.parse(value);
+	return Number.isFinite(parsed) ? parsed : undefined;
+}
+
 export function processMatches(state: BrowserSessionState, info: ProcessInfo | undefined): boolean {
 	if (!info) return false;
-	const identityMatches = info.pid === state.pid && info.creationTime === state.processStartTime
+	const observedCreationTime = windowsCreationTime(info.creationTime);
+	const savedCreationTime = windowsCreationTime(state.processStartTime);
+	const creationTimeMatches = observedCreationTime !== undefined && savedCreationTime !== undefined
+		? observedCreationTime === savedCreationTime
+		: info.creationTime === state.processStartTime;
+	const identityMatches = info.pid === state.pid && creationTimeMatches
 		&& canonical(info.executablePath) === canonical(state.executablePath)
 		&& canonical(info.userDataDir ?? "") === canonical(state.userDataDir)
 		&& info.profileDirectory === state.profileDirectory
@@ -336,7 +357,7 @@ export class BrowserRuntime {
 		return { code: 0, stdout: `attached: ${state.sessionId}`, stderr: "" };
 	}
 
-	async start(input: { profileMode: ProfileMode; profileAlias?: string; extensionMode: ExtensionMode; url?: string; signal?: AbortSignal }): Promise<BrowserCommandResult> {
+	async start(input: { profileMode: ProfileMode; profileAlias?: string; extensionMode: ExtensionMode; allowLocalhostTlsErrors?: boolean; url?: string; signal?: AbortSignal }): Promise<BrowserCommandResult> {
 		const statePath = getBrowserStatePath();
 		const old = loadBrowserState();
 		if (old && processMatches(old, await this.processes.inspect(old.pid))) throw new BrowserControlError("session_occupied", "An owned browser session is already running.");
@@ -354,10 +375,10 @@ export class BrowserRuntime {
 			userDataDir = path.join(getAgentDir(), "browser", "pi-profile"); profileDirectory = "Pi";
 			await fs.promises.mkdir(userDataDir, { recursive: true });
 		}
+		if (input.allowLocalhostTlsErrors && input.profileMode !== "isolated") throw new BrowserControlError("tls_exception_scope", "The localhost TLS exception is available only for Pi-owned isolated sessions.");
 		const port = await freePort();
 		const marker = randomUUID().replaceAll("-", "");
-		const args = ["--remote-debugging-address=127.0.0.1", `--remote-debugging-port=${port}`, `--user-data-dir=${path.resolve(userDataDir)}`, `--profile-directory=${profileDirectory}`, `--pi-launch-marker=${marker}`, "--no-first-run", "--no-default-browser-check"];
-		if (input.extensionMode === "disabled") args.push("--disable-extensions", "--disable-component-extensions-with-background-pages");
+		const args = browserLaunchArgs({ cdpPort: port, userDataDir, profileDirectory, marker, extensionMode: input.extensionMode, allowLocalhostTlsErrors: input.allowLocalhostTlsErrors });
 		const child = spawn(executable, args, { detached: false, stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
 		let stdoutBytes = 0, stderrBytes = 0, spawnError: string | undefined, lastProbe: CdpProbeResult = { status: "unreachable" };
 		child.stdout?.on("data", (chunk: Buffer) => { stdoutBytes += chunk.length; });
@@ -389,7 +410,7 @@ export class BrowserRuntime {
 		const ids = new Set(matches.map((item) => item.pid));
 		const root = matches.filter((item) => !ids.has(item.parentPid)).sort((a, b) => String(a.creationTime).localeCompare(String(b.creationTime)))[0];
 		if (!root || canonical(root.executablePath) !== canonical(executable)) { try { child.kill(); } catch {} throw new BrowserControlError("ownership_unverified", "Surviving Brave root process could not be verified."); }
-		let state: BrowserSessionState = { version: 1, sessionId: randomUUID().replaceAll("-", ""), sessionMode: "owned", launchMarker: marker, profileMode: input.profileMode, ...(input.profileAlias ? { profileAlias: input.profileAlias } : {}), cdpPort: port, pid: root.pid, processStartTime: root.creationTime, executablePath: path.resolve(root.executablePath), userDataDir: path.resolve(userDataDir), profileDirectory, extensionMode: input.extensionMode, extensionsExpected, comparisonGeneration: 0 };
+		let state: BrowserSessionState = { version: 1, sessionId: randomUUID().replaceAll("-", ""), sessionMode: "owned", launchMarker: marker, profileMode: input.profileMode, ...(input.profileAlias ? { profileAlias: input.profileAlias } : {}), cdpPort: port, pid: root.pid, processStartTime: root.creationTime, executablePath: path.resolve(root.executablePath), userDataDir: path.resolve(userDataDir), profileDirectory, extensionMode: input.extensionMode, allowLocalhostTlsErrors: input.allowLocalhostTlsErrors ?? false, extensionsExpected, comparisonGeneration: 0 };
 		await saveBrowserState(state);
 		if (input.url) {
 			const response = await fetch(`http://127.0.0.1:${port}/json/new?${encodeURIComponent(input.url)}`, { method: "PUT", signal: input.signal });

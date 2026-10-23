@@ -5,9 +5,9 @@ import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BrowserCdpTransport } from "../lib/browser-cdp-transport.js";
-import { BrowserRequestPolicy, hostVisibility, parseBrowserDestination, type BrowserRequestPolicyOptions } from "../lib/browser-request-policy.js";
+import { BrowserRequestPolicy, hasNativeSecurityWarning, hostVisibility, parseBrowserDestination, type BrowserRequestPolicyOptions } from "../lib/browser-request-policy.js";
 import { effectCandidate, type BrowserEffect } from "../lib/browser-effect-contract.js";
-import type { BrowserSessionState } from "../lib/browser-control.js";
+import { BrowserControlError, type BrowserSessionState } from "../lib/browser-control.js";
 const cleanup: Array<() => void | Promise<void>> = [];
 afterEach(async () => { vi.useRealTimers(); vi.restoreAllMocks(); for (const close of cleanup.splice(0).reverse()) await close(); });
 const identity = { sessionId: "synthetic-session", branchId: "branch", generation: 1 };
@@ -71,6 +71,16 @@ async function fixture(options: Partial<BrowserRequestPolicyOptions> & { initial
 }
 
 describe("canonical browser destinations", () => {
+  it("applies the explicit TLS exception only to localhost certificate errors", () => {
+    const certificate = { securityState: "insecure-broken", certificateSecurityState: { certificateNetworkError: "net::ERR_CERT_AUTHORITY_INVALID" } };
+    expect(hasNativeSecurityWarning(certificate, "https://localhost:42500/login", true)).toBe(false);
+    expect(hasNativeSecurityWarning(certificate, "https://127.0.0.1:42500/login", true)).toBe(false);
+    expect(hasNativeSecurityWarning(certificate, "https://localhost.attacker.example/", true)).toBe(true);
+    expect(hasNativeSecurityWarning(certificate, "https://example.com/", true)).toBe(true);
+    expect(hasNativeSecurityWarning({ securityStateIssueIds: ["malicious-content"] }, "https://localhost/", true)).toBe(true);
+    expect(hasNativeSecurityWarning({ safetyTipInfo: { safetyTipStatus: "badReputation" } }, "https://localhost/", true)).toBe(true);
+    expect(hasNativeSecurityWarning({ securityState: "insecure-broken" }, "https://localhost/", true)).toBe(true);
+  });
   it("normalizes IDNs, trailing dots, IPv4 notation and exact host identity", () => {
     expect(parseBrowserDestination("https://BÜCHER.example./path?q=private#fragment", 9222)).toMatchObject({ host: "xn--bcher-kva.example", origin: "https://xn--bcher-kva.example", resource: "/path" });
     expect(parseBrowserDestination("http://2130706433:3000", 9222).visibility).toBe("local");
@@ -86,6 +96,58 @@ describe("canonical browser destinations", () => {
 });
 
 describe("persistent intercepted destinations", () => {
+  it("reports fixed stages/codes for swallowed request errors without leaking values or continuing", async () => {
+    const failure = vi.fn();
+    const f = await fixture({ failure, resolveHost: async () => { throw new BrowserControlError("https://secret.invalid/?token=synthetic-secret", "password=synthetic-secret"); } });
+    f.pause("dns-failure", "https://public.example/path?token=synthetic-secret");
+    expect((await f.result("dns-failure")).method).toBe("Fetch.failRequest");
+    expect(failure).toHaveBeenLastCalledWith({ phase: "intercepted", stage: "classification", code: "inspection_failed", cancellation: "none" });
+    expect(JSON.stringify(failure.mock.calls)).not.toMatch(/secret|https|password|token|path/);
+    expect(f.transport.signal.aborted).toBe(false);
+  });
+  it("reports a denied decision and ignores diagnostic-observer failure without weakening policy", async () => {
+    const failure = vi.fn(() => { throw new Error("diagnostic observer unavailable"); });
+    const f = await fixture({ failure, policy: async () => ({ outcome: "deny", reason: "synthetic private reason" }) });
+    f.pause("denied", "https://public.example/");
+    expect((await f.result("denied")).method).toBe("Fetch.failRequest");
+    expect(failure).toHaveBeenLastCalledWith({ phase: "intercepted", stage: "policy", code: "policy_denied", cancellation: "none" });
+    expect(f.transport.signal.aborted).toBe(false);
+  });
+  it("distinguishes native warning refusal from destination parsing without recording page data", async () => {
+    const failure = vi.fn(), f = await fixture({ failure, initialSecurity: { securityStateIssueIds: ["malicious-content"] } });
+    f.pause("warning", "https://public.example/");
+    expect((await f.result("warning")).method).toBe("Fetch.failRequest");
+    expect(failure).toHaveBeenLastCalledWith({ phase: "intercepted", stage: "safety", code: "native_warning", cancellation: "none" });
+    expect(f.effects).toHaveLength(0);
+  });
+  it("distinguishes an automated navigation deadline from caller cancellation", async () => {
+    const failure = vi.fn();
+    const f = await fixture({ failure, timeoutMs: 30, resolveHost: async () => await new Promise(() => {}) });
+    await expect(f.policy.authorizeNavigation("root", "https://public.example/")).rejects.toThrow("Browser request cancelled.");
+    expect(failure).toHaveBeenLastCalledWith({ phase: "navigation", stage: "classification", code: "cancelled", cancellation: "deadline" });
+    const caller = new AbortController(); caller.abort();
+    await expect(f.policy.authorizeNavigation("root", "https://public.example/", caller.signal)).rejects.toThrow("Browser request cancelled.");
+    expect(failure).toHaveBeenLastCalledWith({ phase: "navigation", stage: "identity", code: "cancelled", cancellation: "caller-aborted" });
+  });
+  it.each(["policy-disposed", "target-disconnected"] as const)("identifies %s during an outstanding navigation decision", async cancellation => {
+    const failure = vi.fn(), decision = vi.fn(async () => await new Promise<never>(() => {}));
+    const f = await fixture({ failure, policy: decision });
+    const navigation = f.policy.authorizeNavigation("root", "https://public.example/");
+    const rejection = expect(navigation).rejects.toThrow("Browser request cancelled.");
+    await vi.waitFor(() => expect(decision).toHaveBeenCalled());
+    if (cancellation === "policy-disposed") f.policy.dispose(); else f.transport.dispose();
+    await rejection;
+    expect(failure).toHaveBeenLastCalledWith({ phase: "navigation", stage: "policy", code: "cancelled", cancellation });
+  });
+  it("reports opaque source refusal without treating an error document as a blank navigation", async () => {
+    const failure = vi.fn(), f = await fixture({ failure });
+    f.send({ method: "Page.frameNavigated", sessionId: "root-session", params: { frame: { id: "idp-frame", parentId: "root-frame", url: "chrome-error://chromewebdata/", securityOrigin: "://", loaderId: "error" } } });
+    await f.transport.command("root", "Page.bringToFront");
+    f.pause("error-document", "https://public.example/", { frameId: "idp-frame" });
+    expect((await f.result("error-document")).method).toBe("Fetch.failRequest");
+    expect(failure).toHaveBeenLastCalledWith({ phase: "intercepted", stage: "source", code: "opaque_source", cancellation: "none" });
+    expect(f.effects).toHaveLength(0);
+  });
   it.each([true, false])("keeps explicit navigation decisions beyond the network deadline (interception=%s)", async interceptRequests => {
     let release!: () => void, pending!: AbortSignal;
     const f = await fixture({ interceptRequests, timeoutMs: 30, policy: async (_effect, signal) => {
@@ -133,6 +195,71 @@ describe("persistent intercepted destinations", () => {
     }
     release(); await rejection;
     expect(f.commands.some(command => command.method === "Page.navigate")).toBe(false);
+  });
+  it("dispatches one exact approved HTTP Document without reviewing it twice, but not assets or later documents", async () => {
+    const review = vi.fn(async () => ({ outcome: "deny" as "allow" | "deny", reason: "No additional authority" }));
+    review.mockResolvedValueOnce({ outcome: "allow", reason: "Approve this navigation once" });
+    const projection = vi.fn(() => ({ kind: "read" as const, payload: { kind: "none" as const }, taskScoped: false }));
+    const classify = vi.fn(async () => ["127.0.0.1"]);
+    const f = await fixture({ policy: review, effect: projection, resolveHost: classify });
+    const url = "http://localhost:3000/";
+    await f.policy.authorizeNavigation("root", url);
+    f.pause("approved-dispatch", url);
+    expect((await f.result("approved-dispatch")).method).toBe("Fetch.continueRequest");
+    expect(review).toHaveBeenCalledTimes(1);
+    expect(projection).toHaveBeenCalledTimes(2); expect(classify).toHaveBeenCalledTimes(2);
+    f.pause("asset", "http://localhost:3000/app.js", { resourceType: "Script" });
+    expect((await f.result("asset")).method).toBe("Fetch.failRequest");
+    f.pause("repeated-document", url);
+    expect((await f.result("repeated-document")).method).toBe("Fetch.failRequest");
+    expect(review).toHaveBeenCalledTimes(3);
+  });
+  it("expires an approved HTTP Document dispatch at the existing network deadline", async () => {
+    const review = vi.fn(async () => ({ outcome: "deny" as "allow" | "deny", reason: "No additional authority" }));
+    review.mockResolvedValueOnce({ outcome: "allow", reason: "Approve navigation once" });
+    const f = await fixture({ timeoutMs: 100, policy: review });
+    await f.policy.authorizeNavigation("root", "https://public.example/document");
+    await new Promise(resolve => setTimeout(resolve, 150));
+    f.pause("expired-dispatch", "https://public.example/document");
+    expect((await f.result("expired-dispatch")).method).toBe("Fetch.failRequest");
+    expect(review).toHaveBeenCalledTimes(2);
+  });
+  it.each(["url", "query", "frame", "target", "method", "body", "unknown-body", "redirect", "resource", "identity", "caller", "loader", "warning", "projection", "classification"])("does not reuse a navigation dispatch after a %s mismatch and consumes it once", async mismatch => {
+    let generation = identity.generation, changed = false;
+    const review = vi.fn(async () => ({ outcome: "deny" as "allow" | "deny", reason: "No additional authority" }));
+    review.mockResolvedValueOnce({ outcome: "allow", reason: "Approve this navigation once" });
+    const f = await fixture({ policy: review, identity: () => ({ ...identity, generation }),
+      effect: () => ({ kind: "read", payload: changed && mismatch === "projection" ? { kind: "redacted", sourceObservationIds: [], containsProtectedData: true } : { kind: "none" }, taskScoped: false }),
+      resolveHost: async () => [changed && mismatch === "classification" ? "10.0.0.2" : "93.184.216.34"],
+    });
+    const caller = new AbortController(), url = "https://public.example/document";
+    await f.policy.authorizeNavigation("root", url, caller.signal);
+    changed = true;
+    if (mismatch === "identity") generation++;
+    if (mismatch === "caller") caller.abort();
+    if (mismatch === "loader" || mismatch === "warning" || mismatch === "target") {
+      f.send(mismatch === "loader"
+        ? { method: "Page.frameNavigated", sessionId: "root-session", params: { frame: { id: "root-frame", url: "https://task.example/", securityOrigin: "https://task.example", loaderId: "changed" } } }
+        : mismatch === "warning" ? { method: "Page.interstitialShown", sessionId: "root-session", params: {} }
+        : { method: "Target.attachedToTarget", sessionId: "root-session", params: { sessionId: "popup-session", waitingForDebugger: true, targetInfo: { targetId: "popup", type: "page", openerId: "root", url: "https://popup.example/" } } });
+      await f.transport.command("root", "Page.bringToFront");
+      if (mismatch === "target") await vi.waitFor(() => expect(f.transport.managedTargets().some(t => t.targetId === "popup")).toBe(true));
+    }
+    const requestUrl = mismatch === "url" ? "https://public.example/other" : mismatch === "query" ? `${url}?extra=synthetic` : url;
+    const extra: Record<string, unknown> = mismatch === "frame" ? { frameId: "idp-frame" }
+      : mismatch === "resource" ? { resourceType: "Script" }
+      : mismatch === "redirect" ? { redirectedRequestId: "previous" }
+      : ["method", "body", "unknown-body"].includes(mismatch) ? { request: { url, method: mismatch === "method" ? "POST" : "GET", ...(mismatch === "body" ? { postData: "synthetic" } : mismatch === "unknown-body" ? { hasPostData: true } : {}) } } : {};
+    f.pause("mismatched-dispatch", requestUrl, extra, mismatch === "target" ? "popup" : "root", mismatch === "target" ? "popup-session" : "root-session");
+    expect((await f.result("mismatched-dispatch")).method).toBe("Fetch.failRequest");
+    if (mismatch !== "target") {
+      f.pause("after-mismatch", url);
+      expect((await f.result("after-mismatch")).method).toBe("Fetch.failRequest");
+    } else {
+      // A different target cannot consume or inherit the root's exact dispatch.
+      f.pause("root-dispatch", url);
+      expect((await f.result("root-dispatch")).method).toBe("Fetch.continueRequest");
+    }
   });
   it("retains the owned background Fetch default 10-second deadline", async () => {
     let pending!: AbortSignal;

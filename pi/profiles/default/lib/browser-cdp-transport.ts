@@ -35,7 +35,7 @@ export class CdpConnection {
 	private readonly ready: Promise<void>;
 	private lifetimeAbort?: () => void;
 
-	constructor(url: string, factory: CdpSocketFactory = (endpoint) => new WebSocket(endpoint), signal?: AbortSignal, timeoutMs = 10_000) {
+	constructor(url: string, factory: CdpSocketFactory = (endpoint) => new WebSocket(endpoint), signal?: AbortSignal, timeoutMs = 30_000) {
 		this.socket = factory(url);
 		this.ready = new Promise<void>((resolve, reject) => {
 			const timer = setTimeout(() => { reject(failure("cdp_timeout", "CDP connection timed out.")); this.close(); }, timeoutMs);
@@ -69,7 +69,7 @@ export class CdpConnection {
 			const id = ++this.nextId;
 			let settled = false;
 			const abort = () => finish(failure("cancelled", "Browser operation was cancelled."));
-			const timer = setTimeout(() => finish(failure("cdp_timeout", "CDP command timed out.")), options.timeoutMs ?? 10_000);
+			const timer = setTimeout(() => finish(failure("cdp_timeout", "CDP command timed out.")), options.timeoutMs ?? 30_000);
 			const finish = (error?: Error, result?: unknown) => {
 				if (settled) return;
 				settled = true; clearTimeout(timer); signal?.removeEventListener("abort", abort); this.pending.delete(id);

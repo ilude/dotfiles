@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { getAgentDir, updateJsonObjectAtomic, writeJsonObjectAtomic } from "./settings-file.js";
 import { BrowserRuntime } from "./browser-runtime.js";
 import type { BrowserCdpTransport, CdpFrame } from "./browser-cdp-transport.js";
-import { BrowserRequestPolicy, hostVisibility, type BrowserRequestFacts, type BrowserRequestProjection } from "./browser-request-policy.js";
+import { BrowserRequestPolicy, hostVisibility, type BrowserRequestFacts, type BrowserRequestProjection, type BrowserRequestFailure } from "./browser-request-policy.js";
 import { samePolicyIdentity, type BrowserEffect, type BrowserEffectKind, type BrowserPolicyHandler, type PolicyIdentity } from "./browser-effect-contract.js";
 import type { CredentialTarget } from "./browser-credentials.js";
 import { BROWSER_CONTROL_STATE, browserTextExpression, projectBrowserText } from "./browser-observations.js";
@@ -51,6 +51,7 @@ export interface BrowserSessionState {
 	userDataDir: string;
 	profileDirectory: string;
 	extensionMode: ExtensionMode;
+	allowLocalhostTlsErrors?: boolean;
 	extensionsExpected?: boolean;
 	targetId?: string;
 	comparisonGeneration: number;
@@ -413,6 +414,15 @@ export function browserAccountRoute(raw: string): boolean {
 export class BrowserPageProtocol {
 	private transport?: BrowserCdpTransport;
 	private guard?: BrowserRequestPolicy;
+	private readonly requestFailures: BrowserRequestFailure[] = [];
+	/** Bounded value-free evidence remains available after a disconnect or run-end disposal. */
+	diagnostics(): BrowserRequestFailure[] { return this.requestFailures.map(failure => ({ ...failure })); }
+	diagnosticError(error: unknown): unknown {
+		const failures = this.diagnostics();
+		if (!failures.length) return error;
+		const message = error instanceof Error ? error.message : "Browser operation failed.";
+		return new BrowserControlError(error instanceof BrowserControlError ? error.code : "browser_failed", `${message}\nRecent browser request failures: ${JSON.stringify(failures)}`);
+	}
 	private sessionId?: string;
 	private identity?: PolicyIdentity;
 	private connecting?: Promise<BrowserCdpTransport>;
@@ -441,7 +451,10 @@ export class BrowserPageProtocol {
 					const handler = () => { if (this.lifetime === captured) this.dispose(); };
 					this.ownerAbort = { signal: lease.signal, handler }; lease.signal.addEventListener("abort", handler, { once: true });
 				}
-				const guard = new BrowserRequestPolicy({ cdpPort: state.cdpPort, identity: options.identity, policy: options.policy, localFile: options.localFile, resolveHost: options.resolveHost, effect: facts => this.requestEffect(facts), interceptRequests: state.sessionMode !== "attached" });
+				const guard = new BrowserRequestPolicy({ cdpPort: state.cdpPort, identity: options.identity, policy: options.policy, localFile: options.localFile, resolveHost: options.resolveHost, effect: facts => this.requestEffect(facts), interceptRequests: state.sessionMode !== "attached", allowLocalhostTlsErrors: state.allowLocalhostTlsErrors === true, failure: failure => {
+					this.requestFailures.push(failure);
+					if (this.requestFailures.length > 8) this.requestFailures.shift();
+				} });
 				this.guard = guard;
 				const lifetime = this.lifetime;
 				const transport = await options.runtime.connectTransport(state, { register: guard.register, signal: lifetime.signal });

@@ -35,16 +35,19 @@ const PAGE_ACTIONS = ["list", "open", "select", "snapshot", "scroll", "screensho
 
 const SessionParameters = Type.Object({
 	action: StringEnum(SESSION_ACTIONS),
+	timeout_ms: Type.Optional(Type.Integer({ minimum: 1_000, maximum: 300_000, description: "Optional overall tool-call timeout in milliseconds; default 30000." })),
 	profile_mode: Type.Optional(StringEnum(["isolated", "real"] as const)),
 	profile_alias: Type.Optional(Type.String()),
 	cdp_port: Type.Optional(Type.Integer({ minimum: 1, maximum: 65535 })),
 	extension_mode: Type.Optional(StringEnum(["enabled", "disabled"] as const)),
+	allow_localhost_tls_errors: Type.Optional(Type.Boolean({ description: "Owned isolated start only: allow certificate errors for localhost by using Chromium's localhost-only exception. Never enables bypass for remote hosts." })),
 	restart_authorization: Type.Optional(Type.String()),
 	url: Type.Optional(Type.String()),
 });
 
 const PageParameters = Type.Object({
 	action: StringEnum(PAGE_ACTIONS),
+	timeout_ms: Type.Optional(Type.Integer({ minimum: 1_000, maximum: 300_000, description: "Optional overall tool-call timeout in milliseconds; default 30000." })),
 	session_id: Type.String(),
 	target_id: Type.Optional(Type.String()),
 	url: Type.Optional(Type.String()),
@@ -60,16 +63,19 @@ const PageParameters = Type.Object({
 
 type SessionInput = {
 	action: SessionAction;
+	timeout_ms?: number;
 	profile_mode?: ProfileMode;
 	profile_alias?: string;
 	cdp_port?: number;
 	extension_mode?: ExtensionMode;
+	allow_localhost_tls_errors?: boolean;
 	restart_authorization?: string;
 	url?: string;
 };
 
 type PageInput = {
 	action: PageAction;
+	timeout_ms?: number;
 	session_id: string;
 	target_id?: string;
 	url?: string;
@@ -99,6 +105,11 @@ const BrowserResultSchema = Type.Object({
 	candidates: Type.Optional(Type.Array(Type.Object({ userDataDir: Type.String(), profileDirectory: Type.String(), displayName: Type.String(), configuredAliases: Type.Array(Type.String()) }))),
 	candidateCount: Type.Optional(Type.Number()), targets: Type.Optional(Type.Array(Type.Object({ id: Type.String(), url: Type.String(), type: Type.Optional(Type.String()) }))),
 	count: Type.Optional(Type.Number()), targetId: Type.Optional(Type.String()), url: Type.Optional(Type.String()),
+	requestFailures: Type.Optional(Type.Array(Type.Object({
+		phase: StringEnum(["navigation", "intercepted"] as const),
+		stage: StringEnum(["safety", "identity", "destination", "frame", "source", "projection", "classification", "policy", "postcheck", "dispatch"] as const),
+		code: Type.String(), cancellation: StringEnum(["none", "policy-disposed", "target-disconnected", "caller-aborted", "deadline"] as const),
+	}, { additionalProperties: false }), { maxItems: 8 })),
 	snapshot: Type.Optional(Type.String()),
 	visible: Type.Optional(Type.Boolean()),
 	scroll: Type.Optional(Type.Object({
@@ -213,7 +224,9 @@ export default function registerBrowserControl(pi: ExtensionAPI) {
 	pi.on("input", event => { if ((event.source === "interactive" || event.source === "rpc") && !event.streamingBehavior) dispose(); });
 	const navigateInitial = async (url: string | undefined, signal?: AbortSignal) => {
 		if (!url || !state) return;
-		const target = await pages.open(state, url, signal); state = { ...state, targetId: target.id }; await saveBrowserState(state);
+		try {
+			const target = await pages.open(state, url, signal); state = { ...state, targetId: target.id }; await saveBrowserState(state);
+		} catch (error) { throw pages.diagnosticError(error); }
 	};
 
 	registerProfileCommand(pi, "browser-setup", {
@@ -241,12 +254,13 @@ export default function registerBrowserControl(pi: ExtensionAPI) {
 	pi.registerTool({
 		name: "browser_session",
 		label: "Browser Session",
-		description: "Discover, inspect, start, attach, restart, or stop one ownership-verified Brave session. Attach connects only to an operator-launched real alias on loopback CDP; restart requires an owned session.",
+		description: "Discover, inspect, start, attach, restart, or stop one ownership-verified Brave session. Only isolated starts may explicitly set allow_localhost_tls_errors to use Chromium's localhost-only TLS exception; remote certificate validation remains enabled. Attach connects only to an operator-launched real alias on loopback CDP; restart requires an owned session.",
 		promptSnippet: "Control one profile-aware Brave session without guessing or broad process termination",
 		parameters: SessionParameters,
 		outputSchema: BrowserResultSchema,
 		async execute(_id, rawParams, signal) {
 			const input = rawParams as SessionInput;
+			if (input.timeout_ms !== undefined) signal = signal ? AbortSignal.any([signal, AbortSignal.timeout(input.timeout_ms)]) : AbortSignal.timeout(input.timeout_ms);
 			if (input.action === "discover") {
 				const config = readBrowserConfig();
 				const candidates = discoverBraveProfiles().map((candidate) => ({
@@ -261,18 +275,20 @@ export default function registerBrowserControl(pi: ExtensionAPI) {
 			if (input.action === "status") {
 				const command = await sessions.status(signal);
 				state = loadBrowserState();
-				return toolResult(command.stdout || "Browser session is absent.", { state: publicState(state), status: parseSessionStatus(command.stdout) });
+				const requestFailures = pages.diagnostics();
+				return toolResult(`${command.stdout || "Browser session is absent."}${requestFailures.length ? `\nRecent browser request failures: ${JSON.stringify(requestFailures)}` : ""}`, { state: publicState(state), status: parseSessionStatus(command.stdout), requestFailures });
 			}
 
 			if (input.action === "start") {
 				state = loadBrowserState();
+				if (input.allow_localhost_tls_errors && (input.profile_mode ?? "isolated") !== "isolated") throw new BrowserControlError("tls_exception_scope", "The localhost TLS exception is available only for Pi-owned isolated sessions.");
 				const profileMode = input.profile_mode ?? "isolated";
 				if (profileMode === "real") {
 					if (!input.profile_alias) throw new BrowserControlError("profile_required", "Real-profile start requires a configured alias.");
 					resolveConfiguredProfile(input.profile_alias);
 				}
 				dispose();
-				const command = await sessions.start({ profileMode, profileAlias: input.profile_alias, extensionMode: input.extension_mode ?? "enabled", signal });
+				const command = await sessions.start({ profileMode, profileAlias: input.profile_alias, extensionMode: input.extension_mode ?? "enabled", allowLocalhostTlsErrors: input.allow_localhost_tls_errors ?? false, signal });
 				state = loadBrowserState();
 				if (!state) throw new BrowserControlError("state_missing", "Brave started without a complete ownership record.");
 				await navigateInitial(input.url, signal);
@@ -280,6 +296,7 @@ export default function registerBrowserControl(pi: ExtensionAPI) {
 			}
 
 			if (input.action === "attach") {
+				if (input.allow_localhost_tls_errors) throw new BrowserControlError("tls_exception_scope", "The localhost TLS exception applies only when starting a new isolated session; attach does not change browser certificate behavior.");
 				if (input.profile_mode !== undefined && input.profile_mode !== "real") throw new BrowserControlError("profile_mode_invalid", "Attach requires profile_mode real or no profile_mode.");
 				if (!input.profile_alias) throw new BrowserControlError("profile_required", "Attach requires a configured real-profile alias.");
 				dispose();
@@ -328,6 +345,7 @@ export default function registerBrowserControl(pi: ExtensionAPI) {
 		outputSchema: BrowserResultSchema,
 		async execute(_id, rawParams, signal, _onUpdate, ctx) {
 			const input = rawParams as PageInput;
+			if (input.timeout_ms !== undefined) signal = signal ? AbortSignal.any([signal, AbortSignal.timeout(input.timeout_ms)]) : AbortSignal.timeout(input.timeout_ms);
 			state = loadBrowserState();
 			if (!state || input.session_id !== state.sessionId) throw new BrowserControlError("session_mismatch", "The supplied session ID is not the current ownership-verified session.");
 			try {
@@ -380,7 +398,7 @@ export default function registerBrowserControl(pi: ExtensionAPI) {
 				if (state.targetId === targetId) state = { ...state, targetId: undefined };
 				await saveBrowserState(state);
 				return toolResult(`Closed raw CDP target ${targetId}.`, { state: publicState(state), targetId });
-			} catch (error) { throw error; }
+			} catch (error) { throw pages.diagnosticError(error); }
 		},
 	});
 

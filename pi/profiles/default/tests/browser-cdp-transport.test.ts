@@ -5,7 +5,7 @@ import { createHash } from "node:crypto";
 import type { Duplex } from "node:stream";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BrowserCdpTransport, CdpConnection, type CdpEvent } from "../lib/browser-cdp-transport.js";
-import { BrowserRuntime, processMatches, type ProcessAdapter, type ProcessInfo } from "../lib/browser-runtime.js";
+import { BrowserRuntime, processMatches, windowsCreationTime, type ProcessAdapter, type ProcessInfo } from "../lib/browser-runtime.js";
 import type { BrowserSessionState } from "../lib/browser-control.js";
 
 interface WireCommand { id: number; method: string; params: Record<string, unknown>; sessionId?: string }
@@ -349,6 +349,15 @@ describe("session-owned managed identity", () => {
 		wire.send({ method: "Network.requestWillBeSent", sessionId: "unrelated-session", params: { requestId: "ignore" } });
 		await waitFor(() => events.length === 1);
 		expect(events[0]).toMatchObject({ targetId: "oop-target", sessionId: "oop-session", params: { frameId: "login-frame" } });
+	});
+
+	it("normalizes Windows CIM ISO and persisted JSON-date process creation times to milliseconds", () => {
+		expect(windowsCreationTime("2026-10-23T16:24:20.117409-04:00")).toBe(1792787060117);
+		expect(windowsCreationTime("/Date(1792787060117)/")).toBe(1792787060117);
+		expect(windowsCreationTime("not-a-date")).toBeUndefined();
+		const saved = state(9222);
+		const observed = { ...processInfo(saved), creationTime: "2026-10-23T16:24:20.117409-04:00" };
+		expect(processMatches({ ...saved, processStartTime: "/Date(1792787060117)/" }, observed)).toBe(true);
 	});
 
 	it.each(["pid", "creationTime", "executablePath", "userDataDir", "profileDirectory", "port", "remoteDebuggingAddress"] as const)("rejects stale process %s before a page command", async (field) => {
