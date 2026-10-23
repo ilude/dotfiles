@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-10-23: Preserve normal page traffic in operator-attached browsers
+
+- Attached Brave sessions no longer intercept each page-generated network request. Office/SharePoint internal POSTs previously appeared as exports and produced repeated approval dialogs that expired while the operator was working.
+- Explicit agent navigation, observations, clicks, fills, and credential resolution retain their policy checks, as do native browser warning checks. This deliberately removes network-stage transfer and redirect enforcement in attached browsers; it does not claim to distinguish harmless service requests from writes or disclosures. Pi-owned browsers retain request interception.
+- The earlier end-of-run disconnect remains in place, but addressed only idle prompts, not the active-page problem. Reload existing Pi sessions to load the corrected behavior.
+
 ## 2026-10-23: Disconnect browser interception when a Pi run ends
 
 - Default Pi now releases its CDP connection, request interception, and pending browser approvals when the agent run ends. SharePoint and Office background telemetry previously kept triggering short-lived damage-control dialogs in an otherwise idle session.

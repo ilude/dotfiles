@@ -72,7 +72,7 @@ async function fixture(origin = "https://account.example", frameOrigin = origin,
   });
   await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
   const address = server.address(); if (!address || typeof address === "string") throw new Error(); const port = address.port;
-  const state: BrowserSessionState = { sessionId: "synthetic-session", sessionMode: "attached", profileMode: "real", cdpPort: port, pid: 1, processStartTime: "synthetic", executablePath: "/brave", userDataDir: "/profile", profileDirectory: "Default", extensionMode: "enabled", comparisonGeneration: 0 };
+  const state: BrowserSessionState = { sessionId: "synthetic-session", sessionMode: "owned", profileMode: "real", cdpPort: port, pid: 1, processStartTime: "synthetic", executablePath: "/brave", userDataDir: "/profile", profileDirectory: "Default", extensionMode: "enabled", comparisonGeneration: 0 };
   const runtime = { connectTransport: async (_state: BrowserSessionState, options: Parameters<BrowserRuntime["connectTransport"]>[1]) => transport ??= await BrowserCdpTransport.connect(state, { ...options!, revalidate: async () => { inspections++; if (!valid) throw new Error("Stale process tuple"); } }), disposeTransport: () => { transport?.dispose(); transport = undefined; } } as unknown as BrowserRuntime;
   const lifetime = new AbortController(); vi.stubEnv("BITWARDEN_ACCESS_KEY", "synthetic-access-key");
   const exec = vi.fn(async () => ({ code: 0, killed: false, stdout: JSON.stringify({ key: "synthetic-key", value: "synthetic-secret" }), stderr: "" }));

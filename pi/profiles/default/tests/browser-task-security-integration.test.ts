@@ -20,7 +20,7 @@ type Command = { id: number; method: string; sessionId?: string; params: Record<
  * Chromium DOM/CDP replies, process inspection, DNS, BWS exec and independent model judgments
  * are synthetic. Policy outcomes are not stubbed. No real browser/site/account/provider/peer calls.
  * Native setter DOM semantics are checked separately in browser-control.test.ts. */
-async function fixture(origin = "https://account.example", frameOrigin = origin, scopes: IntentScope[] = [{ kinds: ["login", "read", "navigate", "dev-form"], origins: [origin, frameOrigin] }]) {
+async function fixture(origin = "https://account.example", frameOrigin = origin, scopes: IntentScope[] = [{ kinds: ["login", "read", "navigate", "dev-form"], origins: [origin, frameOrigin] }], sessionMode: "owned" | "attached" = "owned") {
   const gate = await harness({ interpretIntent: async () => scopes, review: async () => ({ status: "valid", verdict: "ask", reason: "Unrequested candidate", dismissedCandidates: [] }) });
   gate.select.mockResolvedValue("Deny");
   await gate.emit("input", { source: "interactive", text: "Synthetic operator task" });
@@ -70,7 +70,7 @@ async function fixture(origin = "https://account.example", frameOrigin = origin,
   });
   await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
   const address = server.address(); if (!address || typeof address === "string") throw new Error(); const port = address.port;
-  const state: BrowserSessionState = { sessionId: "synthetic-session", sessionMode: "attached", profileMode: "real", cdpPort: port, pid: 1, processStartTime: "synthetic", executablePath: "/brave", userDataDir: "/profile", profileDirectory: "Default", extensionMode: "enabled", comparisonGeneration: 0 };
+  const state: BrowserSessionState = { sessionId: "synthetic-session", sessionMode, profileMode: "real", cdpPort: port, pid: 1, processStartTime: "synthetic", executablePath: "/brave", userDataDir: "/profile", profileDirectory: "Default", extensionMode: "enabled", comparisonGeneration: 0 };
   const runtime = { connectTransport: async (_state: BrowserSessionState, options: Parameters<BrowserRuntime["connectTransport"]>[1]) => transport ??= await BrowserCdpTransport.connect(state, { ...options!, revalidate: async () => { inspections++; if (!valid) throw new Error("Stale process tuple"); } }), disposeTransport: () => { transport?.dispose(); transport = undefined; } } as unknown as BrowserRuntime;
   const lifetime = new AbortController(); vi.stubEnv("BITWARDEN_ACCESS_KEY", "synthetic-access-key");
   const exec = vi.fn(async () => ({ code: 0, killed: false, stdout: JSON.stringify({ key: "synthetic-key", value: "synthetic-secret" }), stderr: "" }));
@@ -95,6 +95,16 @@ async function privateRead(f: Awaited<ReturnType<typeof fixture>>) {
 }
 
 describe("finite browser task security through actual Damage Control", () => {
+  it("does not intercept attached browser traffic but still refuses an unrequested consequential fill", async () => {
+    const f = await fixture("https://account.example", "https://account.example", [{ kinds: ["read"], origins: ["https://account.example"] }], "attached");
+    await f.pages.snapshot(f.state, "root");
+    expect(f.commands.some(command => command.method === "Fetch.enable")).toBe(false);
+    f.field({ type: "text", name: "comment", autocomplete: "", label: "Post comment", password: false, loginForm: false, form: "https://account.example/comments" });
+    await expect(f.pages.fill(f.state, "root", "#comment", "Unrequested comment")).rejects.toThrow();
+    expect(f.effects.at(-1)?.kind).toBe("post");
+    expect(f.commands.some(command => command.method === "Runtime.evaluate" && String(command.params.expression).includes("setter.call"))).toBe(false);
+  });
+
   it("reconnects on an explicit retry after the cached CDP transport disconnects", async () => {
     const f = await fixture();
     await expect(f.pages.list(f.state)).resolves.toHaveLength(1);

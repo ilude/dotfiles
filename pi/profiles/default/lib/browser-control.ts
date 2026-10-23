@@ -352,7 +352,7 @@ export class BrowserPageProtocol {
 					const handler = () => { if (this.lifetime === captured) this.dispose(); };
 					this.ownerAbort = { signal: lease.signal, handler }; lease.signal.addEventListener("abort", handler, { once: true });
 				}
-				const guard = new BrowserRequestPolicy({ cdpPort: state.cdpPort, identity: options.identity, policy: options.policy, localFile: options.localFile, resolveHost: options.resolveHost, effect: facts => this.requestEffect(facts) });
+				const guard = new BrowserRequestPolicy({ cdpPort: state.cdpPort, identity: options.identity, policy: options.policy, localFile: options.localFile, resolveHost: options.resolveHost, effect: facts => this.requestEffect(facts), interceptRequests: state.sessionMode !== "attached" });
 				this.guard = guard;
 				const lifetime = this.lifetime;
 				const transport = await options.runtime.connectTransport(state, { register: guard.register, signal: lifetime.signal });

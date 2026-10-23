@@ -86,6 +86,19 @@ describe("canonical browser destinations", () => {
 });
 
 describe("persistent intercepted destinations", () => {
+  it("leaves attached-page traffic alone while enforcing explicit navigation and native warnings", async () => {
+    const review = vi.fn(async () => ({ outcome: "deny" as const, reason: "Synthetic navigation denied" }));
+    const f = await fixture({ interceptRequests: false, children: true, policy: review });
+    await vi.waitFor(() => expect(f.transport.managedTargets().map(target => target.targetId).sort()).toEqual(["iframe", "root", "worker"]));
+    expect(f.commands.some(c => c.method === "Fetch.enable")).toBe(false);
+    expect(f.commands.some(c => c.method === "Security.enable" && c.sessionId === "root-session")).toBe(true);
+    expect(review).not.toHaveBeenCalled();
+    await expect(f.policy.authorizeNavigation("root", "https://public.example/document")).rejects.toThrow("Synthetic navigation denied");
+    expect(review).toHaveBeenCalledTimes(1);
+    f.send({ method: "Page.interstitialShown", sessionId: "root-session", params: {} });
+    await vi.waitFor(() => expect(() => f.policy.assertSafe("root")).toThrow("native security warning"));
+  });
+
   it("manages pages with cross-site iframes, dedicated workers and duplicate child attachments", async () => {
     const f = await fixture({ children: true });
     await vi.waitFor(() => expect(f.transport.managedTargets().map(target => target.targetId).sort()).toEqual(["iframe", "root", "worker"]));

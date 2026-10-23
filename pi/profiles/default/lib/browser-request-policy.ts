@@ -89,6 +89,8 @@ export interface BrowserRequestPolicyOptions {
   localFile?: (path: string, signal: AbortSignal) => Promise<BrowserPolicyDecision>;
   resolveHost?: (host: string) => Promise<readonly string[]>;
   timeoutMs?: number;
+  /** Operator-attached browsers retain normal page traffic; explicit navigation is still checked. */
+  interceptRequests?: boolean;
 }
 
 /** Guards only managed targets. Fetch Request stage gates each observed redirect hop before sending.
@@ -120,7 +122,7 @@ export class BrowserRequestPolicy {
   register = async (setup: ManagedTargetSetup): Promise<void> => {
     this.setups.set(setup.target.targetId, setup);
     setup.signal.addEventListener("abort", () => { this.setups.delete(setup.target.targetId); this.warnings.delete(setup.target.targetId); this.interstitials.delete(setup.target.targetId); }, { once: true });
-    try { await setup.command("Fetch.enable", { patterns: [{ urlPattern: "*", requestStage: "Request" }] }); }
+    try { if (this.options.interceptRequests !== false) await setup.command("Fetch.enable", { patterns: [{ urlPattern: "*", requestStage: "Request" }] }); }
     catch (error) {
       // Chromium does not expose Fetch on dedicated worker sessions. Refusing them disconnected every
       // page that starts a worker; their requests remain outside managed interception (documented limit).
@@ -215,7 +217,7 @@ export class BrowserRequestPolicy {
       if (state?.securityState === "insecure-broken" || state?.certificateSecurityState?.certificateNetworkError || state?.securityStateIssueIds?.includes("malicious-content") || ["badReputation", "lookalike"].includes(state?.safetyTipInfo?.safetyTipStatus ?? "")) this.warnings.add(targetId);
       else if (state) this.warnings.delete(targetId);
     }
-    if (event.method !== "Fetch.requestPaused") return;
+    if (event.method !== "Fetch.requestPaused" || this.options.interceptRequests === false) return;
     const requestId = event.params.requestId;
     if (typeof requestId !== "string") throw new Error("Malformed intercepted browser request.");
     let allow = false;
