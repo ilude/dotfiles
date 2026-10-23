@@ -110,13 +110,13 @@ Within task ownership lists, abbreviated `lib/`, `extensions/`, and `tests/` pat
   - Done when the tool can move within a virtualized page's chosen frame/container and return useful actual state for a fresh observation.
   - Evidence: exact-frame bounded by/into_view scroll implemented with movement/position/boundary results and adapter read projection. Five focused files/158 tests and typecheck passed.
 
-- [ ] **T4: Align guidance, run agreed checks, and deliver**
+- [x] **T4: Align guidance, run agreed checks, and deliver**
   - Depends on: T1A, T1B, T2 and T3.
   - Owns: `docs/browser-security.md`, `pi/profiles/default/skills/browser-tools/SKILL.md`, material owning tool guidance, root `CHANGELOG.md`, this spec's evidence.
   - Document interaction loop, mode boundaries, one-shot decisions, human-vs-network deadlines, and non-blocking live-verification limits. Explicitly state that owned-browser background-request prompts can still expire at the retained 10-second network deadline and fail closed. Do not claim every button is semantically understood or network data is confined.
   - Final checks from `pi/profiles/default`: `pnpm test browser-control.test.ts browser-request-policy.test.ts browser-cdp-transport.test.ts browser-login-integration.test.ts browser-task-security-integration.test.ts browser-observations.test.ts browser-credentials.test.ts tests/damage-control/browser tests/damage-control/enforcement.test.ts`; `pnpm run typecheck`. Run `git diff --check` from the repository. Verify the Vitest filter selects the intended existing browser-focused files and add directly affected test files if a filter misses them. Fix task-established defects, not unrelated failures.
   - Done when checks pass, implementation/docs agree, and authorized delivery is complete. Recheck preservation and record actual execution profile/date/results.
-  - Evidence: guidance, security documentation, and changelog aligned. Final agreed command plus directly affected adapter file selected all 10 existing browser-focused files, enforcement, and adapter tests: 12 files/323 tests passed. `pnpm run typecheck` and repository `git diff --check` passed on 2026-10-23. Default profile verified. No legacy changes, live browser run, push, or deployment. Implementation/checks complete; authorized integration and cleanup still pending.
+  - Evidence: guidance, security documentation, and changelog aligned. Final agreed command plus directly affected adapter file selected all 10 existing browser-focused files, enforcement, and adapter tests: 12 files/323 tests passed. `pnpm run typecheck` and repository `git diff --check` passed on 2026-10-23. Default profile verified. No legacy changes, live browser run, push, or deployment. Implementation merged into `main` via `f371102b`; task worktree removed and local task branch deleted. Authorized local integration and cleanup complete.
 
 ## Design review and research evidence
 
@@ -127,15 +127,15 @@ Optional retained contacts in the current Pi process, not execution dependencies
 - Fable high / Maya: subagent `ec2d785a-d9cc-4a48-a7a6-0f941a03f8fa`, native session `01a1690c-1099-760b-a7dc-23ea81da4a83`.
 - Research / Nora: subagent `7f5b58a0-5b70-450e-828d-6022c2fa5bde`, native session not recorded here. Their relevant conclusions and source limits are incorporated above; no agent needs to be resumed to execute this plan.
 
-At handoff, the EISA SharePoint browser session was deliberately disconnected and instructed not to reconnect. Do not resume that interaction or run live browser checks automatically as part of implementation. No implementation task has started. Run checks on the new work; do not reuse the previous attached-mode test results as evidence for it.
+At handoff, the EISA SharePoint browser session was deliberately disconnected and instructed not to reconnect. Do not resume that interaction or run live browser checks automatically as part of implementation. Implementation subsequently completed with the task-specific checks recorded above; the previous attached-mode test results were not reused as evidence for it.
 
 Research sources: [agent-browser commands](https://agent-browser.dev/commands), [Playwright snapshot/ref/subtree/find documentation](https://playwright.dev/mcp/snapshots), [Chrome remote-debugging announcement dated 2025-03-17](https://developer.chrome.com/blog/remote-debugging-port), [Brave Shields](https://brave.com/shields/). Current mutable/undated pages do not establish October 2026 release versions. Their interaction patterns are useful comparisons, not evidence of equal policy safety or proof of this implementation.
 
 ## Handoff and closeout
 
-- Status: implementation and agreed checks passed; archival/task commit prepared. Local integration and cleanup pending; not whole-plan completion.
+- Status: completed. Implementation and agreed checks passed; archived plan and implementation merged into `main`. Task worktree and local task branch removed.
 - Execution: 2026-10-23, active profile `default` verified with `pi_session`. Prepared branch `task/browser-agent-reliability` at `C:/Users/mglenn/.dotfiles/.worktrees/browser-agent-reliability`; target remains `C:/Users/mglenn/.dotfiles` branch `main`, starting `c5ef1012873e28fb6e3062000e8a88c223863bd9`. Initial status contained only the untracked selected spec directory; no tracked changes to preserve in the task checkout.
-- Next: archive and commit task, then authorized successor integration into recorded `main` and cleanup. No push/deployment authority.
+- Delivery: implementation commit `34df3a3f`, merge commit `f371102b`, initial integration record `651c03be`. Verified implementation is an ancestor of `main`; task worktree absent and fully merged `task/browser-agent-reliability` branch deleted. No push/deployment authority.
 - Open behavior decisions: none. Implementation mechanisms remain flexible.
 - Verification limits: no live Brave/Office/SharePoint validation; generated selectors can become stale on rerender, and Luna ask frequency remains unmeasured. Manual testing is non-blocking and not a substitute for the finite checks.
 
@@ -147,4 +147,4 @@ Final reporting is outcome-first: 🟢 COMPLETED, 🔴 NOT COMPLETE: MERGE BLOCK
 
 ## Integration evidence
 
-T1A/T1B/T2/T3 implemented; final agreed focused checks plus directly affected adapter file passed 12 files/323 tests; typecheck and git diff --check passed; task clean after commit. T4 remains unchecked only because delivery is pending. No live Brave/Office/SharePoint validation; no push or deployment authorized.
+All tasks completed. Final agreed focused checks plus directly affected adapter file passed 12 files/323 tests; typecheck and git diff --check passed. Implementation `34df3a3f` merged into `main` via `f371102b`. Spec archived, task worktree removed, and fully merged local task branch deleted. No live Brave/Office/SharePoint validation; no push or deployment authorized.
