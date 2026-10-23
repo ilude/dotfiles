@@ -100,8 +100,8 @@ describe("structured Herdr agent control", () => {
   }
 
   it("lists all recognized agents and caps the returned inventory", async () => {
-    const agents = Array.from({ length: 82 }, (_, i) => ({ agent: `agent-${i}`, pane_id: `w1:p${i + 1}`, agent_session: { kind: "path" }, agent_status: "idle" }));
-    const cli = vi.fn<HerdrCli>().mockResolvedValue(json({ agents }));
+    const agents = Array.from({ length: 82 }, (_, i) => ({ agent: "pi", pane_id: `w1:p${i + 1}`, agent_session: { kind: "path" }, agent_status: "idle" }));
+    const cli = vi.fn<HerdrCli>(async args => json(args[0] === "pane" ? { panes: [] } : { agents }));
     const tool = setup(cli);
     const answer = await tool.execute("id", { action: "list" }, undefined, undefined, ctx);
     expect(cli).toHaveBeenCalledWith(["agent", "list"], { signal: undefined });
@@ -110,7 +110,7 @@ describe("structured Herdr agent control", () => {
     expect(answer.structuredContent).toMatchObject({ action: "list", total: 82, truncated: true });
     const output = JSON.parse(answer.content[0].text);
     expect(output).toMatchObject({ total: 82, truncated: true });
-    expect(output.agents[0]).toMatchObject({ name: "agent-0", pane_id: "w1:p1", status: "idle" });
+    expect(output.agents[0]).toEqual({ kind: "pi", pane_id: "w1:p1", status: "idle" });
     expect(output.agents).toHaveLength(80);
   });
 
@@ -159,6 +159,92 @@ describe("structured Herdr agent control", () => {
     expect(JSON.parse(answer.content[0].text)).toEqual({ target: "w1:p5", response: "blocked" });
   });
 
+  const uuid = "01a14143-5678-7abc-9def-a123456789ab";
+  const fullId = `pi-${uuid}`;
+  const alias = "pi-a1234567";
+  const liveAgent = (pane = "w2:p7", session = uuid, name?: string) => ({
+    agent: "pi", agent_name: name, pane_id: pane, agent_status: "idle",
+    agent_session: { kind: "path", value: `C:\\sessions\\2026-10-23T10-00-00_${session}.jsonl` },
+  });
+  const paneContext = { pane_id: "w2:p7", tab_id: "w2:t4", workspace_id: "w2", label: "Communications", cwd: "C:/project" };
+  function identityCli(agents: Record<string, unknown>[] = [liveAgent()]) {
+    return vi.fn<HerdrCli>(async args => {
+      if (args[0] === "pane") return json({ panes: [paneContext] });
+      if (args[1] === "list") return json({ agents });
+      if (args[1] === "get") return json({ agent: { ...liveAgent(), ...paneContext } });
+      if (args[1] === "read") return "actual answer";
+      if (args[1] === "wait") return json({ agent: liveAgent() });
+      return "";
+    });
+  }
+
+  it("discovers native unnamed and named agents with optional context and derived default identities", async () => {
+    const cli = identityCli([liveAgent(), liveAgent("w3:p1", uuid, "reviewer"), { agent: "claude", pane_id: "w4:p1", agent_status: "working", agent_session: { kind: "path", value: uuid } }]);
+    const tool = setup(cli);
+    const answer = await tool.execute("id", { action: "list" }, undefined, undefined, ctx);
+    expect(Value.Check(tool.outputSchema, answer.structuredContent)).toBe(true);
+    expect(answer.structuredContent.agents[0]).toEqual({ kind: "pi", pane_id: "w2:p7", status: "idle", label: "Communications", tab_id: "w2:t4", workspace_id: "w2", cwd: "C:/project", pi_session_uuid: uuid, onclave_default_id: fullId, onclave_alias: alias });
+    expect(answer.structuredContent.agents[1]).toMatchObject({ name: "reviewer", kind: "pi" });
+    expect(answer.structuredContent.agents[2]).toEqual({ kind: "claude", pane_id: "w4:p1", status: "working" });
+  });
+
+  it.each([fullId, alias])("resolves %s for all targeted actions to the exact native pane", async target => {
+    const cli = identityCli();
+    const tool = setup(cli);
+    for (const action of ["get", "read", "prompt", "wait", "sendKeys"]) {
+      cli.mockClear();
+      const answer = await tool.execute("id", { action, target, message: "Brief", keys: ["esc"] }, undefined, undefined, ctx);
+      expect(Value.Check(tool.outputSchema, answer.structuredContent)).toBe(true);
+      expect(answer.structuredContent).toMatchObject({ requested_target: target, resolved_agent: { pane_id: "w2:p7", tab_id: "w2:t4", workspace_id: "w2", onclave_default_id: fullId } });
+      expect(cli.mock.calls[2]![0].slice(0, 3)).toEqual(["agent", action === "sendKeys" ? "send-keys" : action, "w2:p7"]);
+    }
+  });
+
+  it("resolves against full inventory before the display cap and deduplicates name/alias matches", async () => {
+    const agents = Array.from({ length: 80 }, (_, i) => ({ ...liveAgent(`w1:p${i}`), agent_session: { kind: "path", value: "unknown" } }));
+    const cli = identityCli([...agents, liveAgent("w2:p7", uuid, alias)]);
+    await setup(cli).execute("id", { action: "prompt", target: alias, message: "Brief" }, undefined, undefined, ctx);
+    expect(cli.mock.calls[2]![0]).toEqual(["agent", "prompt", "w2:p7", "Brief"]);
+  });
+
+  it.each([
+    { agents: [liveAgent(), liveAgent("w3:p1")], target: fullId },
+    { agents: [liveAgent(), liveAgent("w3:p1", "01a14143-5678-7abc-9def-a1234567ffff")], target: alias },
+    { agents: [liveAgent(), liveAgent("w3:p1", "01a14143-5678-7abc-9def-b123456789ab", alias)], target: alias },
+    { agents: [liveAgent()], target: "pi-absent" },
+  ])("rejects ambiguous or absent references without submitting a prompt: $target", async ({ agents, target }) => {
+    const cli = identityCli(agents);
+    await expect(setup(cli).execute("id", { action: "prompt", target, message: "Brief" }, undefined, undefined, ctx)).rejects.toThrow(target === "pi-absent" ? "No local Herdr match" : /Ambiguous.*tab_id.*pane_id/);
+    expect(cli.mock.calls.some(([args]) => args[1] === "prompt")).toBe(false);
+  });
+
+  it("preserves exact pi-form native names but rejects incomplete or unavailable identity inventories", async () => {
+    const namedCli = identityCli([liveAgent("w2:p7", uuid, "pi-custom-name")]);
+    await setup(namedCli).execute("id", { action: "prompt", target: "pi-custom-name", message: "Brief" }, undefined, undefined, ctx);
+    expect(namedCli.mock.calls[2]![0][2]).toBe("w2:p7");
+    for (const response of [{ agents: [liveAgent()], truncated: true }, { agents: [], total: 1 }]) {
+      const cli = vi.fn<HerdrCli>().mockResolvedValue(json(response));
+      await expect(setup(cli).execute("id", { action: "prompt", target: alias, message: "Brief" }, undefined, undefined, ctx)).rejects.toThrow("incomplete");
+      expect(cli).toHaveBeenCalledTimes(1);
+    }
+    const cli = vi.fn<HerdrCli>().mockRejectedValue(new Error("inventory unavailable"));
+    await expect(setup(cli).execute("id", { action: "prompt", target: alias, message: "Brief" }, undefined, undefined, ctx)).rejects.toThrow("inventory unavailable");
+    expect(cli).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders nested native wait state and describes waited prompts as submission, not answers", async () => {
+    const cli = vi.fn<HerdrCli>().mockResolvedValue(json({ agent: liveAgent() }));
+    const tool = setup(cli);
+    const theme = { fg: (_name: string, value: string) => value, bold: (value: string) => value };
+    const render = (answer: any, action: string) => tool.renderResult(answer, { expanded: false }, theme, { args: { action } }).render(200).join("\n").trim();
+    const waited = await tool.execute("id", { action: "wait", target: "w2:p7" }, undefined, undefined, ctx);
+    expect(Value.Check(tool.outputSchema, waited.structuredContent)).toBe(true);
+    expect(render(waited, "wait")).toBe("observed idle");
+    const prompted = await tool.execute("id", { action: "prompt", target: "w2:p7", message: "Brief", wait: true }, undefined, undefined, ctx);
+    expect(render(prompted, "prompt")).toBe("prompt submitted · settled state observed · idle");
+    expect(render(prompted, "prompt")).not.toMatch(/completed|Object/);
+  });
+
   it("sends logical keys as positional arguments and reports submission", async () => {
     const cli = vi.fn<HerdrCli>().mockResolvedValue("");
     const tool = setup(cli);
@@ -191,7 +277,7 @@ describe("structured Herdr agent control", () => {
 it("shows a bounded complete connected-layout inventory", async () => {
   vi.stubEnv("HERDR_ENV", "1"); vi.stubEnv("HERDR_SOCKET_PATH", "fixture"); vi.stubEnv("HERDR_PANE_ID", "p1"); vi.stubEnv("HERDR_WORKSPACE_ID", "w1");
   const registered: Record<string, any> = {};
-  const panes = Array.from({ length: 83 }, (_, i) => ({ pane_id: `w${i + 1}:p1`, tab_id: `w${i + 1}:t1`, workspace_id: `w${i + 1}`, label: `pane-${i}`, agent: "validator", agent_kind: "pi", agent_status: "working", foreground_process: "pi.exe" }));
+  const panes = Array.from({ length: 83 }, (_, i) => ({ pane_id: `w${i + 1}:p1`, tab_id: `w${i + 1}:t1`, workspace_id: `w${i + 1}`, label: `pane-${i}`, agent_name: i === 0 ? undefined : "validator", agent: "pi", agent_status: "working", foreground_process: "pi.exe" }));
   const cli = vi.fn<HerdrCli>().mockResolvedValue(json({ panes }));
   tools({ registerTool(t: any) { registered[t.name] = t; }, on() {} } as unknown as ExtensionAPI, cli);
   const answer = await registered.herdr_layout.execute("id", { action: "list" }, undefined, undefined, ctx);
@@ -201,7 +287,9 @@ it("shows a bounded complete connected-layout inventory", async () => {
   expect(answer.structuredContent).toMatchObject({ action: "list", total: 83, truncated: true });
   const output = JSON.parse(answer.content[0].text);
   expect(output).toMatchObject({ total: 83, truncated: true });
-  expect(output.panes[0]).toMatchObject({ pane: "w1:p1", tab: "w1:t1", workspace: "w1", agent: "validator", kind: "pi", state: "working", process: "pi.exe" });
+  expect(output.panes[0]).toMatchObject({ pane: "w1:p1", tab: "w1:t1", workspace: "w1", label: "pane-0", kind: "pi", state: "working", process: "pi.exe" });
+  expect(output.panes[0]).not.toHaveProperty("agent");
+  expect(output.panes[1]).toMatchObject({ agent: "validator", kind: "pi" });
   expect(output.panes).toHaveLength(80);
 });
 
@@ -285,6 +373,15 @@ it("renders human-readable collapsed Herdr results and keeps internal IDs in exp
   expect(agentCall.render(20).every((line: string) => line.length <= 20)).toBe(true);
   expect(lines(registered.herdr_agent.renderResult(agentResult, { expanded: false }, theme, context({ action: "get", target: "claude" })))).toBe("claude · idle\nC:/Users/mglenn/.dotfiles");
   expect(lines(registered.herdr_agent.renderResult(agentResult, { expanded: true }, theme, context({ action: "get", target: "claude" })))).toContain("w27:pKH");
+
+  const inventoryResult = (fields: object) => ({ content: [{ type: "text", text: JSON.stringify(fields) }], details: {} });
+  const unnamed = { pane: "w27:pKH", tab: "w27:t1", workspace: "w27", kind: "pi", state: "idle", label: "Communications", cwd: "C:/project" };
+  const layoutResult = inventoryResult({ panes: [unnamed, { ...unnamed, agent: "reviewer", label: "Other label" }, { pane: "p2", tab: "t2", workspace: "w2", cwd: "C:\\repo\\fallback", kind: "pi" }], total: 3 });
+  expect(lines(registered.herdr_layout.renderResult(layoutResult, { expanded: false }, theme, context({ action: "list" })))).toBe("3 panes\nCommunications · idle\nreviewer · idle\nfallback");
+  expect(lines(registered.herdr_layout.renderResult(layoutResult, { expanded: true }, theme, context({ action: "list" })))).toContain("w27:pKH");
+  const listResult = inventoryResult({ agents: [{ pane_id: "w27:pKH", label: "Communications", kind: "pi", status: "idle" }, { pane_id: "p2", cwd: "C:/repo/worker", kind: "pi", status: "working" }, { pane_id: "p3", kind: "claude", status: "idle" }], total: 3 });
+  expect(lines(registered.herdr_agent.renderResult(listResult, { expanded: false }, theme, context({ action: "list" })))).toBe("3 agents\nCommunications · idle\nworker · working\nclaude · idle");
+  expect(lines(registered.herdr_agent.renderResult(listResult, { expanded: true }, theme, context({ action: "list" })))).toContain("w27:pKH");
 
   const waitResult = { content: [{ type: "text", text: JSON.stringify({ pane: "w27:pKR", matched: "~/.dotfiles[main]>", output: "ready" }) }], details: {} };
   const collapsed = lines(registered.herdr_pane.renderResult(waitResult, { expanded: false }, theme, context({ action: "wait", pane: "w27:pKR", match: "~/.dotfiles[main]>" })));

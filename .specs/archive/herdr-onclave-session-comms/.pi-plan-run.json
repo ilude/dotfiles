@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "specRelativePath": ".specs/herdr-onclave-session-comms/plan.md",
+  "specStub": "herdr-onclave-session-comms",
+  "taskWorktreePath": "C:\\Users\\mglenn\\.dotfiles\\.worktrees\\herdr-onclave-session-comms",
+  "taskBranch": "task/herdr-onclave-session-comms",
+  "originCheckoutPath": "C:\\Users\\mglenn\\.dotfiles",
+  "originBranch": "main",
+  "startingTargetCommit": "c5ef1012873e28fb6e3062000e8a88c223863bd9",
+  "sourceSpecSnapshot": {
+    "version": 1,
+    "files": [
+      {
+        "path": "plan.md",
+        "sha256": "21a3cf5a2e9885bd85eb4913452de9fa43c952b684765d8a35134a5dfa8c853e"
+      }
+    ]
+  }
+}

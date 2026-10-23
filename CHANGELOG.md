@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-10-23: Use native Herdr for same-server session communication
+
+- Explicitly directed communication with independent sessions now uses native Herdr on the same connected server, including supported non-Pi CLI agents. Onclave remains the route for supported instances outside that server; owned delegation stays on `subagent` / `subagent_control`. Registration, service/vault tools, and terminal callbacks are unchanged.
+- Herdr discovery distinguishes optional live names from agent types and exposes recognizable pane/tab/workspace context plus Pi session identity. Existing targeted actions resolve default Onclave IDs and unique short aliases to current local panes, without a registry or claiming registration. Ambiguous identities require disambiguation; missing local matches do not prove remote placement, and custom Onclave-ID overrides have no native mapping.
+- Layout labels and lifecycle-result rendering now reflect native responses. Prompt submission and settled-state observation no longer claim a correlated answer or completed work. Guidance uses ordinary prompts, bounded waits, and terminal reads, preserving native busy/blocked/draft behavior rather than adding a messaging protocol.
+- Reload default Pi with no active or retained subagents, or restart it, to activate wrapper and guidance changes. Offline checks do not establish real attached-client interaction. No publication or deployment is included.
+
 ## 2026-10-23: Preserve normal page traffic in operator-attached browsers
 
 - Attached Brave sessions no longer intercept each page-generated network request. Office/SharePoint internal POSTs previously appeared as exports and produced repeated approval dialogs that expired while the operator was working.
