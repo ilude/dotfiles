@@ -65,6 +65,13 @@
 - **Correction:** Replaced shell-text classification with separate native-shell inspection and mutation tools. Failed `inspect` calls return to the private agent; failed `bash` calls stop queued work. The model selects the tool; the runner does not identify mutations from command text. Full command diagnostics are retained. No new global instructions or telemetry.
 - **Status:** All 50 focused commit tests and default-profile typecheck passed, including real-Git compound no-match recovery through a commit and existing hook/mutation stops. Requires idle reload or restart; live model tool selection remains unverified. Existing operator edits preserved; no production commit or push.
 
+## APR-repeated-discovery-question - Asked for an already recorded product decision
+
+- **Reference:** Default session `01a151e3-e1b2-70a2-a1eb-fac4dca5d06d`; prior operator answer in `01a1509e-6bbd-75ec-aea9-a4230afcf5e7`.
+- **Observed:** Asked the initial-audience question without checking prior discovery. The operator had already answered it; the handoff still listed it as open.
+- **Correction:** Retrieved the original answer through repository-scoped history search and resumed from established decisions. No instruction change.
+- **Status:** Corrected in conversation. The stale handoff remains unchanged pending documentation scope.
+
 ## APR-bundle-reduction-gate - Smaller output became an unnecessary completion blocker
 
 - **Reference:** Default session `01a13bcb-e5f7-73a0-b69f-c1054db8165c`; related AIF-bundle-reduction-gate, AIF-103 and AIF-102-local.

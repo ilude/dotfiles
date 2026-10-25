@@ -1,5 +1,24 @@
 # Changelog
 
+## 2026-10-24: Delay co-op Zomboid utility shutoffs to 2–6 months
+
+- Set water and electricity to their 2–6 month presets. Update the associated shutoff-day modifiers as well, since leaving the captured 14-day values would retain the earlier cutoff despite changing the presets.
+- Select each utility's shutoff day separately within the installed game's 60–179 day range and retain those values across restarts. Timing follows the existing world's age; alarm decay, other gameplay settings, saves, and characters remain unchanged. No world reset is included.
+
+## 2026-10-24: Allow co-op safehouses in non-residential buildings
+
+- Enable `SafehouseAllowNonResidential` so players can claim eligible shops, warehouses, and other non-residential buildings. One owner can share a claim through the game's existing player invitations and member respawn controls; this does not automatically enroll every account.
+- Preserve the existing safehouse access, fire, loot, and 144-hour inactivity rules, along with world and character progress. No mod or world reset is required.
+
+## 2026-10-24: Announce co-op Zomboid player deaths
+
+- Enable `AnnounceDeath` in the authoritative server configuration so player deaths produce a global chat message. Animal-death announcements remain disabled, and the existing world, characters, and other gameplay settings are preserved.
+
+## 2026-10-24: Double co-op Zomboid book-reading speed again
+
+- Reduce `MinutesPerPage` from 0.5 to 0.25 in the authoritative sandbox template, halving skill-book reading time again. XP multipliers, other gameplay settings, world saves, and characters remain unchanged.
+- Apply through the existing targeted game deployment and normal save/stop/start lifecycle, without a world reset or game upgrade.
+
 ## 2026-10-23: Carry browser task context through follow-ups and honor timeout overrides
 
 - Browser intent interpretation uses the active task and bounded recent conversation to distinguish continuation from a new, cancelled, or completed task. Reload acknowledgments and manual login-step completion can retain established scope without repeating the full request. Known private browser observations are excluded from interpretation context, and one-time approvals are not retained or renewed.
