@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-10-25: Restart the current Pi session without updating
+
+- `/pi --restart` refreshes the default profile's Pi runtime link, then requests a cooperative restart into a new Herdr tab using the version resolved from that link. It does not install packages. Outside Herdr, it reports that new-tab restart is unsupported and leaves the current process running. The command offers `--restart` in argument autocomplete; `/new-instance` behavior is unchanged.
+- The replacement waits for bootstrap admission, then the original session exits through the existing cooperative safety checks. `/update` keeps its same-tab behavior. No live terminal restart was performed during implementation.
+
 ## 2026-10-25: Use merge-based Git pulls and explicit submodule updates
 
 - Make merge-based pulls the shared default: fast-forward when possible and merge divergent history without rebasing existing commits. Stop automatically assigning rebase preferences to new tracking branches; explicit rebase commands remain available for unpublished work.

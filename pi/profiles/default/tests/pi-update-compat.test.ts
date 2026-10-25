@@ -1,9 +1,9 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import net from "node:net";
 import { afterEach, expect, it, vi } from "vitest";
-import { createCompatibilityEndpoint } from "../lib/pi-update-compat.ts";
+import { createCompatibilityEndpoint, restartCurrentPiSession } from "../lib/pi-update-compat.ts";
 import type { UpdateEndpoint } from "../lib/pi-update.ts";
 // @ts-expect-error Executable JS is outside this TS project.
 import { admitMigration, waitForOriginExit } from "../../../scripts/pi-update-migration.mjs";
@@ -31,7 +31,7 @@ async function fixture(reason?: string) {
   const cli = vi.fn(async (args: string[]) => {
     if (args[0] === "pane" && args[1] === "current") return JSON.stringify({ result: { pane: { pane_id: "old-pane", tab_id: "same-tab", workspace_id: "same-workspace", terminal_id: "old-terminal" } } });
     if (args[0] === "pane" && args[1] === "get") return JSON.stringify({ result: { pane: { pane_id: "old-pane", label: "my pane" } } });
-    if (args[0] === "plugin") return JSON.stringify({ result: { pane: { pane_id: "new-pane", tab_id: "same-tab", workspace_id: "same-workspace" } } });
+    if (args[0] === "plugin") return JSON.stringify({ result: { pane: { pane_id: "new-pane", tab_id: args.includes("tab") ? "new-tab" : "same-tab", workspace_id: "same-workspace" } } });
     throw new Error("Unexpected CLI operation");
   });
   const shutdown = vi.fn();
@@ -42,13 +42,33 @@ async function fixture(reason?: string) {
   return { root, controller, cli, shutdown, prepare, sessionFile, state };
 }
 
-it("creates a same-tab replacement without opening the conversation until bootstrap admission", async () => {
+it("requests a new-tab restart using the installed global version without running an update", async () => {
+  const root = await mkdtemp(join(tmpdir(), "pi-installed-version-")); cleanup.push(() => rm(root, { recursive: true, force: true }));
+  const packageDir = join(root, "node_modules", "@earendil-works", "pi-coding-agent");
+  await mkdir(packageDir, { recursive: true });
+  await writeFile(join(packageDir, "package.json"), JSON.stringify({ version: "9.8.7" }));
+  const received: Record<string, unknown>[] = [];
+  const server = net.createServer(socket => {
+    let input = "";
+    socket.on("data", chunk => { input += String(chunk); if (input.includes("\n")) {
+      received.push(JSON.parse(input)); socket.end(JSON.stringify({ status: "restarted", version: "9.8.7" }) + "\n");
+    } });
+  });
+  await new Promise<void>(accept => server.listen(0, "127.0.0.1", accept));
+  cleanup.push(() => new Promise<void>(accept => server.close(() => accept())));
+  const address = server.address(); if (!address || typeof address === "string") throw new Error("Fixture endpoint unavailable");
+  const result = await restartCurrentPiSession({ PI_CODING_AGENT_DIR: root, PI_UPDATE_ENDPOINT: JSON.stringify({ port: address.port, token: "a".repeat(64), pid: process.pid, profile: root, server: "fixture-server", pane: "" }) }, async () => "9.8.7");
+  expect(result).toEqual({ status: "restarted", version: "9.8.7" });
+  expect(received[0]).toMatchObject({ action: "restart", mode: "new-tab", version: "9.8.7" });
+});
+
+it("creates a new-tab replacement without opening the conversation until bootstrap admission", async () => {
   const f = await fixture();
-  const request = exchange(f.controller.endpoint, { action: "restart", version: "2.0.0" });
+  const request = exchange(f.controller.endpoint, { action: "restart", version: "2.0.0", mode: "new-tab" });
   await vi.waitFor(() => expect(f.cli).toHaveBeenCalledWith(expect.arrayContaining(["plugin", "pane", "open"])));
   expect(f.shutdown).not.toHaveBeenCalled();
   const args = f.cli.mock.calls.find(call => call[0][0] === "plugin")![0];
-  expect(args).toEqual(expect.arrayContaining(["--placement", "split", "--target-pane", "old-pane", "--no-focus", "PI_HERDR_SESSION_FILE=", "PI_UPDATE_PANE_LABEL=my pane"]));
+  expect(args).toEqual(expect.arrayContaining(["--placement", "tab", "--workspace", "same-workspace", "PI_HERDR_SESSION_FILE=", "PI_UPDATE_PANE_LABEL=my pane"]));
   expect(args.some(arg => arg.includes(f.sessionFile))).toBe(false);
   const replacement = { ...f.controller.endpoint, pid: process.pid + 1, pane: "new-pane" };
   const admission = await exchange(f.controller.endpoint, { action: "admit", endpoint: replacement });
