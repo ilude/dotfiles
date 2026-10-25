@@ -42,7 +42,7 @@
   skippedCherryPicks = false
 
 [branch]
-  autoSetupRebase = always
+  autoSetupRebase = never
 
 [fetch]
   prune = true
@@ -51,14 +51,15 @@
   defaultBranch = main
 
 [pull]
-  rebase = true
+  rebase = false
+  ff = true
 
 [push]
   autoSetupRemote = true
   default = current
 
 [submodule]
-  recurse = true
+  recurse = false
 
 [safe]
   # Only trust dotfiles repo (both Windows and Git Bash paths)

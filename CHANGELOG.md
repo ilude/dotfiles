@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-10-25: Use merge-based Git pulls and explicit submodule updates
+
+- Make merge-based pulls the shared default: fast-forward when possible and merge divergent history without rebasing existing commits. Stop automatically assigning rebase preferences to new tracking branches; explicit rebase commands remain available for unpublished work.
+- Disable implicit submodule recursion so pulling the parent does not also update independent module checkouts. This avoids the recursive-rebase failure on committed submodule-pointer changes and preserves deliberate module branch selection.
+- Remove existing branch-specific rebase overrides in the local dotfiles, homelab-infra, and Onclave checkouts so they inherit the shared policy. Other existing clones can retain local overrides and need separate review; this change does not pull, rewrite history, or publish commits.
+
 ## 2026-10-24: Delay co-op Zomboid utility shutoffs to 2–6 months
 
 - Set water and electricity to their 2–6 month presets. Update the associated shutoff-day modifiers as well, since leaving the captured 14-day values would retain the earlier cutoff despite changing the presets.
