@@ -1,5 +1,12 @@
 # Agent process failure log
 
+## APR-pi-upgrade-herdr-registration - Upgrade checks missed a pinned Herdr launcher
+
+- **Reference:** Default session `01a14aab-abfd-7796-a3fb-5bbc2133be1d`, operator correction, 2026-10-25; related APR-089 and APR-083.
+- **Observed:** Global Pi was upgraded from 1.3.0 to 1.4.0 and passed default setup and an authenticated native request. The operator then reported existing tabs on older versions and new Herdr `/pi` launches still starting 1.1.0. Older running processes were expected; the fresh-launch mismatch was not.
+- **Evidence:** Live process argv and the registered `local.pi` manifest pointed directly to the 1.1.0 pnpm-store entrypoint. The current setup script already supports a stable profile dependency path, but that one-time registration migration had not been applied. Native launch checks did not establish the Herdr launch path.
+- **Correction/status:** Reran the canonical Herdr setup, verified the live registration follows the default runtime link and resolves 1.4.0, and completed an authenticated request from the affected workspace using that registered entrypoint without a profile override. Existing tabs were not restarted or interrupted; a fresh attached-client launch remains operator verification. Existing launch-diagnosis instructions cover this failure; no instruction changes.
+
 ## APR-azrebalance-durability - Closed out a manual exception as the implementation
 
 - **Reference:** Default session `01a16541-5bc4-7600-8926-cf5d646491a9`, 2026-10-23; AIF-azrebalance-durability.
