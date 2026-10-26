@@ -2,6 +2,38 @@
 
 The default profile registers `bedrock-mantle` as **Amazon Bedrock** and leaves Pi's native `amazon-bedrock` provider unchanged. Authenticate with `/login bedrock-mantle`.
 
+## Work-account SSO setup
+
+Use AWS CLI v2's named SSO-session configuration for the work account. Each machine keeps its own configuration in `~/.aws/config` (Windows: `$HOME\.aws\config`), outside this repository:
+
+```ini
+[sso-session eagletg]
+sso_start_url = https://d-9a6757eb7c.awsapps.com/start
+sso_region = us-east-2
+sso_registration_scopes = sso:account:access
+
+[profile bedrock]
+sso_session = eagletg
+sso_account_id = 058264305403
+sso_role_name = ccb-bedrock-developer
+region = us-east-2
+```
+
+For an existing inline SSO profile, replace its `sso_start_url` and `sso_region` keys with `sso_session = eagletg` and add the named session above. Preserve other profiles and unrelated settings. Alternatively, run `aws configure sso --profile bedrock` and select these values, including the session name `eagletg`, account `058264305403`, role `ccb-bedrock-developer`, and client region `us-east-2`.
+
+Sign in and verify the selected identity:
+
+```sh
+aws sso login --profile bedrock
+aws sts get-caller-identity --profile bedrock
+```
+
+Select `bedrock` in Pi's provider profile configuration or use `AWS_PROFILE=bedrock` in the launching shell when appropriate. Do not make it the machine-wide default for unrelated AWS work. Use the normal AWS credential chain rather than copying access keys or exporting temporary credentials. Keep authentication tokens and AWS cache files outside Git. Existing processes retain their inherited environment, so relaunch Pi if changing its profile environment.
+
+Named SSO sessions allow compatible clients to refresh short-lived tokens and role credentials while the organization's sign-in session remains valid. They do not remove the organization's session expiry; run `aws sso login --profile bedrock` again when reauthentication is required. Do not add keepalive scripts or scheduled logins.
+
+STS identity verification confirms the account and role, not model access. Verify inference separately with a minimal paid request through the actual Pi provider and desired model/region. Authentication changes do not grant Cost Explorer or CloudWatch permissions; the `ccb-bedrock-developer` role previously denied those usage-read requests.
+
 ## Configuration
 
 The Mantle endpoint defaults to `us-east-1`. Set `BEDROCK_MANTLE_REGION` to change it. Authentication uses the provider-scoped credential saved by Pi, then `AWS_BEARER_TOKEN_BEDROCK`, `BEDROCK_MANTLE_AWS_PROFILE`, `AWS_PROFILE`, explicit AWS access keys, or the normal AWS credential chain. Scoped bearer tokens, access keys, and profiles are kept mutually exclusive. The extension never changes the process AWS environment or stores generated bearer tokens.

@@ -1,5 +1,20 @@
 # Agent process failure log
 
+## APR-pi-restart-shell-boundary - Restart checks missed the actual Windows subprocess
+
+- **Reference:** Operator-reported `/pi --restart` failure after published commit `3afb2bf2`, 2026-10-25; related APR-commit-windows-publication-label and APR-pi-upgrade-herdr-registration.
+- **Observed:** The runtime-link refresh passed a native Windows script path to bare `bash`. The operator received a missing-file error with backslashes stripped. The orchestrator then tried a separator-only edit before establishing the receiving shell.
+- **Evidence:** An exact Node `spawnSync` probe resolves bare `bash` to the Windows WSL launcher and reports Linux with a `/mnt/c/...` cwd. Forward-slash `C:/...` also fails. Earlier checks established script execution from a different shell, not this call. The existing shared path contract in `lib/path-identity.ts` covers repository IDs and comparison, not shell translation.
+- **Correction:** Operator authorized code and process fixes. Added path-consumer and exact-subprocess guidance to the extension skill rather than treating repository-ID normalization as WSL conversion. Code repair is assigned separately using existing repository launch mechanisms.
+- **Status:** Extension now resolves Git Bash through the existing PowerShell `Get-GitBash` helper. The exact Node-to-PowerShell-to-Git-Bash refresh succeeded on this Windows machine; seven focused tests, typecheck, and diff whitespace checks passed. The extension skill names the resolver explicitly. Live session replacement remains untested; instruction adherence in future work is not established. No commit or push performed.
+
+## APR-pi-upgrade-herdr-registration - Upgrade checks missed a pinned Herdr launcher
+
+- **Reference:** Default session `01a14aab-abfd-7796-a3fb-5bbc2133be1d`, operator correction, 2026-10-25; related APR-089 and APR-083.
+- **Observed:** Global Pi was upgraded from 1.3.0 to 1.4.0 and passed default setup and an authenticated native request. The operator then reported existing tabs on older versions and new Herdr `/pi` launches still starting 1.1.0. Older running processes were expected; the fresh-launch mismatch was not.
+- **Evidence:** Live process argv and the registered `local.pi` manifest pointed directly to the 1.1.0 pnpm-store entrypoint. The current setup script already supports a stable profile dependency path, but that one-time registration migration had not been applied. Native launch checks did not establish the Herdr launch path.
+- **Correction/status:** Reran the canonical Herdr setup, verified the live registration follows the default runtime link and resolves 1.4.0, and completed an authenticated request from the affected workspace using that registered entrypoint without a profile override. Existing tabs were not restarted or interrupted; a fresh attached-client launch remains operator verification. Existing launch-diagnosis instructions cover this failure; no instruction changes.
+
 ## APR-azrebalance-durability - Closed out a manual exception as the implementation
 
 - **Reference:** Default session `01a16541-5bc4-7600-8926-cf5d646491a9`, 2026-10-23; AIF-azrebalance-durability.
@@ -64,6 +79,13 @@
 - **Evidence:** The runner classified every command containing `&&` as terminal, including inspections. A normal `git check-ignore` no-match returns 1 and reproduces the failure path without any mutation failure.
 - **Correction:** Replaced shell-text classification with separate native-shell inspection and mutation tools. Failed `inspect` calls return to the private agent; failed `bash` calls stop queued work. The model selects the tool; the runner does not identify mutations from command text. Full command diagnostics are retained. No new global instructions or telemetry.
 - **Status:** All 50 focused commit tests and default-profile typecheck passed, including real-Git compound no-match recovery through a commit and existing hook/mutation stops. Requires idle reload or restart; live model tool selection remains unverified. Existing operator edits preserved; no production commit or push.
+
+## APR-repeated-discovery-question - Asked for an already recorded product decision
+
+- **Reference:** Default session `01a151e3-e1b2-70a2-a1eb-fac4dca5d06d`; prior operator answer in `01a1509e-6bbd-75ec-aea9-a4230afcf5e7`.
+- **Observed:** Asked the initial-audience question without checking prior discovery. The operator had already answered it; the handoff still listed it as open.
+- **Correction:** Retrieved the original answer through repository-scoped history search and resumed from established decisions. No instruction change.
+- **Status:** Corrected in conversation. The stale handoff remains unchanged pending documentation scope.
 
 ## APR-bundle-reduction-gate - Smaller output became an unnecessary completion blocker
 

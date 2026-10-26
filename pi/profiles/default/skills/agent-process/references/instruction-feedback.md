@@ -1,5 +1,36 @@
 # Agent instruction feedback log
 
+## AIF-indoor-lighting-scope - Apply lighting corrections across indoor locations
+
+- **Reference:** Survival-demo indoor shadow correction; comparable shared-path normalization correction recorded in the failure log.
+- **Feedback:** A basement screenshot identifies a shared indoor-lighting defect, not permission for a basement-only fix.
+- **Evidence:** The implementation already changed shared architectural shadow setup for every house, but the progress report and new regression coverage initially emphasized the basement symptom.
+- **Decision:** Retain the shared implementation and verify light-blocker camera-layer eligibility across single-story, two-story, and basement house variants. Existing presentation/light-blocking guidance covers the requirement; no new global instruction needed.
+- **Status:** Shared checks pass. Keep reports explicit about system-wide scope while distinguishing the specific rendered reproduction.
+
+## AIF-vehicle-work-execution - Acknowledgment did not execute authorized work
+
+- **Reference:** Survival-demo vehicle visual corrections, 2026-10-26; related AIF-vehicle-dashboard-art-direction and AIF-alert-rebuild-ownership.
+- **Feedback:** After requesting per-type visual reviews and identifying the worst vehicles, the operator had to ask whether the work would actually be done.
+- **Evidence:** The assistant restated priorities and ended the turn without launching the requested reviews or priority modeling work. Existing instructions already required doing authorized actionable work rather than ending with promises. This was an adherence failure, not missing policy.
+- **Correction:** Started the priority modeling implementation, captured fresh multi-angle Godot evidence for all 16 types, and dispatched the 16 explicitly requested Sol/high reviewers. Preserve the normal cars rather than broadening their redesign.
+- **Status:** Implementation and reviews running. Completion requires delivered, inspected assets, not merely delegation. No new instruction rule added.
+
+## AIF-vehicle-dashboard-art-direction - Functionality is not visual acceptance
+
+- **Reference:** Survival-demo vehicle UI discussion, 2026-10-26.
+- **Feedback:** Operator rejected the visible dashboard design and asked what tooling would support a better original design without copying the reference game.
+- **Evidence:** The implemented dashboard combined a dial with a grid of text buttons. Passing gameplay checks established functioning controls, not successful visual design. No comparable prior visual-design correction was found in the targeted feedback search; AIF-asset-work-learning concerns guidance evolution, not visual approval.
+- **Decision:** Discuss concept/mockup, vector authoring, and actual-engine iteration capabilities before further dashboard visual work. Image-model availability was checked and returned no configured available models. No new global instruction or redesign approval inferred.
+- **Status:** Tooling discussion active; dashboard visual refinement paused.
+
+## AIF-asset-work-learning - Retain proven authoring lessons in project guidance
+
+- **Reference:** Asset-authoring discussion, 2026-10-25.
+- **Feedback:** The operator authorized concise, evidence-backed updates across all project skills and design language/philosophy, including creating skills for reusable workflows. This is a self-evolving project; routine guidance evolution does not require separate approval each time.
+- **Decision:** Generalized the project-local rule beyond asset work. Keep specialist procedures in skills and project-wide principles in project guidance. Consolidate existing instructions, omit one-off workarounds, and preserve explicit user decisions.
+- **Status:** Applied locally, including the initial asset-workflow refinements. No global behavior rule or automatic monitoring added.
+
 ## AIF-azrebalance-durability - A live fix is not reproducible infrastructure
 
 - **Reference:** Default session `01a16541-5bc4-7600-8926-cf5d646491a9`, operator corrections, 2026-10-23; related AIF-alert-plan-explanation.

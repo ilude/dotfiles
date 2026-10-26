@@ -1,15 +1,50 @@
 import { randomBytes, randomUUID } from "node:crypto";
-import { mkdir, writeFile, rm, open } from "node:fs/promises";
+import { mkdir, writeFile, rm, open, readFile } from "node:fs/promises";
 import { createServer, type Socket } from "node:net";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { currentPaneIdentity, type CurrentPaneIdentity } from "./subagents/herdr-layout-api.ts";
 import { result, type HerdrCli } from "./herdr-cli.ts";
-import { parseUpdateEndpoint, type UpdateEndpoint } from "./pi-update.ts";
+import { parseUpdateEndpoint, requestCooperativeRestart, type RestartResult, type UpdateEndpoint } from "./pi-update.ts";
 import { samePlatformPath } from "./path-identity.ts";
 // @ts-expect-error Shared executable JavaScript lives outside this TS project.
 import { updateRegistryDirectory } from "../../../../scripts/pi-update-host.mjs";
 
 export interface RestartCoordinates { sessionFile: string; sessionId: string; cwd: string; leafId?: string | null }
+
+/** Restart the current session through its installed update host or Herdr compatibility endpoint. */
+export async function restartCurrentPiSession(env: NodeJS.ProcessEnv = process.env, installedVersion: () => Promise<string> = resolveInstalledPiVersion): Promise<RestartResult> {
+  const endpoint = parseUpdateEndpoint(env.PI_UPDATE_ENDPOINT);
+  if (!endpoint) return { status: "skipped", reason: "This Pi process has no cooperative restart endpoint. Relaunch through the default Pi launcher first." };
+  if (!endpoint.server) return { status: "skipped", reason: "New-tab restart is supported only for Pi sessions running in Herdr; this session was left running." };
+  const profile = env.PI_CODING_AGENT_DIR;
+  if (!profile) return { status: "failed", reason: "Active Pi profile is unavailable." };
+  let version: string;
+  try { version = await installedVersion(); }
+  catch (error) { return { status: "failed", reason: error instanceof Error ? error.message : String(error) }; }
+  return requestCooperativeRestart(endpoint, version, "new-tab");
+}
+async function resolveInstalledPiVersion(): Promise<string> {
+  const profile = process.env.PI_CODING_AGENT_DIR;
+  if (!profile) throw new Error("Active Pi profile is unavailable");
+  const script = resolve(dirname(fileURLToPath(import.meta.url)), "../../../../scripts/pi-deps-link-setup");
+  let bash = "bash";
+  if (process.platform === "win32") {
+    const helper = resolve(dirname(fileURLToPath(import.meta.url)), "../../../../powershell/lib/path-utils.ps1");
+    const command = `. '${helper.replace(/'/g, "''")}'\nGet-GitBash`;
+    const resolved = spawnSync("pwsh", ["-NoProfile", "-Command", command], { encoding: "utf8", windowsHide: true, timeout: 15_000 });
+    bash = resolved.stdout.trim();
+    if (resolved.error || resolved.status !== 0 || !bash) throw new Error(`Git Bash resolution failed: ${resolved.error?.message ?? resolved.stderr?.trim() ?? "Get-GitBash returned no executable"}`);
+  }
+  const refreshed = spawnSync(bash, [script.replace(/\\/g, "/"), "--profile", "default"], { encoding: "utf8", windowsHide: true, timeout: 60_000 });
+  if (refreshed.error || refreshed.status !== 0) throw new Error(`Pi runtime link refresh failed: ${refreshed.error?.message ?? refreshed.stderr?.trim() ?? `exit ${refreshed.status}`}`);
+  const defaultProfile = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+  if (resolve(profile) !== defaultProfile) throw new Error("/pi --restart requires the default Pi profile");
+  const pkg: unknown = JSON.parse(await readFile(join(defaultProfile, "node_modules/@earendil-works/pi-coding-agent/package.json"), "utf8"));
+  if (!object(pkg) || typeof pkg.version !== "string" || !/^\d+\.\d+\.\d+(?:[-+][\w.-]+)?$/.test(pkg.version)) throw new Error("Installed Pi version unavailable from refreshed runtime link");
+  return pkg.version;
+}
 const object = (v: unknown): v is Record<string, unknown> => Boolean(v && typeof v === "object" && !Array.isArray(v));
 const ended = (socket: Socket, value: unknown) => new Promise<void>(accept => {
   if (socket.destroyed) return accept();
@@ -45,6 +80,7 @@ export async function createCompatibilityEndpoint(options: {
         const request: unknown = JSON.parse(buffer.slice(0, buffer.indexOf("\n")));
         if (!object(request) || request.token !== endpoint.token || closed) return socket.destroy();
         if (request.action === "restart" && typeof request.version === "string") {
+          if (request.mode !== undefined && request.mode !== "new-tab") return ended(socket, { status: "failed", reason: "Unsupported restart mode" });
           const reason = options.eligibility();
           if (reason || requesting) return ended(socket, { status: "skipped", reason: reason ?? "Migration is already in progress" });
           requesting = socket;
@@ -61,13 +97,15 @@ export async function createCompatibilityEndpoint(options: {
           const paneLabel = typeof pane?.label === "string" ? pane.label : "Orchestrator";
           if (options.eligibility()) { requesting = undefined; return ended(socket, { status: "skipped", reason: "Session became busy before migration" }); }
           // The replacement bootstrap admits itself before opening the conversation file.
-          const created = options.cli(["plugin", "pane", "open", "--plugin", "local.pi", "--entrypoint", "pi", "--placement", "split", "--direction", "down", "--target-pane", origin.pane_id,
+          const placement = request.mode === "new-tab" ? ["--placement", "tab", "--workspace", origin.workspace_id] : ["--placement", "split", "--direction", "down", "--target-pane", origin.pane_id];
+          const created = options.cli(["plugin", "pane", "open", "--plugin", "local.pi", "--entrypoint", "pi", ...placement,
             "--cwd", coordinates.cwd, "--env", `PI_HERDR_PROFILE_DIR=${options.profile}`, "--env", "PI_HERDR_SESSION_FILE=", "--env", "PI_HERDR_PLAN_PATH=", "--env", "PI_HERDR_PLAN_RUN=",
             "--env", `PI_UPDATE_MIGRATION=${JSON.stringify(endpoint)}`, "--env", `PI_UPDATE_PANE_LABEL=${paneLabel}`, "--no-focus"])
             .then(text => {
               const response = result(text);
               const replacement = response.plugin_pane?.pane ?? response.pane ?? response.root_pane;
-              if (typeof replacement?.pane_id !== "string" || replacement.tab_id !== origin.tab_id || replacement.workspace_id !== origin.workspace_id) throw new Error("Replacement did not open in the original tab");
+              if (typeof replacement?.pane_id !== "string" || replacement.workspace_id !== origin.workspace_id
+                || (request.mode === "new-tab" ? replacement.tab_id === origin.tab_id : replacement.tab_id !== origin.tab_id)) throw new Error(request.mode === "new-tab" ? "Replacement did not open in a new tab" : "Replacement did not open in the original tab");
               return replacement.pane_id as string;
             });
           const timer = setTimeout(() => {

@@ -71,11 +71,11 @@ export async function runPiUpdatePass(options: { cwd: string; env: NodeJS.Proces
   } catch (error) { return { installed, linked, error: error instanceof Error ? error.message : String(error) }; }
 }
 
-export function requestCooperativeRestart(endpoint: UpdateEndpoint, version: string): Promise<RestartResult> {
-  return exchangeRestart(endpoint, version, false);
+export function requestCooperativeRestart(endpoint: UpdateEndpoint, version: string, mode: "same-tab" | "new-tab" = "same-tab"): Promise<RestartResult> {
+  return exchangeRestart(endpoint, version, false, mode);
 }
 
-function exchangeRestart(endpoint: UpdateEndpoint, version: string, confirm: boolean): Promise<RestartResult> {
+function exchangeRestart(endpoint: UpdateEndpoint, version: string, confirm: boolean, mode: "same-tab" | "new-tab" = "same-tab"): Promise<RestartResult> {
   return new Promise(resolve => {
     const socket = createConnection({ host: "127.0.0.1", port: endpoint.port });
     let response = "", settled = false;
@@ -105,7 +105,7 @@ function exchangeRestart(endpoint: UpdateEndpoint, version: string, confirm: boo
         finish({ status: v.status, ...(typeof v.reason === "string" ? { reason: v.reason } : {}), ...(typeof v.version === "string" ? { version: v.version } : {}) });
       } catch { finish({ status: "failed", reason: "Invalid update-host response" }); }
     });
-    socket.once("connect", () => socket.write(`${JSON.stringify({ token: endpoint.token, action: confirm ? "confirm" : "restart", version, ...(confirm ? { sessionId: endpoint.sessionId } : {}) })}\n`));
+    socket.once("connect", () => socket.write(`${JSON.stringify({ token: endpoint.token, action: confirm ? "confirm" : "restart", version, ...(!confirm && mode === "new-tab" ? { mode } : {}), ...(confirm ? { sessionId: endpoint.sessionId } : {}) })}\n`));
   });
 }
 

@@ -1,5 +1,60 @@
 # Changelog
 
+## 2026-10-26: Disable default Pi inline image previews
+
+- Disable the default profile's terminal image protocol to avoid the unsupported Kitty graphics path through Herdr into Windows Terminal while investigating visible encoded-image text. Image attachments and model image understanding remain enabled; Kitty keyboard support and Herdr configuration are unchanged.
+- Restart affected Pi sessions to load the setting. The suspected graphics corruption still needs confirmation through normal use with inline previews disabled.
+
+## 2026-10-25: Allow slower commit publication and report uncertain pushes accurately
+
+- Give `/commit push` publication 120 seconds instead of the 15-second local Git inspection limit. Local inspections keep their existing timeout.
+- When a push is cancelled or times out, check whether the remote branch already points to the intended commit before reporting success. Unconfirmed publication is reported as an unknown outcome, not as no push performed; no automatic push retry is introduced, and dependent publication stops while the outcome is unknown.
+
+## 2026-10-25: Keep visible subagent panes readable
+
+- Replace the fixed two-row, five-column Herdr subagent grid with one row of at most two agents above a stable half-height orchestrator. Placement uses roughly 50 columns and 14 rows per pane, sending excess agents to named overflow tabs instead of repeatedly subdividing unreadable terminals. Tiny windows still permit unsplit singleton tabs.
+- Preserve Team Lead grouping with dedicated team tabs, a bottom-half leader, and readable team overflow. Clean layouts reassess capacity at lifecycle boundaries without polling or recreating processes. Manual divider edits freeze the affected tab against further automatic splitting or migration; whole-window resize is no longer mistaken for a manual edit.
+- Focus preservation, pane ownership, child lifetimes, cleanup, and manual tab names remain unchanged. Focused tests and isolated Herdr 0.9.5 inert-process acceptance cover geometry, migration, identity, and cleanup; attached-client presentation remains unverified. Load the change with a settled-only default-profile `/reload` or restart, not while subagents are active or retained.
+
+## 2026-10-25: Standardize refreshable work-account AWS SSO setup
+
+- Document named AWS CLI v2 SSO sessions as the supported work-account setup for the `bedrock` profile, preserving the existing account, role, and regions. Compatible clients can refresh short-lived credentials within the organization's sign-in session instead of relying on the older inline SSO configuration.
+- Keep AWS configuration and token caches local, select the profile explicitly rather than changing the machine-wide default, and verify identity separately from model access. Organization session expiry and role permissions are unchanged.
+
+## 2026-10-25: Resolve Git Bash for Windows Pi restarts
+
+- `/pi --restart` now resolves Git Bash through the existing PowerShell `Get-GitBash` helper on Windows before refreshing runtime links. This avoids accidentally selecting WSL's `System32\\bash.exe`; non-Windows launch behavior is unchanged.
+
+## 2026-10-25: Restart the current Pi session without updating
+
+- `/pi --restart` refreshes the default profile's Pi runtime link, then requests a cooperative restart into a new Herdr tab using the version resolved from that link. It does not install packages. Outside Herdr, it reports that new-tab restart is unsupported and leaves the current process running. The command offers `--restart` in argument autocomplete; `/new-instance` behavior is unchanged.
+- The replacement waits for bootstrap admission, then the original session exits through the existing cooperative safety checks. `/update` keeps its same-tab behavior. No live terminal restart was performed during implementation.
+
+## 2026-10-25: Use merge-based Git pulls and explicit submodule updates
+
+- Make merge-based pulls the shared default: fast-forward when possible and merge divergent history without rebasing existing commits. Stop automatically assigning rebase preferences to new tracking branches; explicit rebase commands remain available for unpublished work.
+- Disable implicit submodule recursion so pulling the parent does not also update independent module checkouts. This avoids the recursive-rebase failure on committed submodule-pointer changes and preserves deliberate module branch selection.
+- Remove existing branch-specific rebase overrides in the local dotfiles, homelab-infra, and Onclave checkouts so they inherit the shared policy. Other existing clones can retain local overrides and need separate review; this change does not pull, rewrite history, or publish commits.
+
+## 2026-10-24: Delay co-op Zomboid utility shutoffs to 2–6 months
+
+- Set water and electricity to their 2–6 month presets. Update the associated shutoff-day modifiers as well, since leaving the captured 14-day values would retain the earlier cutoff despite changing the presets.
+- Select each utility's shutoff day separately within the installed game's 60–179 day range and retain those values across restarts. Timing follows the existing world's age; alarm decay, other gameplay settings, saves, and characters remain unchanged. No world reset is included.
+
+## 2026-10-24: Allow co-op safehouses in non-residential buildings
+
+- Enable `SafehouseAllowNonResidential` so players can claim eligible shops, warehouses, and other non-residential buildings. One owner can share a claim through the game's existing player invitations and member respawn controls; this does not automatically enroll every account.
+- Preserve the existing safehouse access, fire, loot, and 144-hour inactivity rules, along with world and character progress. No mod or world reset is required.
+
+## 2026-10-24: Announce co-op Zomboid player deaths
+
+- Enable `AnnounceDeath` in the authoritative server configuration so player deaths produce a global chat message. Animal-death announcements remain disabled, and the existing world, characters, and other gameplay settings are preserved.
+
+## 2026-10-24: Double co-op Zomboid book-reading speed again
+
+- Reduce `MinutesPerPage` from 0.5 to 0.25 in the authoritative sandbox template, halving skill-book reading time again. XP multipliers, other gameplay settings, world saves, and characters remain unchanged.
+- Apply through the existing targeted game deployment and normal save/stop/start lifecycle, without a world reset or game upgrade.
+
 ## 2026-10-23: Carry browser task context through follow-ups and honor timeout overrides
 
 - Browser intent interpretation uses the active task and bounded recent conversation to distinguish continuation from a new, cancelled, or completed task. Reload acknowledgments and manual login-step completion can retain established scope without repeating the full request. Known private browser observations are excluded from interpretation context, and one-time approvals are not retained or renewed.

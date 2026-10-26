@@ -566,12 +566,23 @@ export default function sessionLaunchCommands(pi: ExtensionAPI): void {
 		description: "Open a branched copy of this Pi session in a new terminal tab",
 		handler: async (args, ctx) => executeBranch(args, ctx, pi),
 	});
-	for (const name of ["new-instance", "pi"]) {
-		pi.registerCommand(name, {
-			description: "Open a new Pi instance in this cwd in a new terminal tab",
-			handler: async (args, ctx) => executeNewInstance(args, ctx),
-		});
-	}
+	pi.registerCommand("new-instance", {
+		description: "Open a new Pi instance in this cwd in a new terminal tab",
+		handler: async (args, ctx) => executeNewInstance(args, ctx),
+	});
+	pi.registerCommand("pi", {
+		description: "Open a new Pi instance in this cwd in a new terminal tab, or restart this session in a new tab",
+		getArgumentCompletions: (prefix) => "--restart".startsWith(prefix) ? [{ value: "--restart", label: "--restart" }] : null,
+		handler: async (args, ctx) => {
+			if (args.trim() === "--restart") {
+				const { restartCurrentPiSession } = await import("../lib/pi-update-compat.ts");
+				const result = await restartCurrentPiSession();
+				if (result.status !== "restarted") ctx.ui.notify(`Pi restart was not completed: ${result.reason ?? result.status}.`, "warning");
+				return;
+			}
+			await executeNewInstance(args, ctx);
+		},
+	});
 	pi.registerShortcut("f7", {
 		description: "Open a new Pi instance",
 		handler: async (ctx) => executeNewInstance("", ctx),

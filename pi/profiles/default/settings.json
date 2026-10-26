@@ -63,8 +63,11 @@
     "bedrock-mantle/anthropic.claude-haiku-4-5"
   ],
   "followUpMode": "all",
-  "lastChangelogVersion": "1.3.0",
+  "lastChangelogVersion": "1.4.0",
   "steeringMode": "all",
+  "terminal": {
+    "images": false
+  },
   "theme": "glenn-dark",
   "treeFilterMode": "default"
 }
