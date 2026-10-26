@@ -1,5 +1,13 @@
 # Agent instruction feedback log
 
+## AIF-indoor-lighting-scope - Apply lighting corrections across indoor locations
+
+- **Reference:** Survival-demo indoor shadow correction; comparable shared-path normalization correction recorded in the failure log.
+- **Feedback:** A basement screenshot identifies a shared indoor-lighting defect, not permission for a basement-only fix.
+- **Evidence:** The implementation already changed shared architectural shadow setup for every house, but the progress report and new regression coverage initially emphasized the basement symptom.
+- **Decision:** Retain the shared implementation and verify light-blocker camera-layer eligibility across single-story, two-story, and basement house variants. Existing presentation/light-blocking guidance covers the requirement; no new global instruction needed.
+- **Status:** Shared checks pass. Keep reports explicit about system-wide scope while distinguishing the specific rendered reproduction.
+
 ## AIF-vehicle-work-execution - Acknowledgment did not execute authorized work
 
 - **Reference:** Survival-demo vehicle visual corrections, 2026-10-26; related AIF-vehicle-dashboard-art-direction and AIF-alert-rebuild-ownership.

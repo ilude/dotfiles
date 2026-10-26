@@ -65,6 +65,9 @@
   "followUpMode": "all",
   "lastChangelogVersion": "1.4.0",
   "steeringMode": "all",
+  "terminal": {
+    "images": false
+  },
   "theme": "glenn-dark",
   "treeFilterMode": "default"
 }
