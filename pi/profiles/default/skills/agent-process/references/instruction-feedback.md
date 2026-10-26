@@ -1,5 +1,13 @@
 # Agent instruction feedback log
 
+## AIF-vehicle-work-execution - Acknowledgment did not execute authorized work
+
+- **Reference:** Survival-demo vehicle visual corrections, 2026-10-26; related AIF-vehicle-dashboard-art-direction and AIF-alert-rebuild-ownership.
+- **Feedback:** After requesting per-type visual reviews and identifying the worst vehicles, the operator had to ask whether the work would actually be done.
+- **Evidence:** The assistant restated priorities and ended the turn without launching the requested reviews or priority modeling work. Existing instructions already required doing authorized actionable work rather than ending with promises. This was an adherence failure, not missing policy.
+- **Correction:** Started the priority modeling implementation, captured fresh multi-angle Godot evidence for all 16 types, and dispatched the 16 explicitly requested Sol/high reviewers. Preserve the normal cars rather than broadening their redesign.
+- **Status:** Implementation and reviews running. Completion requires delivered, inspected assets, not merely delegation. No new instruction rule added.
+
 ## AIF-vehicle-dashboard-art-direction - Functionality is not visual acceptance
 
 - **Reference:** Survival-demo vehicle UI discussion, 2026-10-26.
