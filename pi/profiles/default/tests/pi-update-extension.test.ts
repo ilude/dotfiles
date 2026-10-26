@@ -54,7 +54,7 @@ function fixture() {
   const api = {
     on: (name: string, handler: Handler) => handlers.set(name, handler),
     registerCommand: (_name: string, definition: Parameters<ExtensionAPI["registerCommand"]>[1]) => { command = definition; },
-    registerEntryRenderer: vi.fn(), appendEntry: vi.fn(), events: { emit: vi.fn() },
+    registerEntryRenderer: vi.fn(), appendEntry: vi.fn(), sendMessage: vi.fn(), events: { emit: vi.fn() },
   };
   register(api as unknown as ExtensionAPI);
   const event = (name: string, data: unknown = {}) => handlers.get(name)?.(data, ctx as unknown as ExtensionContext);
@@ -110,6 +110,7 @@ it("does not restart any sessions when installation or linking fails", async () 
   mocks.install.mockResolvedValue({ installed: true, linked: false, error: "link failed" });
   const f = fixture(); await f.command();
   expect(mocks.peers).not.toHaveBeenCalled(); expect(mocks.restart).not.toHaveBeenCalled(); expect(mocks.release).toHaveBeenCalledOnce();
+  expect(f.api.sendMessage).toHaveBeenCalledWith({ customType: "pi-update-error", content: "Pi update did not complete; no sessions restarted. link failed", display: false }, { triggerTurn: false });
 });
 
 it("does not mutate the installation for an unsupervised native launch", async () => {

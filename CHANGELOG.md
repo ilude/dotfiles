@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-10-26: Fix Windows Pi updates and retain failure context
+
+- `/update` now uses the existing PowerShell Git Bash resolver for runtime dependency linking on Windows instead of bare `bash`, which can select WSL and fail to find Windows pnpm packages. Non-Windows behavior and cooperative restart eligibility are unchanged.
+- Update installation/link and unexpected failures remain visible as notifications and are also persisted in model context, so a subsequent question can refer to the error without a screenshot. Recording the error does not start an automatic agent turn. Reload or restart Pi to load the extension changes.
+
 ## 2026-10-26: Disable default Pi inline image previews
 
 - Disable the default profile's terminal image protocol to avoid the unsupported Kitty graphics path through Herdr into Windows Terminal while investigating visible encoded-image text. Image attachments and model image understanding remain enabled; Kitty keyboard support and Herdr configuration are unchanged.
