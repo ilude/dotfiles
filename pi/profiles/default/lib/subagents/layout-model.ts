@@ -1,5 +1,7 @@
-export const PANES_PER_ROW = 5;
-export const ROWS_PER_TAB = 2;
+export const PANES_PER_ROW = 2;
+export const ROWS_PER_TAB = 1;
+export const MIN_PANE_COLUMNS = 50;
+export const MIN_PANE_ROWS = 14;
 
 export interface LayoutMember {
   childId: string;
@@ -9,107 +11,90 @@ export interface LayoutMember {
 }
 
 export type DesiredLayoutKind = "ordinary" | "team-leader" | "team-descendant";
-
+export type LayoutTab = "origin" | `team:${string}` | `overflow:${number}`;
 export interface DesiredLayoutSlot {
   childId: string;
   groupId: string;
   kind: DesiredLayoutKind;
-  tab: "origin" | `team:${string}` | `overflow:${number}`;
+  tab: LayoutTab;
   row: number;
   column: number;
   anchor: boolean;
 }
-
 export interface DesiredLayout {
   slots: DesiredLayoutSlot[];
   dedicatedTeams: string[];
 }
+export interface LayoutCapacity {
+  origin: number;
+  overflow: number;
+  team: number;
+}
 
-/**
- * Derive logical placement from current live ancestry. Physical split history is
- * deliberately absent so reconciliation is deterministic and repeatable.
- */
-export function desiredLayout(members: readonly LayoutMember[]): DesiredLayout {
+/** An unsplit overflow pane is still available when the window itself is small. */
+export function layoutCapacity(width: number, height: number): LayoutCapacity {
+  const columns = Math.max(0, Math.min(PANES_PER_ROW, Math.floor(width / MIN_PANE_COLUMNS)));
+  const halfFits = Math.floor(height / 2) >= MIN_PANE_ROWS;
+  return {
+    origin: halfFits ? columns : 0,
+    overflow: height >= MIN_PANE_ROWS ? Math.max(1, columns) : 1,
+    team: halfFits ? columns : 0,
+  };
+}
+
+/** Derive placement from ancestry and readable capacity, not physical split history. */
+export function desiredLayout(members: readonly LayoutMember[], capacity: LayoutCapacity = {origin:2,overflow:2,team:2}): DesiredLayout {
   const ordered = [...members].sort((a, b) => a.order - b.order || a.childId.localeCompare(b.childId));
   const byId = new Map(ordered.map(member => [member.childId, member]));
   const leaders = ordered.filter(member => member.role === "teamlead");
-  const nearestLeader = (member: LayoutMember): LayoutMember | undefined => {
-    const seen = new Set<string>();
-    let parent = member.parentId ? byId.get(member.parentId) : undefined;
-    while (parent && !seen.has(parent.childId)) {
-      seen.add(parent.childId);
-      if (parent.role === "teamlead") return parent;
-      parent = parent.parentId ? byId.get(parent.parentId) : undefined;
-    }
-    return undefined;
-  };
-  const teamMembers = new Map<string, LayoutMember[]>();
-  for (const leader of leaders) teamMembers.set(leader.childId, [leader]);
+  const teams = new Map(leaders.map(member => [member.childId, [member]]));
   const ordinary: LayoutMember[] = [];
   for (const member of ordered) {
     if (member.role === "teamlead") continue;
-    const leader = nearestLeader(member);
-    if (leader) teamMembers.get(leader.childId)?.push(member);
+    const seen = new Set<string>();
+    let parent = member.parentId ? byId.get(member.parentId) : undefined;
+    while (parent && !seen.has(parent.childId) && parent.role !== "teamlead") {
+      seen.add(parent.childId);
+      parent = parent.parentId ? byId.get(parent.parentId) : undefined;
+    }
+    if (parent?.role === "teamlead") teams.get(parent.childId)!.push(member);
     else ordinary.push(member);
   }
 
-  // Allocate row owners by first appearance. A late Team Lead never shares an
-  // occupied ordinary row: it takes the next wholly free row or starts a
-  // dedicated tab. This avoids moving unrelated live processes merely to put a
-  // newer group above an older one.
-  const ordinaryRows = Math.min(ROWS_PER_TAB, Math.ceil(ordinary.length / PANES_PER_ROW));
-  const groups: Array<{id:string; order:number; rows:number}> = leaders.map(leader => ({
-    id: leader.childId, order: leader.order,
-    rows: Math.ceil((teamMembers.get(leader.childId)?.length ?? 1) / PANES_PER_ROW),
-  }));
-  if (ordinary.length) groups.push({id:"ordinary", order:ordinary[0].order, rows:ordinaryRows});
-  groups.sort((a,b) => a.order-b.order || a.id.localeCompare(b.id));
-  const originStart = new Map<string,number>();
-  const originRows = new Map<string,number>();
-  const dedicated = new Set<string>();
-  let freeRows = ROWS_PER_TAB;
-  for (const group of groups) {
-    const allocated = group.id === "ordinary" ? Math.min(group.rows,freeRows) : group.rows <= freeRows ? group.rows : 0;
-    if (allocated) {
-      originStart.set(group.id, ROWS_PER_TAB-freeRows);
-      originRows.set(group.id,allocated);
-      freeRows -= allocated;
-    } else if (group.id !== "ordinary") dedicated.add(group.id);
-  }
-
   const slots: DesiredLayoutSlot[] = [];
+  const dedicatedTeams: string[] = [];
+  // One group owns the origin row. A Team Lead never shares it with unrelated agents.
+  const firstGroup = capacity.origin > 0 ? ordered.find(member => ordinary.includes(member)
+    || (member.role === "teamlead" && teams.get(member.childId)!.length <= capacity.origin)) : undefined;
+  const ordinaryAtOrigin = firstGroup !== undefined && ordinary.includes(firstGroup);
   for (const leader of leaders) {
-    const group = teamMembers.get(leader.childId) ?? [leader];
-    const start = originStart.get(leader.childId);
-    if (start !== undefined) {
-      group.forEach((member, index) => slots.push({
+    const team = teams.get(leader.childId)!;
+    const shared = firstGroup === leader && team.length <= capacity.origin;
+    if (!shared) dedicatedTeams.push(leader.childId);
+    for (let index = 0; index < team.length; index++) {
+      const member = team[index];
+      const descendant = index - 1;
+      const primary = descendant < capacity.team;
+      const overflow = Math.max(0, descendant - capacity.team);
+      slots.push({
         childId: member.childId, groupId: leader.childId,
         kind: index === 0 ? "team-leader" : "team-descendant",
-        tab: "origin", row: start + Math.floor(index / PANES_PER_ROW),
-        column: index % PANES_PER_ROW, anchor: false,
-      }));
-    } else {
-      const [lead, ...descendants] = group;
-      slots.push({childId: lead.childId, groupId: leader.childId, kind: "team-leader", tab: `team:${leader.childId}`, row: ROWS_PER_TAB, column: 0, anchor: true});
-      descendants.forEach((member, index) => slots.push({
-        childId: member.childId, groupId: leader.childId, kind: "team-descendant",
-        tab: `team:${leader.childId}`, row: Math.floor(index / PANES_PER_ROW),
-        column: index % PANES_PER_ROW, anchor: false,
-      }));
+        tab: shared ? "origin" : index === 0 || primary ? `team:${leader.childId}`
+          : `team:${leader.childId}:overflow:${Math.floor(overflow / capacity.overflow) + 1}`,
+        row: !shared && index === 0 ? 1 : 0,
+        column: shared ? index : index === 0 ? 0 : primary ? descendant : overflow % capacity.overflow,
+        anchor: !shared && index === 0,
+      });
     }
   }
-
-  const ordinaryStart = originStart.get("ordinary");
+  const originCount = ordinaryAtOrigin ? capacity.origin : 0;
   ordinary.forEach((member, index) => {
-    const availableOrigin = (originRows.get("ordinary") ?? 0) * PANES_PER_ROW;
-    if (index < availableOrigin) {
-      slots.push({childId: member.childId, groupId: "ordinary", kind: "ordinary", tab: "origin", row: ordinaryStart! + Math.floor(index / PANES_PER_ROW), column: index % PANES_PER_ROW, anchor: false});
-      return;
-    }
-    const overflowIndex = index - availableOrigin;
-    const tabNumber = Math.floor(overflowIndex / (ROWS_PER_TAB * PANES_PER_ROW)) + 1;
-    const local = overflowIndex % (ROWS_PER_TAB * PANES_PER_ROW);
-    slots.push({childId: member.childId, groupId: "ordinary", kind: "ordinary", tab: `overflow:${tabNumber}`, row: Math.floor(local / PANES_PER_ROW), column: local % PANES_PER_ROW, anchor: false});
+    const overflow = index - originCount;
+    slots.push({
+      childId: member.childId, groupId: "ordinary", kind: "ordinary",
+      tab: index < originCount ? "origin" : `overflow:${Math.floor(overflow / capacity.overflow) + 1}`,
+      row: 0, column: index < originCount ? index : overflow % capacity.overflow, anchor: false,
+    });
   });
-  return {slots, dedicatedTeams: [...dedicated]};
+  return {slots, dedicatedTeams};
 }

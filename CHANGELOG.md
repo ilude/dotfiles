@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-10-25: Keep visible subagent panes readable
+
+- Replace the fixed two-row, five-column Herdr subagent grid with one row of at most two agents above a stable half-height orchestrator. Placement uses roughly 50 columns and 14 rows per pane, sending excess agents to named overflow tabs instead of repeatedly subdividing unreadable terminals. Tiny windows still permit unsplit singleton tabs.
+- Preserve Team Lead grouping with dedicated team tabs, a bottom-half leader, and readable team overflow. Clean layouts reassess capacity at lifecycle boundaries without polling or recreating processes. Manual divider edits freeze the affected tab against further automatic splitting or migration; whole-window resize is no longer mistaken for a manual edit.
+- Focus preservation, pane ownership, child lifetimes, cleanup, and manual tab names remain unchanged. Focused tests and isolated Herdr 0.9.5 inert-process acceptance cover geometry, migration, identity, and cleanup; attached-client presentation remains unverified. Load the change with a settled-only default-profile `/reload` or restart, not while subagents are active or retained.
+
 ## 2026-10-25: Standardize refreshable work-account AWS SSO setup
 
 - Document named AWS CLI v2 SSO sessions as the supported work-account setup for the `bedrock` profile, preserving the existing account, role, and regions. Compatible clients can refresh short-lived credentials within the organization's sign-in session instead of relying on the older inline SSO configuration.
