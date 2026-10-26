@@ -16,6 +16,8 @@ const MODEL_FAMILY = "luna";
 const FALLBACK_PROVIDER = "anthropic";
 const FALLBACK_FAMILY = "haiku";
 const WORKFLOW_TIMEOUT_MS = 180_000;
+const GIT_TIMEOUT_MS = 15_000;
+const PUBLICATION_TIMEOUT_MS = 120_000;
 const RESPONSE_RETRIES = 3;
 
 /** Latest undated Haiku from the Anthropic subscription provider. */
@@ -118,15 +120,17 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 			const leftOut: string[] = [];
 			const publicationBranches = new Map<string, { path: string; branch: string }>();
 			let successfulPushes = 0;
+			let attemptedPushes = 0;
+			const unknownPushes = new Set<string>();
 			const usage: Usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
-			const git = async (args: string[], requestSignal?: AbortSignal, cwd?: string) => {
-				const result = await pi.exec("git", ["-C", cwd ?? root ?? ctx.cwd, ...args], { signal: requestSignal, timeout: 15000 });
+			const git = async (args: string[], requestSignal?: AbortSignal, cwd?: string, timeout = GIT_TIMEOUT_MS) => {
+				const result = await pi.exec("git", ["-C", cwd ?? root ?? ctx.cwd, ...args], { signal: requestSignal, timeout });
 				if (result.killed || result.code !== 0) throw new Error(`Git ${args[0]} failed: ${result.killed ? "cancelled or timed out" : result.stderr.trim()}`);
 				return result.stdout.trimEnd();
 			};
 			// A repository with no commits legitimately has no HEAD yet.
 			const head = async (requestSignal?: AbortSignal, cwd?: string) => {
-				const result = await pi.exec("git", ["-C", cwd ?? root ?? ctx.cwd, "rev-parse", "--verify", "--quiet", "HEAD"], { signal: requestSignal, timeout: 15000 });
+				const result = await pi.exec("git", ["-C", cwd ?? root ?? ctx.cwd, "rev-parse", "--verify", "--quiet", "HEAD"], { signal: requestSignal, timeout: GIT_TIMEOUT_MS });
 				if (!result.killed && result.code === 1) return "";
 				if (result.killed || result.code !== 0) throw new Error(`Git HEAD lookup failed: ${result.stderr.trim()}`);
 				return result.stdout.trim();
@@ -178,7 +182,26 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 									const { repo } = input as { repo: string };
 									const target = publicationBranches.get(normalizeRepositoryId(repo));
 									if (!target) throw new Error(`No attached publication target in inventory: ${repo}`);
-									const output = await git(["push", "--recurse-submodules=no", "origin", `HEAD:refs/heads/${target.branch}`], combined, target.path);
+									const ref = `refs/heads/${target.branch}`;
+									const intendedHead = await head(combined, target.path);
+									attemptedPushes++;
+									unknownPushes.add(repo);
+									const pushed = await pi.exec("git", ["-C", target.path, "push", "--recurse-submodules=no", "origin", `HEAD:${ref}`], { signal: combined, timeout: PUBLICATION_TIMEOUT_MS });
+									let output = pushed.stdout.trimEnd();
+									if (pushed.killed) {
+										// A killed client may have already published. Observe the remote without
+										// reusing a cancelled signal, and never retry the mutation automatically.
+										let remote = "";
+										try { remote = await git(["ls-remote", "--heads", "origin", ref], undefined, target.path, PUBLICATION_TIMEOUT_MS); }
+										catch { /* Keep the publication outcome unknown when verification fails. */ }
+										if (!intendedHead || !remote.split("\n").some(line => line === `${intendedHead}\t${ref}`))
+											throw new Error(`Git push outcome unknown: cancelled or timed out; remote branch could not be confirmed at ${intendedHead}. Check origin ${ref} before retrying.`);
+										output = "Push confirmed on the remote after cancellation or timeout.";
+									} else if (pushed.code !== 0) {
+										unknownPushes.delete(repo);
+										throw new Error(`Git push failed: ${pushed.stderr.trim()}`);
+									}
+									unknownPushes.delete(repo);
 									successfulPushes++;
 									return { content: [{ type: "text" as const, text: output || "Push succeeded." }], details: {} };
 								},
@@ -346,9 +369,10 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 				} catch (error) { failure = [failure, `Status reporting failed: ${error instanceof Error ? error.message : String(error)}`].filter(Boolean).join("\n"); }
 			}
 			const publication = push && publicationBranches.size > 0
-				? successfulPushes > 0
+				? [successfulPushes > 0
 					? failure ? `${successfulPushes} push${successfulPushes === 1 ? "" : "es"} succeeded before the workflow stopped.` : "Pushed."
-					: "No pushes performed."
+					: unknownPushes.size ? "" : attemptedPushes ? "No pushes confirmed." : "No pushes performed.",
+					unknownPushes.size ? `Push outcome unknown for: ${[...unknownPushes].join(", ")}. Verify the remote branches before retrying.` : ""].filter(Boolean).join("\n")
 				: "";
 			const preserved = outcome.split("\n").filter(line => line.startsWith("Preserved index content: ")).join("\n");
 			const exclusions = outcome.split("\n").filter(line => line.startsWith("Left out: "));

@@ -222,6 +222,48 @@ it("retains captured push permission and annotations through recovery", async ()
 	expect(result.text).toBe("No commits created.\nPushed.");
 });
 
+it("uses a longer timeout only for publication", async () => {
+	responses.push({ message: message([{ type: "toolCall", id: "publish", name: "publish_repository", arguments: { repo: "." } }], "toolUse") }, { message: done() });
+	await start(undefined, true).run;
+	expect(git.mock.calls.find(([, args]) => args[2] === "push")?.[2]?.timeout).toBe(120_000);
+	expect(git.mock.calls.filter(([, args]) => args[2] !== "push").every(([, , options]) => options?.timeout === 15_000)).toBe(true);
+});
+
+it("confirms a timed-out push from the remote without retrying it", async () => {
+	const original = git.getMockImplementation()!;
+	git.mockImplementation(async (command, args, options) => {
+		if (args[2] === "push") return { stdout: "", stderr: "", code: 1, killed: true };
+		if (args[2] === "ls-remote") return { stdout: "old-head\trefs/heads/main\n", stderr: "", code: 0, killed: false };
+		return original(command, args, options);
+	});
+	responses.push({ message: message([{ type: "toolCall", id: "publish", name: "publish_repository", arguments: { repo: "." } }], "toolUse") }, { message: done() });
+	const result = await start(undefined, true).run;
+	expect(result.text).toContain("Pushed.");
+	expect(git.mock.calls.filter(([, args]) => args[2] === "push")).toHaveLength(1);
+	const verification = git.mock.calls.find(([, args]) => args[2] === "ls-remote");
+	expect(verification?.[1].slice(2)).toEqual(["ls-remote", "--heads", "origin", "refs/heads/main"]);
+	expect(verification?.[2]).toMatchObject({ signal: undefined, timeout: 120_000 });
+});
+
+it.each(["different-head", "unavailable"])("reports unknown publication when timed-out push verification is %s", async remote => {
+	const original = git.getMockImplementation()!;
+	git.mockImplementation(async (command, args, options) => {
+		if (args[2] === "push") return { stdout: "", stderr: "", code: 1, killed: true };
+		if (args[2] === "ls-remote") return { stdout: "other-head\trefs/heads/main\n", stderr: "network unavailable", code: remote === "unavailable" ? 1 : 0, killed: false };
+		return original(command, args, options);
+	});
+	responses.push({ message: message([
+		{ type: "toolCall", id: "publish", name: "publish_repository", arguments: { repo: "." } },
+		toolCall("queued mutation"),
+	], "toolUse") });
+	const error = await start(undefined, true).run.catch(error => error as Error);
+	expect(error).toBeInstanceOf(Error);
+	expect(String(error)).toContain("Push outcome unknown for: .");
+	expect(String(error)).not.toContain("No pushes performed.");
+	expect(git.mock.calls.filter(([, args]) => args[2] === "push")).toHaveLength(1);
+	expect(doubles.shell).not.toHaveBeenCalled();
+});
+
 it("reports a retained index reference without losing confirmed publication", async () => {
 	responses.push({ message: message([{ type: "toolCall", id: "publish", name: "publish_repository", arguments: { repo: "." } }], "toolUse") }, { message: message([{ type: "text", text: "Done\nPreserved index content: stash@{0}" }]) });
 	const result = await start(undefined, true).run;

@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-10-25: Allow slower commit publication and report uncertain pushes accurately
+
+- Give `/commit push` publication 120 seconds instead of the 15-second local Git inspection limit. Local inspections keep their existing timeout.
+- When a push is cancelled or times out, check whether the remote branch already points to the intended commit before reporting success. Unconfirmed publication is reported as an unknown outcome, not as no push performed; no automatic push retry is introduced, and dependent publication stops while the outcome is unknown.
+
 ## 2026-10-25: Keep visible subagent panes readable
 
 - Replace the fixed two-row, five-column Herdr subagent grid with one row of at most two agents above a stable half-height orchestrator. Placement uses roughly 50 columns and 14 rows per pane, sending excess agents to named overflow tabs instead of repeatedly subdividing unreadable terminals. Tiny windows still permit unsplit singleton tabs.
