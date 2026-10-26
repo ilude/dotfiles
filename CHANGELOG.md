@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-10-25: Standardize refreshable work-account AWS SSO setup
+
+- Document named AWS CLI v2 SSO sessions as the supported work-account setup for the `bedrock` profile, preserving the existing account, role, and regions. Compatible clients can refresh short-lived credentials within the organization's sign-in session instead of relying on the older inline SSO configuration.
+- Keep AWS configuration and token caches local, select the profile explicitly rather than changing the machine-wide default, and verify identity separately from model access. Organization session expiry and role permissions are unchanged.
+
+## 2026-10-25: Resolve Git Bash for Windows Pi restarts
+
+- `/pi --restart` now resolves Git Bash through the existing PowerShell `Get-GitBash` helper on Windows before refreshing runtime links. This avoids accidentally selecting WSL's `System32\\bash.exe`; non-Windows launch behavior is unchanged.
+
 ## 2026-10-25: Restart the current Pi session without updating
 
 - `/pi --restart` refreshes the default profile's Pi runtime link, then requests a cooperative restart into a new Herdr tab using the version resolved from that link. It does not install packages. Outside Herdr, it reports that new-tab restart is unsupported and leaves the current process running. The command offers `--restart` in argument autocomplete; `/new-instance` behavior is unchanged.

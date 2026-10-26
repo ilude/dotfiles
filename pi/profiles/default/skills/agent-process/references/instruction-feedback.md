@@ -1,5 +1,20 @@
 # Agent instruction feedback log
 
+## AIF-vehicle-dashboard-art-direction - Functionality is not visual acceptance
+
+- **Reference:** Survival-demo vehicle UI discussion, 2026-10-26.
+- **Feedback:** Operator rejected the visible dashboard design and asked what tooling would support a better original design without copying the reference game.
+- **Evidence:** The implemented dashboard combined a dial with a grid of text buttons. Passing gameplay checks established functioning controls, not successful visual design. No comparable prior visual-design correction was found in the targeted feedback search; AIF-asset-work-learning concerns guidance evolution, not visual approval.
+- **Decision:** Discuss concept/mockup, vector authoring, and actual-engine iteration capabilities before further dashboard visual work. Image-model availability was checked and returned no configured available models. No new global instruction or redesign approval inferred.
+- **Status:** Tooling discussion active; dashboard visual refinement paused.
+
+## AIF-asset-work-learning - Retain proven authoring lessons in project guidance
+
+- **Reference:** Asset-authoring discussion, 2026-10-25.
+- **Feedback:** The operator authorized concise, evidence-backed updates across all project skills and design language/philosophy, including creating skills for reusable workflows. This is a self-evolving project; routine guidance evolution does not require separate approval each time.
+- **Decision:** Generalized the project-local rule beyond asset work. Keep specialist procedures in skills and project-wide principles in project guidance. Consolidate existing instructions, omit one-off workarounds, and preserve explicit user decisions.
+- **Status:** Applied locally, including the initial asset-workflow refinements. No global behavior rule or automatic monitoring added.
+
 ## AIF-azrebalance-durability - A live fix is not reproducible infrastructure
 
 - **Reference:** Default session `01a16541-5bc4-7600-8926-cf5d646491a9`, operator corrections, 2026-10-23; related AIF-alert-plan-explanation.

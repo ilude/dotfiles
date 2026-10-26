@@ -1,5 +1,13 @@
 # Agent process failure log
 
+## APR-pi-restart-shell-boundary - Restart checks missed the actual Windows subprocess
+
+- **Reference:** Operator-reported `/pi --restart` failure after published commit `3afb2bf2`, 2026-10-25; related APR-commit-windows-publication-label and APR-pi-upgrade-herdr-registration.
+- **Observed:** The runtime-link refresh passed a native Windows script path to bare `bash`. The operator received a missing-file error with backslashes stripped. The orchestrator then tried a separator-only edit before establishing the receiving shell.
+- **Evidence:** An exact Node `spawnSync` probe resolves bare `bash` to the Windows WSL launcher and reports Linux with a `/mnt/c/...` cwd. Forward-slash `C:/...` also fails. Earlier checks established script execution from a different shell, not this call. The existing shared path contract in `lib/path-identity.ts` covers repository IDs and comparison, not shell translation.
+- **Correction:** Operator authorized code and process fixes. Added path-consumer and exact-subprocess guidance to the extension skill rather than treating repository-ID normalization as WSL conversion. Code repair is assigned separately using existing repository launch mechanisms.
+- **Status:** Extension now resolves Git Bash through the existing PowerShell `Get-GitBash` helper. The exact Node-to-PowerShell-to-Git-Bash refresh succeeded on this Windows machine; seven focused tests, typecheck, and diff whitespace checks passed. The extension skill names the resolver explicitly. Live session replacement remains untested; instruction adherence in future work is not established. No commit or push performed.
+
 ## APR-pi-upgrade-herdr-registration - Upgrade checks missed a pinned Herdr launcher
 
 - **Reference:** Default session `01a14aab-abfd-7796-a3fb-5bbc2133be1d`, operator correction, 2026-10-25; related APR-089 and APR-083.

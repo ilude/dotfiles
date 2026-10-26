@@ -29,7 +29,15 @@ async function resolveInstalledPiVersion(): Promise<string> {
   const profile = process.env.PI_CODING_AGENT_DIR;
   if (!profile) throw new Error("Active Pi profile is unavailable");
   const script = resolve(dirname(fileURLToPath(import.meta.url)), "../../../../scripts/pi-deps-link-setup");
-  const refreshed = spawnSync("bash", [script, "--profile", "default"], { encoding: "utf8", windowsHide: true, timeout: 60_000 });
+  let bash = "bash";
+  if (process.platform === "win32") {
+    const helper = resolve(dirname(fileURLToPath(import.meta.url)), "../../../../powershell/lib/path-utils.ps1");
+    const command = `. '${helper.replace(/'/g, "''")}'\nGet-GitBash`;
+    const resolved = spawnSync("pwsh", ["-NoProfile", "-Command", command], { encoding: "utf8", windowsHide: true, timeout: 15_000 });
+    bash = resolved.stdout.trim();
+    if (resolved.error || resolved.status !== 0 || !bash) throw new Error(`Git Bash resolution failed: ${resolved.error?.message ?? resolved.stderr?.trim() ?? "Get-GitBash returned no executable"}`);
+  }
+  const refreshed = spawnSync(bash, [script.replace(/\\/g, "/"), "--profile", "default"], { encoding: "utf8", windowsHide: true, timeout: 60_000 });
   if (refreshed.error || refreshed.status !== 0) throw new Error(`Pi runtime link refresh failed: ${refreshed.error?.message ?? refreshed.stderr?.trim() ?? `exit ${refreshed.status}`}`);
   const defaultProfile = resolve(dirname(fileURLToPath(import.meta.url)), "..");
   if (resolve(profile) !== defaultProfile) throw new Error("/pi --restart requires the default Pi profile");
