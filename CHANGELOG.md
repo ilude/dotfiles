@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-10-26: Document remote workstation access discovery
+
+- Point agents to homelab-infra's public-safe remote-access runbook for native Herdr SSH attachment, inherited Windows Terminal context, separate WinRM credentials, and network-access constraints. Keep live inventory and secrets under the module's existing BWS ownership rather than duplicating them in documentation or `values/`.
+- Record the successful native Herdr connection separately from partial WinRM checks and unverified work, Tailscale, and public-network paths. This documentation does not change host configuration or managed firewall policy.
+
 ## 2026-10-26: Fix Windows Pi updates and retain failure context
 
 - `/update` now uses the existing PowerShell Git Bash resolver for runtime dependency linking on Windows instead of bare `bash`, which can select WSL and fail to find Windows pnpm packages. Non-Windows behavior and cooperative restart eligibility are unchanged.
