@@ -3,7 +3,7 @@
 ## 2026-10-26: Disable default Pi inline image previews
 
 - Disable the default profile's terminal image protocol to avoid the unsupported Kitty graphics path through Herdr into Windows Terminal while investigating visible encoded-image text. Image attachments and model image understanding remain enabled; Kitty keyboard support and Herdr configuration are unchanged.
-- Restart affected Pi sessions to load the setting. The suspected graphics corruption still needs confirmation through normal use with inline previews disabled.
+- Run `/reload` in affected Pi sessions while settled with no active or retained subagents, or restart them, to load the setting. The suspected graphics corruption still needs confirmation through normal use with inline previews disabled.
 
 ## 2026-10-25: Allow slower commit publication and report uncertain pushes accurately
 
