@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-10-26: Integrate origin before default Pi commit publication
+
+- `/commit push` now uses `publish_repository` as the sole pull owner for each captured own branch. Git fast-forwards when possible and merges divergence without rewriting history; established conflicts return recoverable evidence for clear resolution and retry, while other pull failures block dependent publication.
+- Keep child repositories ahead of parents and refresh parent gitlinks to integrated child HEADs before parent publication. Bare `/commit` remains local-only.
+
 ## 2026-10-26: Add Windows remote Herdr connect command
 
 - Add default-profile `/connect <ssh-alias>` to open a Windows Terminal tab running the local `herdr --remote` client. The alias is resolved by local SSH configuration, and inherited `HERDR*` context is cleared only in the child terminal to avoid nested-attachment rejection.
