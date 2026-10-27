@@ -9,6 +9,9 @@
 
 - Add default-profile `/connect <ssh-alias>` to open a Windows Terminal tab running the local `herdr --remote` client. The alias is resolved by local SSH configuration, and inherited `HERDR*` context is cleared only in the child terminal to avoid nested-attachment rejection.
 - The command does not install, restart, configure, or change the remote server. Other platforms report unsupported.
+## 2026-10-26: Keep default Pi release cache machine-local
+
+- Stop tracking the default profile's generated release-indicator cache to avoid timestamp churn and cross-machine merge conflicts. Each machine retains its local copy; Pi recreates missing caches and refreshes them through the existing release checks.
 
 ## 2026-10-26: Document remote workstation access discovery
 
@@ -23,7 +26,7 @@
 ## 2026-10-26: Disable default Pi inline image previews
 
 - Disable the default profile's terminal image protocol to avoid the unsupported Kitty graphics path through Herdr into Windows Terminal while investigating visible encoded-image text. Image attachments and model image understanding remain enabled; Kitty keyboard support and Herdr configuration are unchanged.
-- Restart affected Pi sessions to load the setting. The suspected graphics corruption still needs confirmation through normal use with inline previews disabled.
+- Run `/reload` in affected Pi sessions while settled with no active or retained subagents, or restart them, to load the setting. The suspected graphics corruption still needs confirmation through normal use with inline previews disabled.
 
 ## 2026-10-25: Allow slower commit publication and report uncertain pushes accurately
 
