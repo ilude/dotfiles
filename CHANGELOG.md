@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-10-26: Keep default Pi release cache machine-local
+
+- Stop tracking the default profile's generated release-indicator cache to avoid timestamp churn and cross-machine merge conflicts. Each machine retains its local copy; Pi recreates missing caches and refreshes them through the existing release checks.
+
 ## 2026-10-26: Document remote workstation access discovery
 
 - Point agents to homelab-infra's public-safe remote-access runbook for native Herdr SSH attachment, inherited Windows Terminal context, separate WinRM credentials, and network-access constraints. Keep live inventory and secrets under the module's existing BWS ownership rather than duplicating them in documentation or `values/`.
