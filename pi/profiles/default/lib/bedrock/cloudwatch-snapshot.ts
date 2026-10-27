@@ -3,7 +3,7 @@ import type { CostBaseline } from "./ledger.js";
 const common = (profile?: string) => ["--region", "us-east-2", "--output", "json", "--no-cli-pager", ...(profile ? ["--profile", profile] : [])];
 export const callerArgs = (profile?: string) => ["sts", "get-caller-identity", ...common(profile)];
 export const dashboardArgs = (profile?: string) => ["cloudwatch", "get-dashboard", "--dashboard-name", "ccb-bedrock-usage", ...common(profile)];
-export function parseCaller(stdout: string): string { let v: any; try { v=JSON.parse(stdout); } catch { throw new Error("AWS STS returned invalid JSON"); } if(typeof v?.Arn!=="string"||!v.Arn.includes(":user/")) throw new Error("Bedrock reconciliation requires an IAM user identity"); return v.Arn; }
+export function parseCaller(stdout: string): string { let v: any; try { v=JSON.parse(stdout); } catch { throw new Error("AWS STS returned invalid JSON"); } const arn=v?.Arn; const personalIamUser=typeof arn==="string"&&/^arn:aws:iam::\d{12}:user\/.+$/.test(arn); const ccbSsoRole=typeof arn==="string"&&/^arn:aws:sts::\d{12}:assumed-role\/AWSReservedSSO_ccb-bedrock-developer_[A-Fa-f0-9]{16}\/[A-Za-z0-9+=,.@_-]+$/.test(arn); if(!personalIamUser&&!ccbSsoRole) throw new Error("Bedrock reconciliation requires an IAM user or ccb-bedrock-developer SSO identity"); return arn; }
 export function queryArgs(dashboard: string, principal: string, now=new Date(), profile?: string): string[] {
  let outer:any; try { outer=JSON.parse(dashboard); } catch { throw new Error("CloudWatch dashboard returned invalid JSON"); }
  let body:any; try { body=JSON.parse(outer.DashboardBody); } catch { throw new Error("CloudWatch dashboard body was invalid"); }

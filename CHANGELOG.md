@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-10-29: Reconcile Bedrock costs for the named SSO identity
+
+- Allow `/bedrock reconcile` to use the `AWSReservedSSO_ccb-bedrock-developer` caller and keep its baseline filtered to the complete assumed-role ARN, preserving session-level attribution and existing personal IAM-user behavior.
+- Other assumed roles remain rejected. The AWS identity and deployed dashboard were inspected read-only; log query execution was denied for the configured IAM user.
+
 ## 2026-10-27: Close completed Pi subagents and reopen saved conversations for follow-up
 
 - Ordinary subagents now close their processes and panes on completion instead of offering a `retain` launch choice. Their conversations and results remain saved; explicit `subagent_control message` follow-ups reopen the same session with its original role, permissions, and launch configuration, then close again when done. Reopening uses the current owning runtime, not a new cross-restart registry.

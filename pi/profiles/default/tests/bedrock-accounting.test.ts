@@ -13,6 +13,15 @@ afterEach(() => { vi.unstubAllEnvs(); for (const dir of dirs.splice(0)) rmSync(d
 function temp() { const dir = mkdtempSync(join(tmpdir(), "bedrock-ledger-")); dirs.push(dir); vi.stubEnv("PI_CODING_AGENT_DIR", dir); return dir; }
 
 describe("Bedrock accounting", () => {
+	it("accepts only personal IAM users and the named Bedrock SSO identity", () => {
+		const ssoArn = "arn:aws:sts::058264305403:assumed-role/AWSReservedSSO_ccb-bedrock-developer_be76b6b5ed07216e/mike.glenn";
+		expect(parseCaller(JSON.stringify({ Arn: ssoArn }))).toBe(ssoArn);
+		expect(parseCaller(JSON.stringify({ Arn: "arn:aws:iam::058264305403:user/mike.glenn" }))).toBe("arn:aws:iam::058264305403:user/mike.glenn");
+		expect(parseCaller(JSON.stringify({ Arn: "arn:aws:iam::058264305403:user/team/platform/mike.glenn" }))).toBe("arn:aws:iam::058264305403:user/team/platform/mike.glenn");
+		for (const Arn of ["arn:aws:sts::058264305403:assumed-role/OtherRole_be76b6b5ed07216e/mike.glenn"]) {
+			expect(() => parseCaller(JSON.stringify({ Arn }))).toThrow();
+		}
+	});
 	it("keeps unknown targets unpriced", () => {
 		expect(estimateUsage("openai.gpt-5.6-luna", { input: 1_000_000 }).total).toBeCloseTo(0.22);
 		expect(estimateUsage("unknown", { input: 10 }).status).toBe("unpriced");
