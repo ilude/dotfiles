@@ -16,6 +16,10 @@ const object = (value: unknown): value is Record<string, unknown> => Boolean(val
 
 export default function update(pi: ExtensionAPI) {
   if (process.env.PI_SUBAGENT_AUTHORITY || process.env.PI_HERDR_SUBAGENT || process.env.PI_HERDR_CLOSEOUT_SUCCESSOR) return;
+  const reportError = (ctx: ExtensionContext, message: string) => {
+    ctx.ui.notify(message, "error");
+    pi.sendMessage({ customType: "pi-update-error", content: message, display: false }, { triggerTurn: false });
+  };
   let promptDepth = 0, commandRunning = false;
   let current: ExtensionContext | undefined;
   let compatibility: Awaited<ReturnType<typeof createCompatibilityEndpoint>> | undefined;
@@ -127,7 +131,7 @@ export default function update(pi: ExtensionAPI) {
         }
         const result = await runPiUpdatePass({ cwd: fileURLToPath(new URL("../../../..", import.meta.url)), env: { ...process.env, PI_CODING_AGENT_DIR: getAgentDir() } });
         if (!result.installed || !result.linked || !result.version || result.error) {
-          ctx.ui.notify(`Pi update did not complete; no sessions restarted. ${result.error ?? "Updated version unavailable"}`, "error"); return;
+          reportError(ctx, `Pi update did not complete; no sessions restarted. ${result.error ?? "Updated version unavailable"}`); return;
         }
         ctx.ui.setStatus("pi-update", "restarting eligible Pi sessions...");
         let results: SessionUpdateResult[];
@@ -144,7 +148,7 @@ export default function update(pi: ExtensionAPI) {
         const response = await requestCooperativeRestart(self, result.version);
         if (response.status !== "restarted") ctx.ui.notify(`This session was not restarted: ${response.reason ?? response.status}.`, "warning");
       } catch (error) {
-        ctx.ui.notify(`Pi update stopped: ${error instanceof Error ? error.message : String(error)}`, "error");
+        reportError(ctx, `Pi update stopped: ${error instanceof Error ? error.message : String(error)}`);
       } finally {
         commandRunning = false;
         await release?.();

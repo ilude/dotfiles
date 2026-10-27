@@ -23,6 +23,10 @@ Claude hooks, commands, settings, runtime workarounds, and content ingestion are
 - For coordinated changes, preserve the boundary: Onclave publishes application contracts, homelab-infra consumes them for deployment, and dotfiles wires local clients to them. Do not move live inventory or site secrets out of `modules/homelab-infra/values/`.
 - Commit module changes from the module first, then commit the updated gitlink in dotfiles. Local parent pin commits do not require pulling or publication. When push is requested, publish relevant module commits before the parent that references them. Never include a module's files directly in a dotfiles commit.
 
+## Remote workstation access
+
+Before Herdr remote attachment, Windows PowerShell remoting, or changes to their network access, read [`modules/homelab-infra/docs/remote-workstation-access.md`](modules/homelab-infra/docs/remote-workstation-access.md). It covers native Herdr attachment, Windows Terminal launch context, credentials, and verification limits. Workstation launchers belong here; managed live inventory and secrets follow homelab-infra's BWS boundary, not tracked examples or a second inventory in `values/`.
+
 ## Command index
 
 Installation entrypoints and options live in [`README.md#installation`](README.md#installation); development and validation commands live in [`README.md#development`](README.md#development).

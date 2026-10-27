@@ -63,7 +63,11 @@ export async function runPiUpdatePass(options: { cwd: string; env: NodeJS.Proces
     if ((options.platform ?? process.platform) === "win32") await run("pwsh", ["-NoProfile", "-NonInteractive", "-Command", "$ErrorActionPreference = 'Stop'; & pnpm add -g '@earendil-works/pi-coding-agent@latest'; exit $LASTEXITCODE"], options);
     else await run("pnpm", ["add", "-g", "@earendil-works/pi-coding-agent@latest"], options);
     installed = true;
-    await run("bash", ["scripts/pi-deps-link-setup", "--profile", "default"], options);
+    if ((options.platform ?? process.platform) === "win32") {
+      const helper = join(options.cwd, "powershell/lib/path-utils.ps1").replace(/'/g, "''");
+      await run("pwsh", ["-NoProfile", "-NonInteractive", "-Command",
+        `$ErrorActionPreference = 'Stop'; . '${helper}'; & (Get-GitBash) 'scripts/pi-deps-link-setup' --profile default; exit $LASTEXITCODE`], options);
+    } else await run("bash", ["scripts/pi-deps-link-setup", "--profile", "default"], options);
     linked = true;
     const pkg: unknown = JSON.parse(await readFile(join(options.env.PI_CODING_AGENT_DIR ?? "", "node_modules/@earendil-works/pi-coding-agent/package.json"), "utf8"));
     if (!record(pkg) || typeof pkg.version !== "string" || !/^\d+\.\d+\.\d+(?:[-+][\w.-]+)?$/.test(pkg.version)) throw new Error("Updated Pi version unavailable from refreshed runtime link");

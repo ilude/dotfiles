@@ -47,6 +47,9 @@ describe("installation ordering", () => {
     await runPiUpdatePass({ ...input, platform: "win32" }, run);
     expect(run.mock.calls[0][0]).toBe("pwsh");
     expect(run.mock.calls[0][1]).toContain("$ErrorActionPreference = 'Stop'; & pnpm add -g '@earendil-works/pi-coding-agent@latest'; exit $LASTEXITCODE");
+    expect(run.mock.calls[1][0]).toBe("pwsh");
+    expect(run.mock.calls[1][1].at(-1)).toContain("path-utils.ps1");
+    expect(run.mock.calls[1][1].at(-1)).toContain("& (Get-GitBash) 'scripts/pi-deps-link-setup' --profile default");
   });
 });
 
