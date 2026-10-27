@@ -188,7 +188,9 @@ describe.skipIf(process.env.PI_SUBAGENT_UX_LIVE !== "1")("bounded integrated sub
       }));
       const migrated = layout.snapshot("team-live");
       expect(new Set(migrated.map(child => child.tabId)).size).toBe(3);
-      expect(migrated.every(child => child.tabId !== fixture.caller.tab_id)).toBe(true);
+      expect(migrated.every(child => child.workspaceId !== fixture.caller.workspace_id)).toBe(true);
+      expect(new Set(migrated.map(child => child.workspaceId)).size).toBe(1);
+      expect((await inspectPane(fixture.cli,fixture.caller.pane_id)).workspace_id).toBe(fixture.caller.workspace_id);
       for (const tabId of new Set(migrated.map(child => child.tabId))) {
         const children = migrated.filter(child => child.tabId === tabId);
         const geometry = result(await fixture.cli(["pane","layout","--pane",children[0].paneId])).layout;
@@ -208,7 +210,9 @@ describe.skipIf(process.env.PI_SUBAGENT_UX_LIVE !== "1")("bounded integrated sub
       expect(returned).toHaveLength(2);
       expect(returned.every(child => child.tabId === fixture.caller.tab_id && child.row === 0)).toBe(true);
       for (const child of returned) expect((await inspectPane(fixture.cli,child.paneId)).terminal_id).toBe(before.get(child.childId));
-      expect(returned.find(child => child.childId === first.childId)?.paneId).toBe(first.paneId);
+      expect(returned.find(child => child.childId === first.childId)?.paneId).not.toBe(first.paneId);
+      expect(returned.every(child => child.workspaceId === fixture.caller.workspace_id)).toBe(true);
+      expect(result(await fixture.cli(["workspace","list"])).workspaces.some((workspace: {workspace_id:string}) => workspace.workspace_id === migrated[0].workspaceId)).toBe(false);
       expect(result(await fixture.cli(["api","snapshot"])).snapshot.focused_pane_id).toBe(fixture.unrelated.pane_id);
     } finally {
       for (const child of layout.snapshot("team-live").reverse()) await layout.close("team-live",child.childId,child.paneId).catch(()=>undefined);
@@ -227,6 +231,9 @@ describe.skipIf(process.env.PI_SUBAGENT_UX_LIVE !== "1")("bounded integrated sub
       for (let index=1;index<=7;index++) {
         placements.push(await layout.place("geometry",inertRequest(fixture.caller.pane_id,fixture.scratch,index)));
         const snapshot = layout.snapshot("geometry");
+        expect(snapshot.filter(child => child.tabIndex === 0).every(child => child.workspaceId === fixture.caller.workspace_id)).toBe(true);
+        expect(snapshot.filter(child => child.tabIndex !== 0).every(child => child.workspaceId !== fixture.caller.workspace_id)).toBe(true);
+        expect(new Set(snapshot.filter(child => child.tabIndex !== 0).map(child => child.workspaceId)).size).toBe(index > 2 ? 1 : 0);
         const main = result(await fixture.cli(["pane","layout","--pane",fixture.caller.pane_id])).layout;
         const caller = main.panes.find((pane: any) => pane.pane_id === fixture.caller.pane_id).rect;
         const children = main.panes.filter((pane: any) => pane.pane_id !== fixture.caller.pane_id);

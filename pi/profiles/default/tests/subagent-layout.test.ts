@@ -21,6 +21,8 @@ class LayoutFixture {
   focus = "w2:p1";
   nextPane = 2;
   nextTab = 2;
+  nextWorkspace = 3;
+  workspaces = new Set(["w1", "w2"]);
   failRename = false;
   failTabRename = false;
   failCreatedInspect = false;
@@ -48,17 +50,33 @@ class LayoutFixture {
     if (command === "api snapshot") return JSON.stringify({ result: { snapshot: { focused_pane_id: this.focus } } });
     if (command === "pane current") return JSON.stringify({ result: { pane: this.panes.get("w1:p1") } });
     if (command === "workspace list") {
-      const workspaces = [...new Set([...this.panes.values()].map(pane => pane.workspace_id))].map(workspace_id => ({
+      const workspaces = [...this.workspaces].map(workspace_id => ({
         workspace_id,
         focused: [...this.panes.values()].some(pane => pane.workspace_id === workspace_id && pane.pane_id === this.focus),
       }));
       return JSON.stringify({ result: { workspaces } });
     }
+    if (command === "workspace create") {
+      const workspaceId = `w${this.nextWorkspace++}`;
+      const paneId = `${workspaceId}:shell`, tabId = `${workspaceId}:shell-tab`;
+      this.workspaces.add(workspaceId);
+      this.tabs.add(tabId);
+      this.tabTitles.set(tabId,"Shell");
+      const pane = {pane_id:paneId,tab_id:tabId,workspace_id:workspaceId,rect:{...this.area}};
+      this.panes.set(paneId,pane);
+      return JSON.stringify({result:{workspace:{workspace_id:workspaceId},root_pane:pane}});
+    }
+    if (command === "workspace close") {
+      expect([...this.tabs].filter(tab => tab.startsWith(`${args[2]}:`))).toEqual([]);
+      this.workspaces.delete(args[2]);
+      return "";
+    }
+    if (command === "pane close") { this.panes.delete(args[2]); return ""; }
     if (command === "tab get") {
       const tabId = args[2];
       const title = this.tabTitles.get(tabId);
       if (!this.tabs.has(tabId) || !title) throw new Error("unknown tab");
-      return JSON.stringify({ result: { tab: { tab_id: tabId, workspace_id: tabId.startsWith("w1:") ? "w1" : "w2", label: title } } });
+      return JSON.stringify({ result: { tab: { tab_id: tabId, workspace_id: tabId.split(":")[0], label: title } } });
     }
     if (command === "tab list") {
       const workspaceId = args[3];
@@ -104,7 +122,16 @@ class LayoutFixture {
     if (command === "tab rename") { if (this.failTabRename) throw new Error("tab rename failed"); this.tabTitles.set(args[2], args.slice(3).join(" ")); return ""; }
     if (command === "pane move") {
       const pane = this.panes.get(args[2]);
-      const tabId = args.includes("--new-tab") ? `w1:t${this.nextTab++}` : args[args.indexOf("--tab")+1];
+      const tabId = args.includes("--new-tab") ? `${args[args.indexOf("--workspace")+1]}:t${this.nextTab++}` : args[args.indexOf("--tab")+1];
+      const workspaceId = tabId.split(":")[0];
+      if (workspaceId !== pane.workspace_id) {
+        this.panes.delete(pane.pane_id);
+        const oldId = pane.pane_id;
+        pane.pane_id = `${workspaceId}:p${this.nextPane++}`;
+        pane.workspace_id = workspaceId;
+        this.panes.set(pane.pane_id,pane);
+        if (this.focus === oldId) this.focus = pane.pane_id;
+      }
       this.tabs.add(tabId);
       if (!this.tabTitles.has(tabId)) this.tabTitles.set(tabId,"New tab");
       pane.tab_id = tabId;
@@ -124,11 +151,12 @@ class LayoutFixture {
       }
       if (this.failOpen) throw new Error("open failed");
       const target = this.panes.get(args[args.indexOf("--target-pane") + 1]);
-      const tabId = args.includes("--placement") && args[args.indexOf("--placement") + 1] === "tab" ? `w1:t${this.nextTab++}` : target.tab_id;
+      const workspaceId = target?.workspace_id ?? args[args.indexOf("--workspace")+1];
+      const tabId = args.includes("--placement") && args[args.indexOf("--placement") + 1] === "tab" ? `${workspaceId}:t${this.nextTab++}` : target.tab_id;
       this.tabs.add(tabId);
       if (!this.tabTitles.has(tabId)) this.tabTitles.set(tabId, "New tab");
-      const paneId = `w1:p${this.nextPane++}`;
-      this.panes.set(paneId, { pane_id: paneId, tab_id: tabId, workspace_id: "w1", terminal_id:`terminal-${paneId}`, label: "Pi", rect: { x: 0, y: 0, width: 50, height: 20 } });
+      const paneId = `${workspaceId}:p${this.nextPane++}`;
+      this.panes.set(paneId, { pane_id: paneId, tab_id: tabId, workspace_id: workspaceId, terminal_id:`terminal-${paneId}`, label: "Pi", rect: { x: 0, y: 0, width: 50, height: 20 } });
       if (this.focusAfterOpen) this.focus = this.focusAfterOpen;
       return JSON.stringify({ result: { plugin_pane: { pane: this.panes.get(paneId) } } });
     }
@@ -318,6 +346,57 @@ describe("subagent layout contract", () => {
       childId:`child-${index}`,callerPane:"w1:p1",cwd:"C:/work",title:"Child",plugin:"local.pi",entrypoint:"pi",
     });
     expect(layout.snapshot("origin").map(child => [child.tabIndex,child.row,child.column])).toEqual([[0,0,0],[0,0,1],[1,0,0],[1,0,1],[2,0,0]]);
+    expect(layout.snapshot("origin").map(child => child.workspaceId)).toEqual(["w1","w1","w3","w3","w3"]);
+    expect(fixture.calls.filter(call => call[0] === "workspace" && call[1] === "create")).toEqual([
+      ["workspace","create","--cwd","C:/work","--label","drift · agents","--no-focus"],
+    ]);
+    expect([...fixture.tabs].filter(tab => tab.startsWith("w1:"))).toEqual(["w1:t1","w1:manual"]);
+    expect(fixture.panes.has("w3:shell")).toBe(false);
+    expect(fixture.focus).toBe("w2:p1");
+  });
+
+  it("does not create a workspace for inline children", async () => {
+    const fixture = new LayoutFixture();
+    const layout = new SubagentLayout(fixture.cli);
+    for (let index=0;index<2;index++) await layout.place("origin",{
+      childId:`child-${index}`,callerPane:"w1:p1",cwd:"C:/work",title:"Child",plugin:"local.pi",entrypoint:"pi",
+    });
+    expect(fixture.calls.some(call => call[0] === "workspace" && call[1] === "create")).toBe(false);
+  });
+
+  it("shares one agents workspace between overflow and dedicated teams, not between orchestrators", async () => {
+    const fixture = new LayoutFixture();
+    const layout = new SubagentLayout(fixture.cli);
+    const request = {callerPane:"w1:p1",cwd:"C:/work",title:"Child",plugin:"local.pi",entrypoint:"pi"};
+    for (let index=0;index<3;index++) await layout.place("origin",{...request,childId:`child-${index}`});
+    const lead = await layout.place("origin",{...request,childId:"lead",role:"teamlead"});
+    expect(lead.workspaceId).toBe("w3");
+    for (let index=0;index<3;index++) await layout.place("other",{...request,callerPane:"w2:p1",childId:`other-${index}`});
+    expect(layout.snapshot("other").at(-1)?.workspaceId).toBe("w4");
+  });
+
+  it("preserves user-added tabs in the agents workspace during cleanup", async () => {
+    const fixture = new LayoutFixture();
+    const layout = new SubagentLayout(fixture.cli);
+    const request = {callerPane:"w1:p1",cwd:"C:/work",title:"Child",plugin:"local.pi",entrypoint:"pi"};
+    for (let index=0;index<3;index++) await layout.place("origin",{...request,childId:`child-${index}`});
+    fixture.tabs.add("w3:user");
+    for (const child of layout.snapshot("origin").reverse()) await layout.close("origin",child.childId,child.paneId);
+    expect(fixture.tabs.has("w3:user")).toBe(true);
+    expect(fixture.workspaces.has("w3")).toBe(true);
+    expect(fixture.calls).not.toContainEqual(["workspace","close","w3"]);
+  });
+
+  it("cleans a newly created workspace when its first overflow launch fails", async () => {
+    const fixture = new LayoutFixture();
+    const layout = new SubagentLayout(fixture.cli);
+    const request = {callerPane:"w1:p1",cwd:"C:/work",title:"Child",plugin:"local.pi",entrypoint:"pi"};
+    for (let index=0;index<2;index++) await layout.place("origin",{...request,childId:`child-${index}`});
+    fixture.failOpen = true;
+    await expect(layout.place("origin",{...request,childId:"failed"})).rejects.toThrow("open failed");
+    expect(fixture.workspaces.has("w3")).toBe(false);
+    expect(fixture.panes.has("w3:shell")).toBe(false);
+    expect(layout.snapshot("origin")).toHaveLength(2);
   });
 
   it("observes a user focus change after opening and does not restore an older snapshot", async () => {
@@ -395,8 +474,8 @@ describe("subagent layout contract", () => {
     expect(opens.filter(call => call[call.indexOf("--placement")+1] === "tab")).toHaveLength(3);
     expect(opens.every(call => call.at(-1) === "--no-focus")).toBe(true);
     expect(fixture.focus).toBe("w2:p1");
-    expect(fixture.tabTitles.get("w1:t2")).toBe("drift · agents 2");
-    expect(fixture.tabTitles.get("w1:t4")).toBe("Clara 7");
+    expect(fixture.tabTitles.get("w3:t2")).toBe("drift · agents 2");
+    expect(fixture.tabTitles.get("w3:t4")).toBe("Clara 7");
   });
 
   it("uses agent titles for singletons and a cached origin for groups without renaming other tabs", async () => {
@@ -411,8 +490,8 @@ describe("subagent layout contract", () => {
     }
     expect(fixture.tabTitles.get("w1:t1")).toBe("Updated origin title");
     expect(fixture.tabTitles.get("w1:manual")).toBe("Manual tab");
-    expect(fixture.tabTitles.get("w1:t2")).toBe("Manual origin title · agents 2");
-    expect(fixture.tabTitles.get("w1:t3")).toBe("Manual origin title · agents 3");
+    expect(fixture.tabTitles.get("w3:t2")).toBe("Manual origin title · agents 2");
+    expect(fixture.tabTitles.get("w3:t3")).toBe("Manual origin title · agents 3");
     expect(fixture.calls.filter(call => call[0] === "tab" && call[1] === "get" && call[2] === "w1:t1")).toHaveLength(1);
   });
 
@@ -460,9 +539,9 @@ describe("subagent layout contract", () => {
     const request = {callerPane:"w1:p1",cwd:"C:/work",plugin:"local.pi",entrypoint:"pi"};
     for (let i=1;i<=2;i++) await layout.place("origin",{...request,childId:`child-${i}`,title:`Child ${i}`});
     fixture.failTabRename = true;
-    await expect(layout.place("origin",{...request,childId:"third",title:"Third"})).rejects.toMatchObject({placement:{paneId:"w1:p4",tabId:"w1:t2"}});
+    await expect(layout.place("origin",{...request,childId:"third",title:"Third"})).rejects.toMatchObject({placement:{paneId:"w3:p4",tabId:"w3:t2",workspaceId:"w3"}});
     expect(layout.snapshot("origin")).toHaveLength(3);
-    expect(fixture.panes.has("w1:p4")).toBe(true);
+    expect(fixture.panes.has("w3:p4")).toBe(true);
   });
 
   it("does not overwrite a focus switch during later placement or close", async () => {
@@ -492,13 +571,19 @@ describe("subagent layout contract", () => {
     const team = layout.snapshot("origin");
     expect(new Set(team.map(child => child.tabId)).size).toBe(1);
     expect(team[0].tabId).not.toBe(lead.tabId);
-    expect(team.find(child => child.childId === "lead")).toMatchObject({row:1,paneId:lead.paneId});
+    const movedLead = team.find(child => child.childId === "lead")!;
+    expect(movedLead).toMatchObject({row:1,workspaceId:"w3"});
+    expect(movedLead.paneId).not.toBe(lead.paneId);
+    expect(fixture.panes.get(movedLead.paneId).terminal_id).toBe(`terminal-${lead.paneId}`);
     expect(team.filter(child => child.row === 0)).toHaveLength(2);
     expect(moved).toEqual(["lead","first"]);
     expect(fixture.tabTitles.get(team[0].tabId)).toBe("Nora · teamlead · team");
     await layout.close("origin",second.childId,second.paneId);
     expect(layout.snapshot("origin").every(child => child.tabId === "w1:t1" && child.row === 0)).toBe(true);
-    expect(layout.snapshot("origin").find(child => child.childId === "first")?.paneId).toBe(first.paneId);
+    const returned = layout.snapshot("origin").find(child => child.childId === "first")!;
+    expect(returned.workspaceId).toBe("w1");
+    expect(fixture.panes.get(returned.paneId).terminal_id).toBe(`terminal-${first.paneId}`);
+    expect(fixture.workspaces.has("w3")).toBe(false);
   });
 
   it("keeps large teams in readable named team tabs", async () => {

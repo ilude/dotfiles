@@ -45,12 +45,14 @@ export class LayoutReconciliationError extends Error {
 }
 interface Rect { x: number; y: number; width: number; height: number }
 interface Geometry { area: Rect; panes: Map<string, Rect> }
-interface ManagedTab { id: string; index: number; dirty: boolean; geometry?: Geometry; title?: string }
+interface ManagedTab { id: string; workspaceId: string; index: number; dirty: boolean; geometry?: Geometry; title?: string }
 type OwnedChild = LayoutChild & LayoutMember & {title: string; tabKey: LayoutTab; anchor: boolean};
 interface Group {
   callerPane: string;
   callerTerminalId?: string;
   workspaceId: string;
+  cwd: string;
+  agentsWorkspace?: { id: string; initialShell?: { paneId: string; tabId: string } };
   children: Map<string, OwnedChild>;
   disappeared: Map<string, string>;
   tabs: Map<LayoutTab, ManagedTab>;
@@ -102,43 +104,49 @@ export class SubagentLayout {
     let group = this.groups.get(origin);
     if (!group) {
       const cwd = request.cwd.replace(/[\\/]+$/, "");
-      group = {callerPane:request.callerPane,workspaceId:"",children:new Map(),disappeared:new Map(),tabs:new Map(),
+      group = {callerPane:request.callerPane,workspaceId:"",cwd:request.cwd,children:new Map(),disappeared:new Map(),tabs:new Map(),
         nextOrder:0,nextTeamIndex:1000,fallbackTitle:cwd.slice(Math.max(cwd.lastIndexOf("/"),cwd.lastIndexOf("\\"))+1) || "agents",tail:Promise.resolve()};
       this.groups.set(origin,group);
     }
     const owner = group;
     return this.serial(owner, async () => {
-      if (owner.children.has(request.childId)) throw new Error("Visible child already has a layout slot");
-      await this.bindCaller(owner,request.callerPane);
-      await this.observe(owner);
-      const member: LayoutMember = {childId:request.childId,parentId:request.parentId,role:request.role ?? "agent",order:owner.nextOrder++};
-      const plan = await this.reconcile(owner,member);
-      const wanted = plan.find(slot => slot.childId === request.childId);
-      if (!wanted) throw new Error("Desired layout omitted the visible child");
-      const destination = this.destination(owner,wanted);
-      const args = ["plugin","pane","open","--plugin",request.plugin,"--entrypoint",request.entrypoint];
-      if (destination.target) args.push("--placement","split","--direction",destination.direction,"--target-pane",destination.target);
-      else args.push("--placement","tab","--workspace",owner.workspaceId);
-      args.push("--cwd",request.cwd);
-      for (const env of request.env ?? []) args.push("--env",env);
-      args.push("--no-focus");
-      const response = result(await this.cli(args));
-      const identity = paneIdentity(response.plugin_pane?.pane ?? response.pane ?? response.root_pane);
-      const tab = this.registerTab(owner,wanted.tab,identity.tabId);
-      const child: OwnedChild = {...member,...identity,workspaceId:owner.workspaceId,tabIndex:tab.index,
-        row:wanted.row,column:wanted.column,anchor:wanted.anchor,tabKey:wanted.tab,title:request.title.slice(0,160).trim()};
-      // Register before identity checks and polish so failure cleanup owns this exact returned pane.
-      owner.children.set(child.childId,child);
       try {
-        if (destination.swap) await this.swapPreservingFocus(destination.target!,child.paneId);
-        const pane = await inspectPane(this.cli,child.paneId);
-        if (pane.workspace_id !== owner.workspaceId || pane.tab_id !== child.tabId) throw new Error("Created pane identity changed");
-        await this.cli(["pane","rename",child.paneId,child.title]);
-        await this.polish(owner);
+        if (owner.children.has(request.childId)) throw new Error("Visible child already has a layout slot");
+        await this.bindCaller(owner,request.callerPane);
+        await this.observe(owner);
+        const member: LayoutMember = {childId:request.childId,parentId:request.parentId,role:request.role ?? "agent",order:owner.nextOrder++};
+        const plan = await this.reconcile(owner,member);
+        const wanted = plan.find(slot => slot.childId === request.childId);
+        if (!wanted) throw new Error("Desired layout omitted the visible child");
+        const destination = this.destination(owner,wanted);
+        const workspaceId = await this.destinationWorkspace(owner,wanted.tab);
+        const args = ["plugin","pane","open","--plugin",request.plugin,"--entrypoint",request.entrypoint];
+        if (destination.target) args.push("--placement","split","--direction",destination.direction,"--target-pane",destination.target);
+        else args.push("--placement","tab","--workspace",workspaceId);
+        args.push("--cwd",request.cwd);
+        for (const env of request.env ?? []) args.push("--env",env);
+        args.push("--no-focus");
+        const response = result(await this.cli(args));
+        const identity = paneIdentity(response.plugin_pane?.pane ?? response.pane ?? response.root_pane);
+        const tab = this.registerTab(owner,wanted.tab,identity.tabId,workspaceId);
+        const child: OwnedChild = {...member,...identity,workspaceId,tabIndex:tab.index,
+          row:wanted.row,column:wanted.column,anchor:wanted.anchor,tabKey:wanted.tab,title:request.title.slice(0,160).trim()};
+        // Register before identity checks and polish so failure cleanup owns this exact returned pane.
+        owner.children.set(child.childId,child);
+        try {
+          if (destination.swap) await this.swapPreservingFocus(destination.target!,child.paneId);
+          const pane = await inspectPane(this.cli,child.paneId);
+          if (pane.workspace_id !== workspaceId || pane.tab_id !== child.tabId) throw new Error("Created pane identity changed");
+          await this.cli(["pane","rename",child.paneId,child.title]);
+          await this.polish(owner);
+        } catch (error) {
+          throw new LayoutPlacementError(String(error),publicChild(child));
+        }
+        return publicChild(child);
       } catch (error) {
-        throw new LayoutPlacementError(String(error),publicChild(child));
+        if (![...owner.children.values()].some(child => child.tabKey !== "origin")) await this.cleanWorkspace(owner);
+        throw error;
       }
-      return publicChild(child);
     });
   }
 
@@ -184,24 +192,60 @@ export class SubagentLayout {
     group.callerPane = paneId;
     group.callerTerminalId = typeof caller.terminal_id === "string" ? caller.terminal_id : group.callerTerminalId;
     group.workspaceId = String(caller.workspace_id);
-    this.registerTab(group,"origin",String(caller.tab_id));
+    this.registerTab(group,"origin",String(caller.tab_id),group.workspaceId);
   }
 
-  private registerTab(group: Group, key: LayoutTab, id: string): ManagedTab {
+  private async destinationWorkspace(group: Group, key: LayoutTab): Promise<string> {
+    if (key === "origin") return group.workspaceId;
+    if (!group.agentsWorkspace) {
+      await this.originTitle(group);
+      const response = result(await this.cli(["workspace","create","--cwd",group.cwd,"--label",`${group.originTitle} · agents`,"--no-focus"]));
+      const workspaceId: unknown = response.workspace?.workspace_id;
+      if (typeof workspaceId !== "string" || !workspaceId) throw new Error("Herdr omitted the subagent workspace identity; inspect before retrying");
+      group.agentsWorkspace = {id:workspaceId};
+      group.agentsWorkspace.initialShell = paneIdentity(response.root_pane);
+    }
+    return group.agentsWorkspace.id;
+  }
+
+  private registerTab(group: Group, key: LayoutTab, id: string, workspaceId: string): ManagedTab {
     const existing = group.tabs.get(key);
     if (existing) {
-      if (existing.id !== id) throw new Error("Layout tab identity changed");
+      if (existing.id !== id || existing.workspaceId !== workspaceId) throw new Error("Layout tab identity changed");
       return existing;
     }
-    const tab: ManagedTab = {id,index:key === "origin" ? 0 : key.startsWith("overflow:") ? Number(key.slice(9)) : group.nextTeamIndex++,dirty:false};
+    const tab: ManagedTab = {id,workspaceId,index:key === "origin" ? 0 : key.startsWith("overflow:") ? Number(key.slice(9)) : group.nextTeamIndex++,dirty:false};
     group.tabs.set(key,tab);
     return tab;
   }
 
+  private async workspaceExists(workspaceId: string): Promise<boolean> {
+    const workspaces = result(await this.cli(["workspace","list"])).workspaces;
+    if (!Array.isArray(workspaces) || workspaces.some(workspace => typeof workspace?.workspace_id !== "string")) throw new Error("Herdr did not return a complete workspace list");
+    return workspaces.some(workspace => workspace.workspace_id === workspaceId);
+  }
+
+  private async workspaceItems(kind: "pane" | "tab", workspaceId: string): Promise<unknown[]> {
+    let items: unknown;
+    try { items = result(await this.cli([kind,"list","--workspace",workspaceId]))[`${kind}s`]; }
+    catch (error) {
+      // Herdr removes a workspace when its last tab disappears during a move/close.
+      if (!await this.workspaceExists(workspaceId)) return [];
+      throw error;
+    }
+    if (!Array.isArray(items)) throw new Error(`Herdr did not return a complete ${kind} list`);
+    return items;
+  }
+
   private async livePanes(group: Group): Promise<Set<string>> {
-    const response = result(await this.cli(["pane","list","--workspace",group.workspaceId]));
-    if (!Array.isArray(response.panes) || response.panes.some((pane: {pane_id?:unknown}) => typeof pane?.pane_id !== "string")) throw new Error("Herdr did not return a complete pane list");
-    return new Set(response.panes.map((pane: {pane_id:string}) => pane.pane_id));
+    const live = new Set<string>();
+    for (const workspace of [group.workspaceId,...(group.agentsWorkspace ? [group.agentsWorkspace.id] : [])]) {
+      for (const pane of await this.workspaceItems("pane",workspace)) {
+        if (!pane || typeof pane !== "object" || !("pane_id" in pane) || typeof pane.pane_id !== "string") throw new Error("Herdr did not return a complete pane list");
+        live.add(pane.pane_id);
+      }
+    }
+    return live;
   }
 
   private async geometry(paneId: string): Promise<Geometry> {
@@ -297,17 +341,18 @@ export class SubagentLayout {
     const before = await inspectPane(this.cli,child.paneId);
     const destination = this.destination(group,slot);
     const tab = group.tabs.get(slot.tab);
+    const workspaceId = await this.destinationWorkspace(group,slot.tab);
     const args = ["pane","move",child.paneId];
     if (destination.target && tab) args.push("--tab",tab.id,"--split",destination.direction,"--target-pane",destination.target);
-    else args.push("--new-tab","--workspace",group.workspaceId);
+    else args.push("--new-tab","--workspace",workspaceId);
     args.push("--no-focus");
     const response = result(await this.cli(args));
     const identity = paneIdentity(response.move_result?.pane ?? response.pane);
-    const managed = this.registerTab(group,slot.tab,identity.tabId);
-    Object.assign(child,identity,{tabKey:slot.tab,tabIndex:managed.index,row:slot.row,column:slot.column,anchor:slot.anchor});
+    const managed = this.registerTab(group,slot.tab,identity.tabId,workspaceId);
+    Object.assign(child,identity,{workspaceId,tabKey:slot.tab,tabIndex:managed.index,row:slot.row,column:slot.column,anchor:slot.anchor});
     this.paneMoved?.(child.childId,child.paneId);
     const after = await inspectPane(this.cli,child.paneId);
-    if (after.workspace_id !== group.workspaceId || after.tab_id !== child.tabId || (before.terminal_id && after.terminal_id !== before.terminal_id)) throw new Error("Child process identity changed during layout migration");
+    if (after.workspace_id !== workspaceId || after.tab_id !== child.tabId || (before.terminal_id && after.terminal_id !== before.terminal_id)) throw new Error("Child process identity changed during layout migration");
     if (destination.swap) await this.swapPreservingFocus(destination.target!,child.paneId);
   }
 
@@ -325,9 +370,7 @@ export class SubagentLayout {
     for (const [key,tab] of group.tabs) {
       const children = [...group.children.values()].filter(child => child.tabKey === key);
       if (key !== "origin" && !children.length) {
-        const tabs = result(await this.cli(["tab","list","--workspace",group.workspaceId])).tabs ?? [];
-        const existing = tabs.find((value: {tab_id:string}) => value.tab_id === tab.id);
-        if (existing && Number(existing.pane_count) === 0) await this.cli(["tab","close",tab.id]);
+        await this.closeEmptyTab(tab.workspaceId,tab.id);
         group.tabs.delete(key);
         continue;
       }
@@ -361,14 +404,42 @@ export class SubagentLayout {
       }
       tab.geometry = await this.geometry(representative);
     }
+    await this.cleanWorkspace(group);
+  }
+
+  private async cleanWorkspace(group: Group) {
+    const workspace = group.agentsWorkspace;
+    if (!workspace) return;
+    if (workspace.initialShell) {
+      const shell = workspace.initialShell;
+      if ((await this.livePanes(group)).has(shell.paneId)) await this.cli(["pane","close",shell.paneId]);
+      await this.closeEmptyTab(workspace.id,shell.tabId);
+      workspace.initialShell = undefined;
+    }
+    // Preserve anything the operator added, including empty user-created tabs.
+    const tabs = await this.workspaceItems("tab",workspace.id);
+    if (!tabs.length) {
+      if (await this.workspaceExists(workspace.id)) await this.cli(["workspace","close",workspace.id]);
+      group.agentsWorkspace = undefined;
+    }
+  }
+
+  private async closeEmptyTab(workspaceId: string, tabId: string) {
+    const tabs = await this.workspaceItems("tab",workspaceId);
+    for (const tab of tabs) if (tab && typeof tab === "object" && "tab_id" in tab && tab.tab_id === tabId
+      && "pane_count" in tab && Number(tab.pane_count) === 0) await this.cli(["tab","close",tabId]);
+  }
+
+  private async originTitle(group: Group) {
+    if (!group.originTitle) group.originTitle = tabTitle(await inspectTab(this.cli,group.tabs.get("origin")!.id,group.workspaceId)) ?? group.fallbackTitle;
   }
 
   private async updateTitle(group: Group, key: LayoutTab, tab: ManagedTab, children: OwnedChild[]) {
     if (key === "origin" || !children.length) return;
     if (tab.title !== undefined) {
-      if (tab.title === "" || tabTitle(await inspectTab(this.cli,tab.id,group.workspaceId)) !== tab.title) { tab.title = ""; return; }
+      if (tab.title === "" || tabTitle(await inspectTab(this.cli,tab.id,tab.workspaceId)) !== tab.title) { tab.title = ""; return; }
     }
-    if (!group.originTitle) group.originTitle = tabTitle(await inspectTab(this.cli,group.tabs.get("origin")!.id,group.workspaceId)) ?? group.fallbackTitle;
+    await this.originTitle(group);
     const leader = key.startsWith("team:") ? [...group.children.values()].find(child => child.role === "teamlead" && key.startsWith(`team:${child.childId}`)) : undefined;
     const overflow = key.includes(":overflow:") ? ` ${key.slice(key.lastIndexOf(":")+1)}` : "";
     const title = leader ? `${leader.title} · team${overflow}` : children.length === 1 ? children[0].title : `${group.originTitle} · agents ${tab.index+1}`;

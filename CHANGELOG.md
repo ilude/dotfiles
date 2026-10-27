@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-10-27: Separate spawned subagent tabs from personal work tabs
+
+- Group overflow and dedicated Team Lead tabs in one lazily created Herdr workspace per orchestrator, labeled from its origin tab. Keep the orchestrator, ordinary inline subagents, and user-created work tabs in their existing workspace. Capacity, team grouping/migration rules, and execution behavior are unchanged; no Git worktree is created.
+- Track Herdr's new pane IDs across workspace moves while retaining terminal/process identity, focus, and owned cleanup. Remove the initial shell and empty owned workspace, accept Herdr's automatic removal, and preserve tabs added by the operator.
+- Passed 75 focused layout/model/cleanup tests, default-profile typecheck, and two isolated Herdr 0.9.5 tests for overflow placement and team migration/return. Attached-client presentation remains unverified. Activate with `/reload` only when no subagents are active or retained, or restart Pi.
+
 ## 2026-10-26: Keep default Pi release cache machine-local
 
 - Stop tracking the default profile's generated release-indicator cache to avoid timestamp churn and cross-machine merge conflicts. Each machine retains its local copy; Pi recreates missing caches and refreshes them through the existing release checks.
