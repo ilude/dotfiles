@@ -37,6 +37,15 @@
 - **Correction:** Resumed bounded read-only diagnosis and the subsequently requested parallel investigations. No runtime or instruction changes.
 - **Status:** Recorded; task continues. Further implementation and deployment are not inferred from investigative authority.
 
+## APR-speculative-retention-recurrence - Speculative follow-ups leave the interface cluttered
+
+- **Reference:** Operator feedback in the current dotfiles conversation; related APR-069 and APR-retained-pane-closeout.
+- **Observed:** Operator reports completed subagents are still kept open because the orchestrator may want to talk to them again, leaving the interface cluttered. Current incident calls have not been inspected.
+- **Evidence:** Earlier incidents established speculative retention and missed `finish` calls. The subsequent prompt audit found active encouragement: Team Lead says to retain when interaction is useful, and council role plus generated guidance both prescribe retained contexts. Root/coordinator schemas expose `retain`; messages to closed children fail rather than reopen them. This is not merely failure to follow cleanup advice.
+- **Operator direction:** Separate saved conversation context from process/pane lifetime, with follow-up reopening instead of speculative durable agents. Evaluate system guidance, role prompts, and tool descriptions together for consistency and concision.
+- **Proposal:** Close ordinary completed delegates automatically and support managed follow-up reopening with original authority. Remove the ordinary retention choice and its prompt encouragement together; consolidate lifecycle guidance across caller/coordinator tools, wrappers, results, and documentation. Preserve the separately authorized Integrator successor handoff rather than treating it as ordinary idle retention.
+- **Status:** Operator-approved lifecycle and guidance changes implemented. Ordinary completion closes resources; managed messages reopen the same saved session under frozen authority within the owning runtime. Fixed review findings for reopened-name reservation and unavailable parent-tool assignment text. All 325 subagent/successor tests passed, with 14 opt-in live tests skipped; typecheck, runtime smoke, and diff checks passed. All four delegates used for this work were verified settled with closed panes/launchers. Load via settled-only reload or restart; attached-client reopening remains unverified. Dynamic assignments, arbitrary project overrides, provider wire payloads, and unrelated Pi prompt surfaces were not exhaustively audited.
+
 ## APR-retained-pane-closeout - Finished delegates left visible panes open
 
 - **Reference:** Operator correction during server configuration discussion, 2026-10-22; related AIF-089.

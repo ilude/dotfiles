@@ -25,12 +25,12 @@ it("reports rejected controls as native tool errors", async () => {
     sendMessage: vi.fn(),
     appendEntry: vi.fn(),
   };
-  const ctx: any = { cwd: process.cwd(), hasUI: true, isProjectTrusted: () => false, isIdle: () => true, sessionManager: { getSessionId: () => "control-origin" }, ui: { notify: vi.fn(), setWidget: vi.fn() } };
+  const ctx: any = { cwd: process.cwd(), hasUI: true, isProjectTrusted: () => false, isIdle: () => true, sessionManager: { getSessionId: () => "control-origin" }, ui: { notify: vi.fn(), setWidget: vi.fn(), setStatus: vi.fn() } };
   subagents(pi);
-  expect(tools.subagent_control.description).toContain("wait preserves the ability to reattach a deliberately interrupted foreground join when that result is immediately required");
-  expect(tools.subagent_control.description).toContain("automatically triggers another orchestrator turn containing the result");
-  expect(tools.subagent_control.description).toContain("continue independent work or end the current turn and let its result resume you; do not poll");
+  expect(tools.subagent_control.description).toContain("wait only reattaches a deliberately interrupted foreground join when its result is immediately required");
+  expect(tools.subagent_control.description).toContain("results arrive automatically");
+  expect(tools.subagent_control.description).toContain("Do not poll for completion");
   await handlers.session_start({}, ctx);
-  expect(pi.appendEntry).toHaveBeenCalledWith("subagent-extension-version", { version: "1.0.0" });
+  expect(pi.appendEntry).toHaveBeenCalledWith("subagent-extension-version", { version: "2.0.0" });
   await expect(tools.subagent_control.execute("bad-control", { action: "inspect", id: "missing" }, undefined, undefined, ctx)).rejects.toThrow("Unknown child");
 });

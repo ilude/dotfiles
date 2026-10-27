@@ -20,7 +20,7 @@ describe("visible developer readiness", () => {
       definition, instructions: "Implement", cwd: profile, model: "test/model", effort: "low",
       skills: [], origin: "readiness-test", retained: false, surface: "visible",
     }, join(profile, "extensions/subagent-child.ts"), profile);
-    expect(child.parentMessage(message)).toEqual({ accepted: true });
+    expect(child.parentMessage(message)).toEqual({ accepted: true, turns: 0 });
     expect(child.snapshot()).toMatchObject({ processState: "running", readyCount: 1 });
     expect(child.snapshot().error).toBeUndefined();
   });

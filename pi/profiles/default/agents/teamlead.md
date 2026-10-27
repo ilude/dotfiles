@@ -18,4 +18,4 @@ Coordinate no more than eight active subagents at a time.
 
 ## Completion
 
-Resolve or report outstanding subagent work before completing. Retain a subagent conversation when further interaction is useful.
+Resolve or report outstanding subagent work before completing. Use follow-up messages to reopen completed members when more work is needed; do not keep idle workers alive.

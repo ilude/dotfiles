@@ -9,6 +9,10 @@ export interface DelegationContextOptions {
   permitted?: readonly string[];
 }
 
+export const SUBAGENT_LAUNCH_DESCRIPTION = "Launch one defined subagent. Ordinary assignments close their process and pane on completion; use subagent_control message for a later follow-up in the saved conversation. Background results return automatically: continue independent work or return control without polling. Strategist launches are foreground. Other foreground launches require blockingReason explaining why no useful independent work remains and why automatic delivery after returning control is unsuitable; a downstream dependency alone is insufficient. Interrupting a foreground wait does not cancel the child.";
+
+export const SUBAGENT_CONTROL_DESCRIPTION = "Control an owned subagent by subagentId, not native sessionId. message steers live work or reopens a closed saved conversation within this owning runtime, using its original role and permissions; the follow-up closes on completion. Use the ID for closed agents because names may be reused. Messages default to queued steering; immediate intentionally redirects active work. answer resolves a pending parent question. Message/answer return dispatch acceptance, not completion; results arrive automatically. finish retries settled resource cleanup; cancel stops owned work. Do not poll for completion.";
+
 const STEWARD_GUIDANCE = `Consult \`subagent\` with \`agent: "steward"\` when a reviewer or validator agent reports findings about implemented work and you need to assess whether those findings warrant additional work. Provide the requested outcome, completed work, findings, and proposed follow-up. Steward advises whether further work is justified; it does not approve implementation.
 
 Do not consult Steward before starting requested implementation, including user-authorized fixes from a code review. Do not send it implementation plans, task decomposition, or the orchestrator's own investigation. Handle corrections directly when the evidence proves the correction. Reuse its assessment for the same finding.`;
@@ -51,7 +55,7 @@ Inspect the subagent's evidence and prerequisites before retrying. Retry the sam
 
 const COUNCIL_GUIDANCE = `## Council guidance
 
-Run a council only when the user explicitly requested one. Use non-writing members for independent openings, focused rebuttal, and synthesis. Retain useful member contexts. Report strongest arguments, changed positions, disagreements, and evidence gaps without forcing agreement or implementation.`;
+Run a council only when the user explicitly requested one. Use non-writing members for independent openings, focused rebuttal, and synthesis. Use follow-up messages to reopen the same members for rebuttal. Report strongest arguments, changed positions, disagreements, and evidence gaps without forcing agreement or implementation.`;
 
 function catalogEntries(definitions: ReadonlyMap<string, AgentDefinition>, permitted?: readonly string[]): string {
   const allowed = permitted ? new Set(permitted) : undefined;

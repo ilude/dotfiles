@@ -53,7 +53,7 @@ export interface ChildRecord {
   launcherState?: "starting" | "running" | "exited";
   questionResolution?: { requestId: string; outcome: "answered" | "cancelled"; by: "parent" | "child" | "assignment" };
 }
-export interface LaunchSpec { definition: AgentDefinition; prompt?: string; displayName?: string; instructions: string; cwd: string; model: string; effort: AgentEffort; skills: string[]; origin: string; retained: boolean; parentId?: string; surface: "headless" | "visible"; closeoutManifest?: CloseoutManifest; closeoutParentSessionId?: string }
+export interface LaunchSpec { sessionFile?: string; definition: AgentDefinition; prompt?: string; displayName?: string; instructions: string; cwd: string; model: string; effort: AgentEffort; skills: string[]; origin: string; retained: boolean; parentId?: string; surface: "headless" | "visible"; closeoutManifest?: CloseoutManifest; closeoutParentSessionId?: string }
 const LIMIT = 24_000;
 // Native agent_end contains all messages for the assignment, not just its final text.
 // Keep authenticated application messages at their existing 256 KiB bound; RPC gets a
@@ -68,6 +68,7 @@ export class RpcChild {
   private resolveInitialDispatch?: (value: InputDisposition | undefined) => void;
   private activatePrompt?: () => void;
   private initialRunObserved = false;
+  private resumePrevious?: ChildRecord;
   protected settled?: ()=>void;
   protected last = "";
   private settlementCycle = 0;
@@ -103,6 +104,12 @@ export class RpcChild {
       origin: spec.origin, surface: spec.surface, status: "running", retained: spec.retained,
       exchangeId, exchangeKind: "original", parentId: spec.parentId, userOwned: false, processState: "starting", transportState: "starting",
       phase: "starting", phaseStartedAt: now, assignmentStartedAt: now, turns: 0, createdAt: now, updatedAt: now };
+  }
+  /** Reopen the same saved conversation, preserving its owned ID and original evidence. */
+  prepareResume(previous: ChildRecord) {
+    this.resumePrevious=previous;
+    Object.assign(this.record, previous, { process: undefined, processState: "starting", transportState: "starting", paneId: undefined, paneState: undefined, launcherState: undefined, cleanup: undefined, waitState: "background" });
+    this.activateMessage(this.spec.instructions);
   }
   contact() { this.record.lastContactAt = new Date().toISOString(); if(this.record.transportState!=="failed")this.record.transportState="connected"; }
   activity(phase: Phase, toolName?: string) {
@@ -235,13 +242,18 @@ export class RpcChild {
       try{
         const disposition=nativeInputDisposition(e.data,"prompt");
         this.resolveInitialDispatch?.(disposition);
-        if(disposition==="handled"&&!this.initialRunObserved&&this.record.status==="running"){
+        if(disposition==="handled"&&!this.initialRunObserved&&this.resumePrevious){
+          const {processState:_,transportState:__,paneState:___,cleanup:____,displayName:_____,...evidence}=this.resumePrevious;
+          Object.assign(this.record,evidence);
+          this.activity("cleanup");
+          void this.cleanupOwnedResources().finally(()=>{this.done(false);this.record.notice="Input consumed by an extension; no model run started for this input.";this.onProgress?.(this.snapshot())});
+        }else if(disposition==="handled"&&!this.initialRunObserved&&this.record.status==="running"){
           this.record.status="waiting";this.record.assignmentStartedAt=undefined;
           this.activity("settled");this.record.notice="Input consumed by an extension; no model run started for this input.";this.done();
         }
       }catch(error){this.resolveInitialDispatch?.(undefined);this.fail(String(error));}
     });
-    this.send("prompt",{id,message:`Assignment:\n${this.spec.instructions}\n\nConclude with a non-empty result. Use subagent_parent to report partial or blocked work when needed.`});
+    this.send("prompt",{id,message:this.spec.sessionFile?this.spec.instructions:`Assignment:\n${this.spec.instructions}\n\nConclude with a non-empty result.`});
     return waiting;
   }
   wait(signal?:AbortSignal, toolResult=true):Promise<ChildRecord> {
@@ -511,7 +523,7 @@ export class RpcChild {
     this.record.cleanup=final;this.onProgress?.(this.snapshot());
     return final;
   }
-  protected done(){
+  protected done(notify=true){
     if(this.record.status==="settled"){
       this.record.assignmentFinishedAt??=new Date().toISOString();
       this.captureOriginalAssignment();
@@ -520,7 +532,7 @@ export class RpcChild {
     this.record.updatedAt=new Date().toISOString();
     this.settled?.();this.settled=undefined;
     // Notify runtime before resolving waits so foreground delivery stays a tool result.
-    this.onUpdate?.(this.snapshot());
+    if(notify)this.onUpdate?.(this.snapshot());
     for(const resolve of [...this.waiters])resolve();
   }
 }

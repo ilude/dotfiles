@@ -86,7 +86,7 @@ export class VisibleChild extends RpcChild {
    return{accepted:true};
   }
   if(message.type==="app-ready"){
-   this.record.readyCount=(this.record.readyCount??0)+1;this.appReady=true;this.record.processState="running";if(this.startup)clearTimeout(this.startup);return{accepted:true};
+   this.record.readyCount=(this.record.readyCount??0)+1;this.appReady=true;this.record.processState="running";if(this.startup)clearTimeout(this.startup);return{accepted:true,turns:this.record.turns};
   }
   if(message.type==="app-poll"){
    const progress=message.payload as {phase?:unknown;toolName?:unknown}|undefined;

@@ -1,4 +1,5 @@
 import { resolve } from "node:path";
+import { statSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { ChildTransport, type ChildIdentity, type ApplicationMessage, type MessageOptions, type ParentActivity, type ParentCommand, type ParentEventBatch, type ParentEventConsumer } from "./transport.ts";
 import type { AgentDefinition, AgentEffort } from "./definitions.ts";
@@ -37,7 +38,7 @@ export class RuntimeCleanupError extends Error {
  constructor(summary: CleanupSummary) { super("Subagent cleanup did not close every owned resource"); this.name = "RuntimeCleanupError"; this.summary = summary; }
 }
 interface Input { definition:AgentDefinition;instructions:string;cwd:string;model:string;effort:AgentEffort;skills:string[];origin:string;retained:boolean;parentId?:string;surface:"headless"|"visible";closeoutManifest?:CloseoutManifest;catalog?:Map<string,AgentDefinition>;modelRegistry?:ModelRegistry;projectTrusted?:boolean;progress?:(record:ChildRecord)=>void }
-interface Context { input:Input;profile:string;extension:string;catalog:Map<string,AgentDefinition> }
+interface Context { input:Input;profile:string;extension:string;catalog:Map<string,AgentDefinition>;spec?:LaunchSpec }
 export interface InertRuntimeState { names: Record<string, string[]>; outcomes: Delivery[] }
 
 const inertStateKey = Symbol.for("dotfiles.pi.default.subagents.state.v2");
@@ -85,6 +86,7 @@ export class SubagentRuntime {
  private transport=new ChildTransport((identity,message,signal)=>this.dispatch(identity,message,signal));
  private eventWaiters=new Map<string,{identity:Readonly<ChildIdentity>;resolve:(value:ParentEventBatch)=>void;reject:(error:Error)=>void;signal:AbortSignal;abort:()=>void}>();
  private disposed=false;
+ private reopening=new Set<string>();
  readonly ownerId=randomUUID();
  constructor(seed?:InertRuntimeState) {
   for(const [origin,used] of Object.entries(seed?.names??{})) {
@@ -284,11 +286,11 @@ if(this.pending.get(id)?.origin!==origin)return;this.pending.delete(id);this.que
     if(typeof payload.message!=="string")throw new Error("Message required");
     if(payload.action==="answer")disposition=await target.answer(payload.message,typeof payload.replyTo==="string"?payload.replyTo:undefined);
     else if(typeof payload.replyTo==="string")disposition=await target.answer(payload.message,payload.replyTo);
-    else disposition=await target.message(payload.message,{delivery:payload.delivery as "queued"|"immediate"|undefined,interaction:payload.interaction as "notify"|"request"|undefined,protocol:payload.protocol as "question-answer"|undefined});
+    else disposition=await this.message(target.record.id,identity.origin,payload.message,{delivery:payload.delivery as "queued"|"immediate"|undefined,interaction:payload.interaction as "notify"|"request"|undefined,protocol:payload.protocol as "question-answer"|undefined});
    }else if(payload.action==="cancel")await target.cancel();
    else if(payload.action==="finish")await target.finish();
    else if(payload.action!=="inspect")throw new Error("Unsupported child control");
-   const snapshot=target.snapshot();
+   const snapshot=this.get(target.record.id,identity.origin).snapshot();
    if(payload.consume===true&&snapshot.status!=="running")this.acknowledgeRecord(identity.origin,snapshot.id,snapshot.exchangeId);
    return payload.action==="message"||payload.action==="answer"?withDispatchMetadata(snapshot,dispatchOperation(payload.action,typeof payload.replyTo==="string"?payload.replyTo:undefined),disposition):snapshot;
   }
@@ -313,14 +315,16 @@ if(this.pending.get(id)?.origin!==origin)return;this.pending.delete(id);this.que
   if(input.surface==="visible"&&process.env.HERDR_ENV!=="1")throw new Error("Visible subagents require Herdr; no headless substitution is permitted");
   const allocator=this.names.get(input.origin)??new NameAllocator();
   this.names.set(input.origin,allocator);
-  const catalog=new Map(input.catalog??[[input.definition.name,input.definition]]);
+  const freezeDefinition=(definition:AgentDefinition):AgentDefinition=>({...definition,tools:[...definition.tools],delegates:[...definition.delegates],skills:[...definition.skills]});
+  const catalog=new Map([...input.catalog??[[input.definition.name,input.definition]]].map(([name,definition])=>[name,freezeDefinition(definition)]));
+  input={...input,definition:freezeDefinition(input.definition),skills:[...input.skills],retained:false};
   const parentDelegates=input.parentId?this.contexts.get(input.parentId)?.input.definition.delegates:undefined;
   // Project the wire contract explicitly. Runtime dependencies must never enter
   // the visible bootstrap response, even when Input gains new fields.
   const spec:LaunchSpec={
    definition:input.definition,instructions:input.instructions,cwd,
    model:input.model,effort:input.effort,skills:[...input.skills],
-   origin:input.origin,retained:input.retained,parentId:input.parentId,
+   origin:input.origin,retained:false,parentId:input.parentId,
    surface:input.surface,
    closeoutManifest:input.closeoutManifest,
    closeoutParentSessionId:input.closeoutManifest?input.origin:undefined,
@@ -336,9 +340,27 @@ if(this.pending.get(id)?.origin!==origin)return;this.pending.delete(id);this.que
   child.record.displayName=displayName;
   this.children.set(child.record.id,child);
   this.inert.delete(child.record.id);
-  this.contexts.set(child.record.id,{input:{...input,cwd},profile:resolve(profileDir),extension:resolve(childExtension),catalog});
-  child.hasOutstandingChildren=()=>[...this.children.values()].some(c=>c.record.parentId===child.record.id&&(c.record.status!=="settled"||c.record.phase==="cleanup"))||[...this.pending.values()].some(r=>r.parentId===child.record.id);
+  this.contexts.set(child.record.id,{input:{...input,cwd},profile:resolve(profileDir),extension:resolve(childExtension),catalog,spec});
   child.record.waitState=initialWaitState??(background?"background":"attached");
+  this.configureChild(child,input);
+  try{
+   const endpoint=await this.transport.register({child:child.record.id,run:randomUUID(),origin:input.origin});
+   void child.start(endpoint).catch(error=>child.launchFailed(error));
+  }catch(error){child.launchFailed(error)}
+  this.publish(input.origin);
+  // Preserve foreground wait interruption while initial acceptance is outstanding.
+  let detach:(()=>void)|undefined;
+  const disposition=signal?await Promise.race([
+   child.initialDispatch,
+   new Promise<undefined>(resolve=>{detach=()=>resolve(undefined);if(signal.aborted)detach();else signal.addEventListener("abort",detach,{once:true});}),
+  ]).finally(()=>{if(detach)signal.removeEventListener("abort",detach)}):await child.initialDispatch;
+  const dispatched=(record:ChildRecord)=>disposition?withDispatchMetadata(record,"assignment",disposition):record;
+  if(background)return dispatched(child.snapshot());
+  const refresh=setInterval(()=>input.progress?.(child.snapshot()),1000);refresh.unref();
+  try{return dispatched(await this.wait(child.record.id,input.origin,signal))}finally{clearInterval(refresh)}
+ }
+ private configureChild(child:RpcChild,input:Input){
+  child.hasOutstandingChildren=()=>[...this.children.values()].some(c=>c.record.parentId===child.record.id&&(c.record.status!=="settled"||c.record.phase==="cleanup"))||[...this.pending.values()].some(r=>r.parentId===child.record.id);
   child.onParentEvent=consumer=>this.wakeParentEvents(child.record.id,consumer);
   child.onProgress=record=>{
    this.reconcileCleanup(record);
@@ -359,21 +381,41 @@ if(this.pending.get(id)?.origin!==origin)return;this.pending.delete(id);this.que
     this.reconcileCleanup(record);
    }
   };
+ }
+ /** Explicit follow-up is the only path that reopens an owned, fully closed session. */
+ async message(id:string,origin:string,text:string,options:MessageOptions={}):Promise<InputDisposition|undefined>{
+  if(this.disposed)throw new Error("Subagent runtime is no longer active");
+  if(!text.trim())throw new Error("Message must be nonblank");
+  const child=this.get(id,origin),record=child.snapshot();
+  if(this.reopening.has(record.id))throw new Error("Subagent follow-up is already being dispatched");
+  if(record.userOwned)throw new Error("Direct user intervention suspends parent steering");
+  if(record.status!=="settled")return child.message(text,options);
+  if(options.replyTo)throw new Error("Use answer for a protocol reply");
+  const context=this.contexts.get(record.id);
+  if(!context?.spec)throw new Error("This settled subagent is no longer controllable after reload");
+  if(record.phase!=="settled"||!record.cleanup?.complete||this.resourcesOpen(record))throw new Error("Subagent cleanup must complete before follow-up");
+  if(!record.sessionFile||!statSync(record.sessionFile,{throwIfNoEntry:false})?.isFile())throw new Error("Saved subagent session is unavailable");
+  const spec:LaunchSpec={...context.spec,instructions:text,sessionFile:record.sessionFile,retained:false};
+  const reopened=spec.surface==="visible"
+   ?new VisibleChild(spec,context.extension,context.profile,this.layoutFor(origin))
+   :new RpcChild(spec,context.extension,context.profile);
+  reopened.prepareResume(record);
+  const allocator=this.names.get(origin)??new NameAllocator();
+  this.names.set(origin,allocator);
+  const displayName=record.displayName&&!allocator.has(record.displayName)
+   ?allocator.reserve(record.displayName,record.id):allocator.allocate(record.id);
+  spec.displayName=displayName;reopened.record.displayName=displayName;
+  this.configureChild(reopened,context.input);
+  this.reopening.add(record.id);
+  this.children.set(record.id,reopened);
   try{
-   const endpoint=await this.transport.register({child:child.record.id,run:randomUUID(),origin:input.origin});
-   void child.start(endpoint).catch(error=>child.launchFailed(error));
-  }catch(error){child.launchFailed(error)}
-  this.publish(input.origin);
-  // Preserve foreground wait interruption while initial acceptance is outstanding.
-  let detach:(()=>void)|undefined;
-  const disposition=signal?await Promise.race([
-   child.initialDispatch,
-   new Promise<undefined>(resolve=>{detach=()=>resolve(undefined);if(signal.aborted)detach();else signal.addEventListener("abort",detach,{once:true});}),
-  ]).finally(()=>{if(detach)signal.removeEventListener("abort",detach)}):await child.initialDispatch;
-  const dispatched=(record:ChildRecord)=>disposition?withDispatchMetadata(record,"assignment",disposition):record;
-  if(background)return dispatched(child.snapshot());
-  const refresh=setInterval(()=>input.progress?.(child.snapshot()),1000);refresh.unref();
-  try{return dispatched(await this.wait(child.record.id,input.origin,signal))}finally{clearInterval(refresh)}
+   try{
+    const endpoint=await this.transport.register({child:record.id,run:randomUUID(),origin});
+    void reopened.start(endpoint).catch(error=>reopened.launchFailed(error));
+   }catch(error){reopened.launchFailed(error)}
+   this.publish(origin);
+   return await reopened.initialDispatch;
+  }finally{this.reopening.delete(record.id)}
  }
  subscribe(id:string,origin:string,listener:(record:ChildRecord)=>void){
   const child=this.get(id,origin);

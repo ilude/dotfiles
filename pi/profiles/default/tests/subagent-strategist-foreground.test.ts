@@ -44,7 +44,7 @@ it.each([
     const progress = vi.fn();
     const blockingReason = agent === "strategist" || effectiveBackground ? undefined : "The result is required before coordinating dependent work.";
     const result = await tools.get("subagent")!.execute("launch", { agent, background, retain, instructions: "bounded assignment", blockingReason }, undefined, progress, {} as never);
-    expect(request.mock.calls[0][1]).toEqual({ type: "delegate", payload: { agent, background: effectiveBackground, retain: agent === "strategist" ? false : retain, instructions: "bounded assignment", blockingReason } });
+    expect(request.mock.calls[0][1]).toEqual({ type: "delegate", payload: { agent, background: effectiveBackground, retain, instructions: "bounded assignment", blockingReason } });
     expect(result.details).toMatchObject(effectiveBackground
       ? { subagentId: "leaf", id: "leaf", agent, status: "running", waitState: "background" }
       : { subagentId: "leaf", id: "leaf", agent, status: "settled", outcome: "complete", processState: "exited", result: "advice", waitState: "attached" });

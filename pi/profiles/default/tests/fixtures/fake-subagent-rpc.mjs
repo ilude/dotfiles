@@ -1,12 +1,18 @@
-import { existsSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, writeFileSync, appendFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import net from 'node:net';
 
+const sessionArg=process.argv.indexOf('--session');
+const sessionFile=sessionArg<0?join(mkdtempSync(join(tmpdir(),'fake-subagent-session-')),'session.jsonl'):process.argv[sessionArg+1];
+const sessionId=sessionArg<0?`fixture-${process.pid}`:JSON.parse(readFileSync(sessionFile,'utf8').split('\n')[0]).id;
+if(sessionArg<0)writeFileSync(sessionFile,JSON.stringify({id:sessionId})+'\n');
 const endpoint=process.env.PI_SUBAGENT_ENDPOINT?JSON.parse(process.env.PI_SUBAGENT_ENDPOINT):undefined;
 const startup=endpoint?new Promise((resolve,reject)=>{
  let socket,buffer='';
  const finish=(error,value)=>{socket?.destroy();error?reject(error):resolve(value)};
  socket=net.createConnection({host:'127.0.0.1',port:endpoint.port});
- socket.once('connect',()=>socket.write(JSON.stringify({...endpoint,message:{type:'session-identity',payload:{sessionId:`fixture-${process.pid}`,sessionFile:`${process.cwd()}/fixture-${process.pid}.jsonl`}}})+'\n'));
+ socket.once('connect',()=>socket.write(JSON.stringify({...endpoint,message:{type:'session-identity',payload:{sessionId,sessionFile}}})+'\n'));
  socket.on('data',chunk=>{buffer+=String(chunk);const i=buffer.indexOf('\n');if(i<0)return;try{const response=JSON.parse(buffer.slice(0,i));if(response.ok)finish(undefined,response.result);else finish(new Error(response.error||'session identity rejected'))}catch(error){finish(error)}});
  socket.once('error',reject);
 }):Promise.resolve();
@@ -24,6 +30,7 @@ process.stdin.on('data',chunk=>{
 
 async function handle(command){
  if(command.type==='prompt'){await startup;
+   appendFileSync(sessionFile,JSON.stringify({message:command.message,args:process.argv.slice(2),authority:JSON.parse(process.env.PI_SUBAGENT_AUTHORITY||'null'),prompt:process.env.PI_SUBAGENT_PROMPT})+'\n');
    // Model native Pi's busy-prompt boundary for the waiting-parent race.
    if(busyFollowUp){
     if(!command.streamingBehavior){process.stdout.write(JSON.stringify({type:'response',id:command.id,success:false,error:"Agent is already processing. Specify streamingBehavior ('steer' or 'followUp') to queue the message."})+'\n');return}

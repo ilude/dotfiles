@@ -72,7 +72,7 @@ function childAuthorityHarness(endpoint: any, origin: string) {
 }
 
 async function waitForRecord(runtime: ReturnType<typeof getSubagentRuntime>, id: string, expected: Partial<ChildRecord>) {
-  await vi.waitFor(() => expect(runtime.get(id).snapshot()).toMatchObject(expected), { timeout: 7_000, interval: 20 });
+  await vi.waitFor(() => expect(runtime.get(id).snapshot()).toMatchObject(expected.status==="settled"?{...expected,phase:"settled"}:expected), { timeout: 7_000, interval: 20 });
   return runtime.get(id).snapshot();
 }
 
@@ -140,7 +140,7 @@ describe("combined subagent messaging lifecycle", () => {
       await requestParent(parentEndpoint, { type: "outcome-ack", payload: firstDeliveryId });
       const afterAck = await requestParent(parentEndpoint, { type: "heartbeat" }) as any;
       expect(afterAck.delivery).toBeUndefined();
-      expect(runtime.get(b.id).snapshot()).toMatchObject({ status: "settled", retained: true, processState: "running" });
+      expect(runtime.get(b.id).snapshot()).toMatchObject({ status: "settled", retained: false, processState: "exited" });
 
       // A handled steer crosses the real child wrapper, authenticated socket,
       // parent runtime and RPC child. The parent supplies the native disposition;
@@ -228,7 +228,7 @@ describe("combined subagent messaging lifecycle", () => {
       const final = runtime.get(parent.id).snapshot();
       expect(final.originalAssignment).toMatchObject({ outcome: "complete", result: "second answer", assignment: "[hold]" });
       expect(final.result).toBe("second answer");
-      expect(final.processState).toBe("running");
+      expect(final.processState).toBe("exited");
 
       // Root's native delivery contains the final result and original snapshot.
       const parentMessage = rootMessages.find(message => message.customType === "subagent-result" && message.details?.subagentId === parent.id);
@@ -240,8 +240,8 @@ describe("combined subagent messaging lifecycle", () => {
       await root.handlers.message_end({ message: { role: "custom", customType: "subagent-result", details: { origin, deliveryId: parentDeliveryId } } }, root.ctx);
       expect(pendingBeforeAck.has(parentDeliveryId)).toBe(false);
 
-      // Explicit finish closes the retained process without replacing either the
-      // original terminal evidence or the latest exchange result with an exit ack.
+      // Finish remains idempotent after automatic closure and preserves the
+      // original terminal evidence and latest exchange result.
       await root.tools.subagent_control.execute("finish", { action: "finish", id: parent.id }, undefined, undefined, root.ctx);
       expect(runtime.get(parent.id).snapshot()).toMatchObject({
         status: "settled", outcome: "complete", result: "second answer", retained: false,

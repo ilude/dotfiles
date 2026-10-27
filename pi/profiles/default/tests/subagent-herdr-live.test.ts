@@ -80,7 +80,7 @@ async function withLiveHarness(run: (harness: LiveHarness) => Promise<void>): Pr
   Object.assign(process.env, env, { HERDR_ENV: "1", HERDR_SOCKET_PATH: session!.socket_path, HERDR_WORKSPACE_ID: workspace.result.workspace.workspace_id, HERDR_TAB_ID: workspace.result.tab.tab_id, HERDR_PANE_ID: pane.pane_id });
   const definition: AgentDefinition = { name: "probe", description: "Restricted parity", tools: ["read"], delegates: [], skills: [], prompt: "Follow instructions precisely. Do not use other tools.", source: "profile", filePath: "probe.md" };
   writeFileSync(join(scratch, "marker.txt"), "cedar-417");
-  const input = { definition, instructions: "Read marker.txt and reply only with its contents. Remember them for later.", cwd: scratch, model: "openai-codex/gpt-5.6-luna", effort: "low" as const, skills: [], origin: "visible-live", retained: true, surface: "visible" as const };
+  const input = { definition, instructions: "Read marker.txt and reply only with its contents. Remember them for later.", cwd: scratch, model: "openai-codex/gpt-5.6-luna", effort: "low" as const, skills: [], origin: "visible-live", retained: false, surface: "visible" as const };
   const listedAgents = async () => (await cli(["agent", "list"])).result.agents as Array<Record<string, any>>;
   await run({ scratch, runtime, cli, pane, input, listedAgents });
  } finally {
@@ -101,11 +101,11 @@ async function withLiveHarness(run: (harness: LiveHarness) => Promise<void>): Pr
  }
 }
 
-async function launchRetainedVisible(harness: LiveHarness): Promise<VisibleChild> {
- const started = await harness.runtime.launch(harness.input, profile, childExtension, true);
- await vi.waitFor(() => expect(harness.runtime.get(started.id).snapshot().status, JSON.stringify(harness.runtime.get(started.id).snapshot())).toBe("settled"), { timeout: 50_000, interval: 100 });
+const waitingInstructions="Read marker.txt, then use subagent_parent question to ask a release question containing the marker. Wait for the parent answer before completing.";
+async function launchWaitingVisible(harness: LiveHarness): Promise<VisibleChild> {
+ const started = await harness.runtime.launch({...harness.input,definition:{...harness.input.definition,tools:["read","subagent_parent"]},instructions:waitingInstructions}, profile, childExtension, true);
+ await vi.waitFor(() => expect(harness.runtime.get(started.id).snapshot().phase, JSON.stringify(harness.runtime.get(started.id).snapshot())).toBe("waiting-parent"), { timeout: 50_000, interval: 100 });
  const first = harness.runtime.get(started.id).snapshot();
- expect(first.outcome, first.error).toBe("complete");
  expect(first.result).toContain("cedar-417");
  return harness.runtime.get(first.id) as VisibleChild;
 }
@@ -120,7 +120,7 @@ describe.skipIf(process.env.PI_SUBAGENT_HERDR_LIVE !== "1")("isolated visible su
   await runtime.get(headless.id).finish();
 
   const beforeLayout = await cli(["pane", "layout", "--pane", pane.pane_id]);
-  const launching = runtime.launch(input, profile, childExtension, true);
+  const launching = runtime.launch({...input,definition:{...input.definition,tools:["read","subagent_parent"]},instructions:waitingInstructions}, profile, childExtension, true);
   let visibleId = "";
   await vi.waitFor(async () => {
    const record = runtime.list().find(candidate => candidate.surface === "visible" && candidate.origin === "visible-live");
@@ -133,9 +133,8 @@ describe.skipIf(process.env.PI_SUBAGENT_HERDR_LIVE !== "1")("isolated visible su
   }, { timeout: 30_000, interval: 100 });
   await vi.waitFor(async () => expect((await listedAgents()).find(candidate => candidate.pane_id === runtime.get(visibleId).snapshot().paneId)?.agent_status).toBe("working"), { timeout: 15_000, interval: 25 });
   const started = await launching;
-  await vi.waitFor(() => expect(runtime.get(started.id).snapshot().status, JSON.stringify(runtime.get(started.id).snapshot())).toBe("settled"), { timeout: 50_000, interval: 100 });
+  await vi.waitFor(() => expect(runtime.get(started.id).snapshot().phase, JSON.stringify(runtime.get(started.id).snapshot())).toBe("waiting-parent"), { timeout: 50_000, interval: 100 });
   const first = runtime.get(started.id).snapshot();
-  expect(first.outcome, first.error).toBe("complete");
   expect(first.result).toContain("cedar-417");
   const registeredBeforeReload = (await listedAgents()).find(candidate => candidate.pane_id === first.paneId);
   expect(registeredBeforeReload?.agent_status ?? registeredBeforeReload?.state).toBe("idle");
@@ -156,17 +155,20 @@ describe.skipIf(process.env.PI_SUBAGENT_HERDR_LIVE !== "1")("isolated visible su
 
   const paneId = child.record.paneId!;
   await cli(["pane", "zoom", "--pane", pane.pane_id, "--on"]);
-  await child.finish();
+  await child.answer("Complete now. Reply only with the marker.",child.record.requestId);
+  const completed=await child.wait();
+  expect(completed).toMatchObject({outcome:"complete",paneState:"closed",processState:"exited",retained:false});
   await expect(cli(["pane", "get", paneId])).rejects.toThrow();
   const focused = await cli(["pane", "get", pane.pane_id]);
   expect(focused.result.pane.pane_id).toBe(pane.pane_id);
  }), timeout);
 
  it("hands direct-user intervention back and retains conversational context", async () => withLiveHarness(async harness => {
-  const child = await launchRetainedVisible(harness);
+  const child = await launchWaitingVisible(harness);
   await harness.cli(["agent", "prompt", child.record.paneId!, "/reload"]);
   await vi.waitFor(() => expect(child.record.readyCount).toBe(2), { timeout: 10_000 });
   await vi.waitFor(async () => expect(String(await harness.cli(["agent", "read", child.record.paneId!, "--source", "recent-unwrapped", "--lines", "60"]))).toContain("Reloaded keybindings"), { timeout: 10_000, interval: 100 });
+  child.cancelQuestion(child.record.requestId);
   await child.intervene();
   await harness.cli(["pane", "send-text", child.record.paneId!, "Reply only: user help active. Keep the earlier marker in context."]);
   await harness.cli(["pane", "send-keys", child.record.paneId!, "enter"]);
@@ -179,10 +181,11 @@ describe.skipIf(process.env.PI_SUBAGENT_HERDR_LIVE !== "1")("isolated visible su
   await expect(child.message("competing parent steering")).rejects.toThrow(/intervention/);
   child.handback();
   await vi.waitFor(() => expect(child.record.userOwned).toBe(false), { timeout: 5000 });
-  await child.message("Recall the marker from the previous exchange without reading it again. Reply only with the marker.");
-  await vi.waitFor(() => expect(child.snapshot().turns).toBe(3), { timeout: 40_000, interval: 100 });
-  expect(child.snapshot().result).toContain("cedar-417");
-  await child.finish();
+  await vi.waitFor(() => expect(child.snapshot()).toMatchObject({processState:"exited",paneState:"closed",cleanup:{complete:true}}),{timeout:15_000});
+  await harness.runtime.message(child.record.id,harness.input.origin,"Recall the marker from the previous exchange without reading it again. Reply only with the marker.");
+  const resumed=harness.runtime.get(child.record.id);
+  await vi.waitFor(() => expect(resumed.snapshot()).toMatchObject({turns:3,phase:"settled",paneState:"closed"}), { timeout: 40_000, interval: 100 });
+  expect(resumed.snapshot().result).toContain("cedar-417");
  }), timeout);
 
  it("completes a bounded visible lead and worker recovery smoke", async () => withLiveHarness(async ({ scratch, runtime, input }) => {
@@ -215,22 +218,24 @@ describe.skipIf(process.env.PI_SUBAGENT_HERDR_LIVE !== "1")("isolated visible su
   expect(readFileSync(join(scratch, "proof.txt"), "utf8")).toContain("leaf write ok");
  }), timeout);
 
- it("runs a nested council with retained multi-turn members", async () => withLiveHarness(async ({ scratch, runtime, input }) => {
+ it("runs a nested council with reopened multi-turn members", async () => withLiveHarness(async ({ scratch, runtime, input }) => {
   const catalog = loadDefinitions(scratch, false, profile);
   expect(catalog.errors).toEqual([]);
   const definition = catalog.agents.get("council")!;
-  const result = await runtime.launch({ ...input, definition, model: definition.model!, effort: definition.effort!, instructions: "The user explicitly requests a tiny council on JSON versus YAML for a local CLI config. This is hypothetical; do not browse or read files. Commission advisor, researcher, reviewer with retain=true for independent one-sentence openings from distinct perspectives. Use subagent_control message to ask EACH SAME member a focused rebuttal based on another opening and to recall its earlier position. Wait for all replies, then synthesize disagreements and evidence gaps. Do not implement anything. Leave members retained for inspection.", retained: false, catalog: catalog.agents }, profile, childExtension, false);
+  const result = await runtime.launch({ ...input, definition, model: definition.model!, effort: definition.effort!, instructions: "The user explicitly requests a tiny council on JSON versus YAML for a local CLI config. This is hypothetical; do not browse or read files. Commission advisor, researcher, reviewer for independent one-sentence openings from distinct perspectives. Use subagent_control message to ask EACH SAME member a focused rebuttal based on another opening and to recall its earlier position. Wait for all replies, then synthesize disagreements and evidence gaps. Do not implement anything. Leave members closed after their replies.", retained: false, catalog: catalog.agents }, profile, childExtension, false);
   expect(result.outcome, result.error ?? result.result).toBe("complete");
   const members = runtime.list().filter(record => record.parentId === result.id);
   expect(members.map(record => record.agent).sort()).toEqual(["advisor", "researcher", "reviewer"]);
   expect(members.every(record => record.outcome === "complete" && record.turns >= 2), JSON.stringify(members)).toBe(true);
-  for (const member of members) if (member.retained) await runtime.get(member.id).finish();
+  expect(members.every(record=>!record.retained&&record.processState==="exited")).toBe(true);
  }), timeout);
 
- it("closes ordinary children on shutdown while a user-owned child survives for manual exit", async () => withLiveHarness(async ({ runtime, cli, input }) => {
-  const helped = await runtime.launch({ ...input, instructions: "Reply only: survival ready" }, profile, childExtension, false);
-  const helpedChild = runtime.get(helped.id) as VisibleChild;
+ it("closes ordinary children on shutdown while a user-owned child survives for manual exit", async () => withLiveHarness(async harness => {
+  const {runtime,cli,input}=harness;
+  const helpedChild = await launchWaitingVisible(harness);
+  helpedChild.cancelQuestion(helpedChild.record.requestId);
   await helpedChild.intervene();
+  const helped=helpedChild.snapshot();
   const ordinary = await runtime.launch({ ...input, instructions: "Reply only: ordinary ready" }, profile, childExtension, false);
   await runtime.shutdown("quit");
   await expect(cli(["pane", "get", ordinary.paneId!])).rejects.toThrow();

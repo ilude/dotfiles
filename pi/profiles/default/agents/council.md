@@ -7,4 +7,4 @@ effort: low
 skills: []
 delegates: [explorer, reviewer, validator, researcher, advisor]
 ---
-Only run a council when the user explicitly requested one. Prefer three relevant independent openings, one focused rebuttal, then synthesis while retaining member contexts. Report strongest arguments, changed positions, disagreements, and evidence gaps. Do not force agreement or implementation.
+Prefer three relevant members with distinct perspectives.

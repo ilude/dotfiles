@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
+import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { fileURLToPath } from "node:url";
 import { loadDefinitions, type AgentDefinition } from "../lib/subagents/definitions.ts";
-import { composedAgentPrompt, delegationContext, type DelegationAudience } from "../lib/subagents/guidance.ts";
-import { CALLER_GUIDANCE_SUFFIX, composeCallerSystemPrompt } from "../extensions/subagents.ts";
+import { composedAgentPrompt, delegationContext, SUBAGENT_LAUNCH_DESCRIPTION, SUBAGENT_CONTROL_DESCRIPTION, type DelegationAudience } from "../lib/subagents/guidance.ts";
+import subagents, { CALLER_GUIDANCE_SUFFIX, composeCallerSystemPrompt } from "../extensions/subagents.ts";
+import childAuthority, { childSystemPrompt } from "../extensions/subagent-child.ts";
 
 function definition(name: string, extra: Partial<AgentDefinition> = {}): AgentDefinition {
   return { name, description: `${name} role`, tools: [], delegates: [], skills: [], prompt: `${name} private role body`, source: "profile", filePath: `${name}.md`, ...extra };
@@ -66,6 +68,51 @@ describe("delegation prompt composition", () => {
       expect(catalogNames(delegationContext({ audience, definitions, permitted: [] }))).toEqual([]);
     },
   );
+
+  it("keeps ordinary roles free of live-retention instructions and unavailable parent tools", () => {
+    const profile = fileURLToPath(new URL("../", import.meta.url));
+    const catalog = loadDefinitions(profile, false, profile);
+    for (const name of ["teamlead", "council"]) {
+      const role = catalog.agents.get(name)!;
+      const prompt = composedAgentPrompt(role, catalog.agents);
+      expect(prompt).not.toMatch(/retain (?:a subagent conversation|useful member contexts)|while retaining member contexts/i);
+      expect(prompt).toContain("reopen");
+    }
+    const integrator = catalog.agents.get("integrator")!;
+    const prompt = childSystemPrompt("native base", integrator.name, integrator.tools, integrator.prompt);
+    expect(prompt).not.toContain("subagent_parent");
+    expect(prompt).toContain("A normal final reply completes your assignment.");
+  });
+
+  it("uses one lifecycle contract in root and coordinator tools without a retain option", () => {
+    const beforeAuthority = process.env.PI_SUBAGENT_AUTHORITY;
+    const beforeEndpoint = process.env.PI_SUBAGENT_ENDPOINT;
+    const rootTools = new Map<string, ToolDefinition>();
+    const coordinatorTools = new Map<string, ToolDefinition>();
+    const api = (tools: Map<string, ToolDefinition>) => ({
+      registerTool: (tool: ToolDefinition) => { tools.set(tool.name, tool); },
+      registerCommand: () => {}, on: () => {}, registerMessageRenderer: () => {},
+      events: { on: () => () => {} },
+    });
+    try {
+      delete process.env.PI_SUBAGENT_AUTHORITY;
+      delete process.env.PI_SUBAGENT_ENDPOINT;
+      subagents(api(rootTools) as never);
+      process.env.PI_SUBAGENT_AUTHORITY = JSON.stringify({ id: "coordinator", agent: "teamlead", tools: ["subagent", "subagent_control", "subagent_parent"], delegates: ["developer"], cwd: process.cwd(), skills: [] });
+      childAuthority(api(coordinatorTools) as never);
+      for (const tools of [rootTools, coordinatorTools]) {
+        expect(tools.get("subagent")!.parameters).not.toHaveProperty("properties.retain");
+        expect(tools.get("subagent")!.description.startsWith(SUBAGENT_LAUNCH_DESCRIPTION)).toBe(true);
+        expect(tools.get("subagent_control")!.description.startsWith(SUBAGENT_CONTROL_DESCRIPTION)).toBe(true);
+      }
+      expect(SUBAGENT_CONTROL_DESCRIPTION).toContain("reopens a closed saved conversation");
+      expect(SUBAGENT_CONTROL_DESCRIPTION).toContain("original role and permissions");
+      expect(SUBAGENT_CONTROL_DESCRIPTION).toContain("follow-up closes on completion");
+    } finally {
+      if (beforeAuthority === undefined) delete process.env.PI_SUBAGENT_AUTHORITY; else process.env.PI_SUBAGENT_AUTHORITY = beforeAuthority;
+      if (beforeEndpoint === undefined) delete process.env.PI_SUBAGENT_ENDPOINT; else process.env.PI_SUBAGENT_ENDPOINT = beforeEndpoint;
+    }
+  });
 
   it("keeps complete bundled prompts within their context budgets and order-independent", () => {
     const profile = fileURLToPath(new URL("../", import.meta.url));

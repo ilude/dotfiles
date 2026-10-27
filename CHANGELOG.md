@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-10-27: Close completed Pi subagents and reopen saved conversations for follow-up
+
+- Ordinary subagents now close their processes and panes on completion instead of offering a `retain` launch choice. Their conversations and results remain saved; explicit `subagent_control message` follow-ups reopen the same session with its original role, permissions, and launch configuration, then close again when done. Reopening uses the current owning runtime, not a new cross-restart registry.
+- Align root/coordinator tool descriptions, Team Lead and council prompts, child instructions, and lifecycle documentation around that contract. Remove speculative-retention encouragement and duplicated protocol guidance; stop instructing roles to use unavailable parent tools.
+- Preserve running and waiting-parent children, explicit user intervention, and the separately authorized Integrator successor that survives the departing orchestrator. Existing sessions need a settled-only `/reload` with no open owned children, or a restart, to load the change.
+- Passed 325 subagent/successor tests, default-profile typecheck, runtime smoke, and diff checks. Fourteen opt-in live tests were skipped; attached-client reopening remains unverified.
+
 ## 2026-10-27: Show running subagents in the Pi footer
 
 - Show `agents: N running` on the second footer line after Onclave and before token stats. Count running children and descendants owned by the current session using existing lifecycle updates, with no polling. Hide the indicator when none are running; waiting and settled retained agents do not count.

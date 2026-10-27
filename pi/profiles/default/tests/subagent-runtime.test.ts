@@ -80,13 +80,12 @@ describe("process-local descendant ownership",()=>{
   expect(()=>runtime.get(first.id)).not.toThrow();
   await runtime.get(second.id).cancel();await runtime.get(third.id).cancel();
  });
- it("releases retained names only through explicit finish or cancel",async()=>{
+ it("ignores stale retention and releases closed names after completion or cancel",async()=>{
   const runtime=fixture();
   const retained=await runtime.launch({...input,retained:true,instructions:"[reject]"},join(here,".."),join(here,"../extensions/subagent-child.ts"),true);
   await vi.waitFor(()=>expect(runtime.get(retained.id).record.phase).toBe("settled"),{timeout:7000});
   const name=retained.displayName!;
-  expect(runtime.get(name,input.origin).record.id).toBe(retained.id);
-  await runtime.get(retained.id).finish();
+  expect(runtime.get(retained.id).record.retained).toBe(false);
   expect(()=>runtime.get(name,input.origin)).toThrow(/Unknown/);
   const replacement=await runtime.launch(input,join(here,".."),join(here,"../extensions/subagent-child.ts"),true);
   expect(replacement.displayName).toBe(name);

@@ -317,7 +317,7 @@ describe.skipIf(process.env.PI_SUBAGENT_UX_LIVE !== "1")("bounded integrated sub
         effort: "low" as const,
         skills: [],
         origin: "t5-visible",
-        retained: true,
+        retained: false,
         surface: "visible" as const,
       };
       let launchTimer: ReturnType<typeof setTimeout> | undefined;
@@ -331,7 +331,7 @@ describe.skipIf(process.env.PI_SUBAGENT_UX_LIVE !== "1")("bounded integrated sub
         }, 100_000); }),
       ]);
       if (launchTimer) clearTimeout(launchTimer);
-      expect(first).toMatchObject({ surface: "visible", agent: "probe", outcome: "complete", turns: 1, paneState: "open" });
+      expect(first).toMatchObject({ surface: "visible", agent: "probe", outcome: "complete", turns: 1, paneState: "closed" });
       expect(first.displayName).toMatch(/^[A-Za-z]+/);
       expect(first.assignment).toContain("marker.txt");
       expect(first.model).toBe(input.model);
@@ -339,20 +339,18 @@ describe.skipIf(process.env.PI_SUBAGENT_UX_LIVE !== "1")("bounded integrated sub
       expect(first.cwd?.toLowerCase()).toBe(fixture.scratch.toLowerCase());
       expect(first.paneId).toBeTruthy();
       expect(first.result).toContain("t5-visible-marker");
-      const visiblePane = await inspectPane(fixture.cli, first.paneId!);
-      expect(visiblePane.label).toContain(first.displayName!);
-      expect(visiblePane.label).toContain("probe");
+      await expect(fixture.cli(["pane", "get", first.paneId!])).rejects.toThrow();
       expect(result(await fixture.cli(["pane", "current"])).pane.pane_id).toBe(fixture.unrelated.pane_id);
 
+      await runtime.message(first.id, input.origin, "Recall the marker from the previous exchange without reading it again. Reply only with the marker.");
       const child = runtime.get(first.id, input.origin);
-      await child.message("Recall the marker from the previous exchange without reading it again. Reply only with the marker.");
       let followUpTimer: ReturnType<typeof setTimeout> | undefined;
       const followUp = await Promise.race([
         child.wait(undefined, false),
         new Promise<never>((_, reject) => { followUpTimer = setTimeout(() => reject(new Error(`Bundled Pi follow-up did not complete; snapshot=${JSON.stringify(child.snapshot())}`)), 60_000); }),
       ]);
       if (followUpTimer) clearTimeout(followUpTimer);
-      expect(followUp).toMatchObject({ outcome: "complete", turns: 2, displayName: first.displayName, paneState: "open" });
+      expect(followUp).toMatchObject({ outcome: "complete", turns: 2, displayName: first.displayName, paneState: "closed" });
       expect(followUp.assignment).toContain("Recall the marker");
       expect(followUp.result).toContain("t5-visible-marker");
       await child.finish();

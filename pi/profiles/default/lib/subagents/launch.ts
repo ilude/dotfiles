@@ -7,6 +7,7 @@ export function childLaunch(spec: LaunchSpec, id: string, profile: string, endpo
  const tools=[...d.tools];
  if(d.name==="teamlead"&&!tools.includes("codemode"))tools.push("codemode");
  const args=[...(spec.surface==="headless"?["--mode","rpc"]:[]),"--no-extensions",...isolatedResources,"--no-prompt-templates","--no-themes","--approve",...(tools.length?["--tools",tools.join(",")]:["--no-tools"]),"--model",spec.model,"--thinking",spec.effort];
+ if(spec.sessionFile)args.push("--session",spec.sessionFile);
  const extension=(name:string)=>args.push("--extension",join(profile,"extensions",name));
  extension("subagent-child.ts");extension("compaction.ts");extension("damage-control/index.js");extension("tool-invocation-provenance.ts");extension("scoped-instructions.ts");
  if(tools.includes("tool_search"))args.push("--extension","builtin:tool-search");

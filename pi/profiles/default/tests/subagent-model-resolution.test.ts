@@ -39,7 +39,7 @@ describe("model resolution and foreground behavior at subagent launch seams", ()
   it.each([
     { label: "definition fallback", requested: undefined, agent: "probe", background: undefined, retain: undefined },
     { label: "explicit bare override", requested: "gpt", agent: "probe", background: undefined, retain: undefined },
-    { label: "ordinary background launch", requested: undefined, agent: "probe", background: true, retain: undefined },
+    { label: "ordinary background launch ignores stale retention", requested: undefined, agent: "probe", background: true, retain: true },
     { label: "strategist background and retention override", requested: undefined, agent: "strategist", background: true, retain: true },
     { label: "strategist explicit foreground", requested: undefined, agent: "strategist", background: false, retain: undefined },
     { label: "strategist default foreground", requested: undefined, agent: "strategist", background: undefined, retain: undefined },
@@ -60,7 +60,7 @@ describe("model resolution and foreground behavior at subagent launch seams", ()
     const effectiveBackground = agent !== "strategist" && background === true;
     const result = await tools.subagent.execute("call", { agent, background, retain, instructions: effectiveBackground ? "[hold]" : "[live]", surface: "headless", blockingReason, ...(requested ? { model: requested } : {}) }, undefined, progress, ctx);
     expect(result.isError).not.toBe(true);
-    expect(result.details).toMatchObject({ model: "openai/gpt", retained: agent === "strategist" ? false : retain ?? false, status: effectiveBackground ? "running" : "settled", waitState: effectiveBackground ? "background" : "attached" });
+    expect(result.details).toMatchObject({ model: "openai/gpt", retained: false, status: effectiveBackground ? "running" : "settled", waitState: effectiveBackground ? "background" : "attached" });
     if (effectiveBackground) await tools.subagent_control.execute("cancel", { action: "cancel", id: result.details.id }, undefined, undefined, ctx);
     rmSync(profile, { recursive: true, force: true }); rmSync(cwd, { recursive: true, force: true });
   });

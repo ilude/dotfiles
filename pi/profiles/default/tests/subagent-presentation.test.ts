@@ -227,7 +227,7 @@ it("executes registered tools against an inert RPC child and renders their live 
   const tools: Record<string, any> = {}, handlers: Record<string, Function> = {};
   const messages = vi.fn();
   const ctx: any = { cwd: scratch, hasUI: true, isProjectTrusted: () => true, isIdle: () => false,
-    sessionManager: { getSessionId: () => "presentation-origin" }, ui: { setWidget: vi.fn(), notify: vi.fn() } };
+    sessionManager: { getSessionId: () => "presentation-origin" }, ui: { setWidget: vi.fn(), setStatus: vi.fn(), notify: vi.fn() } };
   const pi: any = { on: (name: string, handler: Function) => { handlers[name] = handler; },
     registerTool: (tool: any) => { tools[tool.name] = tool; }, registerCommand: vi.fn(), registerMessageRenderer: vi.fn(), sendMessage: messages, appendEntry: vi.fn() };
   mkdirSync(join(scratch, ".pi", "agents"), { recursive: true });
@@ -290,8 +290,7 @@ it("executes registered tools against an inert RPC child and renders their live 
     const listed = await tools.subagent_control.execute("inspect", { action: "inspect" }, undefined, undefined, ctx);
     expect(listed.details).toEqual(expect.arrayContaining([expect.objectContaining({ subagentId: background.details.subagentId, id: background.details.subagentId })]));
     expect(JSON.stringify(listed.details)).not.toContain("sessionFile");
-    expect(tools.subagent_control.description).toContain("returned subagentId");
-    expect(tools.subagent_control.description).toContain("returned sessionId");
+    expect(tools.subagent_control.description).toContain("by subagentId, not native sessionId");
     expect(tools.subagent_control.parameters.properties.id.description).toContain("not the native sessionId");
     expect(plain(tools.subagent.renderResult(background, {}, theme, { state: {} }), 120).trim()).toBe(`${background.details.displayName}: assignment started; completion not reported`);
     await expect(tools.subagent_control.execute("wait-bg", { action: "wait", id: background.details.displayName }, undefined, undefined, ctx)).rejects.toThrow("requires blockingReason");
