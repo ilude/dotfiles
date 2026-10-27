@@ -6,6 +6,16 @@
 - Track Herdr's new pane IDs across workspace moves while retaining terminal/process identity, focus, and owned cleanup. Remove the initial shell and empty owned workspace, accept Herdr's automatic removal, and preserve tabs added by the operator.
 - Passed 75 focused layout/model/cleanup tests, default-profile typecheck, and two isolated Herdr 0.9.5 tests for overflow placement and team migration/return. Attached-client presentation remains unverified. Activate with `/reload` only when no subagents are active or retained, or restart Pi.
 
+## 2026-10-26: Integrate origin before default Pi commit publication
+
+- `/commit push` now uses `publish_repository` as the sole pull owner for each captured own branch. Git fast-forwards when possible and merges divergence without rewriting history; established conflicts return recoverable evidence for clear resolution and retry, while other pull failures block dependent publication.
+- Keep child repositories ahead of parents and refresh parent gitlinks to integrated child HEADs before parent publication. Bare `/commit` remains local-only.
+
+## 2026-10-26: Add Windows remote Herdr connect command
+
+- Add default-profile `/connect <ssh-alias>` to open a Windows Terminal tab running the local `herdr --remote` client. The alias is resolved by local SSH configuration, and inherited `HERDR*` context is cleared only in the child terminal to avoid nested-attachment rejection.
+- The command does not install, restart, configure, or change the remote server. Other platforms report unsupported.
+
 ## 2026-10-26: Keep default Pi release cache machine-local
 
 - Stop tracking the default profile's generated release-indicator cache to avoid timestamp churn and cross-machine merge conflicts. Each machine retains its local copy; Pi recreates missing caches and refreshes them through the existing release checks.

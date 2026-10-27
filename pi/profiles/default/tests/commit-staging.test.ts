@@ -256,7 +256,45 @@ it("reports actual local-remote push results independently of completion wording
 		expect(git(remote, "rev-parse", "refs/heads/main").trim()).toBe(git(root, "rev-parse", "HEAD").trim());
 		git(root, "remote", "set-url", "origin", `${remote}-missing`);
 		steps.push({ name: "publish_repository", arguments: { repo: "." } });
-		await expect(run(true)).rejects.toThrow(/Git push failed/);
+		await expect(run(true)).rejects.toThrow(/Pull before publication failed without an established merge conflict/);
+	} finally { rmSync(remote, { recursive: true, force: true }); }
+}, 30_000);
+
+it("merges real Git divergence before publishing and rejects an unresolved real conflict", async () => {
+	const remote = `${root}-divergence-remote`;
+	try {
+		git(root, "init", "--quiet", "--bare", remote);
+		git(root, "remote", "add", "origin", remote);
+		git(root, "push", "--quiet", "-u", "origin", "main");
+		const seed = `${root}-seed`;
+		try {
+			git(root, "clone", "--quiet", remote, seed);
+			git(seed, "config", "user.name", "Offline test"); git(seed, "config", "user.email", "offline@example.invalid");
+			writeFileSync(join(seed, "remote.txt"), "remote\n"); git(seed, "add", "-A"); git(seed, "commit", "--quiet", "-m", "remote divergence"); git(seed, "push", "--quiet");
+		} finally { rmSync(seed, { recursive: true, force: true }); }
+		writeFileSync(join(root, "local.txt"), "local\n"); git(root, "add", "-A"); git(root, "commit", "--quiet", "-m", "local divergence");
+		git(root, "config", "pull.ff", "only");
+		steps.push({ name: "publish_repository", arguments: { repo: "." } });
+		await run(true);
+		expect(git(root, "log", "-1", "--format=%P").trim().split(" ")).toHaveLength(2);
+		expect(git(remote, "rev-parse", "refs/heads/main").trim()).toBe(git(root, "rev-parse", "HEAD").trim());
+		const conflictSeed = `${root}-conflict-seed`;
+		try {
+			execFileSync("git", ["clone", "--quiet", remote, conflictSeed], { encoding: "utf8", timeout: 15000, windowsHide: true });
+			git(conflictSeed, "config", "user.name", "Offline test"); git(conflictSeed, "config", "user.email", "offline@example.invalid");
+			writeFileSync(join(conflictSeed, "base.txt"), "remote conflict\n"); git(conflictSeed, "add", "-A"); git(conflictSeed, "commit", "--quiet", "-m", "remote conflict"); git(conflictSeed, "push", "--quiet");
+		} finally { rmSync(conflictSeed, { recursive: true, force: true }); }
+		writeFileSync(join(root, "base.txt"), "local conflict\n"); git(root, "add", "-A"); git(root, "commit", "--quiet", "-m", "local conflict");
+		steps.push(
+			{ name: "publish_repository", arguments: { repo: "." } },
+			bash("git add base.txt && git commit -m 'resolve pull conflict'"),
+			{ name: "publish_repository", arguments: { repo: "." } },
+		);
+		await run(true);
+		expect(JSON.stringify(results[0]?.content)).toContain("base.txt");
+		expect(results[0]?.isError).toBe(false);
+		expect(git(root, "status", "--porcelain")).toBe("");
+		expect(git(remote, "rev-parse", "refs/heads/main").trim()).toBe(git(root, "rev-parse", "HEAD").trim());
 	} finally { rmSync(remote, { recursive: true, force: true }); }
 }, 30_000);
 

@@ -17,11 +17,15 @@ it("supplies boundaries, stage-first ordering, and captured publication permissi
 	expect(buildCommitTask(true, ".", inventory)).toContain("clean initialized submodules with outgoing referenced commits");
 	expect(buildCommitTask(true, ".", inventory)).toContain("--recurse-submodules=no origin HEAD:refs/heads/<own-branch>");
 	expect(buildCommitTask(true, ".", inventory)).toContain("publish_repository");
+	expect(buildCommitTask(true, ".", inventory)).toContain("git pull --no-rebase --ff origin <captured-branch>");
+	expect(buildCommitTask(true, ".", inventory)).toContain("stage and commit the merge, then retry publish_repository");
+	expect(buildCommitTask(false, ".", inventory)).not.toContain("git pull");
 });
 
 it("retains deterministic attached and detached publication behavior", () => {
 	expect(formatPublicationEligibility(false, "main")).toBe("");
 	expect(formatPublicationEligibility(true, "main")).toContain('attached branch "main"');
+	expect(formatPublicationEligibility(true, "main")).toContain("Integrate origin/main with git pull --no-rebase --ff");
 	expect(formatPublicationEligibility(true, "")).toContain("do not re-check its branch, outgoing commits, upstream, remotes, or push");
 });
 

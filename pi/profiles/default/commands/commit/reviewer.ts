@@ -73,12 +73,12 @@ export function describeCommitTool(name: string, args: unknown): string {
 export function formatPublicationEligibility(push: boolean, branch: string): string {
 	if (!push) return "";
 	return branch
-		? `Publication: eligible; attached branch ${JSON.stringify(branch)}. Check outgoing commits and publish this repository when applicable.`
+		? `Publication: eligible; attached branch ${JSON.stringify(branch)}. Integrate origin/${branch} with git pull --no-rebase --ff before checking outgoing commits and publishing this repository.`
 		: "Publication: ineligible; detached HEAD. Silently skip publication checks and actions for this repository; do not re-check its branch, outgoing commits, upstream, remotes, or push, and do not mention the skip.";
 }
 
 export function buildCommitTask(push: boolean, root: string, inventory: readonly string[]): string {
-	return `Execute the commit workflow now. ${push ? "Use only each inventory entry's deterministic Publication annotation. For eligible attached repositories, check outgoing commits after local commit work and publish deepest-first with publish_repository, which runs --recurse-submodules=no origin HEAD:refs/heads/<own-branch> and records Git's actual result. This includes clean initialized submodules with outgoing referenced commits. Silently skip detached entries without branch, outgoing, upstream, remote, or push checks or output. Push parents only after children. No force-push, tags, other branches, or automatic merge/rebase." : "Push was NOT requested. Do not run publication-related branch, upstream, outgoing, remote, or push checks or commands."}
+	return `Execute the commit workflow now. ${push ? "Use only each inventory entry's deterministic Publication annotation. For eligible attached repositories, check outgoing commits and publish deepest-first with publish_repository, the sole pull owner. It runs `git pull --no-rebase --ff origin <captured-branch>` before pushing, fast-forwarding when possible and merging divergence without rewriting history. On established conflicts it returns recoverable conflict paths; use bash for inspection and resolution only when intent is clear, stage and commit the merge, then retry publish_repository. Do not issue a separate pull. Non-conflict pull errors stop dependent work. A conflict blocks publication of parents until resolved and retry succeeds. The tool pushes --recurse-submodules=no origin HEAD:refs/heads/<own-branch>. This includes clean initialized submodules with outgoing referenced commits. Silently skip detached entries without branch, outgoing, upstream, remote, or push checks or output. Push parents only after children, and refresh/stage parent gitlinks after child integration/commits. No force-push, tags, or other branches." : "Push was NOT requested. Do not run publication-related branch, upstream, outgoing, remote, or push checks or commands."}
 
 Location (JSON-quoted absolute path; decode and shell-quote as data):
 Repository root: ${JSON.stringify(root)}
@@ -121,6 +121,7 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 			const publicationBranches = new Map<string, { path: string; branch: string }>();
 			let successfulPushes = 0;
 			let attemptedPushes = 0;
+			let unresolvedPublicationConflict: string | undefined;
 			const unknownPushes = new Set<string>();
 			const usage: Usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
 			const git = async (args: string[], requestSignal?: AbortSignal, cwd?: string, timeout = GIT_TIMEOUT_MS) => {
@@ -176,13 +177,29 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 						tools: [
 							...(push ? [{
 								name: "publish_repository", label: "Publish repository",
-								description: "Push an eligible inventory repository's captured branch to origin. Use instead of shell git push so the runner records Git's actual result. Call deepest-first after outgoing checks.",
+								description: "Enforce integration before publishing an eligible inventory repository: run git pull --no-rebase --ff origin <captured-branch>, then push the captured own branch to origin. Use instead of shell git push. Call deepest-first; parent gitlinks must reflect the integrated child HEAD.",
 								parameters: Type.Object({ repo: Type.String() }),
 								execute: async (_id: string, input: unknown) => {
 									const { repo } = input as { repo: string };
 									const target = publicationBranches.get(normalizeRepositoryId(repo));
 									if (!target) throw new Error(`No attached publication target in inventory: ${repo}`);
+									if (unresolvedPublicationConflict && unresolvedPublicationConflict !== normalizeRepositoryId(repo)) throw new Error("Publication blocked until the unresolved pull conflict is resolved and its repository is retried.");
 									const ref = `refs/heads/${target.branch}`;
+									const integrated = await pi.exec("git", ["-C", target.path, "pull", "--no-rebase", "--ff", "origin", target.branch], { signal: combined, timeout: PUBLICATION_TIMEOUT_MS });
+									if (integrated.killed || integrated.code !== 0) {
+										let remoteBranch: string | undefined;
+										try { remoteBranch = await git(["ls-remote", "--heads", "origin", ref], combined, target.path, PUBLICATION_TIMEOUT_MS); }
+										catch { /* A failed verification must not authorize publication. */ }
+										if (integrated.killed) return { content: [{ type: "text" as const, text: `Pull before publication timed out or was cancelled for origin/${target.branch}. Do not push.` }], details: {}, isError: true };
+										const conflicts = await git(["diff", "--name-only", "--diff-filter=U"], combined, target.path);
+										if (conflicts) {
+											unresolvedPublicationConflict = normalizeRepositoryId(repo);
+											return { content: [{ type: "text" as const, text: `Pull from origin/${target.branch} established merge conflicts in: ${conflicts}. Do not publish this or any parent repository yet. Resolve only when intent is clear, stage and commit the merge with bash, then retry publish_repository; the retry owns the pull and will clear the publication block on success.` }], details: {} };
+										}
+										if (remoteBranch === undefined || remoteBranch) return { content: [{ type: "text" as const, text: `Pull before publication failed without an established merge conflict: ${integrated.stderr.trim()}. Do not push.` }], details: {}, isError: true };
+						// An empty origin branch is a valid first publication.
+									}
+									unresolvedPublicationConflict = undefined;
 									const intendedHead = await head(combined, target.path);
 									attemptedPushes++;
 									unknownPushes.add(repo);
