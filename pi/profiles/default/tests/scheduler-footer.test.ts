@@ -150,6 +150,7 @@ it("renders the scheduler status in the actual footer alongside provider usage a
   };
   registerFooter(pi);
   await hooks.get("session_start")!({}, ctx);
+  statuses.set("subagents", "agents: 2 running");
   statuses.set("schedule", "sched@ 9:00am");
   statuses.set("tps", "~42 tok/s | first 1.2s | ~84 tok / 2.0s streaming");
   statuses.set("onclave-v2", "Onclave[4]: pi-01a082");
@@ -163,7 +164,7 @@ it("renders the scheduler status in the actual footer alongside provider usage a
   expect(lines[0]).toContain("codex: 5h 25%");
   expect(lines[1]).toContain("~42 tok/s | first 1.2s");
   expect(lines[1]).toContain("sched@");
-  expect(lines[1]).toMatch(/^Onclave\[4\]: pi-01a082 \| sched@/);
+  expect(lines[1]).toMatch(/^Onclave\[4\]: pi-01a082 \| agents: 2 running \| sched@/);
   expect(lines[1]).toContain("bedrock:");
   statuses.set("unicode", "状态 🟢");
   for (const width of [1, 10, 30, 80, 160]) {

@@ -55,9 +55,12 @@ export default function subagents(pi:ExtensionAPI){
   pi.sendMessage({customType:"subagent-result",details:{deliveryId:r.deliveryId,origin:r.origin,...presentationDetails(r)},content:outcomeText(r),display:true},{triggerTurn:true,deliverAs:current.isIdle()?"followUp":"steer"});
   return true;
  };
- // Progress never invokes sendMessage. Results are delivered through the transcript
- // and remain available through /subagents; there is no persistent status widget.
- const binding={deliver};
+ // Progress updates the footer only; outcomes remain transcript deliveries.
+ const binding={deliver,status:(records:ChildRecord[])=>{
+  if(!current||current.sessionManager.getSessionId()!==origin)return;
+  const running=records.filter(record=>record.status==="running").length;
+  current.ui.setStatus("subagents",running?`agents: ${running} running`:undefined);
+ }};
  const successorNotices: Array<{origin:string;kind:string;evidence:unknown}> = [];
  const flushSuccessorNotices=()=>{
   if(!current||current.sessionManager.getSessionId()!==origin)return;
@@ -98,7 +101,8 @@ export default function subagents(pi:ExtensionAPI){
  });
  pi.on("session_shutdown",async(e)=>{
   const owner=runtime;
-  if(origin&&owner)owner.unbind(origin,binding);current=undefined;
+  if(origin&&owner)owner.unbind(origin,binding);
+  current?.ui.setStatus("subagents",undefined);current=undefined;
   if(e.reason==="quit"&&owner){
    const cleanup=await owner.shutdown("quit");
    if(!cleanup.complete)console.error(`[subagent cleanup] ${cleanup.failures.map(f=>`${f.id}: ${f.error}`).join("; ")}`);

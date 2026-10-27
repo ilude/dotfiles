@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-10-27: Show running subagents in the Pi footer
+
+- Show `agents: N running` on the second footer line after Onclave and before token stats. Count running children and descendants owned by the current session using existing lifecycle updates, with no polling. Hide the indicator when none are running; waiting and settled retained agents do not count.
+
 ## 2026-10-27: Separate spawned subagent tabs from personal work tabs
 
 - Group overflow and dedicated Team Lead tabs in one lazily created Herdr workspace per orchestrator, labeled from its origin tab. Keep the orchestrator, ordinary inline subagents, and user-created work tabs in their existing workspace. Capacity, team grouping/migration rules, and execution behavior are unchanged; no Git worktree is created.
