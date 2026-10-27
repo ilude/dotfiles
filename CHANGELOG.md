@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-10-26: Add Windows remote Herdr connect command
+
+- Add default-profile `/connect <ssh-alias>` to open a Windows Terminal tab running the local `herdr --remote` client. The alias is resolved by local SSH configuration, and inherited `HERDR*` context is cleared only in the child terminal to avoid nested-attachment rejection.
+- The command does not install, restart, configure, or change the remote server. Other platforms report unsupported.
+
 ## 2026-10-26: Document remote workstation access discovery
 
 - Point agents to homelab-infra's public-safe remote-access runbook for native Herdr SSH attachment, inherited Windows Terminal context, separate WinRM credentials, and network-access constraints. Keep live inventory and secrets under the module's existing BWS ownership rather than duplicating them in documentation or `values/`.

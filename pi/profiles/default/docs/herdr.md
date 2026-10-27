@@ -24,6 +24,10 @@ The bootstrap's initial agent report is best-effort early context, not readiness
 
 Reload Pi after source changes. An already-running Pi does not acquire the corrected launcher's process identity or process-exit hook until started through the plugin.
 
+## Remote connection
+
+On Windows, `/connect <ssh-alias>` opens a new Windows Terminal tab and runs the local `herdr --remote <ssh-alias>` client. SSH configuration owns the destination, user, port, and identity. The launcher clears inherited `HERDR*` variables inside the child PowerShell process only, so the current session is unchanged and remote attachment is not rejected as nested. It does not install, restart, configure, or alter the remote server. Windows Terminal and PowerShell must be available. Other platforms are currently unsupported.
+
 ## Tools and process ownership
 
 - `herdr_agent`: list, inspect, read, prompt, wait for, or send logical keys to an exact live agent in the connected server. Agent targets are unique live names, current pane IDs, or resolvable default Onclave IDs/short aliases; output and waits are bounded. This reaches the connected Herdr server only, not other servers. The boundary is the server, not the machine.
