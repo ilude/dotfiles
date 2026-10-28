@@ -11,6 +11,31 @@ This is a local wrapper, not the upstream Herdr skill. For operations covered by
 
 Discover `herdr_agent`, `herdr_layout`, and `herdr_pane` through `tool_search`. Useful searches include `Herdr agent control`, `read or prompt another agent`, and `cross-agent pane recovery`. These deferred tools cover the connected Herdr server only. The routing boundary is the server, not the machine.
 
+## Remote machines in the same client
+
+For remote workspaces and agents alongside Local in the existing Herdr window, use native saved machines, not `/connect`:
+
+```sh
+herdr machine add <ssh-alias>
+herdr machine add <ssh-alias> --remote-session <session-name>
+```
+
+Interactive setup discovers running sessions; each saved profile targets one remote session. Added machines normally appear in the open client's sidebar within a second without changing its selection. `/connect <ssh-alias>` instead opens a separate Windows Terminal tab running `herdr --remote`.
+
+Before remote attachment, read `modules/homelab-infra/docs/remote-workstation-access.md` from the repository root. Check current [Connecting machines documentation](https://herdr.dev/docs/connecting-machines/) and installed CLI capabilities rather than assuming the local `/connect` integration describes all upstream support. Setup can offer installation or server replacement; replacement stops the remote server's pane processes and requires explicit authorization. Background connections do not install or replace servers.
+
+Selecting a remote machine in the UI does not retarget commands in existing panes or the structured tools. For explicitly requested remote CLI automation, list saved profile IDs with `herdr machine list --json`, then use `herdr --machine <label-or-id> agent list` and the same prefix for subsequent supported commands. Pane IDs and agent names are server-scoped. Follow the raw CLI discovery and independent-session communication rules in this skill; the structured tools remain scoped to their connected server.
+
+## Other native features
+
+Use upstream docs for current options and installed CLI help for supported syntax:
+
+- **Agent diagnostics:** `herdr agent explain <target>` explains detection and lifecycle state. [Agents](https://herdr.dev/docs/agents/)
+- **Popups:** custom commands can open lazygit or a scratch shell without changing the tiled layout. [Configuration](https://herdr.dev/docs/configuration/)
+- **Direct attach:** `herdr agent attach <target>` shows one agent without the full UI; `herdr terminal attach <terminal-id>` supports ordinary terminals. [Agents](https://herdr.dev/docs/agents/)
+- **Multiple clients:** clients on one server can view different tabs independently. [Concepts](https://herdr.dev/docs/concepts/#client-and-server)
+- **Restart restore:** Herdr restores layout and can resume eligible native agent sessions. Detach keeps processes alive; a normal server restart does not. Pane history is opt-in and live handoff is experimental; neither is enabled by this skill. [Session state](https://herdr.dev/docs/session-state/)
+
 ## Independent-session communication
 
 For explicitly directed communication on this server, use native `herdr_agent`, including for Herdr-supported non-Pi CLI agents. Use Onclave for supported instances outside this server, not arbitrary remote CLI sessions. Keep owned delegation on `subagent` / `subagent_control`.

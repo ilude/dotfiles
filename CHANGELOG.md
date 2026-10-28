@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-10-29: Surface native Herdr capabilities
+
+- Distinguish same-client `herdr machine add` connections from `/connect`, which opens a separate client. Link upstream guidance for agent diagnostics, popups, direct attachment, multiple clients, and restart restoration, keeping optional history and experimental handoff unchanged.
+- Include machine labels in custom Pi sidebar rows on both platforms. Reload Herdr configuration to apply; installed client/server support for documented features remains to be checked before use.
+
 ## 2026-10-29: Reconcile Bedrock costs for the named SSO identity
 
 - Allow `/bedrock reconcile` to use the `AWSReservedSSO_ccb-bedrock-developer` caller and keep its baseline filtered to the complete assumed-role ARN, preserving session-level attribution and existing personal IAM-user behavior.
