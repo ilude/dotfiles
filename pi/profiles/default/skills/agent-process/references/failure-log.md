@@ -53,6 +53,14 @@
 - **Correction:** Called `finish` for all four delegates owned by this conversation. Each cleanup result confirmed its pane and launcher closed.
 - **Status:** Cleaned up. Recurrence of the lifecycle problem already recorded in AIF-089; no instruction changes made.
 
+## APR-commit-parent-gitlink - Child commit published without its parent pin
+
+- **Reference:** Operator's `/commit push` result after subagent lifecycle implementation; related AIF-009 and AIF-042.
+- **Observed:** The command created homelab-infra commit `be54e69` and dotfiles commit `898a1ff1`, reported `Pushed`, and left ` M modules/homelab-infra`. Inspection confirmed the child was clean at `be54e693`, while dotfiles HEAD and index still pinned `42cdf65e`.
+- **Finding:** Child repository processing occurred, but the required parent gitlink update was omitted. Existing reviewer/task prompts already require child-first work and refreshed parent gitlinks. The runner's final collection reports remaining status but does not complete omitted pin work. The private invocation's tool sequence is not persisted, so whether staging occurred too early or the pin was excluded is unknown.
+- **Proposal:** Make the existing child-to-parent gitlink refresh/staging step reliable at the runtime boundary rather than append another prompt reminder. Preserve model-owned staged review/grouping and child-before-parent publication.
+- **Status:** Operator subsequently authorized implementation. The runner now owns scoped deepest-first passes, stages omitted parent pins, resumes model-owned staged review/commit, and completes requested parent publication only after child integration and pin work. It preserves exclusions and distinct staged gitlink content. Real-Git regression cases cover local/published omissions, nested propagation, a child pull/merge changing HEAD, and preservation of a different staged pointer. All 70 focused commit tests passed; default-profile typecheck and diff checks passed. Live model judgment was not exercised; no live repository commit or push performed.
+
 ## APR-commit-empty-index - Clean submodule commit aborted eligible parent work
 
 - **Reference:** `/commit` operator failure, 2026-10-22; related APR-commit-compound-inspection.
