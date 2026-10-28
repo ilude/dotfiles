@@ -26,6 +26,8 @@ Reload Pi after source changes. An already-running Pi does not acquire the corre
 
 ## Remote connection
 
+For remote workspaces alongside Local in the same client, use `herdr machine add <ssh-alias>` (optionally `--remote-session <name>`). Each profile targets one remote session. See [Connecting machines](https://herdr.dev/docs/connecting-machines/) for current setup and compatibility details. Our Pi sidebar includes the machine label when multiple machines are present.
+
 On Windows, `/connect <ssh-alias>` opens a new Windows Terminal tab and runs the local `herdr --remote <ssh-alias>` client. SSH configuration owns the destination, user, port, and identity. The launcher clears inherited `HERDR*` variables inside the child PowerShell process only, so the current session is unchanged and remote attachment is not rejected as nested. It does not install, restart, configure, or alter the remote server. Windows Terminal and PowerShell must be available. Other platforms are currently unsupported.
 
 ## Tools and process ownership
