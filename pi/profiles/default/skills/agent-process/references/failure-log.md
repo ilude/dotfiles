@@ -1,5 +1,13 @@
 # Agent process failure log
 
+## APR-commit-unfinished-success - Uncommitted files accompanied a successful publication label
+
+- **Reference:** Operator's `/commit push` output and explicit correction in this session, 2026-10-28; related APR-commit-parent-gitlink and APR-commit-empty-index.
+- **Observed:** The command reported no new commits, listed staged changes, and ended with `Pushed`. Local and remote HEAD matched the old commit; the requested file changes remained uncommitted. The private model's exact stopping reason is not established.
+- **Cause:** Runtime completion enforcement covered omitted child gitlinks, but not ordinary files. Publication could push the unchanged HEAD while pending eligible changes remained, and a successful Git push alone selected the success label. Existing reviewer instructions already require committing every eligible group, so another instruction reminder is not the remedy.
+- **Correction:** Replace model-owned Git execution with a structured whole-file plan. The AI reviews, groups files, writes subjects, and names exclusions; code stages, validates full path coverage, executes commits, verifies HEAD and committed paths, and publishes only after successful completion. Return exact validation errors for the initial proposal and two corrections, then stop without committing an invalid plan. Missing submission with changes fails; a clean no-op is allowed. Normal review has no mutation shell or publication tool; mutation `bash` is available only for established publication conflicts. Reject unfinished eligible work before publication and during result collection; exclusions must remain unstaged. Preserve actual earlier commits and push outcomes, working contents, retained index-only contents, and existing model selection and response retries.
+- **Status:** The plan module passed 33 focused unit/real-Git tests covering validation, exclusions, grouping, unborn repositories, gitlinks, hook failure, and hook-generated unfinished work. Default-profile typecheck passed after the runner rewire. The final agreed runs passed 75 plan/retry/reviewer tests and 43 staging tests (118 total), including the index-only gitlink preservation regression; final typecheck passed. Live Luna planning and attached UI behavior remain unverified. Existing Pi processes need `/reload` to load the remedy. This addresses the evidenced failure path, not a guarantee against every possible future failure.
+
 ## APR-pi-restart-shell-boundary - Restart checks missed the actual Windows subprocess
 
 - **Reference:** Operator-reported `/pi --restart` failure after published commit `3afb2bf2`, 2026-10-25; related APR-commit-windows-publication-label and APR-pi-upgrade-herdr-registration.

@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "specRelativePath": ".specs/commit-code-owned-execution/plan.md",
+  "specStub": "commit-code-owned-execution",
+  "taskWorktreePath": "C:\\Users\\Mike\\.dotfiles\\.worktrees\\commit-code-owned-execution",
+  "taskBranch": "task/commit-code-owned-execution",
+  "originCheckoutPath": "C:\\Users\\Mike\\.dotfiles",
+  "originBranch": "main",
+  "startingTargetCommit": "6c1a79ce17f085bd5c9ff0bb193646829519e420",
+  "sourceSpecSnapshot": {
+    "version": 1,
+    "files": [
+      {
+        "path": "plan.md",
+        "sha256": "eed326f721ecc8a830f03d52b8b7db1f36b34d355787cd6727bb69a7a1d9de72"
+      }
+    ]
+  }
+}

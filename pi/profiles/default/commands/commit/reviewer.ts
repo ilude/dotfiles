@@ -1,5 +1,6 @@
 import { lstatSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
+import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import timers from "node:timers/promises";
 import { Agent } from "@earendil-works/pi-agent-core";
@@ -8,9 +9,10 @@ import { createBashTool, createReadTool, type ExtensionAPI, type ExtensionContex
 import { createProfileModelRuntime } from "../../lib/model-runtime.ts";
 import { resolveLatestCodexModelFromRuntime } from "../../lib/model-selection.ts";
 import { compareModelVersions, modelFamilyVersion } from "../../lib/model-family.ts";
-import { normalizeRepositoryId, repositoryId } from "../../lib/path-identity.ts";
+import { normalizeRepositoryId, repositoryId, samePlatformPath } from "../../lib/path-identity.ts";
 import { Type } from "typebox";
 import { commitShellCommand, formatStatus } from "./tools.ts";
+import { executeCommitPlan, parseCommitStatus, validateCommitPlan, type CommitPlan } from "./plan.ts";
 
 const MODEL_FAMILY = "luna";
 const FALLBACK_PROVIDER = "anthropic";
@@ -19,6 +21,8 @@ const WORKFLOW_TIMEOUT_MS = 180_000;
 const GIT_TIMEOUT_MS = 15_000;
 const PUBLICATION_TIMEOUT_MS = 120_000;
 const RESPONSE_RETRIES = 3;
+const PLAN_CORRECTIONS = 2;
+const STATUS_ARGS = ["status", "--porcelain=v1", "-z", "--untracked-files=all", "--ignore-submodules=dirty"];
 
 /** Latest undated Haiku from the Anthropic subscription provider. */
 export async function resolveFallbackModel(runtime: Pick<ModelRuntime, "getAvailable">, signal?: AbortSignal): Promise<Model<Api>> {
@@ -67,24 +71,25 @@ export function describeCommitTool(name: string, args: unknown): string {
 	}
 	if (name === "read") return `file read: ${String(input.path ?? "unknown")}`;
 	if (name === "ask_ignore") return `ignore decision: ${String(input.repo ?? ".")}/${String(input.candidate ?? input.path ?? "unknown")}`;
+	if (name === "submit_commit_plan") return `commit plan: ${String(input.repo ?? ".")}`;
 	return `tool ${name}`;
 }
 
 export function formatPublicationEligibility(push: boolean, branch: string): string {
 	if (!push) return "";
 	return branch
-		? `Publication: eligible; attached branch ${JSON.stringify(branch)}. Integrate origin/${branch} with git pull --no-rebase --ff before checking outgoing commits and publishing this repository.`
+		? `Publication: code-owned; attached branch ${JSON.stringify(branch)}. The runner checks outgoing commits, integrates origin/${branch} with git pull --no-rebase --ff, and publishes after a successful pass.`
 		: "Publication: ineligible; detached HEAD. Silently skip publication checks and actions for this repository; do not re-check its branch, outgoing commits, upstream, remotes, or push, and do not mention the skip.";
 }
 
 export function buildCommitTask(push: boolean, root: string, inventory: readonly string[], currentRepository = "."): string {
-	return `Execute the commit workflow now. ${push ? "Use only the selected inventory entry's deterministic Publication annotation. If it is eligible and attached, check outgoing commits and publish it with publish_repository, the sole pull owner. It runs `git pull --no-rebase --ff origin <captured-branch>` before pushing, fast-forwarding when possible and merging divergence without rewriting history. On established conflicts it returns recoverable conflict paths; use bash for inspection and resolution only when intent is clear, stage and commit the merge, then retry publish_repository. Do not issue a separate pull. Non-conflict pull errors stop dependent work. A conflict blocks publication of parents until resolved and retry succeeds. The tool pushes --recurse-submodules=no origin HEAD:refs/heads/<own-branch>. This includes clean initialized submodules with outgoing referenced commits. Silently skip detached entries without branch, outgoing, upstream, remote, or push checks or output. Push parents only after children, and refresh/stage parent gitlinks after child integration/commits. No force-push, tags, or other branches." : "Push was NOT requested. Do not run publication-related branch, upstream, outgoing, remote, or push checks or commands."}
+	return `Review the staged changes and submit a complete commit plan now. ${push ? "Publication is code-owned, including clean initialized submodules with outgoing referenced commits. Do not check outgoing commits or run pull/push. The runner integrates and publishes children before parents, silently skipping detached entries. It will request conflict resolution separately if needed." : "Push was NOT requested. Do not run publication-related branch, upstream, outgoing, remote, or push checks or commands."}
 
 Location (JSON-quoted absolute path; decode and shell-quote as data):
 Repository root: ${JSON.stringify(root)}
 Host platform: ${process.platform}. Bash runs locally on this host. Use the supplied paths as data; on Windows this is not WSL: prefer root-relative paths or forward-slash Windows paths, not invented /mnt/c paths.
 
-Current repository: ${currentRepository}. Work only in this repository for this pass. The runner sequences children before parents and finishes requested publication before moving to the parent. Read its instructions, run git add -A before staged review, then shape and commit every eligible group. Do not process other repositories in this pass.\n\nRepository inventory (boundaries and initial state, not a candidate list):
+Current repository: ${currentRepository}. Work only in this repository for this pass. The runner has preserved index-only content, run git add -A, applied the settings policy, and staged child gitlinks before staged review. Read applicable instructions and staged diffs, then call submit_commit_plan covering every current changed path exactly once. Do not process other repositories in this pass.\n\nRepository inventory (boundaries and initial state, not a candidate list):
 ${inventory.join("\n\n")}`;
 }
 
@@ -115,7 +120,9 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 			let root: string | undefined;
 			const baselines = new Map<string, string>();
 			let failure: string | undefined;
-			let outcome = "";
+			const preservedIndex: string[] = [];
+			const exclusionsByRepository = new Map<string, Map<string, string>>();
+			const requiredExclusions = new Map<string, Map<string, string>>();
 			const activeTools = new Map<string, { description: string; startedAt: number; terminal: boolean }>();
 			const leftOut: string[] = [];
 			const publicationBranches = new Map<string, { path: string; branch: string }>();
@@ -136,6 +143,13 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 				if (result.killed || result.code !== 0) throw new Error(`Git HEAD lookup failed: ${result.stderr.trim()}`);
 				return result.stdout.trim();
 			};
+			const unfinishedPaths = async (repository: string, requestSignal?: AbortSignal): Promise<string[]> => {
+				const excluded = exclusionsByRepository.get(repository);
+				return parseCommitStatus(await git(STATUS_ARGS, requestSignal, repository)).filter(entry => {
+					const staged = entry.xy !== "??" && entry.xy[0] !== " ";
+					return staged || !excluded?.has(entry.path) || (entry.source !== undefined && !excluded.has(entry.source));
+				}).map(entry => `${entry.xy} ${JSON.stringify(entry.path)}`);
+			};
 			progress("Inspecting repositories…");
 			try {
 				combined.throwIfAborted();
@@ -149,7 +163,7 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 					const id = repositoryId(root, repository);
 					repositoriesById.set(id, repository);
 					baselines.set(repository, await head(combined, repository));
-					const status = formatStatus(await git(["status", "--porcelain=v1", "-z", "--untracked-files=all"], combined, repository));
+					const status = formatStatus(await git(STATUS_ARGS, combined, repository));
 					const instructions = (await git(["ls-files", "--", "AGENTS.md", ":(glob)**/AGENTS.md"], combined, repository)).split("\n").filter(Boolean);
 					const branch = push ? await git(["branch", "--show-current"], combined, repository) : "";
 					if (branch) publicationBranches.set(id, { path: repository, branch });
@@ -182,19 +196,19 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 					links.push({ repository, path: repositoryId(parent, repository) });
 					children.set(parent, links);
 				}
-				const requestedPublications = new Set<string>();
 				const publishedHeads = new Map<string, string>();
-				const completedRepositories = new Set<string>();
 				let currentRepository = "";
+				let submittedPlan: CommitPlan | undefined;
+				let invalidPlanAttempts = 0;
+				let lastPlanErrors = "";
+				let resolvingConflict = false;
 				const stageParentGitlinks = async (repository: string): Promise<string[]> => {
 					const links = children.get(repository) ?? [];
 					if (!links.length) return [];
 					const pending: string[] = [], stage: string[] = [];
 					const parentHead = await head(combined, repository);
 					for (const link of links) {
-						const path = repositoryId(root!, link.repository);
-						if ([...leftOut, ...outcome.split("\n").filter(line => line.startsWith("Left out: ")).map(line => line.slice(10))]
-							.some(line => line.startsWith(`${path}: `))) continue;
+						if (exclusionsByRepository.get(repository)?.has(link.path)) continue;
 						const childHead = await head(combined, link.repository);
 						if (!childHead) continue;
 						const index = await git(["--literal-pathspecs", "ls-files", "--stage", "-z", "--", link.path], combined, repository);
@@ -210,16 +224,14 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 					if (stage.length) await git(["--literal-pathspecs", "add", "--", ...stage], combined, repository);
 					return pending;
 				};
-				const publishRepository = async (_id: string, input: unknown): Promise<{ content: Array<{ type: "text"; text: string }>; details: Record<string, never>; isError?: boolean; needsReview?: boolean }> => {
-					const { repo } = input as { repo: string };
+				const publishRepository = async (repo: string): Promise<{ content: Array<{ type: "text"; text: string }>; details: Record<string, never>; isError?: boolean; needsReview?: boolean }> => {
 					const target = publicationBranches.get(normalizeRepositoryId(repo));
 					if (!target) throw new Error(`No attached publication target in inventory: ${repo}`);
-					requestedPublications.add(normalizeRepositoryId(repo));
-					if ((target.path !== currentRepository && !completedRepositories.has(target.path)) || (children.get(target.path) ?? []).some(child => !completedRepositories.has(child.repository)))
-						return { content: [{ type: "text" as const, text: `Publication deferred: the runner will process ${repo} after its children. Finish the current repository only.` }], details: {} };
-					const pendingResult = (pending: string[]) => ({ content: [{ type: "text" as const, text: `Updated child gitlinks need staged review and commit before publishing ${repo}:\n${pending.join("\n")}\nInspect and commit them normally, then retry publish_repository.` }], details: {}, needsReview: true });
+					const pendingResult = (pending: string[]) => ({ content: [{ type: "text" as const, text: `Updated child gitlinks need a reviewed plan before publishing ${repo}:\n${pending.join("\n")}` }], details: {}, needsReview: true });
 					const pending = await stageParentGitlinks(target.path);
 					if (pending.length) return pendingResult(pending);
+					const unfinished = await unfinishedPaths(target.path, combined);
+					if (unfinished.length) throw new Error(`Uncommitted changes in ${repo}; publication has not run:\n${unfinished.join("\n")}`);
 					if (publishedHeads.get(target.path) === await head(combined, target.path))
 						return { content: [{ type: "text" as const, text: "This repository HEAD has already been published." }], details: {} };
 					if (unresolvedPublicationConflict && unresolvedPublicationConflict !== normalizeRepositoryId(repo)) throw new Error("Publication blocked until the unresolved pull conflict is resolved and its repository is retried.");
@@ -233,7 +245,7 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 						const conflicts = await git(["diff", "--name-only", "--diff-filter=U"], combined, target.path);
 						if (conflicts) {
 							unresolvedPublicationConflict = normalizeRepositoryId(repo);
-							return { content: [{ type: "text" as const, text: `Pull from origin/${target.branch} established merge conflicts in: ${conflicts}. Do not publish this or any parent repository yet. Resolve only when intent is clear, stage and commit the merge with bash, then retry publish_repository; the retry owns the pull and will clear the publication block on success.` }], details: {} };
+							return { content: [{ type: "text" as const, text: `Pull from origin/${target.branch} established merge conflicts in: ${conflicts}. Do not publish this or any parent repository yet. Resolve only when intent is clear, stage and commit the merge with bash. The runner will verify the merge and retry publication; do not pull or push yourself.` }], details: {} };
 						}
 						if (remoteBranch === undefined || remoteBranch) return { content: [{ type: "text" as const, text: `Pull before publication failed without an established merge conflict: ${integrated.stderr.trim()}. Do not push.` }], details: {}, isError: true };
 						// An empty origin branch is a valid first publication.
@@ -241,6 +253,8 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 					unresolvedPublicationConflict = undefined;
 					const integratedLinks = await stageParentGitlinks(target.path);
 					if (integratedLinks.length) return pendingResult(integratedLinks);
+					const remaining = await unfinishedPaths(target.path, combined);
+					if (remaining.length) throw new Error(`Uncommitted changes after publication integration in ${repo}:\n${remaining.join("\n")}`);
 					const intendedHead = await head(combined, target.path);
 					attemptedPushes++;
 					unknownPushes.add(repo);
@@ -264,31 +278,83 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 					publishedHeads.set(target.path, intendedHead);
 					return { content: [{ type: "text" as const, text: output || "Push succeeded." }], details: {} };
 				};
+				const prepareRepository = async (repository: string) => {
+					const entries = parseCommitStatus(await git(STATUS_ARGS, combined, repository));
+					if (entries.some(entry => /U|AA|DD/.test(entry.xy))) throw new Error(`Unresolved conflicts in ${repositoryId(root!, repository)} before review.`);
+					if (entries.some(entry => entry.xy !== "??" && entry.xy[0] !== " " && entry.xy[1] !== " ")) {
+						let oid = await git(["stash", "create"], combined, repository);
+						if (!oid) {
+							// stash create can omit submodule-only differences. Retain the
+							// index in the same ^2 layout without changing it or the worktree.
+							const base = await head(combined, repository);
+							if (!base) throw new Error("Could not preserve index-only content before staging.");
+							const tree = await git(["write-tree"], combined, repository);
+							const index = await git(["commit-tree", tree, "-p", base, "-m", "Pre-commit index content"], combined, repository);
+							oid = await git(["commit-tree", tree, "-p", base, "-p", index, "-m", "Pre-commit index content"], combined, repository);
+						}
+						await git(["stash", "store", "-m", "Pre-commit index content", oid], combined, repository);
+						preservedIndex.push(`Preserved index content: ${oid} (${repositoryId(root!, repository)}; retained in refs/stash)`);
+					}
+					await git(["add", "-A"], combined, repository);
+					const staged = parseCommitStatus(await git(STATUS_ARGS, combined, repository));
+					if (staged.some(entry => entry.path === ".pi/settings.json")) {
+						const commonDirectory = await git(["rev-parse", "--path-format=absolute", "--git-common-dir"], combined, repository);
+						if (!samePlatformPath(commonDirectory, join(homedir(), ".dotfiles", ".git"))) {
+							await appendGitignoreRule(repository, ".pi/settings.json", combined);
+							if (await head(combined, repository)) await git(["--literal-pathspecs", "restore", "--staged", "--", ".pi/settings.json"], combined, repository);
+							else await git(["--literal-pathspecs", "rm", "--cached", "--", ".pi/settings.json"], combined, repository);
+							await git(["add", "--", ".gitignore"], combined, repository);
+							const reason = "Repository-local Pi settings policy";
+							requiredExclusions.set(repository, new Map([[".pi/settings.json", reason]]));
+							exclusionsByRepository.set(repository, new Map([[".pi/settings.json", reason]]));
+							leftOut.push(`${repositoryId(root!, repository) === "." ? "" : `${repositoryId(root!, repository)}/`}.pi/settings.json: ${reason}`);
+						}
+					}
+					await stageParentGitlinks(repository);
+				};
+				const hasOutgoing = async (repository: string, branch: string): Promise<boolean> => {
+					const current = await head(combined, repository);
+					if (!current) return false;
+					if (current !== baselines.get(repository)) return true;
+					const remoteRef = `refs/remotes/origin/${branch}`;
+					const refs = await git(["for-each-ref", "--format=%(refname)", remoteRef], combined, repository);
+					return !refs.split("\n").includes(remoteRef) || Number(await git(["rev-list", "--count", `${remoteRef}..HEAD`], combined, repository)) > 0;
+				};
 				const read = createReadTool(root);
 				const shell = createBashTool(root);
+				const conflictShell: typeof shell = {
+					...shell,
+					description: "Resolve only the current repository's established publication pull conflicts, then stage and commit the merge with normal hooks. Never pull, push, switch branches, rewrite history, or discard unrelated work. Actual mutation failure stops dependent work. " + shell.description,
+					execute: (id, args, toolSignal, update) => shell.execute(id, { ...args, command: commitShellCommand(args.command), timeout: 15 }, toolSignal, update),
+				};
 				agent = new Agent({
 					initialState: {
 						model, thinkingLevel: "low",
 						systemPrompt: readFileSync(join(dirname(fileURLToPath(import.meta.url)), "reviewer.md"), "utf8"),
 						tools: [
-							...(push ? [{
-								name: "publish_repository", label: "Publish repository",
-								description: "Enforce integration before publishing an eligible inventory repository: run git pull --no-rebase --ff origin <captured-branch>, then push the captured own branch to origin. Use instead of shell git push. Call deepest-first; parent gitlinks must reflect the integrated child HEAD.",
-								parameters: Type.Object({ repo: Type.String() }),
-								execute: publishRepository,
-							}] : []),
 							{
-								...shell, name: "inspect", label: "Inspect repository",
-								description: "Run read-only shell inspections, including Git status/diff/check-ignore and searches. Compound commands and pipes are allowed. Nonzero exits return to you for interpretation or correction, including normal no-match results. Never stage, unstage, write files, commit, or push here; use bash for mutations. " + shell.description,
-								execute: (id, args, toolSignal, update) => shell.execute(id, { ...(args as Parameters<typeof shell.execute>[1]), timeout: 15 }, toolSignal, update),
+								name: "submit_commit_plan", label: "Submit commit plan",
+								description: "Submit the complete reviewed whole-file plan for the current repository. Cover every path in current porcelain v1 -z status exactly once, in one commit or an exclusion with a concrete reason. Include both rename endpoints together. Subjects must be trimmed, nonempty single lines. An accepted plan ends review; code executes it. Validation errors allow two corrections before stopping without committing this repository.",
+								parameters: Type.Object({
+									repo: Type.String(),
+									commits: Type.Array(Type.Object({ subject: Type.String(), paths: Type.Array(Type.String()) })),
+									exclusions: Type.Array(Type.Object({ path: Type.String(), reason: Type.String() })),
+								}),
+								execute: async (_id, input) => {
+									const status = await git(STATUS_ARGS, combined, currentRepository);
+									const validation = validateCommitPlan(input, status, repositoryId(root!, currentRepository));
+									if (!validation.ok) throw new Error(validation.errors.join("\n"));
+									const mandatory = requiredExclusions.get(currentRepository);
+									const errors = validation.plan.commits.flatMap(commit => commit.paths.filter(path => mandatory?.has(path)).map(path => `Path must remain excluded: ${JSON.stringify(path)} (${mandatory?.get(path)}).`));
+									if (errors.length) throw new Error(errors.join("\n"));
+									submittedPlan = validation.plan;
+									return { content: [{ type: "text" as const, text: "Plan accepted. The runner will execute the reviewed commits." }], details: {}, terminate: true };
+								},
 							},
 							{
-								...shell,
-								description: "Run repository mutations, including staging, unstaging, index preservation, and commits with normal hooks. Git commit automatically skips an empty staged index. A nonzero read-only Git check or a refused working-tree discard ends the call with an explanation instead of failing. Any actual mutation failure stops this workflow and blocks queued tools. Keep read-only inspections in inspect, not in mutation calls. " + shell.description,
-								execute: (id, args, toolSignal, update) => {
-									const input = args as Parameters<typeof shell.execute>[1];
-									return shell.execute(id, { ...input, command: commitShellCommand(input.command), timeout: 15 }, toolSignal, update);
-								},
+								...shell, name: "inspect", label: "Inspect repository",
+								description: "Run read-only shell inspections, including Git status/diff/check-ignore and searches. Compound commands and pipes are allowed. Nonzero exits return to you for interpretation or correction, including normal no-match results. Never stage, unstage, write files, commit, pull, or push here. Normal review mutations belong to runner code; bash is available only during explicitly requested publication conflict resolution. " + shell.description,
+								execute: (id, args, toolSignal, update) => shell.execute(id, { ...(args as Parameters<typeof shell.execute>[1]), timeout: 15 }, toolSignal, update),
 							},
 							{ ...read, execute: async (id, input, toolSignal, update) => {
 								const args = input as Parameters<typeof read.execute>[1];
@@ -310,6 +376,7 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 									const id = normalizeRepositoryId(repo);
 									const repository = repositoriesById.get(id);
 									if (!repository) throw new Error(`Repository is not in the supplied inventory: ${repo}`);
+									if (repository !== currentRepository) throw new Error(`Ignore decisions must target the current repository: ${repositoryId(root!, currentRepository)}`);
 									if (!candidate || /^[\\/]/.test(candidate) || /^[A-Za-z]:/.test(candidate) || candidate.split(/[\\/]+/).includes(".."))
 										throw new Error(`Candidate must be repository-relative: ${candidate}`);
 									const added = await git(["--literal-pathspecs", "diff", "--cached", "--diff-filter=A", "--name-only", "-z", "--", candidate], combined, repository);
@@ -326,7 +393,14 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 											// rm --cached also works before the repository's first commit.
 											await git(["--literal-pathspecs", "rm", "--cached", "--", candidate], combined, repository);
 											if (answer === "Add to .gitignore") await git(["add", "--", ".gitignore"], combined, repository);
-											leftOut.push(`${id === "." ? "" : `${id}/`}${candidate}: ${answer} (${reason})`);
+											const explanation = `${answer} (${reason})`;
+											const required = requiredExclusions.get(repository) ?? new Map<string, string>();
+											required.set(candidate, explanation);
+											requiredExclusions.set(repository, required);
+											const excluded = exclusionsByRepository.get(repository) ?? new Map<string, string>();
+											excluded.set(candidate, explanation);
+											exclusionsByRepository.set(repository, excluded);
+											leftOut.push(`${id === "." ? "" : `${id}/`}${candidate}: ${explanation}`);
 										}
 										return { content: [{ type: "text" as const, text: `${answer}: ${id}/${candidate}` }], details: {} };
 									} finally { resumeTimer(); progress("Reviewing changes…"); }
@@ -337,21 +411,30 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 					// Response-level recovery below owns the retry budget, including stream failures.
 					streamFn: (model, context, options) => runtime.streamSimple(model, context, { ...options, maxRetries: 0 }),
 					toolExecution: "sequential",
-					beforeToolCall: async () => {
+					beforeToolCall: async ({ toolCall }) => {
 						if (failure) return { block: true, reason: failure, terminate: true };
+						if (submittedPlan) return { block: true, reason: "A plan was accepted; this repository pass is finished.", terminate: true };
+						if (resolvingConflict && (toolCall.name === "ask_ignore" || toolCall.name === "submit_commit_plan")) return { block: true, reason: "Resolve only the established publication conflicts in this step." };
 						return undefined;
 					},
-					finishTurn: () => failure ? { action: "end" } : undefined,
+					finishTurn: () => failure || submittedPlan ? { action: "end" } : undefined,
 				});
 				unsubscribe = agent.subscribe((event) => {
 					if (event.type === "tool_execution_start") {
-						progress(event.toolName === "bash" || event.toolName === "inspect" ? "Running Git/shell command…" : event.toolName === "read" ? "Reading repository instructions and changes…" : "Preparing ignore-file decision…");
-						activeTools.set(event.toolCallId, { description: describeCommitTool(event.toolName, event.args), startedAt: Date.now(), terminal: event.toolName === "ask_ignore" || event.toolName === "publish_repository" || event.toolName === "bash" });
+						progress(event.toolName === "bash" || event.toolName === "inspect" ? "Running Git/shell command…" : event.toolName === "read" ? "Reading repository instructions and changes…" : event.toolName === "submit_commit_plan" ? "Validating commit plan…" : "Preparing ignore-file decision…");
+						activeTools.set(event.toolCallId, { description: describeCommitTool(event.toolName, event.args), startedAt: Date.now(), terminal: event.toolName === "ask_ignore" || event.toolName === "bash" });
 					}
 					if (event.type === "tool_execution_end") {
 						const active = activeTools.get(event.toolCallId);
 						activeTools.delete(event.toolCallId);
 						progress("Reviewing changes…");
+						if (event.isError && event.toolName === "submit_commit_plan" && !resolvingConflict && !failure) {
+							invalidPlanAttempts++;
+							lastPlanErrors = (event.result.content as (TextContent | ImageContent)[]).filter(part => part.type === "text").map(part => part.text).join("\n");
+							if (invalidPlanAttempts > PLAN_CORRECTIONS) {
+								failure = `Commit plan invalid after ${PLAN_CORRECTIONS} corrections:\n${lastPlanErrors}`;
+							}
+						}
 						if (event.isError && active?.terminal && !failure) {
 							const text = (event.result.content as (TextContent | ImageContent)[]).filter((part) => part.type === "text").map((part) => part.text).join("\n");
 							failure = `${active?.description ?? `tool ${event.toolName}`} failed after ${active ? Date.now() - active.startedAt : "unknown"}ms\n${text}`;
@@ -410,39 +493,57 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 					if (failure) throw new Error(failure);
 					const last = [...reviewer.state.messages].reverse().find((message) => message.role === "assistant");
 					if (!last || last.stopReason === "error" || last.stopReason === "aborted") throw new Error(last?.errorMessage || `${selectedModel?.id ?? "Model"} returned no response.`);
-					outcome += "\n" + last.content.filter((part) => part.type === "text").map((part) => part.text).join("\n").trim();
 				};
-				const finishGitlinks = async (repository: string) => {
-					const repo = repositoryId(root!, repository);
-					let pending = await stageParentGitlinks(repository);
-					while (pending.length) {
-						const before = await head(combined, repository);
-						await reviewRepository(`Finish repository ${repo} before its parent. Updated child gitlinks need staged review and a normal commit:\n${pending.join("\n")}\nThe runner staged safe pointer updates only. Preserve any identified index-only content before staging it. Inspect the staged diff, group/message and commit normally, or report an applicable exclusion as Left out: <root-relative path>: <reason>. Do not leave an omitted parent pin for the operator.`);
-						pending = await stageParentGitlinks(repository);
-						if (pending.length && await head(combined, repository) === before)
-							throw new Error(`Unfinished submodule gitlinks in ${repo}: ${pending.join("; ")}`);
+				const acceptedPlan = (): CommitPlan | undefined => submittedPlan;
+				const reviewAndExecute = async (task: string) => {
+					submittedPlan = undefined;
+					invalidPlanAttempts = 0;
+					lastPlanErrors = "";
+					await reviewRepository(`${task}\n\nCurrent staged-review status:\n${formatStatus(await git(STATUS_ARGS, combined, currentRepository))}${preservedIndex.length ? `\n${preservedIndex.join("\n")}\nInspect the retained stash's index tree (^2) if relevant to review; it is not applied or dropped.` : ""}`);
+					const plan = acceptedPlan();
+					if (!plan) {
+						const status = await git(STATUS_ARGS, combined, currentRepository);
+						if (status || lastPlanErrors) throw new Error(`No valid submit_commit_plan received for ${repositoryId(root!, currentRepository)}; commit workflow incomplete.${lastPlanErrors ? `\n${lastPlanErrors}` : `\n${formatStatus(status)}`}`);
+						return;
 					}
+					const excluded = exclusionsByRepository.get(currentRepository) ?? new Map<string, string>();
+					for (const entry of plan.exclusions) excluded.set(entry.path, entry.reason);
+					exclusionsByRepository.set(currentRepository, excluded);
+					progress("Executing reviewed commits…");
+					const result = await executeCommitPlan(pi.exec.bind(pi), currentRepository, combined, plan);
+					if (!result.ok) throw new Error(result.error ?? "Commit plan execution failed.");
 				};
+				const reviewTools = reviewer.state.tools;
 				for (const repository of [...repositories].sort((a, b) => b.length - a.length)) {
 					currentRepository = repository;
 					const repo = repositoryId(root, repository);
-					await reviewRepository(buildCommitTask(push, root, inventory, repo));
-					await finishGitlinks(repository);
-					if (push && requestedPublications.has(repo)) {
-						let publication = await publishRepository("runner-publication", { repo });
+					progress("Staging repository changes…");
+					await prepareRepository(repository);
+					await reviewAndExecute(buildCommitTask(push, root, inventory, repo));
+					const target = publicationBranches.get(repo);
+					if (push && target && await hasOutgoing(repository, target.branch)) {
+						progress("Publishing repository…");
+						let publication = await publishRepository(repo);
 						while (unresolvedPublicationConflict || publication.needsReview) {
-							if (publication.needsReview) await finishGitlinks(repository);
+							const before = await head(combined, repository);
+							if (publication.needsReview) await reviewAndExecute(`${publication.content.map(part => part.text).join("\n")}\nReview the staged diff and submit_commit_plan for this repository only.`);
 							else {
-								const before = await head(combined, repository);
-								await reviewRepository(publication.content.map(part => part.text).join("\n"));
-								if (await head(combined, repository) === before) throw new Error(`Unresolved publication conflict in ${repo}`);
-								await finishGitlinks(repository);
+								submittedPlan = undefined;
+								resolvingConflict = true;
+								reviewer.state.tools = [...reviewTools.filter(tool => tool.name !== "submit_commit_plan" && tool.name !== "ask_ignore"), conflictShell];
+								try { await reviewRepository(`Publication conflict resolution for current repository ${repo}.\n${publication.content.map(part => part.text).join("\n")}\nUse bash only for this established conflict resolution, staging, and the normal merge commit. Do not pull or push.`); }
+								finally { resolvingConflict = false; reviewer.state.tools = reviewTools; }
+								const conflicts = await git(["diff", "--name-only", "--diff-filter=U", "-z"], combined, repository);
+								const parents = (await git(["rev-list", "--parents", "-n", "1", "HEAD"], combined, repository)).split(" ");
+								if (conflicts || parents.length < 3 || parents[1] !== before) throw new Error(`Unresolved publication conflict in ${repo}; a completed merge commit is required.`);
+								const unfinished = await unfinishedPaths(repository, combined);
+								if (unfinished.length) throw new Error(`Uncommitted changes after conflict resolution in ${repo}:\n${unfinished.join("\n")}`);
 							}
-							publication = await publishRepository("runner-publication", { repo });
+							if (await head(combined, repository) === before) throw new Error(`Publication made no commit progress in ${repo}.`);
+							publication = await publishRepository(repo);
 						}
 						if (publication.isError) throw new Error(publication.content.map(part => part.text).join("\n"));
 					}
-					completedRepositories.add(repository);
 				}
 			} catch (error) {
 				failure = signal?.aborted ? "Cancelled" : deadline.signal.aborted ? "Timed out" : error instanceof Error ? error.message : String(error);
@@ -470,6 +571,10 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 						}
 						const status = await git(["status", "-s", "--untracked-files=all"], undefined, repository);
 						if (status) remaining.push(`${label}:\n${status}`);
+						if (!failure) {
+							const unfinished = await unfinishedPaths(repository);
+							if (unfinished.length) failure = `Uncommitted changes remain in ${label}; commit workflow incomplete:\n${unfinished.join("\n")}`;
+						}
 					}
 					summary = [commits.join("\n") || "No commits created.", remaining.length ? `Remaining changes:\n${remaining.join("\n")}` : ""].filter(Boolean).join("\n");
 				} catch (error) { failure = [failure, `Status reporting failed: ${error instanceof Error ? error.message : String(error)}`].filter(Boolean).join("\n"); }
@@ -480,9 +585,11 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 					: unknownPushes.size ? "" : attemptedPushes ? "No pushes confirmed." : "No pushes performed.",
 					unknownPushes.size ? `Push outcome unknown for: ${[...unknownPushes].join(", ")}. Verify the remote branches before retrying.` : ""].filter(Boolean).join("\n")
 				: "";
-			const preserved = outcome.split("\n").filter(line => line.startsWith("Preserved index content: ")).join("\n");
-			const exclusions = outcome.split("\n").filter(line => line.startsWith("Left out: "));
-			const report = [summary, preserved, leftOut.length ? `Left out: ${leftOut.join(", ")}` : "", ...exclusions, publication].filter(Boolean).join("\n");
+			const exclusions = [...exclusionsByRepository].flatMap(([repository, paths]) => {
+				const id = repositoryId(root!, repository);
+				return [...paths].filter(([path]) => !requiredExclusions.get(repository)?.has(path)).map(([path, reason]) => `Left out: ${id === "." ? "" : `${id}/`}${path}: ${reason}`);
+			});
+			const report = [summary, ...preservedIndex, ...leftOut.map(line => `Left out: ${line}`), ...exclusions, publication].filter(Boolean).join("\n");
 			if (failure) throw new Error(`${failure}\n${report}\nStopped; existing commits and changes were not undone.`);
 			return { text: report, elapsedMs: WORKFLOW_TIMEOUT_MS - remaining, model: `${selectedModel?.provider}/${selectedModel?.id}:low`, usage };
 }

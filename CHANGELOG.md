@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-10-28: Execute reviewed commit plans in code
+
+- Make `/commit` and `/commit push` use the AI for staged review, whole-file grouping, subjects, and reasoned exclusions, then let runner code stage, validate, commit, verify, and publish. Normal review has no mutation shell or publication tool; `bash` is available only to resolve established publication conflicts.
+- Require a complete structured plan before committing changed files. Return exact validation errors for an initial proposal and up to two corrections, then stop without executing an invalid plan. A missing plan with pending changes or unfinished eligible work cannot produce a success label or publish an unchanged HEAD. Clean repositories may finish as no-ops.
+- Preserve ignore questions, working and index-only contents, normal hooks, deepest-first review, child-before-parent publication, pull-before-push integration, detached publication skipping, model selection, and response retries. Report actual commits, remaining changes, exclusions, retained index references, and publication outcomes, including partial results after failure. No new runtime validation gates or legacy changes. Run `/reload` in an existing Pi process to load the remedy.
+
 ## 2026-10-29: Surface native Herdr capabilities
 
 - Distinguish same-client `herdr machine add` connections from `/connect`, which opens a separate client. Link upstream guidance for agent diagnostics, popups, direct attachment, multiple clients, and restart restoration, keeping optional history and experimental handoff unchanged.
