@@ -1,7 +1,7 @@
 ---
 created: 2026-10-28
-status: ready
-completed: null
+status: completed
+completed: 2026-10-28
 ---
 
 # Make `/commit` execute reviewed commits in code
@@ -188,3 +188,7 @@ Start with one overall outcome, using the colored symbol and explicit text toget
 - 🟡 **CLEANUP PENDING**: changes and completion metadata are already on the target, but worktree cleanup is unfinished.
 
 For blocked or cleanup-pending outcomes, immediately give **Reason** and **Action needed**, naming the issue, who must act, and the exact next action before successes. Do not imply automatic resumption or hand available agent-owned work to the user. Then give concise checks, spec location, branch/commits, merge result, and retained worktree or cleanup remnants. Never rely on color alone or lead a blocked result with a success summary.
+
+## Integration evidence
+
+118 agreed tests passed: 75 plan/retry/reviewer tests and 43 staging tests (195.75s, 400s timeout); final typecheck passed; git diff --check and staged diff check clean. Task worktree clean after commit. Push not authorized.
