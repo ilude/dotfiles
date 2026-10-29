@@ -1,5 +1,13 @@
 # Agent instruction feedback log
 
+## AIF-animation-deliverable-scope - Partial animation output versus requested outcome
+
+- **Reference:** Character refinement and added action animations, 2026-10-29; related AIF-vehicle-work-execution and AIF-vehicle-dashboard-art-direction.
+- **Feedback:** The operator challenged whether a vault-preview completion report matched the request.
+- **Evidence:** The request covered reference-based character/animation improvement, added vaulting and fighting, and a subscription usage ceiling. Incremental model refinement and a vault study were delivered; fighting remained unimplemented pending a style question, and broader visual acceptance was not established.
+- **Decision:** State partial delivery against the full request plainly. Technical checks, commits and a finished subtask do not establish fulfillment of the artistic goal. Do not infer from this short correction that playable integration or a particular fighting style was authorized.
+- **Status:** Intent mismatch acknowledged at the request level; the operator's specific objection remains to be clarified if it changes the next action. No instruction change.
+
 ## AIF-indoor-lighting-scope - Apply lighting corrections across indoor locations
 
 - **Reference:** Survival-demo indoor shadow correction; comparable shared-path normalization correction recorded in the failure log.

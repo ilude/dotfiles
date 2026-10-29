@@ -125,22 +125,12 @@
       {
         "hooks": [
           {
-            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"C:\\Users\\mglenn\\.claude\\hooks\\herdr-agent-state.ps1\" session",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"$HOME/.claude/hooks/herdr-agent-state.ps1\" session",
             "timeout": 10,
             "type": "command"
           }
         ],
         "matcher": "^(startup|resume|clear|compact|fork)$"
-      },
-      {
-        "matcher": "^(startup|resume|clear|compact|fork)$",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"C:\\Users\\Mike\\.claude\\hooks\\herdr-agent-state.ps1\" session",
-            "timeout": 10
-          }
-        ]
       }
     ],
     "Stop": [

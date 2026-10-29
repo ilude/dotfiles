@@ -1,5 +1,27 @@
 # Changelog
 
+## 2026-10-29: Streamline Pi-driven Claude Code reviews through Herdr
+
+- Consolidate the existing Herdr skill's `ccyl` workflow: preserve subscription routing, include Opus/high launch syntax, inspect startup dialogs before waiting, and supply self-contained assignments. Document recovering completed answers from the matching native Claude transcript without duplicating work or restarting Herdr. Workspace-trust approval behavior remains unchanged.
+- Replace duplicate Windows-account-specific Claude SessionStart hooks with one quoted `$HOME`-relative command, preserving the event matcher, timeout, and generated hook script. A fresh local `ccyl` launch through Herdr completed the hook with status 0, showed Opus 5.5/high without the startup warning, and returned the verification reply. Other machines were not tested. Existing Claude processes need a fresh launch for startup verification; reload settled Pi sessions to refresh skill discovery.
+
+## 2026-10-29: Unify web and browser tool selection
+
+- Consolidate provider selection in `web-tools`, narrow provider discovery descriptions, and document role/tool availability without broadening permissions. Move dated capability evidence and Browserbase onboarding into conditional references; align provider credential lifecycle instructions while keeping the existing tooling unchanged.
+
+- Add a default-profile `web-tools` routing skill and link local Brave, Browserbase, and Firecrawl guidance to it. Keep native search/fetch as the starting point for ordinary lookup and reading, distinguish image search from scraping Google Images, and route by required output and local versus cloud state.
+- Carry requested artifact saving through related steps, report capability-specific verification, and diagnose failures before changing providers. Preserve existing browser ownership, credentials, and runtime behavior; no new tool, automatic fallback, or legacy changes. Reload settled default-profile sessions to discover the guidance.
+
+## 2026-10-29: Add Firecrawl skill and HTTP helper
+
+- Add a default-profile `firecrawl` skill for single-page scraping, search, URL discovery, and bounded crawls. Its PowerShell HTTP helper uses the existing Bitwarden locator/controller credential or an existing `FIRECRAWL_API_KEY`, without installing a CLI or storing another copy of credentials.
+- Verify live single-page access against Example Domain; search and crawl remain untested. Fresh default-profile sessions discover the skill from any working directory; existing sessions need settled-only `/reload`. Legacy is unchanged.
+
+## 2026-10-29: Add a default-profile Browserbase skill
+
+- Add the discoverable `browserbase` skill for hosted browser automation, Fetch/Search, templates, and Stagehand integrations through the `browse` CLI. Resolve the API key from the existing homelab Bitwarden locator and controller credential without duplicating secrets in Pi configuration.
+- Keep local Brave browsing on the existing browser-tools workflow, isolate cloud CLI sessions by task, and document free-tier limits and full session-link reporting. No native tool or legacy-profile changes. Fresh default-profile sessions discover the skill from any working directory; existing sessions need `/reload` when no subagents are active or retained.
+
 ## 2026-10-29: Expose Codex weekly quota to agents
 
 - Add the default profile's discoverable `codex_usage` tool for fresh weekly percentage used, reset Unix time, and fetch timestamp. Reuse `/usage` quota authentication without initiating login or changing native OpenAI model credentials. Missing weekly data remains unavailable rather than zero; request and authentication errors remain visible.
