@@ -1,30 +1,69 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { accountBedrockMessage, bedrockSessionReference } from "../../lib/bedrock/accounting.js";
 import { createBedrockModelProvider, resolveBedrockMantleTarget } from "../../lib/bedrock/provider.js";
-import { callerArgs, dashboardArgs, parseCaller, parseQueryId, parseResults, queryArgs, resultsArgs } from "../../lib/bedrock/cloudwatch-snapshot.js";
-import { createBaseline, formatStatus, formatUsage, readBaseline, summarize } from "../../lib/bedrock/ledger.js";
-import { readClaudeLocalContribution } from "../../lib/bedrock/claude-status-usage.js";
+import { summarizeBilling, formatBillingUsage } from "../../lib/bedrock/billing.js";
+import { writeCurSnapshot } from "../../lib/bedrock/cur-snapshot.js";
+import { queryPersonalCur } from "../../lib/bedrock/cur-query.js";
 import { registerProfileCommand } from "../../lib/profile-command.ts";
+
+export const CUR_REFRESH_INTERVAL = 15 * 60_000;
 
 export default function bedrock(pi: ExtensionAPI): void {
 	pi.registerProvider(createBedrockModelProvider());
-	const refreshStatus = async (ctx: any) => {
+	let timer: ReturnType<typeof setInterval> | undefined;
+	let controller: AbortController | undefined;
+	let inFlight: Promise<void> | undefined;
+	let activeContext: any;
+	let generation = 0;
+	const refreshStatus = async (_ctx: any) => {
+		const epoch = generation;
 		try {
-			const summary = await summarize();
-			const claude = await readClaudeLocalContribution(summary.month, summary.baselineDetails);
-			const piTotal = summary.cost + summary.baseline;
-			ctx.ui.setStatus("bedrock", claude > 0 ? `bedrock: $${(piTotal + claude).toFixed(2)}${summary.unpriced ? ` + ${summary.unpriced} unpriced` : ""}` : formatStatus(summary));
-		} catch { ctx.ui.setStatus("bedrock", "bedrock: estimate unavailable"); }
+			const { total } = await summarizeBilling();
+			if (activeContext && epoch === generation) activeContext.ui.setStatus("bedrock", `bedrock: $${total.toFixed(2)}`);
+		} catch { if (activeContext && epoch === generation) activeContext.ui.setStatus("bedrock", "bedrock: unavailable"); }
 	};
-	pi.on("session_start", async (_event, ctx) => refreshStatus(ctx));
+	const refreshCur = (ctx: any): Promise<void> => {
+		if (inFlight) return inFlight;
+		const request = new AbortController();
+		const epoch = generation;
+		controller = request;
+		inFlight = (async () => {
+			const snapshot = await queryPersonalCur((...args) => pi.exec(...args), resolveBedrockMantleTarget().profile, request.signal);
+			if (request.signal.aborted || !activeContext || epoch !== generation) return;
+			await writeCurSnapshot(snapshot);
+			await refreshStatus(ctx);
+		})().finally(() => { inFlight = undefined; if (controller === request) controller = undefined; });
+		return inFlight;
+	};
+	const refreshInBackground = (ctx: any) => {
+		// Failure retains the successful persisted baseline and all later local usage.
+		void refreshCur(ctx).catch(() => {});
+	};
+	pi.on("session_start", async (_event, ctx) => {
+		activeContext = ctx;
+		generation++;
+		if (timer) clearInterval(timer);
+		await refreshStatus(ctx);
+		refreshInBackground(ctx);
+		timer = setInterval(() => refreshInBackground(ctx), CUR_REFRESH_INTERVAL);
+		timer.unref?.();
+	});
+	pi.on("session_shutdown", async () => {
+		activeContext = undefined;
+		generation++;
+		if (timer) clearInterval(timer);
+		timer = undefined;
+		controller?.abort();
+		await inFlight?.catch(() => {});
+	});
 	pi.on("message_end", async (event, ctx) => {
 		const result = await accountBedrockMessage(event.message, bedrockSessionReference(ctx), () => ctx.ui.setStatus("bedrock", "bedrock: estimate incomplete"));
 		if (!result) return;
 		if (result.persisted) await refreshStatus(ctx);
 		return { message: result.message };
 	});
-	// Child/provider processes append to the shared ledger after their own tool
-	// work. Refresh once the parent turn settles so the footer sees those writes.
+	// Accounting-only children have no network refresh or timers. Parent settlement
+	// picks up their writes to the shared profile ledger.
 	pi.on("agent_settled", async (_event, ctx) => refreshStatus(ctx));
 	registerProfileCommand(pi, "bedrock", {
 		description: "Inspect, refresh, or reconcile the consolidated Amazon Bedrock integration",
@@ -37,33 +76,11 @@ export default function bedrock(pi: ExtensionAPI): void {
 				if (result.errors.size) throw [...result.errors.values()][0];
 			}
 			if (command === "reconcile") {
-				const existing = await readBaseline();
-				if (existing) throw new Error(`AWS Bedrock baseline already exists for ${existing.month}; refusing to replace its accounting cutoff`);
-				const capturedAt = new Date().toISOString();
-				const identity = await pi.exec("aws", callerArgs(target.profile), { timeout: 30_000 });
-				if (identity.code !== 0) throw new Error(`AWS caller lookup failed: ${(identity.stderr || identity.stdout || `exit ${identity.code}`).trim()}`);
-				const principal = parseCaller(identity.stdout);
-				const dashboard = await pi.exec("aws", dashboardArgs(target.profile), { timeout: 30_000 });
-				if (dashboard.code !== 0) throw new Error(`CloudWatch dashboard lookup failed: ${(dashboard.stderr || dashboard.stdout || `exit ${dashboard.code}`).trim()}`);
-				const started = await pi.exec("aws", queryArgs(dashboard.stdout, principal, new Date(capturedAt), target.profile), { timeout: 30_000 });
-				if (started.code !== 0) throw new Error(`CloudWatch Logs query failed to start: ${(started.stderr || started.stdout || `exit ${started.code}`).trim()}`);
-				const queryId = parseQueryId(started.stdout);
-				let baseline;
-				for (let attempt = 0; attempt < 20 && !baseline; attempt++) {
-					const result = await pi.exec("aws", resultsArgs(queryId, target.profile), { timeout: 30_000 });
-					if (result.code !== 0) throw new Error(`CloudWatch Logs query failed: ${(result.stderr || result.stdout || `exit ${result.code}`).trim()}`);
-					const parsed = parseResults(result.stdout, principal, capturedAt); baseline = parsed.baseline;
-					if (parsed.pending) await new Promise(resolve => setTimeout(resolve, 500));
-				}
-				if (!baseline) throw new Error("CloudWatch Logs query timed out");
-				if (!await createBaseline(baseline)) throw new Error("AWS Bedrock baseline already exists; refusing to replace its accounting cutoff");
-				await refreshStatus(ctx);
+				ctx.ui.notify("Refreshing personal Bedrock billing…", "info");
+				await refreshCur(ctx);
 			}
-
 			const models = ctx.modelRegistry.getAll().filter((model: any) => model.provider === "bedrock-mantle");
-			const summary = await summarize();
-			const claude = await readClaudeLocalContribution(summary.month, summary.baselineDetails);
-			const report = [`Amazon Bedrock`, `Mantle region: ${target.region}`, `Mantle profile: ${target.profile || "default credential chain"}`, `Runtime region: provider-scoped AWS region (fallback us-east-2)`, `Routes:`, ...models.map((model: any) => `  ${model.id} (${model.api})`), "", formatUsage(summary, claude)].join("\n");
+			const report = ["Amazon Bedrock", `Mantle region: ${target.region}`, `Mantle profile: ${target.profile || "default credential chain"}`, "Runtime region: provider-scoped AWS region (fallback us-east-2)", "Routes:", ...models.map((model: any) => `  ${model.id} (${model.api})`), "", await formatBillingUsage()].join("\n");
 			ctx.ui.notify(report, "info");
 		},
 	});

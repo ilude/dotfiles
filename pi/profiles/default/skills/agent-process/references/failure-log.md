@@ -1,5 +1,21 @@
 # Agent process failure log
 
+## APR-herdr-plan-false-authorization-blocker - Unfinished technical planning presented as missing permission
+
+- **Reference:** Default session `01a184c9-b4ff-7507-af87-7d792d69fca5`, operator correction after sidebar-plan creation; related APR-investigation-reconfirmation and APR-alert-plan-explanation.
+- **Observed:** After being directed to plan the required layout change, the assistant repeatedly requested authorization to include the necessary Herdr changes and described that permission as the reason the plan was not ready. Its explanation did not plainly identify the unfinished technical design.
+- **Finding:** Planning may specify necessary cross-repository changes without authorizing immediate execution. Running the selected plan authorizes its specified implementation under the normal execution contract. The actual unfinished work was specifying the Herdr workspace-parent interface, owning source/build route, and bounded producer tasks; this was agent-owned planning, not an established missing operator decision.
+- **Correction:** Retract the redundant scope-approval demand. Distinguish unfinished technical planning from an external blocker, and do not imply that running the plan requires another implementation approval. Retain only genuinely separate publication/deployment boundaries.
+- **Status:** Explanation corrected in conversation. Plan still contains stale authorization-blocker language and an incomplete Herdr prerequisite; no plan revision or implementation performed in this correction. Existing planning instructions cover the distinction; no new policy added.
+
+## APR-subagent-partial-mistaken-for-running - Settled partial outcomes read as live progress
+
+- **Reference:** Default session `01a184c9-b4ff-7507-af87-7d792d69fca5`, operator correction during layout research; related APR-speculative-retention-recurrence.
+- **Observed:** Three research/investigation children returned partial outcomes saying work was underway. The orchestrator treated these terminal results as live progress and repeatedly said research was still running. Later inspection showed all three settled, with exited processes and closed panes. Reopened follow-ups returned actual findings.
+- **Evidence:** `lib/subagents/rpc.ts` settles a partial report at turn completion and performs ordinary cleanup. `lib/subagents/status.ts` renders the terminal outcome as `partial`, but the ordinary outcome notification does not explicitly state settled/exited or that continuation requires a follow-up. The inspect records exposed the correct lifecycle state; no stale runtime running state was established.
+- **Proposed correction:** Make terminal partial/blocked outcome notifications explicit about assignment settlement and observed resource state, distinguish them from nonterminal progress and parent questions, and make the need for explicit follow-up clear when applicable. Do not infer liveness from result prose or add polling/automatic retries as a workaround.
+- **Status:** Incident recorded and bounded code path inspected. Runtime/prompt changes remain proposals for the ongoing subagent improvement discussion; no fix, commit, or publication performed.
+
 ## APR-pi-restart-shell-boundary - Restart checks missed the actual Windows subprocess
 
 - **Reference:** Operator-reported `/pi --restart` failure after published commit `3afb2bf2`, 2026-10-25; related APR-commit-windows-publication-label and APR-pi-upgrade-herdr-registration.

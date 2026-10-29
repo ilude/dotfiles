@@ -74,9 +74,9 @@ export async function createBaseline(baseline: CostBaseline, file = baselinePath
 		await release();
 	}
 }
-export async function summarize(month = monthKey()): Promise<UsageSummary> {
-	const baselineDetails = await readBaseline();
-	const cutoff = baselineDetails?.month === month ? Date.parse(baselineDetails.capturedAt) : undefined;
+export async function summarize(month = monthKey(), billing?: { amount: number; capturedAt?: string }): Promise<UsageSummary> {
+	const baselineDetails = billing ? undefined : await readBaseline();
+	const cutoff = billing ? (billing.capturedAt ? Date.parse(billing.capturedAt) : undefined) : baselineDetails?.month === month ? Date.parse(baselineDetails.capturedAt) : undefined;
 	const records = (await readRecords())
 		.filter(record => record.month === month && (cutoff === undefined || Date.parse(record.timestamp) > cutoff))
 		.map(record => {
@@ -86,7 +86,7 @@ export async function summarize(month = monthKey()): Promise<UsageSummary> {
 			const pricing = estimateUsage(record.target ?? (record.provider === "amazon-bedrock" ? record.model : undefined), record.usage);
 			return pricing.status === "estimated" ? { ...record, pricing } : record;
 		});
-	const legacyBaseline = baselineDetails?.month === month ? 0 : await oldBaseline(month);
+	const legacyBaseline = billing ? billing.amount : baselineDetails?.month === month ? 0 : await oldBaseline(month);
 	return { month, records, cost: records.reduce((sum, record) => sum + (record.pricing.total ?? 0), 0), unpriced: records.filter(record => record.pricing.status === "unpriced").length, baseline: baselineDetails?.month === month ? baselineDetails.amount : legacyBaseline, baselineDetails: baselineDetails?.month === month ? baselineDetails : undefined };
 }
 export function formatStatus(summary: UsageSummary): string { const total = summary.cost + summary.baseline; const suffix = summary.unpriced ? ` + ${summary.unpriced} unpriced` : ""; return `bedrock: $${total.toFixed(2)}${suffix}`; }

@@ -12,7 +12,7 @@ interface ClaudeUsageState {
 
 function validMonth(value: unknown): value is string { return typeof value === "string" && /^\d{4}-\d{2}$/.test(value); }
 
-export async function readClaudeLocalContribution(month: string, baseline?: CostBaseline, file = CLAUDE_STATUS_USAGE_FILE): Promise<number> {
+export async function readClaudeLocalContribution(month: string, baseline?: Pick<CostBaseline, "month" | "capturedAt">, file = CLAUDE_STATUS_USAGE_FILE): Promise<number> {
 	let value: unknown;
 	try { value = JSON.parse(await fs.readFile(file, "utf8")); }
 	catch { return 0; }

@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-10-29: Refresh personal Bedrock billing automatically
+
+- Run the narrow live personal CUR Lambda query in the background at default Pi session start, new/clear, resume, and about every 15 minutes. Share concurrent refreshes, cancel pending work and timers on shutdown, and keep model requests and UI startup independent of billing latency. `/bedrock reconcile` remains an optional immediate refresh.
+- Show `bedrock: $amount` from the last successful current-month CUR total plus priced Pi/Claude local usage since local query-start capture, including usage recorded during the query. Persist that capture separately from AWS generation time. Failed refreshes keep the successful baseline and subsequent local accumulation; clear/new never resets the ledger. `/bedrock` and `/usage` use the same calculation.
+- Keep historical CloudWatch and pre-port baseline files untouched but exclude them from the new Pi billing calculation. Preserve all-session shared-ledger accounting and accounting-only restricted children, with no new child network or timers. This is approximate personal tracking, not exact billing coverage or deduplication.
+- Ignore the generated CUR cache and atomic-write leftovers. Invoke only the dedicated personal Lambda with the selected AWS profile, reject Lambda errors as well as CLI failures, and clean system-temporary response files. Restart Pi or use settled-only `/reload` with no active or retained subagents to load these changes.
+
+## 2026-10-29: Prefer posted personal CUR total in the Bedrock footer
+
+- Add a validated, profile-local payer CUR snapshot cache refreshed only by `/bedrock reconcile`. A current-month posted total takes precedence over CloudWatch and local Pi/Claude estimates in the footer; local accounting remains available separately and the existing CloudWatch baseline is not overwritten.
+- Fetch the deployed `snapshots/mike.glenn/current.json` object from the personal billing bucket in `us-east-2` with the selected AWS CLI profile. Accept UTC timestamps serialized with either `Z` or `+00:00`, matching the deployed object.
+
 ## 2026-10-29: Surface native Herdr capabilities
 
 - Distinguish same-client `herdr machine add` connections from `/connect`, which opens a separate client. Link upstream guidance for agent diagnostics, popups, direct attachment, multiple clients, and restart restoration, keeping optional history and experimental handoff unchanged.
