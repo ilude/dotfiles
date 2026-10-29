@@ -8,6 +8,14 @@
 - **Decision:** State partial delivery against the full request plainly. Technical checks, commits and a finished subtask do not establish fulfillment of the artistic goal. Do not infer from this short correction that playable integration or a particular fighting style was authorized.
 - **Status:** Intent mismatch acknowledged at the request level; the operator's specific objection remains to be clarified if it changes the next action. No instruction change.
 
+## AIF-planning-to-ready - Continue planning through consequential questions
+
+- **Reference:** 2026-10-29 operator feedback in the sidebar replacement branch; bounded default-profile planning-history review for 2026-09-29 through 2026-10-29. Related AIF-085, AIF-083 and AIF-alert-plan-explanation.
+- **Feedback:** Ordinary planning should ask needed questions one at a time and reach an executable plan, rather than stop after producing a draft.
+- **Evidence:** Current planning guidance already assigns technical investigation to the agent and requires consequential clarification. It lacks an explicit sequential continuation loop and ends with a competing draft/stopping cue. Historical sample identified a September 30 speculative approval blocker and the October 29 unfinished replacement, alongside successful continuations. Keyword scans do not establish a representative failure rate. The October 29 13:08 ready transition belongs to the earlier rejected plan, not later completion of the replacement draft.
+- **Proposal:** Consolidate ordinary planning into investigation, one consequential user question with context/recommendation, incorporation of answers, and continuation to ready. Keep explicitly requested drafts and genuine blockers honest; do not ask generic checklist questions, reopen settled choices, or shift discoverable facts to the user. Dependent cleanup remains conditional on actual completion.
+- **Status:** Investigation complete; planning skill/template changes proposed for operator approval, not implemented. Existing unrelated log edits preserved.
+
 ## AIF-indoor-lighting-scope - Apply lighting corrections across indoor locations
 
 - **Reference:** Survival-demo indoor shadow correction; comparable shared-path normalization correction recorded in the failure log.
