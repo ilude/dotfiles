@@ -95,6 +95,42 @@ reboot requirements. Exit codes are `0` for success, `1` for failures, `2` for f
 or cancelled elevation, and `3010` for reboot-required completion without other
 failures. Elevated runs propagate the child exit code. No automatic reboot occurs.
 
+### Optional Windows SSH server
+
+The normal installers do **not** enable inbound SSH. To enable it explicitly,
+run this command from an **administrator PowerShell** in the repository:
+
+```powershell
+.\scripts\windows-ssh-setup.ps1
+.\scripts\windows-ssh-setup.ps1 -AllowTailscale  # Optional Tailscale interface access
+```
+
+This installs the built-in Windows OpenSSH Server capability (not the WinGet
+preview package), sets `sshd` to automatic startup, and starts it. The standard
+local SSH firewall rule allows TCP 22 on Domain/Private networks only. Use Private
+only for trusted networks. `-AllowTailscale` adds a separate interface-scoped rule
+that also works when the physical connection is Public; Tailscale ACLs still apply.
+Tailscale must already be installed. Reruns are safe; omitting the switch preserves
+an existing Tailscale exception. A requested Windows restart is reported with exit
+code `3010`; restart and rerun to finish setup.
+
+The script preserves SSH configuration, authorized keys, unrelated firewall rules,
+and managed policy. Other existing allow rules may still grant broader access;
+this is not a machine-wide firewall lockdown. It does not rename the machine,
+create DNS records, or prove remote login works.
+
+Authorize the connecting machine's public key using the
+[Windows OpenSSH key-management guidance](https://learn.microsoft.com/en-us/windows-server/administration/openssh/openssh_keymanagement).
+Windows uses `%USERPROFILE%\.ssh\authorized_keys` for standard users and normally
+`%ProgramData%\ssh\administrators_authorized_keys` for administrators, with the
+permissions described there. Never copy the private key to the server. Test
+`ssh <user>@<host>` from the intended client before using Herdr remote attachment.
+See the [remote workstation access runbook](modules/homelab-infra/docs/remote-workstation-access.md)
+for network policy and verification limits.
+
+macOS and Linux often include SSH clients, but their servers may also require
+installation or explicit enablement. This command is Windows-only.
+
 ### Temporary install hooks
 
 End-of-install temporary fixes live in root `install.d/` and run in lexical order:

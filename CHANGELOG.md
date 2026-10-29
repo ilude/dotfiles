@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-10-29: Add opt-in Windows SSH server setup
+
+- Add `scripts/windows-ssh-setup.ps1` as an explicit administrator command, separate from all normal installers. Install the built-in Windows OpenSSH Server, enable automatic service startup, and limit the standard local SSH firewall rule to Domain/Private networks.
+- Offer `-AllowTailscale` for an additional interface-scoped exception, including on Public physical networks. Preserve existing SSH configuration, keys, unrelated firewall rules, and managed policy; do not claim machine-wide firewall lockdown or verified remote authentication.
+- Document setup, restart handling, key authorization, and client verification in the root Windows installation guidance. Keep DNS and live inventory outside workstation setup.
+
+## 2026-10-29: Replace the rejected agent sidebar plan
+
+- Remove the rejected `subagent-sidebar-and-instance-activity` plan and its disposable dotfiles task worktree/branch at the operator's direction, discarding that worktree's uncommitted implementation.
+- Add the replacement draft at `.specs/native-agent-sidebar-and-activity/plan.md`, preserving the requested indented Team Lead/overflow entries, permanent dedicated Team Leads, instance-wide activity count, and coordinator follow-through on unfinished work. Explicitly exclude Herdr source changes/builds and Git-worktree layout machinery.
+- Keep readiness honest: the installed native grouping interface for agent entries remains unresolved. This records planning and cleanup, not implemented sidebar behavior. The separate Herdr source checkout and unrelated work remain untouched.
+
 ## 2026-10-29: Refresh personal Bedrock billing automatically
 
 - Run the narrow live personal CUR Lambda query in the background at default Pi session start, new/clear, resume, and about every 15 minutes. Share concurrent refreshes, cancel pending work and timers on shutdown, and keep model requests and UI startup independent of billing latency. `/bedrock reconcile` remains an optional immediate refresh.
