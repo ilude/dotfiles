@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-10-29: Expose Codex weekly quota to agents
+
+- Add the default profile's discoverable `codex_usage` tool for fresh weekly percentage used, reset Unix time, and fetch timestamp. Reuse `/usage` quota authentication without initiating login or changing native OpenAI model credentials. Missing weekly data remains unavailable rather than zero; request and authentication errors remain visible.
+- Restart Pi or use `/reload` with no active or retained subagents to load the tool. Legacy is unchanged.
+
 ## 2026-10-28: Execute reviewed commit plans in code
 
 - Make `/commit` and `/commit push` use the AI for staged review, whole-file grouping, subjects, and reasoned exclusions, then let runner code stage, validate, commit, verify, and publish. Normal review has no mutation shell or publication tool; `bash` is available only to resolve established publication conflicts.
