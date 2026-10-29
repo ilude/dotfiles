@@ -12,6 +12,8 @@
 /operator-footer-usage.json
 /bedrock-usage.jsonl
 /bedrock-cost-baseline.json
+/bedrock-cur-snapshot.json
+/bedrock-cur-snapshot.json.*.tmp
 /bedrock-pricing.json
 /codex-cache.jsonl
 /crashes.json
