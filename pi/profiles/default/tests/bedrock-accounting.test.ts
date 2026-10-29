@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "n
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { appendRecord, createBaseline, formatStatus, formatUsage, makeRecord, readBaseline, readRecords, summarize } from "../lib/bedrock/ledger.ts";
-import { parseCaller, parseResults } from "../lib/bedrock/cloudwatch-snapshot.ts";
+import { parseCaller, parseResults, queryArgs } from "../lib/bedrock/cloudwatch-snapshot.ts";
 import { estimateUsage, PRICING_BASIS } from "../lib/bedrock/pricing.ts";
 import { accountBedrockMessage } from "../lib/bedrock/accounting.ts";
 import { VERSION } from "@earendil-works/pi-coding-agent";
@@ -13,14 +13,54 @@ afterEach(() => { vi.unstubAllEnvs(); for (const dir of dirs.splice(0)) rmSync(d
 function temp() { const dir = mkdtempSync(join(tmpdir(), "bedrock-ledger-")); dirs.push(dir); vi.stubEnv("PI_CODING_AGENT_DIR", dir); return dir; }
 
 describe("Bedrock accounting", () => {
-	it("accepts only personal IAM users and the named Bedrock SSO identity", () => {
+	it("accepts personal AWS caller identities for cross-sign-in reconciliation", () => {
 		const ssoArn = "arn:aws:sts::058264305403:assumed-role/AWSReservedSSO_ccb-bedrock-developer_be76b6b5ed07216e/mike.glenn";
 		expect(parseCaller(JSON.stringify({ Arn: ssoArn }))).toBe(ssoArn);
 		expect(parseCaller(JSON.stringify({ Arn: "arn:aws:iam::058264305403:user/mike.glenn" }))).toBe("arn:aws:iam::058264305403:user/mike.glenn");
 		expect(parseCaller(JSON.stringify({ Arn: "arn:aws:iam::058264305403:user/team/platform/mike.glenn" }))).toBe("arn:aws:iam::058264305403:user/team/platform/mike.glenn");
-		for (const Arn of ["arn:aws:sts::058264305403:assumed-role/OtherRole_be76b6b5ed07216e/mike.glenn"]) {
+		expect(parseCaller(JSON.stringify({ Arn: "arn:aws:sts::058264305403:assumed-role/OtherRole/mike.glenn" }))).toContain("OtherRole");
+		for (const Arn of ["not-an-arn", "arn:aws:iam::invalid:user/mike.glenn"]) {
 			expect(() => parseCaller(JSON.stringify({ Arn }))).toThrow();
 		}
+	});
+	it.each([
+		"arn:aws:iam::058264305403:user/mike.glenn",
+		"arn:aws:sts::058264305403:assumed-role/AWSReservedSSO_ccb-bedrock-developer_be76b6b5ed07216e/mike.glenn",
+	])("aggregates only the same person across sign-ins using %s", principal => {
+		const dashboard = JSON.stringify({ DashboardBody: JSON.stringify({ widgets: [{ properties: {
+			title: "Estimated Bedrock Cost by User",
+			query: "SOURCE '/aws/bedrock/ccb'\n| fields identity.arn as userArn\n| stats coalesce(sum(inputCost), 0) + coalesce(sum(outputCost), 0) + coalesce(sum(cacheWriteCost), 0) + coalesce(sum(cacheReadCost), 0) as estimatedCost, count() as invocations by userArn\n| sort estimatedCost desc\n| limit 50",
+		} }] }) });
+		const args = queryArgs(dashboard, principal, new Date("2026-10-27T12:00:00Z"), "bedrock");
+		const query = args[args.indexOf("--query-string") + 1];
+		expect(query).not.toContain("by userArn");
+		expect(query).toContain("filter userArn like");
+		const pattern = query.split("filter userArn like /")[1].split("/ | stats")[0];
+		const matcher = new RegExp(pattern);
+		for (const arn of [
+			"arn:aws:iam::058264305403:user/mike.glenn",
+			"arn:aws:iam::058264305403:user/team/platform/mike.glenn",
+			"arn:aws:sts::058264305403:assumed-role/AWSReservedSSO_ccb-bedrock-developer_be76b6b5ed07216e/mike.glenn",
+			"arn:aws:sts::058264305403:assumed-role/OtherRole/mike.glenn",
+		]) expect(matcher.test(arn)).toBe(true);
+		for (const arn of [
+			"arn:aws:iam::058264305403:user/alex.bays",
+			"arn:aws:iam::058264305403:user/BedrockAPIKey-7lh9",
+			"arn:aws:sts::058264305403:assumed-role/OtherRole/alex.bays",
+			"arn:aws:iam::058264305403:user/mikeXglenn",
+			"arn:aws:iam::058264305403:user/mike.glenn.extra",
+			"arn:aws:iam::999999999999:user/mike.glenn",
+		]) expect(matcher.test(arn)).toBe(false);
+		expect(query).not.toContain("SOURCE");
+		expect(query).toContain("as estimatedCost, count() as invocations | sort");
+		expect(args).toContain("/aws/bedrock/ccb");
+		expect(args[args.indexOf("--start-time") + 1]).toBe(String(Date.parse("2026-10-01T00:00:00Z") / 1000));
+	});
+	it("rejects sign-in-grouped results rather than saving only one sign-in's cost", () => {
+		const principal = "arn:aws:iam::058264305403:user/mike.glenn";
+		const row = [{ field: "userArn", value: principal }, { field: "estimatedCost", value: "1" }, { field: "invocations", value: "2" }];
+		expect(() => parseResults(JSON.stringify({ status: "Complete", results: [row] }), principal, "2026-10-27T12:00:00Z")).toThrow("grouped by sign-in identity");
+		expect(() => parseResults(JSON.stringify({ status: "Complete", results: [row, row] }), principal, "2026-10-27T12:00:00Z")).toThrow("not a personal total");
 	});
 	it("keeps unknown targets unpriced", () => {
 		expect(estimateUsage("openai.gpt-5.6-luna", { input: 1_000_000 }).total).toBeCloseTo(0.22);
@@ -115,11 +155,12 @@ describe("Bedrock accounting", () => {
 		writeFileSync(join(dir, "operator-footer-usage.json"), JSON.stringify({ [records[0].month]: 1.25 }));
 		const summary = await summarize(records[0].month); expect(summary.records).toHaveLength(3); expect(summary.unpriced).toBe(3); expect(summary.baseline).toBe(1.25); expect(formatStatus(summary)).toContain("unpriced");
 	});
-	it("uses a matching personal CloudWatch snapshot and counts only later local records", async () => {
+	it("uses a cross-sign-in personal CloudWatch snapshot and counts only later local records", async () => {
 		temp(); const capturedAt = new Date(); const before = makeRecord({ timestamp: capturedAt.getTime() - 1, provider: "amazon-bedrock", model: "openai.gpt-5.6-luna", usage: { input: 100 } }); const after = makeRecord({ timestamp: capturedAt.getTime() + 1, provider: "amazon-bedrock", model: "openai.gpt-5.6-luna", usage: { input: 200 } }); await appendRecord(before); await appendRecord(after);
 		const principal = parseCaller(JSON.stringify({ Arn: "arn:aws:iam::058264305403:user/mike.glenn" }));
-		const row = [[{ field: "userArn", value: principal }, { field: "estimatedCost", value: "2.50" }, { field: "invocations", value: "4" }]];
+		const row = [[{ field: "estimatedCost", value: "2.50" }, { field: "invocations", value: "4" }]];
 		const baseline = parseResults(JSON.stringify({ status: "Complete", results: row }), principal, capturedAt.toISOString()).baseline!; expect(await createBaseline(baseline)).toBe(true);
+		expect(baseline).toMatchObject({ scope: "user", accountId: "058264305403", userName: "mike.glenn", invocations: 4 });
 		const summary = await summarize(baseline.month); expect(summary.baseline).toBe(2.5); expect(summary.records.map(record => record.id)).toEqual([after.id]);
 		expect(formatUsage(summary)).toBe("Bedrock:     $2.50\n  baseline:  $2.50\n  Cache-read: 0.0%");
 	});

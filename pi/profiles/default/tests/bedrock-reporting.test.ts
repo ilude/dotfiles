@@ -20,7 +20,7 @@ it("registers one management command, records once, normalizes cost, and reports
 | fields identity.arn as userArn
 | stats coalesce(sum(inputCost), 0) + coalesce(sum(outputCost), 0) + coalesce(sum(cacheWriteCost), 0) + coalesce(sum(cacheReadCost), 0) as estimatedCost, count() as invocations by userArn` } }] }) }), stderr: "" };
 		if (args.includes("start-query")) return { code: 0, stdout: JSON.stringify({ queryId: "q1" }), stderr: "" };
-		return { code: 0, stdout: JSON.stringify({ status: "Complete", results: [[{ field: "userArn", value: "arn:aws:iam::058264305403:user/mike.glenn" }, { field: "estimatedCost", value: "1.75" }, { field: "invocations", value: "2" }]] }), stderr: "" };
+		return { code: 0, stdout: JSON.stringify({ status: "Complete", results: [[{ field: "estimatedCost", value: "1.75" }, { field: "invocations", value: "2" }]] }), stderr: "" };
 	});
 	const pi: any = { registerProvider: (value: any) => provider = value, on: (name: string, fn: any) => hooks.set(name, [...hooks.get(name) ?? [], fn]), registerCommand: (name: string, command: any) => commands.set(name, command), exec };
 	bedrock(pi); expect(provider.id).toBe("bedrock-mantle"); expect([...commands.keys()]).toEqual(["bedrock"]);
@@ -80,7 +80,7 @@ it("rejects a delayed reconciliation when another creator publishes first", asyn
 | stats coalesce(sum(inputCost), 0) + coalesce(sum(outputCost), 0) + coalesce(sum(cacheWriteCost), 0) + coalesce(sum(cacheReadCost), 0) as estimatedCost, count() as invocations by userArn` } }] }) }), stderr: "" };
 		if (args.includes("start-query")) return { code: 0, stdout: JSON.stringify({ queryId: "q1" }), stderr: "" };
 		resultsRequested(); await released;
-		return { code: 0, stdout: JSON.stringify({ status: "Complete", results: [[{ field: "userArn", value: "arn:aws:iam::058264305403:user/mike.glenn" }, { field: "estimatedCost", value: "1.75" }, { field: "invocations", value: "2" }]] }), stderr: "" };
+		return { code: 0, stdout: JSON.stringify({ status: "Complete", results: [[{ field: "estimatedCost", value: "1.75" }, { field: "invocations", value: "2" }]] }), stderr: "" };
 	});
 	const commands = new Map<string, any>(); const pi: any = { registerProvider: () => {}, on: () => {}, registerCommand: (name: string, command: any) => commands.set(name, command), exec };
 	bedrock(pi); const ctx: any = { ui: { setStatus: () => {}, notify: () => {} }, modelRegistry: { getAll: () => [] } };

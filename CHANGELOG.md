@@ -6,6 +6,11 @@
 - Require a complete structured plan before committing changed files. Return exact validation errors for an initial proposal and up to two corrections, then stop without executing an invalid plan. A missing plan with pending changes or unfinished eligible work cannot produce a success label or publish an unchanged HEAD. Clean repositories may finish as no-ops.
 - Preserve ignore questions, working and index-only contents, normal hooks, deepest-first review, child-before-parent publication, pull-before-push integration, detached publication skipping, model selection, and response retries. Report actual commits, remaining changes, exclusions, retained index references, and publication outcomes, including partial results after failure. No new runtime validation gates or legacy changes. Run `/reload` in an existing Pi process to load the remedy.
 
+## 2026-10-28: Initialize Bedrock footer from cross-sign-in personal AWS usage
+
+- Reconcile month-to-date CloudWatch invocation costs for the same username across IAM users and named role sessions in the same account, regardless of machine. Match the complete username, exclude other users and service identities, and aggregate before the dashboard's top-user limit.
+- Record personal scope in snapshot metadata and preserve existing ledgers. A newly initialized snapshot covers older local unpriced records through its cutoff; later local usage remains incremental. This is a logged-usage estimate, not an invoice or continuous synchronization of other machines.
+
 ## 2026-10-29: Surface native Herdr capabilities
 
 - Distinguish same-client `herdr machine add` connections from `/connect`, which opens a separate client. Link upstream guidance for agent diagnostics, popups, direct attachment, multiple clients, and restart restoration, keeping optional history and experimental handoff unchanged.
