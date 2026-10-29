@@ -36,6 +36,21 @@ function init(cwd: string) {
 	git(cwd, "config", "core.autocrlf", "false");
 	writeFileSync(join(cwd, "base.txt"), "base\n"); git(cwd, "add", "-A"); git(cwd, "commit", "--quiet", "-m", "baseline");
 }
+function submoduleFixture() {
+	const source = join(root, ".git", "child-source");
+	mkdirSync(source); init(source);
+	git(root, "-c", "protocol.file.allow=always", "submodule", "add", "--quiet", source, "modules/child");
+	git(root, "commit", "--quiet", "-am", "child baseline");
+	const child = realpathSync(join(root, "modules/child"));
+	git(child, "config", "user.name", "Offline test"); git(child, "config", "user.email", "offline@example.invalid");
+	return { source, child };
+}
+function publicationFixture(child: string) {
+	const childRemote = join(root, ".git", "child-remote.git"), parentRemote = join(root, ".git", "parent-remote.git");
+	git(root, "init", "--quiet", "--bare", childRemote); git(root, "init", "--quiet", "--bare", parentRemote);
+	git(child, "remote", "set-url", "origin", childRemote); git(root, "remote", "add", "origin", parentRemote);
+	return { childRemote, parentRemote };
+}
 beforeEach(() => {
 	root = realpathSync(mkdtempSync(join(tmpdir(), "commit-staging-")));
 	init(root); steps = []; results = []; answers = []; commands = []; execs = []; completion = "Pushed";
@@ -297,6 +312,92 @@ it("merges real Git divergence before publishing and rejects an unresolved real 
 		expect(git(remote, "rev-parse", "refs/heads/main").trim()).toBe(git(root, "rev-parse", "HEAD").trim());
 	} finally { rmSync(remote, { recursive: true, force: true }); }
 }, 30_000);
+
+it.each([false, true])("finishes an omitted parent gitlink through staged review before publication (push=%s)", async push => {
+	const { child } = submoduleFixture();
+	const remotes = push ? publicationFixture(child) : undefined;
+	const originalPin = git(root, "rev-parse", "HEAD:modules/child").trim();
+	writeFileSync(join(child, "new.txt"), "child change\n");
+	writeFileSync(join(root, "base.txt"), "parent change\n");
+	steps.push(bash(`${inRepo(child, "add -A")} && ${inRepo(child, "commit -m child-change")}`));
+	if (push) steps.push({ name: "publish_repository", arguments: { repo: "modules/child" } });
+	steps.push([], bash("git add -- base.txt && git commit -m parent-change"));
+	// Request publication with the old pin, then finish without handling the
+	// tool's staged-link response. The runner must resume review, not just report it.
+	if (push) steps.push({ name: "publish_repository", arguments: { repo: "." } });
+	steps.push([], inspect("git diff --cached -- modules/child"), bash("git commit -m parent-pin"));
+	const report = await run(push);
+	const childHead = git(child, "rev-parse", "HEAD").trim();
+	expect(git(root, "rev-parse", "HEAD~1:modules/child").trim()).toBe(originalPin);
+	expect(git(root, "rev-parse", "HEAD:modules/child").trim()).toBe(childHead);
+	expect(JSON.stringify(results.map(result => result.content))).toContain(`+Subproject commit ${childHead}`);
+	expect(git(root, "status", "--porcelain")).toBe("");
+	expect(report.text).toContain("parent-pin");
+	if (remotes) {
+		expect(report.text).toContain("Pushed.");
+		expect(git(remotes.childRemote, "rev-parse", "refs/heads/main").trim()).toBe(childHead);
+		expect(git(remotes.parentRemote, "rev-parse", "main:modules/child").trim()).toBe(childHead);
+		expect(execs.filter(args => args[2] === "push").map(args => args[1])).toEqual([child, root]);
+	} else expect(execs.some(args => /^(branch|pull|push|remote|ls-remote)$/.test(args[2] ?? ""))).toBe(false);
+}, 45_000);
+
+it("propagates omitted nested gitlinks deepest-first without committing unreviewed pointers", async () => {
+	const { source, child } = submoduleFixture();
+	const grandSource = join(root, ".git", "grand-source"); mkdirSync(grandSource); init(grandSource);
+	git(source, "-c", "protocol.file.allow=always", "submodule", "add", "--quiet", grandSource, "deps/grand");
+	git(source, "commit", "--quiet", "-am", "grandchild baseline");
+	git(child, "pull", "--quiet", "--ff-only");
+	git(child, "-c", "protocol.file.allow=always", "submodule", "update", "--init", "--recursive");
+	git(root, "add", "modules/child"); git(root, "commit", "--quiet", "-m", "nested baseline");
+	const grand = realpathSync(join(child, "deps/grand"));
+	git(grand, "config", "user.name", "Offline test"); git(grand, "config", "user.email", "offline@example.invalid");
+	writeFileSync(join(grand, "base.txt"), "grandchild work\n");
+	steps.push(bash(`${inRepo(grand, "add -A")} && ${inRepo(grand, "commit -m grand-change")}`), [],
+		[], inspect(inRepo(child, "diff --cached -- deps/grand")), bash(inRepo(child, "commit -m child-pin")), [],
+		[], inspect("git diff --cached -- modules/child"), bash("git commit -m root-pin"));
+	const report = await run();
+	expect(git(child, "rev-parse", "HEAD:deps/grand").trim()).toBe(git(grand, "rev-parse", "HEAD").trim());
+	expect(git(root, "rev-parse", "HEAD:modules/child").trim()).toBe(git(child, "rev-parse", "HEAD").trim());
+	expect(report.text.indexOf("grand-change")).toBeLessThan(report.text.indexOf("child-pin"));
+	expect(report.text.indexOf("child-pin")).toBeLessThan(report.text.indexOf("root-pin"));
+	expect(git(root, "status", "--porcelain")).toBe("");
+}, 45_000);
+
+it("pins and publishes the child HEAD produced by a publication pull merge", async () => {
+	const { source, child } = submoduleFixture();
+	const { childRemote, parentRemote } = publicationFixture(child);
+	git(child, "push", "--quiet", "origin", "main");
+	git(source, "remote", "add", "publication", childRemote);
+	writeFileSync(join(source, "remote.txt"), "remote work\n");
+	git(source, "add", "-A"); git(source, "commit", "--quiet", "-m", "remote work"); git(source, "push", "--quiet", "publication", "main");
+	writeFileSync(join(child, "local.txt"), "local work\n");
+	git(child, "add", "-A"); git(child, "commit", "--quiet", "-m", "local work");
+	const prePullHead = git(child, "rev-parse", "HEAD").trim();
+	steps.push({ name: "publish_repository", arguments: { repo: "modules/child" } }, [],
+		{ name: "publish_repository", arguments: { repo: "." } }, [],
+		inspect("git diff --cached -- modules/child"), bash("git commit -m integrated-child-pin"));
+	const report = await run(true);
+	const integratedHead = git(child, "rev-parse", "HEAD").trim();
+	expect(integratedHead).not.toBe(prePullHead);
+	expect(git(child, "log", "-1", "--format=%P").trim().split(" ")).toHaveLength(2);
+	expect(git(root, "rev-parse", "HEAD:modules/child").trim()).toBe(integratedHead);
+	expect(git(childRemote, "rev-parse", "main").trim()).toBe(integratedHead);
+	expect(git(parentRemote, "rev-parse", "main:modules/child").trim()).toBe(integratedHead);
+	expect(report.text).toContain("integrated-child-pin");
+	expect(report.text).toContain("Pushed.");
+}, 45_000);
+
+it("does not overwrite a different staged gitlink before the reviewer sees it", async () => {
+	const { child } = submoduleFixture();
+	git(child, "commit", "--quiet", "--allow-empty", "-m", "index-only child"); git(root, "add", "modules/child");
+	const indexedHead = git(child, "rev-parse", "HEAD").trim();
+	git(child, "commit", "--quiet", "--allow-empty", "-m", "working child");
+	steps.push([], [], inspect("git diff --cached -- modules/child"), bash("git add -- modules/child && git commit -m parent-pin"));
+	await run();
+	expect(JSON.stringify(results.map(result => result.content))).toContain(`+Subproject commit ${indexedHead}`);
+	expect(git(child, "rev-parse", "HEAD^").trim()).toBe(indexedHead);
+	expect(git(root, "rev-parse", "HEAD:modules/child").trim()).toBe(git(child, "rev-parse", "HEAD").trim());
+}, 45_000);
 
 it("does not infer publication from the model's completion wording", async () => {
 	completion = "Pushed";

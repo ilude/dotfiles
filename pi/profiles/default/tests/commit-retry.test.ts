@@ -88,7 +88,7 @@ beforeEach(() => {
 		else if (operation[0] === "status") stdout = "";
 		else if (operation[0] === "submodule" || operation[0] === "ls-files") stdout = "";
 		else if (operation[0] === "branch") stdout = "main";
-		else if (operation[0] === "push") stdout = "";
+		else if (operation[0] === "pull" || operation[0] === "push") stdout = "";
 		else throw new Error(`Unexpected Git operation: ${operation.join(" ")}`);
 		return { stdout, stderr: "", code: 0, killed: false };
 	});
@@ -226,7 +226,8 @@ it("uses a longer timeout only for publication", async () => {
 	responses.push({ message: message([{ type: "toolCall", id: "publish", name: "publish_repository", arguments: { repo: "." } }], "toolUse") }, { message: done() });
 	await start(undefined, true).run;
 	expect(git.mock.calls.find(([, args]) => args[2] === "push")?.[2]?.timeout).toBe(120_000);
-	expect(git.mock.calls.filter(([, args]) => args[2] !== "push").every(([, , options]) => options?.timeout === 15_000)).toBe(true);
+	expect(git.mock.calls.find(([, args]) => args[2] === "pull")?.[2]?.timeout).toBe(120_000);
+	expect(git.mock.calls.filter(([, args]) => args[2] !== "push" && args[2] !== "pull").every(([, , options]) => options?.timeout === 15_000)).toBe(true);
 });
 
 it("confirms a timed-out push from the remote without retrying it", async () => {

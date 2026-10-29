@@ -22,6 +22,12 @@
 - Allow `/bedrock reconcile` to use the `AWSReservedSSO_ccb-bedrock-developer` caller and keep its baseline filtered to the complete assumed-role ARN, preserving session-level attribution and existing personal IAM-user behavior.
 - Other assumed roles remain rejected. The AWS identity and deployed dashboard were inspected read-only; log query execution was denied for the configured IAM user.
 
+## 2026-10-27: Complete parent gitlinks in the default Pi commit runner
+
+- Move deepest-first repository sequencing into `/commit`'s runner instead of relying on one private model turn to coordinate every repository. If a parent's pin is omitted, stage the updated child gitlink and resume normal staged review/grouping and commit before continuing.
+- Complete child publication before the parent pass, including child HEAD changes from pull/merge. Defer premature parent requests, refresh pins before and after parent integration, and finish requested publication after pin commits without duplicate pushes of an unchanged HEAD.
+- Preserve explicit exclusions, staged submodule removals, index-only content, native hooks, detached local commits, clean outgoing children, and bare `/commit`'s local-only behavior. No unreviewed automatic commits, separate audit phase, or changes to legacy. Reload the default profile to activate.
+
 ## 2026-10-27: Close completed Pi subagents and reopen saved conversations for follow-up
 
 - Ordinary subagents now close their processes and panes on completion instead of offering a `retain` launch choice. Their conversations and results remain saved; explicit `subagent_control message` follow-ups reopen the same session with its original role, permissions, and launch configuration, then close again when done. Reopening uses the current owning runtime, not a new cross-restart registry.

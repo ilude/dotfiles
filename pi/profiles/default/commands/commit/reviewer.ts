@@ -77,14 +77,14 @@ export function formatPublicationEligibility(push: boolean, branch: string): str
 		: "Publication: ineligible; detached HEAD. Silently skip publication checks and actions for this repository; do not re-check its branch, outgoing commits, upstream, remotes, or push, and do not mention the skip.";
 }
 
-export function buildCommitTask(push: boolean, root: string, inventory: readonly string[]): string {
-	return `Execute the commit workflow now. ${push ? "Use only each inventory entry's deterministic Publication annotation. For eligible attached repositories, check outgoing commits and publish deepest-first with publish_repository, the sole pull owner. It runs `git pull --no-rebase --ff origin <captured-branch>` before pushing, fast-forwarding when possible and merging divergence without rewriting history. On established conflicts it returns recoverable conflict paths; use bash for inspection and resolution only when intent is clear, stage and commit the merge, then retry publish_repository. Do not issue a separate pull. Non-conflict pull errors stop dependent work. A conflict blocks publication of parents until resolved and retry succeeds. The tool pushes --recurse-submodules=no origin HEAD:refs/heads/<own-branch>. This includes clean initialized submodules with outgoing referenced commits. Silently skip detached entries without branch, outgoing, upstream, remote, or push checks or output. Push parents only after children, and refresh/stage parent gitlinks after child integration/commits. No force-push, tags, or other branches." : "Push was NOT requested. Do not run publication-related branch, upstream, outgoing, remote, or push checks or commands."}
+export function buildCommitTask(push: boolean, root: string, inventory: readonly string[], currentRepository = "."): string {
+	return `Execute the commit workflow now. ${push ? "Use only the selected inventory entry's deterministic Publication annotation. If it is eligible and attached, check outgoing commits and publish it with publish_repository, the sole pull owner. It runs `git pull --no-rebase --ff origin <captured-branch>` before pushing, fast-forwarding when possible and merging divergence without rewriting history. On established conflicts it returns recoverable conflict paths; use bash for inspection and resolution only when intent is clear, stage and commit the merge, then retry publish_repository. Do not issue a separate pull. Non-conflict pull errors stop dependent work. A conflict blocks publication of parents until resolved and retry succeeds. The tool pushes --recurse-submodules=no origin HEAD:refs/heads/<own-branch>. This includes clean initialized submodules with outgoing referenced commits. Silently skip detached entries without branch, outgoing, upstream, remote, or push checks or output. Push parents only after children, and refresh/stage parent gitlinks after child integration/commits. No force-push, tags, or other branches." : "Push was NOT requested. Do not run publication-related branch, upstream, outgoing, remote, or push checks or commands."}
 
 Location (JSON-quoted absolute path; decode and shell-quote as data):
 Repository root: ${JSON.stringify(root)}
 Host platform: ${process.platform}. Bash runs locally on this host. Use the supplied paths as data; on Windows this is not WSL: prefer root-relative paths or forward-slash Windows paths, not invented /mnt/c paths.
 
-Repository inventory (boundaries and initial state, not a candidate list; work deepest-first, running git add -A in each repository before staged review, then shape commits; stage parent gitlinks after child commits):
+Current repository: ${currentRepository}. Work only in this repository for this pass. The runner sequences children before parents and finishes requested publication before moving to the parent. Read its instructions, run git add -A before staged review, then shape and commit every eligible group. Do not process other repositories in this pass.\n\nRepository inventory (boundaries and initial state, not a candidate list):
 ${inventory.join("\n\n")}`;
 }
 
@@ -168,6 +168,102 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 					usedFallback = true;
 				}
 				selectedModel = model;
+
+				// Only immediate initialized children contribute gitlinks to this index.
+				const children = new Map<string, Array<{ repository: string; path: string }>>();
+				for (const repository of repositories.filter(path => path !== root)) {
+					const parent = repositories.filter(path => {
+						const id = repositoryId(path, repository);
+						return id !== "." && id !== ".." && !id.startsWith("../");
+					})
+						.sort((a, b) => b.length - a.length)[0];
+					if (!parent) continue;
+					const links = children.get(parent) ?? [];
+					links.push({ repository, path: repositoryId(parent, repository) });
+					children.set(parent, links);
+				}
+				const requestedPublications = new Set<string>();
+				const publishedHeads = new Map<string, string>();
+				const completedRepositories = new Set<string>();
+				let currentRepository = "";
+				const stageParentGitlinks = async (repository: string): Promise<string[]> => {
+					const links = children.get(repository) ?? [];
+					if (!links.length) return [];
+					const pending: string[] = [], stage: string[] = [];
+					const parentHead = await head(combined, repository);
+					for (const link of links) {
+						const path = repositoryId(root!, link.repository);
+						if ([...leftOut, ...outcome.split("\n").filter(line => line.startsWith("Left out: ")).map(line => line.slice(10))]
+							.some(line => line.startsWith(`${path}: `))) continue;
+						const childHead = await head(combined, link.repository);
+						if (!childHead) continue;
+						const index = await git(["--literal-pathspecs", "ls-files", "--stage", "-z", "--", link.path], combined, repository);
+						// Respect staged removal/replacement of a submodule, not just exclusions.
+						if (!index.startsWith("160000 ")) continue;
+						const indexed = /^160000 ([0-9a-f]+) 0\t/.exec(index)?.[1];
+						const committed = parentHead ? /^160000 commit ([0-9a-f]+)\t/.exec(await git(["--literal-pathspecs", "ls-tree", "-z", "HEAD", "--", link.path], combined, repository))?.[1] : undefined;
+						if (committed === childHead) continue;
+						const protectedIndex = indexed !== committed && indexed !== childHead;
+						pending.push(`${link.path}: ${committed ?? "uncommitted"} -> ${childHead}${protectedIndex ? " (review existing index-only/conflicted content before staging)" : ""}`);
+						if (!protectedIndex && indexed !== childHead) stage.push(link.path);
+					}
+					if (stage.length) await git(["--literal-pathspecs", "add", "--", ...stage], combined, repository);
+					return pending;
+				};
+				const publishRepository = async (_id: string, input: unknown): Promise<{ content: Array<{ type: "text"; text: string }>; details: Record<string, never>; isError?: boolean; needsReview?: boolean }> => {
+					const { repo } = input as { repo: string };
+					const target = publicationBranches.get(normalizeRepositoryId(repo));
+					if (!target) throw new Error(`No attached publication target in inventory: ${repo}`);
+					requestedPublications.add(normalizeRepositoryId(repo));
+					if ((target.path !== currentRepository && !completedRepositories.has(target.path)) || (children.get(target.path) ?? []).some(child => !completedRepositories.has(child.repository)))
+						return { content: [{ type: "text" as const, text: `Publication deferred: the runner will process ${repo} after its children. Finish the current repository only.` }], details: {} };
+					const pendingResult = (pending: string[]) => ({ content: [{ type: "text" as const, text: `Updated child gitlinks need staged review and commit before publishing ${repo}:\n${pending.join("\n")}\nInspect and commit them normally, then retry publish_repository.` }], details: {}, needsReview: true });
+					const pending = await stageParentGitlinks(target.path);
+					if (pending.length) return pendingResult(pending);
+					if (publishedHeads.get(target.path) === await head(combined, target.path))
+						return { content: [{ type: "text" as const, text: "This repository HEAD has already been published." }], details: {} };
+					if (unresolvedPublicationConflict && unresolvedPublicationConflict !== normalizeRepositoryId(repo)) throw new Error("Publication blocked until the unresolved pull conflict is resolved and its repository is retried.");
+					const ref = `refs/heads/${target.branch}`;
+					const integrated = await pi.exec("git", ["-C", target.path, "pull", "--no-rebase", "--ff", "origin", target.branch], { signal: combined, timeout: PUBLICATION_TIMEOUT_MS });
+					if (integrated.killed || integrated.code !== 0) {
+						let remoteBranch: string | undefined;
+						try { remoteBranch = await git(["ls-remote", "--heads", "origin", ref], combined, target.path, PUBLICATION_TIMEOUT_MS); }
+						catch { /* A failed verification must not authorize publication. */ }
+						if (integrated.killed) return { content: [{ type: "text" as const, text: `Pull before publication timed out or was cancelled for origin/${target.branch}. Do not push.` }], details: {}, isError: true };
+						const conflicts = await git(["diff", "--name-only", "--diff-filter=U"], combined, target.path);
+						if (conflicts) {
+							unresolvedPublicationConflict = normalizeRepositoryId(repo);
+							return { content: [{ type: "text" as const, text: `Pull from origin/${target.branch} established merge conflicts in: ${conflicts}. Do not publish this or any parent repository yet. Resolve only when intent is clear, stage and commit the merge with bash, then retry publish_repository; the retry owns the pull and will clear the publication block on success.` }], details: {} };
+						}
+						if (remoteBranch === undefined || remoteBranch) return { content: [{ type: "text" as const, text: `Pull before publication failed without an established merge conflict: ${integrated.stderr.trim()}. Do not push.` }], details: {}, isError: true };
+						// An empty origin branch is a valid first publication.
+					}
+					unresolvedPublicationConflict = undefined;
+					const integratedLinks = await stageParentGitlinks(target.path);
+					if (integratedLinks.length) return pendingResult(integratedLinks);
+					const intendedHead = await head(combined, target.path);
+					attemptedPushes++;
+					unknownPushes.add(repo);
+					const pushed = await pi.exec("git", ["-C", target.path, "push", "--recurse-submodules=no", "origin", `HEAD:${ref}`], { signal: combined, timeout: PUBLICATION_TIMEOUT_MS });
+					let output = pushed.stdout.trimEnd();
+					if (pushed.killed) {
+						// A killed client may have already published. Observe the remote without
+						// reusing a cancelled signal, and never retry the mutation automatically.
+						let remote = "";
+						try { remote = await git(["ls-remote", "--heads", "origin", ref], undefined, target.path, PUBLICATION_TIMEOUT_MS); }
+						catch { /* Keep the publication outcome unknown when verification fails. */ }
+						if (!intendedHead || !remote.split("\n").some(line => line === `${intendedHead}\t${ref}`))
+							throw new Error(`Git push outcome unknown: cancelled or timed out; remote branch could not be confirmed at ${intendedHead}. Check origin ${ref} before retrying.`);
+						output = "Push confirmed on the remote after cancellation or timeout.";
+					} else if (pushed.code !== 0) {
+						unknownPushes.delete(repo);
+						throw new Error(`Git push failed: ${pushed.stderr.trim()}`);
+					}
+					unknownPushes.delete(repo);
+					successfulPushes++;
+					publishedHeads.set(target.path, intendedHead);
+					return { content: [{ type: "text" as const, text: output || "Push succeeded." }], details: {} };
+				};
 				const read = createReadTool(root);
 				const shell = createBashTool(root);
 				agent = new Agent({
@@ -179,49 +275,7 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 								name: "publish_repository", label: "Publish repository",
 								description: "Enforce integration before publishing an eligible inventory repository: run git pull --no-rebase --ff origin <captured-branch>, then push the captured own branch to origin. Use instead of shell git push. Call deepest-first; parent gitlinks must reflect the integrated child HEAD.",
 								parameters: Type.Object({ repo: Type.String() }),
-								execute: async (_id: string, input: unknown) => {
-									const { repo } = input as { repo: string };
-									const target = publicationBranches.get(normalizeRepositoryId(repo));
-									if (!target) throw new Error(`No attached publication target in inventory: ${repo}`);
-									if (unresolvedPublicationConflict && unresolvedPublicationConflict !== normalizeRepositoryId(repo)) throw new Error("Publication blocked until the unresolved pull conflict is resolved and its repository is retried.");
-									const ref = `refs/heads/${target.branch}`;
-									const integrated = await pi.exec("git", ["-C", target.path, "pull", "--no-rebase", "--ff", "origin", target.branch], { signal: combined, timeout: PUBLICATION_TIMEOUT_MS });
-									if (integrated.killed || integrated.code !== 0) {
-										let remoteBranch: string | undefined;
-										try { remoteBranch = await git(["ls-remote", "--heads", "origin", ref], combined, target.path, PUBLICATION_TIMEOUT_MS); }
-										catch { /* A failed verification must not authorize publication. */ }
-										if (integrated.killed) return { content: [{ type: "text" as const, text: `Pull before publication timed out or was cancelled for origin/${target.branch}. Do not push.` }], details: {}, isError: true };
-										const conflicts = await git(["diff", "--name-only", "--diff-filter=U"], combined, target.path);
-										if (conflicts) {
-											unresolvedPublicationConflict = normalizeRepositoryId(repo);
-											return { content: [{ type: "text" as const, text: `Pull from origin/${target.branch} established merge conflicts in: ${conflicts}. Do not publish this or any parent repository yet. Resolve only when intent is clear, stage and commit the merge with bash, then retry publish_repository; the retry owns the pull and will clear the publication block on success.` }], details: {} };
-										}
-										if (remoteBranch === undefined || remoteBranch) return { content: [{ type: "text" as const, text: `Pull before publication failed without an established merge conflict: ${integrated.stderr.trim()}. Do not push.` }], details: {}, isError: true };
-						// An empty origin branch is a valid first publication.
-									}
-									unresolvedPublicationConflict = undefined;
-									const intendedHead = await head(combined, target.path);
-									attemptedPushes++;
-									unknownPushes.add(repo);
-									const pushed = await pi.exec("git", ["-C", target.path, "push", "--recurse-submodules=no", "origin", `HEAD:${ref}`], { signal: combined, timeout: PUBLICATION_TIMEOUT_MS });
-									let output = pushed.stdout.trimEnd();
-									if (pushed.killed) {
-										// A killed client may have already published. Observe the remote without
-										// reusing a cancelled signal, and never retry the mutation automatically.
-										let remote = "";
-										try { remote = await git(["ls-remote", "--heads", "origin", ref], undefined, target.path, PUBLICATION_TIMEOUT_MS); }
-										catch { /* Keep the publication outcome unknown when verification fails. */ }
-										if (!intendedHead || !remote.split("\n").some(line => line === `${intendedHead}\t${ref}`))
-											throw new Error(`Git push outcome unknown: cancelled or timed out; remote branch could not be confirmed at ${intendedHead}. Check origin ${ref} before retrying.`);
-										output = "Push confirmed on the remote after cancellation or timeout.";
-									} else if (pushed.code !== 0) {
-										unknownPushes.delete(repo);
-										throw new Error(`Git push failed: ${pushed.stderr.trim()}`);
-									}
-									unknownPushes.delete(repo);
-									successfulPushes++;
-									return { content: [{ type: "text" as const, text: output || "Push succeeded." }], details: {} };
-								},
+								execute: publishRepository,
 							}] : []),
 							{
 								...shell, name: "inspect", label: "Inspect repository",
@@ -311,50 +365,85 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 				});
 				combined.throwIfAborted();
 				progress("Reviewing changes…");
-				await agent.prompt(buildCommitTask(push, root, inventory));
-				const lastError = () => {
-					const last = agent!.state.messages.at(-1);
-					return last?.role === "assistant" && last.stopReason === "error" ? last : undefined;
-				};
-				for (;;) {
-					for (let retry = 0; retry < RESPONSE_RETRIES; retry++) {
+				const reviewer = agent;
+				const reviewRepository = async (task: string) => {
+					await reviewer.prompt(task);
+					const lastError = () => {
+						const last = reviewer.state.messages.at(-1);
+						return last?.role === "assistant" && last.stopReason === "error" ? last : undefined;
+					};
+					for (;;) {
+						for (let retry = 0; retry < RESPONSE_RETRIES; retry++) {
+							combined.throwIfAborted();
+							if (failure) throw new Error(failure);
+							const last = lastError();
+							if (!last
+								|| (!isRetryableAssistantError(last) && last.errorMessage !== "WebSocket stream closed before response.completed")
+								|| isContextOverflow(last, model.contextWindow)
+								|| /timed?\s*out|timeout/i.test(last.errorMessage ?? "")) break;
+							progress(`Retrying model response (${retry + 1}/${RESPONSE_RETRIES})…`);
+							await timers.setTimeout(1000 * 2 ** retry, undefined, { signal: combined });
+							combined.throwIfAborted();
+							// Agent never executes tools from an errored response. Remove only that
+							// response, keeping all completed tool results, as native Pi retry does.
+							reviewer.state.messages = reviewer.state.messages.slice(0, -1);
+							progress("Reviewing changes…");
+							await reviewer.continue();
+						}
 						combined.throwIfAborted();
 						if (failure) throw new Error(failure);
 						const last = lastError();
-						if (!last
-							|| (!isRetryableAssistantError(last) && last.errorMessage !== "WebSocket stream closed before response.completed")
-							|| isContextOverflow(last, model.contextWindow)
-							|| /timed?\s*out|timeout/i.test(last.errorMessage ?? "")) break;
-						progress(`Retrying model response (${retry + 1}/${RESPONSE_RETRIES})…`);
-						await timers.setTimeout(1000 * 2 ** retry, undefined, { signal: combined });
-						combined.throwIfAborted();
-						// Agent never executes tools from an errored response. Remove only that
-						// response, keeping all completed tool results, as native Pi retry does.
-						agent.state.messages = agent.state.messages.slice(0, -1);
-						progress("Reviewing changes…");
-						await agent.continue();
+						if (!last || usedFallback) break;
+						// Luna failed after retries: continue the same transcript on Haiku.
+						let fallback: Model<Api>;
+						try { fallback = await resolveFallbackModel(runtime, combined); }
+						catch { break; }
+						usedFallback = true;
+						model = fallback;
+						selectedModel = fallback;
+						progress(`Luna failed (${last.errorMessage ?? "error"}); retrying with ${fallback.id}…`);
+						reviewer.state.messages = reviewer.state.messages.slice(0, -1);
+						reviewer.state.model = fallback;
+						await reviewer.continue();
 					}
 					combined.throwIfAborted();
 					if (failure) throw new Error(failure);
-					const last = lastError();
-					if (!last || usedFallback) break;
-					// Luna failed after retries: continue the same transcript on Haiku.
-					let fallback: Model<Api>;
-					try { fallback = await resolveFallbackModel(runtime, combined); }
-					catch { break; }
-					usedFallback = true;
-					model = fallback;
-					selectedModel = fallback;
-					progress(`Luna failed (${last.errorMessage ?? "error"}); retrying with ${fallback.id}…`);
-					agent.state.messages = agent.state.messages.slice(0, -1);
-					agent.state.model = fallback;
-					await agent.continue();
+					const last = [...reviewer.state.messages].reverse().find((message) => message.role === "assistant");
+					if (!last || last.stopReason === "error" || last.stopReason === "aborted") throw new Error(last?.errorMessage || `${selectedModel?.id ?? "Model"} returned no response.`);
+					outcome += "\n" + last.content.filter((part) => part.type === "text").map((part) => part.text).join("\n").trim();
+				};
+				const finishGitlinks = async (repository: string) => {
+					const repo = repositoryId(root!, repository);
+					let pending = await stageParentGitlinks(repository);
+					while (pending.length) {
+						const before = await head(combined, repository);
+						await reviewRepository(`Finish repository ${repo} before its parent. Updated child gitlinks need staged review and a normal commit:\n${pending.join("\n")}\nThe runner staged safe pointer updates only. Preserve any identified index-only content before staging it. Inspect the staged diff, group/message and commit normally, or report an applicable exclusion as Left out: <root-relative path>: <reason>. Do not leave an omitted parent pin for the operator.`);
+						pending = await stageParentGitlinks(repository);
+						if (pending.length && await head(combined, repository) === before)
+							throw new Error(`Unfinished submodule gitlinks in ${repo}: ${pending.join("; ")}`);
+					}
+				};
+				for (const repository of [...repositories].sort((a, b) => b.length - a.length)) {
+					currentRepository = repository;
+					const repo = repositoryId(root, repository);
+					await reviewRepository(buildCommitTask(push, root, inventory, repo));
+					await finishGitlinks(repository);
+					if (push && requestedPublications.has(repo)) {
+						let publication = await publishRepository("runner-publication", { repo });
+						while (unresolvedPublicationConflict || publication.needsReview) {
+							if (publication.needsReview) await finishGitlinks(repository);
+							else {
+								const before = await head(combined, repository);
+								await reviewRepository(publication.content.map(part => part.text).join("\n"));
+								if (await head(combined, repository) === before) throw new Error(`Unresolved publication conflict in ${repo}`);
+								await finishGitlinks(repository);
+							}
+							publication = await publishRepository("runner-publication", { repo });
+						}
+						if (publication.isError) throw new Error(publication.content.map(part => part.text).join("\n"));
+					}
+					completedRepositories.add(repository);
 				}
-				combined.throwIfAborted();
-				if (failure) throw new Error(failure);
-				const last = [...agent.state.messages].reverse().find((message) => message.role === "assistant");
-				if (!last || last.stopReason === "error" || last.stopReason === "aborted") throw new Error(last?.errorMessage || `${selectedModel?.id ?? "Model"} returned no response.`);
-				outcome = last.content.filter((part) => part.type === "text").map((part) => part.text).join("\n").trim();
 			} catch (error) {
 				failure = signal?.aborted ? "Cancelled" : deadline.signal.aborted ? "Timed out" : error instanceof Error ? error.message : String(error);
 			} finally {

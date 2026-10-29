@@ -11,7 +11,9 @@ it("supplies boundaries, stage-first ordering, and captured publication permissi
 	expect(task).toContain(`Host platform: ${process.platform}`);
 	expect(task).toContain("not invented /mnt/c paths");
 	expect(task).toContain(inventory.join("\n\n"));
-	expect(task).toContain("running git add -A in each repository before staged review");
+	expect(task).toContain("run git add -A before staged review");
+	expect(task).toContain("Current repository: .");
+	expect(buildCommitTask(false, ".", inventory, "child")).toContain("Current repository: child. Work only in this repository");
 	expect(task).toContain("Push was NOT requested");
 	expect(task).not.toContain("commit_git_review");
 	expect(buildCommitTask(true, ".", inventory)).toContain("clean initialized submodules with outgoing referenced commits");
