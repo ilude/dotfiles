@@ -13,7 +13,7 @@ export interface UsageRecord {
 	usage: Required<Omit<TokenUsage, "cacheWrite1h">> & Pick<TokenUsage, "cacheWrite1h">; pricing: PriceResult;
 }
 export interface CostBaseline {
-	schemaVersion: 1; month: string; principal: string; amount: number; invocations: number;
+	schemaVersion: 1; month: string; principal: string; scope?: "user"; accountId?: string; userName?: string; amount: number; invocations: number;
 	capturedAt: string; source: "cloudwatch-bedrock-invocation-logs";
 }
 export interface UsageSummary { month: string; records: UsageRecord[]; cost: number; unpriced: number; baseline: number; baselineDetails?: CostBaseline; error?: string }

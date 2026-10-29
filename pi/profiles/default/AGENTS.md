@@ -4,6 +4,10 @@
 
  Show, don't tell: brief intent updates are fine, but do not end a turn by promising actionable work. Do it or state the concrete blocker.
 
+ ## Web and browser tool selection
+
+ For web research, image discovery, scraping, screenshots, or browser automation, load the `web-tools` skill to choose the capability, then the relevant provider skill. Use only tools permitted to your role; return unavailable browser/provider work to the orchestrator. Native search/fetch remain the starting point for ordinary public lookup and reading; distinguish search results, extracted content, and rendered-browser evidence.
+
  ## Pi terminology
 
  - The orchestrator is the primary model the user interacts with in a Pi instance.

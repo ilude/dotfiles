@@ -199,3 +199,4 @@ menos/
 /pi/tests/.tmp/
 /pi/browser-profiles.json
 /pi/profiles/legacy/.awaiting-migration
+/bedrock-cur-snapshot.json

@@ -11,23 +11,27 @@ it("supplies boundaries, stage-first ordering, and captured publication permissi
 	expect(task).toContain(`Host platform: ${process.platform}`);
 	expect(task).toContain("not invented /mnt/c paths");
 	expect(task).toContain(inventory.join("\n\n"));
-	expect(task).toContain("run git add -A before staged review");
+	expect(task).toContain("run git add -A");
+	expect(task).toContain("staged child gitlinks before staged review");
+	expect(task).toContain("call submit_commit_plan covering every current changed path exactly once");
 	expect(task).toContain("Current repository: .");
 	expect(buildCommitTask(false, ".", inventory, "child")).toContain("Current repository: child. Work only in this repository");
 	expect(task).toContain("Push was NOT requested");
 	expect(task).not.toContain("commit_git_review");
 	expect(buildCommitTask(true, ".", inventory)).toContain("clean initialized submodules with outgoing referenced commits");
-	expect(buildCommitTask(true, ".", inventory)).toContain("--recurse-submodules=no origin HEAD:refs/heads/<own-branch>");
-	expect(buildCommitTask(true, ".", inventory)).toContain("publish_repository");
-	expect(buildCommitTask(true, ".", inventory)).toContain("git pull --no-rebase --ff origin <captured-branch>");
-	expect(buildCommitTask(true, ".", inventory)).toContain("stage and commit the merge, then retry publish_repository");
+	expect(buildCommitTask(true, ".", inventory)).toContain("Publication is code-owned");
+	expect(buildCommitTask(true, ".", inventory)).toContain("Do not check outgoing commits or run pull/push");
+	expect(buildCommitTask(true, ".", inventory)).toContain("integrates and publishes children before parents");
+	expect(buildCommitTask(true, ".", inventory)).toContain("request conflict resolution separately");
+	expect(buildCommitTask(true, ".", inventory)).not.toContain("publish_repository");
 	expect(buildCommitTask(false, ".", inventory)).not.toContain("git pull");
 });
 
 it("retains deterministic attached and detached publication behavior", () => {
 	expect(formatPublicationEligibility(false, "main")).toBe("");
 	expect(formatPublicationEligibility(true, "main")).toContain('attached branch "main"');
-	expect(formatPublicationEligibility(true, "main")).toContain("Integrate origin/main with git pull --no-rebase --ff");
+	expect(formatPublicationEligibility(true, "main")).toContain("integrates origin/main with git pull --no-rebase --ff");
+	expect(formatPublicationEligibility(true, "main")).toContain("publishes after a successful pass");
 	expect(formatPublicationEligibility(true, "")).toContain("do not re-check its branch, outgoing commits, upstream, remotes, or push");
 });
 

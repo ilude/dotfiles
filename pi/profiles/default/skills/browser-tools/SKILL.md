@@ -1,11 +1,11 @@
 ---
 name: browser-tools
-description: "Local browser automation via Brave CDP. Use for logged-in checks, exact page targets, screenshots, or controlled browser comparisons."
+description: "Operate local Brave through native session/page tools. Load for existing local login, exact local tabs, localhost testing, or local browser comparisons; public cloud screenshots use the web-tools routing skill."
 ---
 
 # Browser tools
 
-Prefer `web_search`, `web_fetch`, or a source-specific tool unless the task requires JavaScript, logged-in state, screenshots, or visible interaction. For setup, credential binding, stale-session recovery, and enforcement limits, see the [browser security and operation guide](../../../../../docs/browser-security.md).
+Use [web tool selection](../web-tools/SKILL.md) to choose between search, extraction, cloud browsing, and this local Brave workflow. Use this skill when the task needs local browser state, local access, or the operator's exact browser; a public screenshot alone does not require a local profile. For setup, credential binding, stale-session recovery, and enforcement limits, see the [browser security and operation guide](../../../../../docs/browser-security.md).
 
 ## Start with discovery
 
