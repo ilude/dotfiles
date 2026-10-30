@@ -13,8 +13,9 @@ Implement the operator's sidebar organization and activity visibility in the def
 - Team Leads and subagent overflow appear as indented sidebar entries beneath their owning project, like the highlighted `task/commit-co…` child beneath `.dotfiles` in `C:/Users/mglenn/Pictures/Screenpresso/2026-10-28_19h12_19.png`. Separate top-level workspaces with descriptive names are not an acceptable substitute.
 - Every Team Lead gets a dedicated entry from launch and retains it throughout its lifetime, including reopened follow-ups. Free space at the caller never moves it back inline. Preserve ancestry-based grouping of its descendants and team overflow.
 - Preserve ordinary-agent inline placement, existing readable two-pane geometry, caller lower-half placement, ordinary overflow compaction, focus preservation, manual-layout protection, user-created tabs, and ownership-scoped cleanup.
-- Show `agents: N active` next to Onclave in the footer for all active descendants belonging to chats in this Pi process, including inactive chats and nested leaves. Results and questions still belong to the originating chat/coordinator.
+- Show `agents: N active` next to Onclave in the footer for all active descendants belonging to chats in this Pi process, including inactive chats and nested leaves. Use a noticeable theme color distinct from the token statistics that follow it. Hide the indicator at zero. Results and questions still belong to the originating chat/coordinator.
 - Explicitly distinguish stopped partial/blocked attempts from completed assignments. The orchestrator evaluates unfinished work, answers questions or resumes the saved child with concrete remaining work when possible. A partial result is not a reason to abandon the assignment or claim work is continuing.
+- Preserve normal automatic closure. When completed agents are allowed to persist, the orchestrator should attempt cleanup through existing controls once they are no longer needed, preserving explicit user ownership and unrelated content.
 
 Excluded: Herdr Rust/source changes, native builds, replacement binaries, Herdr deployment, Git worktrees/branches/checkouts as a layout mechanism, changes to agents' assigned working directories, cross-process activity registries, automatic runtime retry loops, and legacy-profile changes. Do not silently substitute flatter sidebar organization or broaden these exclusions to obtain a passing implementation.
 
@@ -81,7 +82,7 @@ Adapt routine mechanisms within fixed scope. Continue independent tasks around t
 - [ ] **T2: Instance-wide active footer, origin-scoped delivery**
   - Depends on: none. Parallel with T1 and T3.
   - Own `runtime.ts`, `extensions/subagents.ts`, and runtime/session-lifecycle tests.
-  - Expose a process-local activity snapshot/count independently of delivery bindings. Refresh the active UI for changes from any origin; bind immediately on chat switch. Use the activity contract above, including nested/waiting/resumed records. Preserve mailbox ownership, acknowledgement and reload/shutdown rules. Use the existing footer status integration, not a new widget.
+  - Expose a process-local activity snapshot/count independently of delivery bindings. Refresh the active UI for changes from any origin; bind immediately on chat switch. Use the activity contract above, including nested/waiting/resumed records. Preserve mailbox ownership, acknowledgement and reload/shutdown rules. Use the existing footer status integration, not a new widget. Render active status in a noticeable theme color distinct from following token statistics; hide it at zero.
   - Verify: `pnpm test subagent-runtime.test.ts subagent-session-lifecycle.test.ts` in default profile.
   - Done: chat B shows work launched from A, receives no A results, nested children count once, settled children disappear, and follow-ups become active again.
   - Evidence: not started.
@@ -89,7 +90,7 @@ Adapt routine mechanisms within fixed scope. Continue independent tasks around t
 - [ ] **T3: Accurate stopped-attempt outcomes and coordinator follow-through**
   - Depends on: none. Parallel with T1 and T2.
   - Own `status.ts`, `presentation.ts` if needed, `guidance.ts`, and focused status/presentation/guidance/terminal-outcome tests.
-  - Make partial/blocked terminal messages explicit without mislabeling completed follow-ups or cleanup. Add concise coordinator guidance to assess unfinished results and resume/answer through existing controls when appropriate, not claim ongoing work after stop. Keep cancellation and direct-user ownership authoritative; no runtime auto-retry mechanism.
+  - Make partial/blocked terminal messages explicit without mislabeling completed follow-ups or cleanup. Add concise coordinator guidance to assess unfinished results and resume/answer through existing controls when appropriate, not claim ongoing work after stop. Keep cancellation and direct-user ownership authoritative; no runtime auto-retry mechanism. Include coordinator guidance to attempt existing cleanup controls for completed agents that remain open and are no longer needed, without replacing normal automatic closure or closing user-owned resources.
   - Verify: `pnpm test subagent-status.test.ts subagent-presentation.test.ts subagent-guidance.test.ts subagent-terminal-outcomes.test.ts`.
   - Done: model and operator presentation distinguish stopped, working again, completed and blocked, and preserve the supported saved-session resumption contract.
   - Evidence: not started.
