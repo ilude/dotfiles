@@ -1,5 +1,13 @@
 # Agent process failure log
 
+## APR-mr-description-task-log - Review summaries accumulated investigation history
+
+- **Reference:** Operator correction after merge-request description updates, 2026-10-29.
+- **Observed:** Repeated updates appended debugging history, superseded failures, test implementation details, and long lists of unchanged behavior. A new bullet was inserted before the existing introduction without restructuring the description. Live readback confirmed the clutter after the operator challenged whether the text was needed.
+- **Finding:** The descriptions were maintained as task logs rather than written for reviewers. Existing concise-communication and documentation-placement guidance already covers the distinction; another instruction paraphrase is not the remedy.
+- **Correction:** Rewrote both affected descriptions around actual changes, one necessary configuration action, current validation, and the issue link. Removed investigation narratives and unchanged-scope boilerplate.
+- **Status:** Live descriptions updated and read back. No code or instruction-policy changes.
+
 ## APR-ccyl-herdr-handoff - Claude review startup and answer recovery friction
 
 - **Reference:** Default sessions `01a18563-1cec-7622-afea-ff7d200ef5b5` (workflow discussion), `01a184f6-9f94-72cf-971f-532853874904` (records 155–183), and `01a17d70-fc1d-71de-a68f-7b83a6bdb034` (records 3132–3148), reviewed 2026-10-29 at operator request.
