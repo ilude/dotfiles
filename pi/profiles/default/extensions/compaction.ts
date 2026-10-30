@@ -5,6 +5,7 @@ import {
   type ExtensionAPI,
   type SessionBeforeCompactEvent,
 } from "@earendil-works/pi-coding-agent";
+import { accountHelperStream, helperResponseAccounting } from "../lib/bedrock/helper-accounting.ts";
 
 export const HANDOFF_INSTRUCTIONS = `Produce one current checkpoint from the previous summary and the chronological messages, including any partial turn. Reconcile them rather than appending conflicting summaries.
 Preserve the requested outcome, current scope and authorization, settled decisions, completion evidence, and canonical plan path when present. Distinguish user-approved requirements from proposals and unresolved hypotheses. Replace superseded intent with the latest explicit correction; do not preserve an obsolete restriction or approval as current.
@@ -43,6 +44,7 @@ export function unifiedPreparation(event: SessionBeforeCompactEvent): SessionBef
 
 export function registerCompaction(pi: ExtensionAPI, summarize: typeof compact = compact): void {
   pi.on("session_before_compact", async (event, ctx) => {
+    const account = helperResponseAccounting(ctx, pi);
     try {
       if (!ctx.model) throw new Error("No model selected for compaction");
       const auth = await ctx.modelRegistry.getApiKeyAndHeaders(ctx.model);
@@ -61,7 +63,7 @@ export function registerCompaction(pi: ExtensionAPI, summarize: typeof compact =
       // Route through ModelRegistry instead so request-time auth can mint Bedrock
       // Mantle tokens from the selected profile's AWS credential chain.
       const stream = (requestModel: typeof model, context: Parameters<typeof ctx.modelRegistry.streamSimple>[1], options: Parameters<typeof ctx.modelRegistry.streamSimple>[2]) =>
-        ctx.modelRegistry.streamSimple(requestModel, context, options);
+        accountHelperStream(ctx.modelRegistry.streamSimple(requestModel, context, options), account);
       const result = await summarize(
         unifiedPreparation(event), model, auth.apiKey, headers, instructions,
         event.signal, pi.getThinkingLevel(), stream, auth.env, settings.getRetrySettings(),

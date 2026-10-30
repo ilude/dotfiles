@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-10-29: Add same-session goal execution
+
+- Add default-profile `/goal` commands for starting, inspecting, pausing, and resuming authorized work through native checkpoints and compaction. Keep the original goal and direct user decisions authoritative over findings and summaries; stop for one consequential question or a concrete blocker. Planning, `/do-it`, and worktrees are not prerequisites or added approval gates.
+- Document optional whole-run Bedrock dollar and absolute Codex weekly-usage thresholds, unavailable-usage pauses, conservative pacing, and a fixed 10% reserve solely for restoring buildability. Counters cover only their named systems, do not restrict omitted providers, and cannot guarantee strict ceilings against in-flight usage or reporting lag.
+- Wire authenticated descendant admission, per-exchange enrollment, accounting acknowledgements, and goal-owned stopping. Include Bedrock compaction and internal permission/review helpers without double-counting aggregate returned usage. Preserve cleanup errors and keep in-flight descendant accounting open through cancellation.
+- Pass 245 focused tests across 19 files. Full-profile typechecking remains blocked by three existing context-type errors in `tests/codex-usage-tool.test.ts`; live provider-boundary and attached-terminal behavior remain unverified. See `pi/profiles/default/docs/goal.md` for syntax and limits. Load with a fresh default-profile process or settled-only `/reload` with no active or retained subagents; restored goals require explicit resume.
+
 ## 2026-10-29: Add opt-in Windows SSH server setup
 
 - Add `scripts/windows-ssh-setup.ps1` as an explicit administrator command, separate from all normal installers. Install the built-in Windows OpenSSH Server, enable automatic service startup, and limit the standard local SSH firewall rule to Domain/Private networks.

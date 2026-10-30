@@ -5,6 +5,7 @@ import { summarizeBilling, formatBillingUsage } from "../../lib/bedrock/billing.
 import { writeCurSnapshot } from "../../lib/bedrock/cur-snapshot.js";
 import { queryPersonalCur } from "../../lib/bedrock/cur-query.js";
 import { registerProfileCommand } from "../../lib/profile-command.ts";
+import { notifyGoalAccounting } from "./accounting.ts";
 
 export const CUR_REFRESH_INTERVAL = 15 * 60_000;
 
@@ -59,6 +60,7 @@ export default function bedrock(pi: ExtensionAPI): void {
 	pi.on("message_end", async (event, ctx) => {
 		const result = await accountBedrockMessage(event.message, bedrockSessionReference(ctx), () => ctx.ui.setStatus("bedrock", "bedrock: estimate incomplete"));
 		if (!result) return;
+		await notifyGoalAccounting(pi, result);
 		if (result.persisted) await refreshStatus(ctx);
 		return { message: result.message };
 	});

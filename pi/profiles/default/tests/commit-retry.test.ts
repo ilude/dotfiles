@@ -3,6 +3,7 @@ import { realpathSync } from "node:fs";
 import { createAssistantMessageEventStream, type AssistantMessage, type Model, type Tool, type TranscriptContext } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext, ModelRuntime, createBashTool } from "@earendil-works/pi-coding-agent";
 import { runCommitReviewer } from "../commands/commit/reviewer.ts";
+import * as accounting from "../lib/bedrock/accounting.ts";
 
 // Keep the real Agent and its stream/tool lifecycle. Only provider and shell/Git
 // boundaries are replaced: these tests never send requests or mutate a repository.
@@ -103,10 +104,21 @@ afterEach(() => vi.restoreAllMocks());
 
 function start(signal?: AbortSignal, push = false, update?: (text: string) => void) {
 	const pi = { exec: git } as unknown as ExtensionAPI;
-	const ctx = { cwd: root, hasUI: false } as ExtensionContext;
+	const ctx = { cwd: root, hasUI: false, sessionManager: { getSessionFile: () => "commit-origin.jsonl" } } as ExtensionContext;
 	const run = runCommitReviewer(pi, ctx, push, signal, text => { progress.push(text); update?.(text); });
 	return { run };
 }
+
+it("accounts each finalized reviewer response including failed partial usage, not returned totals", async () => {
+	const account = vi.spyOn(accounting, "accountBedrockMessage").mockResolvedValue(undefined);
+	const partial = { ...failed(), provider: "bedrock-mantle", responseModel: "openai.gpt-5.6-luna" };
+	const success = { ...done(), provider: "bedrock-mantle", responseModel: "unknown-target" };
+	responses.push({ message: partial }, { message: success });
+	await start().run;
+	expect(account).toHaveBeenCalledTimes(2);
+	expect(account).toHaveBeenNthCalledWith(1, partial, "commit-origin.jsonl");
+	expect(account).toHaveBeenNthCalledWith(2, success, "commit-origin.jsonl");
+});
 
 it.each([false, true])("retries the same response context after a completed inspection (stream started=%s)", async started => {
 	changed.set("unfinished.txt", " M");

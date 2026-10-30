@@ -32,5 +32,5 @@ export function childLaunch(spec: LaunchSpec, id: string, profile: string, endpo
   manifest:spec.closeoutManifest,
   provenance:{source:"subagent-runtime",version:1,childId:id,agent:d.name,parentSessionId:spec.closeoutParentSessionId,targetCheckout:spec.closeoutManifest.targetCheckout},
  }:undefined;
- return {args,env:{PI_CODING_AGENT_DIR:resolve(profile),PI_SUBAGENT_AUTHORITY:JSON.stringify({id,agent:d.name,tools,delegates:d.delegates,parentId:spec.parentId,cwd:spec.cwd,skills:spec.skills,surface:spec.surface,closeout}),PI_SUBAGENT_PROMPT:spec.prompt??d.prompt,PI_SUBAGENT_ENDPOINT:endpoint?JSON.stringify(endpoint):""}};
+ return {args,env:{PI_CODING_AGENT_DIR:resolve(profile),PI_GOAL_RUN_ID:spec.goalRunId??"",PI_SUBAGENT_AUTHORITY:JSON.stringify({id,agent:d.name,tools,delegates:d.delegates,parentId:spec.parentId,goalRunId:spec.goalRunId,cwd:spec.cwd,skills:spec.skills,surface:spec.surface,closeout}),PI_SUBAGENT_PROMPT:spec.prompt??d.prompt,PI_SUBAGENT_ENDPOINT:endpoint?JSON.stringify(endpoint):""}};
 }

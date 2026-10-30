@@ -3,6 +3,7 @@ import { createAssistantMessageEventStream, type AssistantMessage, type Context,
 import type { StreamFn } from "@earendil-works/pi-agent-core";
 import { compact, type ExtensionAPI, type ExtensionContext, type SessionBeforeCompactEvent, type CompactionResult } from "@earendil-works/pi-coding-agent";
 import { HANDOFF_INSTRUCTIONS, registerCompaction, unifiedPreparation } from "../extensions/compaction.ts";
+import * as accounting from "../lib/bedrock/accounting.ts";
 
 const model: Model<"openai-completions"> = { id: "fixture", name: "Fixture", provider: "fixture", api: "openai-completions", baseUrl: "https://unused.invalid", reasoning: false, input: ["text"], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 32000, maxTokens: 4096 };
 const usage = { input: 10, output: 5, cacheRead: 0, cacheWrite: 0, totalTokens: 15, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
@@ -77,6 +78,22 @@ describe("unified compaction", () => {
     expect(summarize.mock.calls[0][9]).toBeDefined();
     expect(JSON.stringify(requests[0])).toContain("FOCUS_SENTINEL");
     expect(notify).not.toHaveBeenCalled();
+  });
+
+  it("accounts the actual summary response before returning compaction, not its aggregate usage", async () => {
+    const account = vi.spyOn(accounting, "accountBedrockMessage").mockResolvedValue(undefined);
+    try {
+      const { handler, ctx } = fixture(compact);
+      const response: AssistantMessage = { role: "assistant", content: [{ type: "text", text: "checkpoint" }], api: "openai-responses", provider: "bedrock-mantle", model: "logical", responseModel: "openai.gpt-5.6-luna", usage, stopReason: "stop", timestamp: 1 };
+      ctx.sessionManager = { getSessionFile: () => "original-session.jsonl" } as ExtensionContext["sessionManager"];
+      ctx.modelRegistry.streamSimple = () => {
+        const stream = createAssistantMessageEventStream();
+        stream.push({ type: "done", reason: "stop", message: response });
+        return stream;
+      };
+      expect((await handler(event(), ctx))?.compaction?.summary).toContain("checkpoint");
+      expect(account).toHaveBeenCalledExactlyOnceWith(response, "original-session.jsonl");
+    } finally { account.mockRestore(); }
   });
 
   it("cancels a failed hook instead of falling back to native split generation", async () => {

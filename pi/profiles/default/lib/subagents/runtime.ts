@@ -20,6 +20,15 @@ export type DeliveryKind = "outcome" | "question" | "question-resolution";
 export interface Delivery extends ChildRecord { deliveryId: string; deliveryKind?: DeliveryKind }
 export interface BoundOrigin { deliver: (record: Delivery) => boolean; status?: (records: ChildRecord[]) => void }
 export interface CleanupSummary { complete: boolean; attempted: number; failures: Array<{ id: string; error: string }> }
+/** Optional /goal ownership. Descendant admission never relies on model-visible instructions. */
+export interface GoalBinding {
+ runId:string;
+ capture:()=>boolean;
+ admit:()=>Promise<{allowed:boolean;reason?:string;guidance?:string}>;
+ enroll:(session:string)=>void;
+ close?:(session:string)=>void;
+ accounting:(event:unknown)=>Promise<void>;
+}
 
 /** Copy runtime records at delivery and reload boundaries without sharing nested result data. */
 function cloneRecord(record: ChildRecord): ChildRecord {
@@ -75,6 +84,42 @@ class InertChild {
 export class SubagentRuntime {
  private children=new Map<string,RpcChild>();
  private contexts=new Map<string,Context>();
+ private goalBindings=new Map<string,GoalBinding>();
+ bindGoal(origin:string,binding:GoalBinding){this.goalBindings.set(origin,binding)}
+ unbindGoal(origin:string,binding:GoalBinding){if(this.goalBindings.get(origin)===binding)this.goalBindings.delete(origin)}
+ private goalBinding(origin:string,runId:string):GoalBinding {
+  const binding=this.goalBindings.get(origin);
+  if(!binding||binding.runId!==runId)throw new Error("Owning goal is paused or unavailable");
+  return binding;
+ }
+ assertGoalControl(id:string,origin:string,action:string):void {
+  if(action!=="message"&&action!=="answer")return;
+  const binding=this.goalBindings.get(origin);
+  if(!binding?.capture())return;
+  const target=this.get(id,origin),runId=this.contexts.get(target.record.id)?.spec?.goalRunId;
+  if(runId!==binding.runId&&(action==="answer"||target.record.status!=="settled"))throw new Error("Cannot attach an active pre-goal exchange to this goal. Launch a new subagent or wait for that exchange to settle before sending new goal work.");
+ }
+ private async admitGoal(origin:string,runId:string):Promise<{allowed:boolean;reason?:string;guidance?:string}>{
+  const result=await this.goalBinding(origin,runId).admit();
+  if(!result.allowed)throw new Error(result.reason??"Goal budget paused further work");
+  return result;
+ }
+ goalActive(origin:string,runId:string):boolean{return [...this.children.values()].some(child=>child.record.origin===origin&&this.contexts.get(child.record.id)?.spec?.goalRunId===runId&&(child.record.status!=="settled"||child.record.cleanup?.complete!==true))}
+ async stopGoal(origin:string,runId:string):Promise<void>{
+  const owned=[...this.children.values()].filter(child=>child.record.origin===origin&&this.contexts.get(child.record.id)?.spec?.goalRunId===runId&&(child.record.status!=="settled"||child.record.cleanup?.complete!==true));
+  const results=await Promise.allSettled(owned.map(async child=>{
+   const result=await child.cancel();
+   if(result.complete&&child.record.sessionFile){
+    const binding=this.goalBindings.get(origin);
+    if(binding?.runId===runId)binding.close?.(child.record.sessionFile);
+   }
+   return result;
+  }));
+  const failures=results.flatMap((result,index)=>result.status==="rejected"
+   ?[`${owned[index]!.record.id}: ${result.reason instanceof Error?result.reason.message:String(result.reason)}`]
+   :result.value.complete?[]:[`${owned[index]!.record.id}: ${result.value.errors.join("; ")||"owned resources remain open"}`]);
+  if(failures.length)throw new Error(`Goal child cleanup incomplete: ${failures.join(" | ")}`);
+ }
  private bindings=new Map<string,BoundOrigin>();
  private pending=new Map<string,Delivery>();
  private queued=new Set<string>();
@@ -210,6 +255,24 @@ if(this.pending.get(id)?.origin!==origin)return;this.pending.delete(id);this.que
   const child=this.children.get(identity.child),context=this.contexts.get(identity.child);
   if(!child||!context||child.record.origin!==identity.origin)throw new Error("Child owner unavailable");
   child.contact();
+  if(message.type==="goal-admit"){
+   const runId=context.spec?.goalRunId;
+   if(!runId)return {allowed:true};
+   try{
+    if(!child.record.sessionFile)throw new Error("Goal child session identity unavailable");
+    this.goalBinding(identity.origin,runId).enroll(child.record.sessionFile);
+    return await this.admitGoal(identity.origin,runId);
+   }catch(error){return{allowed:false,reason:error instanceof Error?error.message:String(error)}}
+  }
+  if(message.type==="goal-accounting"){
+   const runId=context.spec?.goalRunId;
+   const payload=message.payload;
+   if(!runId||!payload||typeof payload!=="object")throw new Error("Goal accounting is outside child ownership");
+   const event=payload as Record<string,unknown>;
+   if(event.runId!==runId||event.session!==child.record.sessionFile)throw new Error("Goal accounting session/run mismatch");
+   await this.goalBinding(identity.origin,runId).accounting(event);
+   return{accepted:true};
+  }
   if(message.type==="parent-events"){
    const consumer=(message.payload as {consumer?:unknown}|undefined)?.consumer;
    if(consumer!=="headless-app"&&consumer!=="visible-app"&&consumer!=="visible-host")throw new Error("Invalid parent event consumer");
@@ -232,6 +295,7 @@ if(this.pending.get(id)?.origin!==origin)return;this.pending.delete(id);this.que
    if(!parentSessionId)throw new Error("Authenticated parent session identity unavailable");
    child.record.sessionId=payload.sessionId;
    child.record.sessionFile=payload.sessionFile;
+   if(context.spec?.goalRunId)this.goalBinding(identity.origin,context.spec.goalRunId).enroll(payload.sessionFile);
    child.record.updatedAt=new Date().toISOString();
    this.publish(identity.origin);
    return {accepted:true,parentSessionId};
@@ -280,6 +344,7 @@ if(this.pending.get(id)?.origin!==origin)return;this.pending.delete(id);this.que
    if(!payload||typeof payload.id!=="string")throw new Error("Child id or name required");
    const target=this.getDirectChild(payload.id,identity.child,identity.origin);
    if(!target)throw new Error("Only direct children may be controlled");
+   if(typeof payload.action==="string")this.assertGoalControl(target.record.id,identity.origin,payload.action);
    if(target.record.userOwned&&payload.action!=="inspect")throw new Error("Parent control is suspended during direct user intervention");
    let disposition:InputDisposition|undefined;
    if(payload.action==="message"||payload.action==="answer"){
@@ -312,6 +377,9 @@ if(this.pending.get(id)?.origin!==origin)return;this.pending.delete(id);this.que
    if(parent.record.parentId||!context.input.definition.delegates.includes(input.definition.name)||input.definition.delegates.length)throw new Error("Delegation is outside frozen authority");
    if(input.origin!==parent.record.origin)throw new Error("Child cannot change origin");
   }
+  const goalBinding=this.goalBindings.get(input.origin);
+  const goalRunId=input.parentId?this.contexts.get(input.parentId)?.spec?.goalRunId:goalBinding?.capture()?goalBinding.runId:undefined;
+  if(goalRunId)await this.admitGoal(input.origin,goalRunId);
   if(input.surface==="visible"&&process.env.HERDR_ENV!=="1")throw new Error("Visible subagents require Herdr; no headless substitution is permitted");
   const allocator=this.names.get(input.origin)??new NameAllocator();
   this.names.set(input.origin,allocator);
@@ -325,6 +393,7 @@ if(this.pending.get(id)?.origin!==origin)return;this.pending.delete(id);this.que
    definition:input.definition,instructions:input.instructions,cwd,
    model:input.model,effort:input.effort,skills:[...input.skills],
    origin:input.origin,retained:false,parentId:input.parentId,
+   goalRunId,
    surface:input.surface,
    closeoutManifest:input.closeoutManifest,
    closeoutParentSessionId:input.closeoutManifest?input.origin:undefined,
@@ -387,6 +456,11 @@ if(this.pending.get(id)?.origin!==origin)return;this.pending.delete(id);this.que
   if(this.disposed)throw new Error("Subagent runtime is no longer active");
   if(!text.trim())throw new Error("Message must be nonblank");
   const child=this.get(id,origin),record=child.snapshot();
+  const goalBinding=this.goalBindings.get(origin),capturedRunId=goalBinding?.capture()?goalBinding.runId:undefined;
+  const originalRunId=this.contexts.get(record.id)?.spec?.goalRunId;
+  if(capturedRunId&&capturedRunId!==originalRunId&&record.status!=="settled")throw new Error("Cannot attach an active pre-goal exchange to this goal. Launch a new subagent or wait for that exchange to settle before sending new goal work.");
+  const goalRunId=record.status==="settled"?capturedRunId:originalRunId;
+  if(goalRunId)await this.admitGoal(origin,goalRunId);
   if(this.reopening.has(record.id))throw new Error("Subagent follow-up is already being dispatched");
   if(record.userOwned)throw new Error("Direct user intervention suspends parent steering");
   if(record.status!=="settled")return child.message(text,options);
@@ -395,7 +469,9 @@ if(this.pending.get(id)?.origin!==origin)return;this.pending.delete(id);this.que
   if(!context?.spec)throw new Error("This settled subagent is no longer controllable after reload");
   if(record.phase!=="settled"||!record.cleanup?.complete||this.resourcesOpen(record))throw new Error("Subagent cleanup must complete before follow-up");
   if(!record.sessionFile||!statSync(record.sessionFile,{throwIfNoEntry:false})?.isFile())throw new Error("Saved subagent session is unavailable");
-  const spec:LaunchSpec={...context.spec,instructions:text,sessionFile:record.sessionFile,retained:false};
+  const spec:LaunchSpec={...context.spec,goalRunId,instructions:text,sessionFile:record.sessionFile,retained:false};
+  context.spec=spec;
+  if(goalRunId)this.goalBinding(origin,goalRunId).enroll(record.sessionFile);
   const reopened=spec.surface==="visible"
    ?new VisibleChild(spec,context.extension,context.profile,this.layoutFor(origin))
    :new RpcChild(spec,context.extension,context.profile);
