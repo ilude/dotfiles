@@ -1,5 +1,13 @@
 # Agent instruction feedback log
 
+## AIF-asset-review-target - Fresh target-based asset reviews
+
+- **Reference:** Survival-demo asset review correction, 2026-10-29; related AIF-animation-deliverable-scope and APR-ccyl-herdr-handoff.
+- **Feedback:** The operator requested fresh ccyl/Opus High comparisons for all project asset design, with each CLI instance closed after its report.
+- **Evidence:** An incremental-improvement verdict was treated as sufficient completion. A later direct reference comparison identified remaining target gaps; Opus High supplied primary-form recommendations rather than another detail-only pass.
+- **Decision:** The project visual-iteration skill owns fresh read-only ccyl/Opus High review, reference/current evidence, target-based judgment and per-review cleanup. Subject guides route to it. This does not change general code-review routing or authorize copying reference assets.
+- **Status:** Operator-authorized project guidance updated; completed review received an exit request and its owned pane was closed. Future effectiveness is not yet measured.
+
 ## AIF-animation-deliverable-scope - Partial animation output versus requested outcome
 
 - **Reference:** Character refinement and added action animations, 2026-10-29; related AIF-vehicle-work-execution and AIF-vehicle-dashboard-art-direction.
