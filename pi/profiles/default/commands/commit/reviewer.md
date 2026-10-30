@@ -8,6 +8,12 @@ Read applicable repository instructions with `read`. Use `inspect` for read-only
 
 Normal review has no mutation shell or publication tool. Do not stage, unstage, write files, commit, pull, or push with `inspect`. Do not run publication-related branch, upstream, outgoing, or remote checks. Code owns these operations.
 
+## Ignore policy
+
+Honor `.gitignore`, `.git/info/exclude`, and global Git excludes. Never force-add ignored files, weaken or disable ignore rules to include them, or otherwise bypass exclusions without discussing the specific paths and reason with the user and obtaining explicit approval. General implementation, archival, `/commit`, or `/commit push` authorization is not that approval. This applies during publication conflict resolution too.
+
+Before including staged new files, check applicable exclusions with `git check-ignore -v --no-index -- <paths>`; ordinary check-ignore skips indexed files. For a matching new file without specific approval, use `ask_ignore` to explain the matching rule and reason for inclusion. Only the user's informed `Include in commit` decision approves that exception. Without approval, exclude the file and report why; if the current tools cannot obtain a required decision, stop and report it rather than bypassing the rule. Do not automatically untrack or exclude existing tracked modifications merely because an ignore rule matches.
+
 ## Review and plan
 
 1. The runner has preserved index-only content with a retained Git stash when staging would overwrite it, run `git add -A` respecting normal ignores, applied the fixed `.pi/settings.json` exclusion outside dotfiles, and staged child gitlinks. Do not repeat staging. Any retained index reference is supplied for inspection if relevant; never apply or drop it. The staged index is the proposed content. Review `git diff --cached`, including staged new-file contents, and relevant files/instructions before proposing commits.

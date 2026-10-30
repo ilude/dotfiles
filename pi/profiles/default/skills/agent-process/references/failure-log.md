@@ -1,5 +1,13 @@
 # Agent process failure log
 
+## APR-git-ignore-approval - Ignored planning artifact reached an MR
+
+- **Reference:** EISA release-publishing MR discussion, 2026-10-30; AIF-git-ignore-approval, AIF-044 and APR-088.
+- **Observed:** Squashing local dev changes into a new MR included an already tracked archived plan under `.specs/`, despite that directory matching `.git/info/exclude`. Exclusions do not remove indexed files. The initial tracking mechanism was not established; this does not prove `/commit` force-added it.
+- **Finding:** `/commit` uses normal `git add -A` and restricts routine model mutation, but its reviewer lacked an explicit rule forbidding ignore overrides without specific approval. Planning/archival instructions calling for a commit must not be interpreted as an ignore exception.
+- **Correction:** At the user's request, added the no-bypass approval rule to default-profile preservation guidance and the independently loaded commit prompt. Staged additions require `check-ignore --no-index`; matching new candidates use the existing informed ignore decision or stay excluded. No new runtime gate or automatic untracking.
+- **Status:** Instruction changes are local and not committed/pushed. Existing EISA MR history is unchanged pending separate approval; future model adherence is not established.
+
 ## APR-mr-description-task-log - Review summaries accumulated investigation history
 
 - **Reference:** Operator correction after merge-request description updates, 2026-10-29.

@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-10-30: Require approval before overriding Git ignores
+
+- Explicitly prohibit the default agent and private `/commit` reviewer from force-adding ignored files, weakening ignore rules, or bypassing `.gitignore`, `.git/info/exclude`, or global excludes without discussing the specific paths and reason and obtaining user approval. General implementation, archival, commit, or push authorization does not approve an exception.
+- Require staged-new-file ignore inspection and the existing informed ignore decision before including a matching candidate; preserve normal handling of existing tracked modifications. Cover publication conflict resolution without changing runner code, tool permissions, or legacy.
+- The reviewer prompt takes effect on its next invocation. Refresh profile-wide instructions with a fresh session or `/reload`. This instruction change does not establish future model adherence or correct existing EISA MRs.
+
 ## 2026-10-29: Add same-session goal execution
 
 - Add default-profile `/goal` commands for starting, inspecting, pausing, and resuming authorized work through native checkpoints and compaction. Keep the original goal and direct user decisions authoritative over findings and summaries; stop for one consequential question or a concrete blocker. Planning, `/do-it`, and worktrees are not prerequisites or added approval gates.

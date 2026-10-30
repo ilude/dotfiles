@@ -1,5 +1,13 @@
 # Agent instruction feedback log
 
+## AIF-git-ignore-approval - Do not override Git exclusions implicitly
+
+- **Reference:** EISA release-publishing MR discussion, 2026-10-30; related AIF-044.
+- **Feedback:** Inspect `/commit` and explicitly require discussion and user approval before overriding `.gitignore` or exclude rules.
+- **Evidence:** A newly tracked archived plan matching the repository's local `.specs/` exclusion was carried into the dev MR during a squash. The initial tracking command was not established. Current `/commit` stages with normal `git add -A`, disallows normal model mutation, and offers ignore decisions, but its private prompt lacked an explicit no-bypass policy; conflict resolution temporarily supplies a mutation shell.
+- **Decision:** User authorized a profile-wide preservation rule and matching private-reviewer guidance: discuss specific paths and reasons before any ignore override, inspect staged additions with `--no-index`, and use the existing informed ignore choice for a matching candidate. Generic implementation/archival/commit/push authority is not an exception. Do not automatically untrack existing files.
+- **Status:** Instructions and command documentation updated locally; no runtime enforcement or legacy changes. Private prompt loads on the next invocation; profile context needs refresh. Future adherence and the separate EISA MR correction remain unverified/pending. No commit or push authorized by this record.
+
 ## AIF-animation-deliverable-scope - Partial animation output versus requested outcome
 
 - **Reference:** Character refinement and added action animations, 2026-10-29; related AIF-vehicle-work-execution and AIF-vehicle-dashboard-art-direction.
