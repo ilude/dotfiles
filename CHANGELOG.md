@@ -1,5 +1,30 @@
 # Changelog
 
+## 2026-10-30: Require approval before overriding Git ignores
+
+- Explicitly prohibit the default agent and private `/commit` reviewer from force-adding ignored files, weakening ignore rules, or bypassing `.gitignore`, `.git/info/exclude`, or global excludes without discussing the specific paths and reason and obtaining user approval. General implementation, archival, commit, or push authorization does not approve an exception.
+- Require staged-new-file ignore inspection and the existing informed ignore decision before including a matching candidate; preserve normal handling of existing tracked modifications. Cover publication conflict resolution without changing runner code, tool permissions, or legacy.
+- The reviewer prompt takes effect on its next invocation. Refresh profile-wide instructions with a fresh session or `/reload`. This instruction change does not establish future model adherence or correct existing EISA MRs.
+
+## 2026-10-29: Add same-session goal execution
+
+- Add default-profile `/goal` commands for starting, inspecting, pausing, and resuming authorized work through native checkpoints and compaction. Keep the original goal and direct user decisions authoritative over findings and summaries; stop for one consequential question or a concrete blocker. Planning, `/do-it`, and worktrees are not prerequisites or added approval gates.
+- Document optional whole-run Bedrock dollar and absolute Codex weekly-usage thresholds, unavailable-usage pauses, conservative pacing, and a fixed 10% reserve solely for restoring buildability. Counters cover only their named systems, do not restrict omitted providers, and cannot guarantee strict ceilings against in-flight usage or reporting lag.
+- Wire authenticated descendant admission, per-exchange enrollment, accounting acknowledgements, and goal-owned stopping. Include Bedrock compaction and internal permission/review helpers without double-counting aggregate returned usage. Preserve cleanup errors and keep in-flight descendant accounting open through cancellation.
+- Pass 245 focused tests across 19 files. Full-profile typechecking remains blocked by three existing context-type errors in `tests/codex-usage-tool.test.ts`; live provider-boundary and attached-terminal behavior remain unverified. See `pi/profiles/default/docs/goal.md` for syntax and limits. Load with a fresh default-profile process or settled-only `/reload` with no active or retained subagents; restored goals require explicit resume.
+
+## 2026-10-29: Add opt-in Windows SSH server setup
+
+- Add `scripts/windows-ssh-setup.ps1` as an explicit administrator command, separate from all normal installers. Install the built-in Windows OpenSSH Server, enable automatic service startup, and limit the standard local SSH firewall rule to Domain/Private networks.
+- Offer `-AllowTailscale` for an additional interface-scoped exception, including on Public physical networks. Preserve existing SSH configuration, keys, unrelated firewall rules, and managed policy; do not claim machine-wide firewall lockdown or verified remote authentication.
+- Document setup, restart handling, key authorization, and client verification in the root Windows installation guidance. Keep DNS and live inventory outside workstation setup.
+
+## 2026-10-29: Replace the rejected agent sidebar plan
+
+- Remove the rejected `subagent-sidebar-and-instance-activity` plan and its disposable dotfiles task worktree/branch at the operator's direction, discarding that worktree's uncommitted implementation.
+- Add the replacement draft at `.specs/native-agent-sidebar-and-activity/plan.md`, preserving the requested indented Team Lead/overflow entries, permanent dedicated Team Leads, instance-wide activity count, and coordinator follow-through on unfinished work. Explicitly exclude Herdr source changes/builds and Git-worktree layout machinery.
+- Keep readiness honest: the installed native grouping interface for agent entries remains unresolved. This records planning and cleanup, not implemented sidebar behavior. The separate Herdr source checkout and unrelated work remain untouched.
+
 ## 2026-10-29: Streamline Pi-driven Claude Code reviews through Herdr
 
 - Consolidate the existing Herdr skill's `ccyl` workflow: preserve subscription routing, include Opus/high launch syntax, inspect startup dialogs before waiting, and supply self-contained assignments. Document recovering completed answers from the matching native Claude transcript without duplicating work or restarting Herdr. Workspace-trust approval behavior remains unchanged.

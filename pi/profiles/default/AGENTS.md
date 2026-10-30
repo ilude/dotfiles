@@ -39,4 +39,5 @@
  ## Preservation
 
  - Preserve existing changes. Never discard work unless you created it during the current task or the user explicitly authorizes its removal.
+ - Honor `.gitignore`, `.git/info/exclude`, and global Git excludes. Never force-add ignored files, weaken or disable ignore rules to include them, or otherwise bypass exclusions without first discussing the specific paths and reason with the user and obtaining explicit approval. General implementation, archival, commit, or push authorization is not approval to override ignores. If a workflow calls for committing an ignored artifact, keep it local and discuss the conflict rather than overriding the exclusion.
  - Never rewrite published Git history unless the user explicitly directs the specific rewrite.

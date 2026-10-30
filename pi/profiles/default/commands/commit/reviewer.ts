@@ -7,6 +7,7 @@ import { Agent } from "@earendil-works/pi-agent-core";
 import { isContextOverflow, isRetryableAssistantError, type Api, type ImageContent, type Model, type TextContent, type Usage } from "@earendil-works/pi-ai";
 import { createBashTool, createReadTool, type ExtensionAPI, type ExtensionContext, type ModelRuntime, withFileMutationQueue } from "@earendil-works/pi-coding-agent";
 import { createProfileModelRuntime } from "../../lib/model-runtime.ts";
+import { accountHelperStream, helperResponseAccounting } from "../../lib/bedrock/helper-accounting.ts";
 import { resolveLatestCodexModelFromRuntime } from "../../lib/model-selection.ts";
 import { compareModelVersions, modelFamilyVersion } from "../../lib/model-family.ts";
 import { normalizeRepositoryId, repositoryId, samePlatformPath } from "../../lib/path-identity.ts";
@@ -103,6 +104,7 @@ export interface CommitRunResult {
 /** Run the private Git reviewer for an operator command, not a model-facing tool. */
 export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext, push: boolean, signal?: AbortSignal, onProgress?: (text: string) => void): Promise<CommitRunResult> {
 
+			const account = helperResponseAccounting(ctx, pi);
 			const deadline = new AbortController();
 			const combined = signal ? AbortSignal.any([signal, deadline.signal]) : deadline.signal;
 			let remaining = WORKFLOW_TIMEOUT_MS;
@@ -409,7 +411,7 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 						],
 					},
 					// Response-level recovery below owns the retry budget, including stream failures.
-					streamFn: (model, context, options) => runtime.streamSimple(model, context, { ...options, maxRetries: 0 }),
+					streamFn: async (model, context, options) => accountHelperStream(await runtime.streamSimple(model, context, { ...options, maxRetries: 0 }), account),
 					toolExecution: "sequential",
 					beforeToolCall: async ({ toolCall }) => {
 						if (failure) return { block: true, reason: failure, terminate: true };

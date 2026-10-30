@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import type { InspectionEvidence, PendingCall, Settings } from "./types.ts";
 import { redactOutbound } from "./judge.ts";
 import { resolveLatestCodexModelFromRegistry } from "../model-selection.ts";
+import { accountHelperCompletion, helperResponseAccounting, type HelperAccountingAPI, type HelperAccountingContext } from "../bedrock/helper-accounting.ts";
 
 const MAX_REASON_CHARS = 1_000;
 const MAX_RESPONSE_BYTES = 8 * 1024;
@@ -68,11 +69,13 @@ function promptContract(): string {
 /** Tool-free review. An observation verdict authorizes only the unchanged pending request. */
 export async function reviewInspection(
   evidence: InspectionEvidence,
-  ctx: Pick<ExtensionContext, "modelRegistry" | "signal">,
+  ctx: Pick<ExtensionContext, "modelRegistry" | "signal"> & HelperAccountingContext,
   settings: Settings,
   pending: PendingCall,
   currentGeneration: () => number,
+  pi?: HelperAccountingAPI,
 ): Promise<Result> {
+  const account = helperResponseAccounting(ctx, pi);
   if (!settings.judge.enabled) return { status: "unavailable", reason: "Luna inspection review is disabled." };
   const parents = [ctx.signal, pending.signal].filter((signal): signal is AbortSignal => signal !== undefined);
   const stale = (): boolean => pending.callId.length === 0 || currentGeneration() !== pending.generation;
@@ -103,7 +106,7 @@ export async function reviewInspection(
     });
     while (true) {
       const prompt = `${contract}\n\nINSPECTION EVIDENCE JSON:\n${JSON.stringify({ pendingCall: projection.request, sources: projection.sources, omissions: projection.omissions })}`;
-      const completion = ctx.modelRegistry.complete(model, { messages: [{ role: "user", content: [{ type: "text", text: prompt }], timestamp: Date.now() }] }, { maxTokens: 500, reasoningEffort: settings.judge.reasoning, cacheRetention: "none", maxRetries: 0, signal: controller.signal });
+      const completion = accountHelperCompletion(ctx.modelRegistry.complete(model, { messages: [{ role: "user", content: [{ type: "text", text: prompt }], timestamp: Date.now() }] }, { maxTokens: 500, reasoningEffort: settings.judge.reasoning, cacheRetention: "none", maxRetries: 0, signal: controller.signal }), account);
       const response = await Promise.race([completion, aborted]);
       if (response === ABORTED) return timedOut ? { status: "timeout", reason: `Luna inspection review exceeded its ${settings.judge.deadlineMs}ms deadline.` } : { status: "cancelled", reason: "Luna inspection review was cancelled." };
       if (timedOut) return { status: "timeout", reason: `Luna inspection review exceeded its ${settings.judge.deadlineMs}ms deadline.` };

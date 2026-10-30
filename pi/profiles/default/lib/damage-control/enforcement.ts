@@ -29,7 +29,7 @@ export type GateDependencies = AnalysisDependencies & {
   scriptReview?: (request: ScriptReviewRequest) => Promise<unknown>;
   scriptScan?: (cwd: string, origin: string, notify: (message: string, level?: "info" | "warning") => void, signal?: AbortSignal) => Promise<unknown>;
   cancelScriptReviews?: () => void;
-  interpretIntent?: (request: TrustedRequest, ctx: ExtensionContext, settings: Settings, signal: AbortSignal, context?: BrowserIntentContext) => Promise<IntentScope[] | BrowserIntentInterpretation>;
+  interpretIntent?: (request: TrustedRequest, ctx: ExtensionContext, settings: Settings, signal: AbortSignal, context?: BrowserIntentContext, pi?: Pick<ExtensionAPI, "events">) => Promise<IntentScope[] | BrowserIntentInterpretation>;
 };
 const WATCHDOG_STATE = "damage-control-watchdog";
 const JUDGE_REVIEW_LOG = "damage-control-judge-review-v1";
@@ -54,7 +54,7 @@ export async function initialize(pi: ExtensionAPI, profile: string, repo: string
   if (ready.health.status === "failed") throw new Error(ready.health.reason);
   return registerGate(pi, profile, repo, {
     ...loaded,
-    review,
+    review: (evidence, ctx, settings, pending, generation) => review(evidence, ctx, settings, pending, generation, pi),
     scriptReview: request => coordinator.review(request),
     scriptScan: (cwd, origin, notify, signal) => coordinator.scan(cwd, origin, notify, signal),
     cancelScriptReviews: () => coordinator.cancel(),
@@ -89,7 +89,7 @@ export function registerGate(pi: ExtensionAPI, profile: string, repo: string, de
       // Keep known private observation text local, without summaries or backfill.
       conversation: activeConversation(ctx.sessionManager.getBranch()).messages.slice(-8).filter(m => context.privateSources(m.text).length === 0),
     };
-    intentReady = (dependencies.interpretIntent ?? interpretBrowserRequest)(request, ctx, dependencies.settings, signal, interpretationContext).then(result => {
+    intentReady = (dependencies.interpretIntent ?? interpretBrowserRequest)(request, ctx, dependencies.settings, signal, interpretationContext, pi).then(result => {
       if (signal.aborted || !samePolicyIdentity(request.identity, context.identity)) return;
       // Array results are standalone replacement scopes from injected interpreters.
       // Continuation can only rebind unchanged independent scope, not model-created
@@ -227,7 +227,7 @@ export function registerGate(pi: ExtensionAPI, profile: string, repo: string, de
         if (!fresh()) return blocked("Pending call cancelled or changed; action not executed");
         if (inspectionEvidence?.route === "mutation") return blocked(`Explorer inspection blocks intentional mutation: ${inspectionEvidence.reason}`);
         if (inspectionEvidence?.route === "review") {
-          const result = await (dependencies.reviewInspection ?? reviewInspection)(inspectionEvidence, { ...ctx, signal }, dependencies.settings, call, () => context.generation);
+          const result = await (dependencies.reviewInspection ?? reviewInspection)(inspectionEvidence, { ...ctx, signal }, dependencies.settings, call, () => context.generation, pi);
           if (!fresh()) return blocked("Inspection review is stale or cancelled; action not executed");
           if (result.status !== "valid") return blocked(`Explorer inspection review ${result.status}: ${result.reason}`);
           if (result.verdict !== "observation") return blocked(`Explorer inspection ${result.verdict === "mutation" ? "blocks intentional mutation" : "status unresolved"}: ${result.reason}`);

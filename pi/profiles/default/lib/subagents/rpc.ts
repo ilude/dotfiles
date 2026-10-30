@@ -53,7 +53,7 @@ export interface ChildRecord {
   launcherState?: "starting" | "running" | "exited";
   questionResolution?: { requestId: string; outcome: "answered" | "cancelled"; by: "parent" | "child" | "assignment" };
 }
-export interface LaunchSpec { sessionFile?: string; definition: AgentDefinition; prompt?: string; displayName?: string; instructions: string; cwd: string; model: string; effort: AgentEffort; skills: string[]; origin: string; retained: boolean; parentId?: string; surface: "headless" | "visible"; closeoutManifest?: CloseoutManifest; closeoutParentSessionId?: string }
+export interface LaunchSpec { goalRunId?: string; sessionFile?: string; definition: AgentDefinition; prompt?: string; displayName?: string; instructions: string; cwd: string; model: string; effort: AgentEffort; skills: string[]; origin: string; retained: boolean; parentId?: string; surface: "headless" | "visible"; closeoutManifest?: CloseoutManifest; closeoutParentSessionId?: string }
 const LIMIT = 24_000;
 // Native agent_end contains all messages for the assignment, not just its final text.
 // Keep authenticated application messages at their existing 256 KiB bound; RPC gets a

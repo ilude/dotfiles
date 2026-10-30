@@ -8,6 +8,14 @@
 - **Decision:** The project visual-iteration skill owns fresh read-only ccyl/Opus High review, reference/current evidence, target-based judgment and per-review cleanup. Subject guides route to it. This does not change general code-review routing or authorize copying reference assets.
 - **Status:** Operator-authorized project guidance updated; completed review received an exit request and its owned pane was closed. Future effectiveness is not yet measured.
 
+## AIF-git-ignore-approval - Do not override Git exclusions implicitly
+
+- **Reference:** EISA release-publishing MR discussion, 2026-10-30; related AIF-044.
+- **Feedback:** Inspect `/commit` and explicitly require discussion and user approval before overriding `.gitignore` or exclude rules.
+- **Evidence:** A newly tracked archived plan matching the repository's local `.specs/` exclusion was carried into the dev MR during a squash. The initial tracking command was not established. Current `/commit` stages with normal `git add -A`, disallows normal model mutation, and offers ignore decisions, but its private prompt lacked an explicit no-bypass policy; conflict resolution temporarily supplies a mutation shell.
+- **Decision:** User authorized a profile-wide preservation rule and matching private-reviewer guidance: discuss specific paths and reasons before any ignore override, inspect staged additions with `--no-index`, and use the existing informed ignore choice for a matching candidate. Generic implementation/archival/commit/push authority is not an exception. Do not automatically untrack existing files.
+- **Status:** Instructions and command documentation updated locally; no runtime enforcement or legacy changes. Private prompt loads on the next invocation; profile context needs refresh. Future adherence and the separate EISA MR correction remain unverified/pending. No commit or push authorized by this record.
+
 ## AIF-animation-deliverable-scope - Partial animation output versus requested outcome
 
 - **Reference:** Character refinement and added action animations, 2026-10-29; related AIF-vehicle-work-execution and AIF-vehicle-dashboard-art-direction.
@@ -15,6 +23,14 @@
 - **Evidence:** The request covered reference-based character/animation improvement, added vaulting and fighting, and a subscription usage ceiling. Incremental model refinement and a vault study were delivered; fighting remained unimplemented pending a style question, and broader visual acceptance was not established.
 - **Decision:** State partial delivery against the full request plainly. Technical checks, commits and a finished subtask do not establish fulfillment of the artistic goal. Do not infer from this short correction that playable integration or a particular fighting style was authorized.
 - **Status:** Intent mismatch acknowledged at the request level; the operator's specific objection remains to be clarified if it changes the next action. No instruction change.
+
+## AIF-planning-to-ready - Continue planning through consequential questions
+
+- **Reference:** 2026-10-29 operator feedback in the sidebar replacement branch; bounded default-profile planning-history review for 2026-09-29 through 2026-10-29. Related AIF-085, AIF-083 and AIF-alert-plan-explanation.
+- **Feedback:** Ordinary planning should ask needed questions one at a time and reach an executable plan, rather than stop after producing a draft.
+- **Evidence:** Current planning guidance already assigns technical investigation to the agent and requires consequential clarification. It lacks an explicit sequential continuation loop and ends with a competing draft/stopping cue. Historical sample identified a September 30 speculative approval blocker and the October 29 unfinished replacement, alongside successful continuations. Keyword scans do not establish a representative failure rate. The October 29 13:08 ready transition belongs to the earlier rejected plan, not later completion of the replacement draft.
+- **Proposal:** Consolidate ordinary planning into investigation, one consequential user question with context/recommendation, incorporation of answers, and continuation to ready. Keep explicitly requested drafts and genuine blockers honest; do not ask generic checklist questions, reopen settled choices, or shift discoverable facts to the user. Dependent cleanup remains conditional on actual completion.
+- **Status:** Investigation complete; planning skill/template changes proposed for operator approval, not implemented. Existing unrelated log edits preserved.
 
 ## AIF-indoor-lighting-scope - Apply lighting corrections across indoor locations
 

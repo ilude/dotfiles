@@ -2,6 +2,7 @@ import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { isContextOverflow } from "@earendil-works/pi-ai";
+import { accountHelperCompletion, helperResponseAccounting, type HelperAccountingAPI, type HelperAccountingContext } from "../bedrock/helper-accounting.ts";
 import type { Evidence, JudgeConversationMessage, JudgeDiagnostic, PendingCall, ReviewResult, Settings } from "./types.ts";
 import type { BrowserIntentRecord } from "./context.ts";
 import { resolveLatestCodexModelFromRegistry } from "../model-selection.ts";
@@ -37,7 +38,8 @@ function parseIntentInterpretation(value: unknown, directText: string, hasTask: 
 /** One tool-free interpretation per delivered native input. Context distinguishes
  * task continuation from replacement; it never grants authority itself. Failure
  * leaves no binding. Routine public reads still do not need a reviewer. */
-export async function interpretBrowserRequest(request: TrustedRequest, ctx: Pick<ExtensionContext, "modelRegistry" | "signal">, settings: Settings, signal: AbortSignal, context?: BrowserIntentContext): Promise<BrowserIntentInterpretation> {
+export async function interpretBrowserRequest(request: TrustedRequest, ctx: Pick<ExtensionContext, "modelRegistry" | "signal"> & HelperAccountingContext, settings: Settings, signal: AbortSignal, context?: BrowserIntentContext, pi?: HelperAccountingAPI): Promise<BrowserIntentInterpretation> {
+  const account = helperResponseAccounting(ctx, pi);
   if (!settings.judge.enabled || signal.aborted || !request.directText) return NO_INTENT;
   const controller = new AbortController();
   const combined = AbortSignal.any([signal, controller.signal, ...(ctx.signal ? [ctx.signal] : [])]);
@@ -50,7 +52,7 @@ export async function interpretBrowserRequest(request: TrustedRequest, ctx: Pick
       establishedTask: task ? { request: task.request.directText, scopes: task.bindings.filter(b => b.basis === "independent-interpretation").map(b => b.scope) } : null,
       recentConversation: (context?.conversation ?? []).slice(-8).map(m => ({ role: m.role, text: m.text.slice(-2000) })),
     };
-    const completion = ctx.modelRegistry.complete(model, { messages: [{ role: "user", content: [{ type: "text", text: `${INTENT_CONTRACT}\nTASK CONTEXT JSON:\n${JSON.stringify(redactInput(evidence).value)}` }], timestamp: Date.now() }] }, { maxTokens: 1200, reasoningEffort: settings.judge.reasoning, maxRetries: 0, cacheRetention: "none", signal: combined });
+    const completion = accountHelperCompletion(ctx.modelRegistry.complete(model, { messages: [{ role: "user", content: [{ type: "text", text: `${INTENT_CONTRACT}\nTASK CONTEXT JSON:\n${JSON.stringify(redactInput(evidence).value)}` }], timestamp: Date.now() }] }, { maxTokens: 1200, reasoningEffort: settings.judge.reasoning, maxRetries: 0, cacheRetention: "none", signal: combined }), account);
     let stop: (() => void) | undefined;
     const abort = new Promise<undefined>(resolve => { const handler = () => resolve(undefined); stop = () => combined.removeEventListener("abort", handler); combined.addEventListener("abort", handler, { once: true }); if (combined.aborted) handler(); });
     try {
@@ -194,11 +196,13 @@ function readReviewContract(): string {
 
 export async function review(
   evidence: Evidence,
-  ctx: Pick<ExtensionContext, "modelRegistry" | "signal">,
+  ctx: Pick<ExtensionContext, "modelRegistry" | "signal"> & HelperAccountingContext,
   settings: Settings,
   pending: PendingCall,
   currentGeneration: () => number,
+  pi?: HelperAccountingAPI,
 ): Promise<ReviewResult> {
+  const account = helperResponseAccounting(ctx, pi);
   if (!settings.judge.enabled) return { status: "unavailable", reason: "Luna review is disabled." };
   if (evidence.callId !== pending.callId) return { status: "cancelled", reason: "Review no longer matches the pending call." };
   const parentSignals = [ctx.signal, pending.signal].filter((signal): signal is AbortSignal => signal !== undefined);
@@ -272,11 +276,11 @@ export async function review(
     const originalMessages = projection.context.conversation.length;
     while (true) {
       prompt = `${contract}\n\nEVIDENCE JSON:\n${JSON.stringify(projection.context)}`;
-      const completion = ctx.modelRegistry.complete(
+      const completion = accountHelperCompletion(ctx.modelRegistry.complete(
         model,
         { messages: [{ role: "user", content: [{ type: "text", text: prompt }], timestamp: Date.now() }] },
         { maxTokens: 800, reasoningEffort: settings.judge.reasoning, cacheRetention: "none", maxRetries: 0, signal: controller.signal },
-      );
+      ), account);
       const response = await Promise.race([completion, aborted]);
       if (response === ABORTED) {
         return timedOut

@@ -98,6 +98,10 @@ The [completed web-fetch gateway plan](../.specs/archive/web-fetch-gateway/plan.
 
 Default `/plans` action `d` prepares or verifies the selected plan's task worktree before opening Pi in Herdr's native worktree workspace. Runtime-issued coordinates keep `/do-it` from creating a duplicate checkout or losing its originating integration target. Only these prepared Herdr runs use a same-tab, parent-cwd Integrator successor: integration/metadata readiness precedes orchestrator-only authorized obligations and exact-origin graceful retirement, then worktree cleanup and the successor's final report. Blockers preserve both panes/worktree; post-delivery cleanup failures report the retained path. Direct/run-here, non-Herdr, ordinary subagents, `--no-merge`, module boundaries, and explicit push/deployment authorization remain unchanged. See [prepared-run lifecycle and cleanup limits](profiles/default/docs/herdr.md#prepared-plan-closeout-successor).
 
+## Default profile goals
+
+`/goal` runs a stated goal through bounded native continuations in the same session, independently of planning and `/do-it`, with optional Bedrock dollar and absolute Codex weekly-usage thresholds. Goal authority stays separate from findings and summaries; optional discoveries do not expand acceptance. See [commands, budget policy, and current implementation limits](profiles/default/docs/goal.md). Descendant accounting and stop hooks are still being wired; this is not a claim of live whole-run coverage. Start a fresh default-profile process or reload only with no active or retained subagents, then explicitly resume any restored goal.
+
 ## Default profile safety port
 
 Damage Control's [governing design requirement](profiles/default/docs/damage-control-port.md#design-purpose) is to prevent meaningful unrecoverable harm, not to block every suspicious-looking action. The [risk and proportionality review](../.specs/archive/damage-control-risk-alignment-and-preapproval/damage-control-risk-review.md) records the policy, context, watchdog, and script-reuse findings behind the current implementation.
@@ -227,6 +231,7 @@ See [the skill](profiles/default/skills/code-review/SKILL.md). There is no new `
 - `exit` or `/exit` gracefully quits Pi; Pi prints its built-in resume hint on shutdown.
 - `/effort [level]` shows or sets thinking effort.
 - `/do-it [--no-merge] [plan-path]` is an execution-only native prompt template for the supplied or current standalone plan. It completes the agreed agent-owned checks, archives and commits the whole spec on the task branch, then merges into the recorded parent checkout before declaring completion. It does not load the planning skill or reopen settled intent. Routine technical adaptation remains allowed, and pending operator manual testing is reported as a non-blocking verification limit. `--no-merge` works before or after the selector and retains the committed task worktree with integration intentionally pending. Push and deployment remain separately authorized. Use `/reload` to load it.
+- `/goal [start] [--bedrock-usd N] [--codex-percent N] <goal>` starts same-session goal work; `/goal status`, `/goal pause`, and `/goal resume [instruction]` inspect or control it. No plan or worktree is required. See [goal behavior and limits](profiles/default/docs/goal.md).
 - `/init`, `/summarize`, and `/war-report` are native prompt templates.
 - `/new-instance` opens a new Pi instance for the current profile; `/new-terminal` opens a plain shell.
 - `/rename [title]` renames the current eligible Herdr orchestrator tab. A supplied title is preserved literally and protected from automatic replacement; without a title, the existing Luna naming call runs immediately from current conversation context.

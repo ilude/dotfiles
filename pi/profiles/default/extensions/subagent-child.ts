@@ -14,7 +14,7 @@ import { writeSubagentLineage } from "../lib/subagents/lineage.ts";
 import type { CloseoutManifest } from "../lib/plan-integration/contracts.ts";
 import { samePlatformPath } from "../lib/path-identity.ts";
 interface CloseoutHandoff { manifest:CloseoutManifest; provenance:{source:"subagent-runtime";version:1;childId:string;agent:"integrator";parentSessionId:string;targetCheckout:string} }
-interface Authority { id:string; agent:string; tools:string[]; delegates:string[]; parentId?:string; cwd:string; skills:string[]; surface?:string; closeout?:CloseoutHandoff }
+interface Authority { id:string; agent:string; tools:string[]; delegates:string[]; parentId?:string; goalRunId?:string; cwd:string; skills:string[]; surface?:string; closeout?:CloseoutHandoff }
 function isCloseoutManifest(value:unknown):value is CloseoutManifest {
  if(!value||typeof value!=="object")return false;
  const m=value as Record<string,unknown>;
@@ -46,7 +46,10 @@ export default function childAuthority(pi:ExtensionAPI){
    ||!samePlatformPath(provenance.targetCheckout,handoff.manifest.targetCheckout)||!provenance.parentSessionId)throw new Error("Invalid Integrator closeout authority handoff");
  }else if(authority.closeout)throw new Error("Closeout authority is restricted to the Integrator role");
  if(authority.closeout&&!process.env.PI_SUBAGENT_ENDPOINT)throw new Error("Integrator requires an authenticated parent endpoint");
+ if(authority.goalRunId!==undefined&&(typeof authority.goalRunId!=="string"||!authority.goalRunId.trim()||authority.goalRunId!==process.env.PI_GOAL_RUN_ID))throw new Error("Invalid goal run authority");
  workspaceRoot(authority.cwd);
+ let goalSession:string|undefined,goalGuidance:string|undefined;
+ const goalSubscriptions:Array<()=>void>=[];
  const allowed=new Set(authority.tools);
  const registerTool=pi.registerTool.bind(pi);
  pi.registerTool=function registerAuthorizedChildTool<TParams extends TSchema=TSchema,TDetails=unknown,TState=unknown>(tool:ToolDefinition<TParams,TDetails,TState>):void{
@@ -59,12 +62,39 @@ export default function childAuthority(pi:ExtensionAPI){
   if(authority.closeout&&endpoint.origin!==authority.closeout.provenance.parentSessionId)throw new Error("Integrator parent-session provenance mismatch");
   return endpoint;
  };
+ if(authority.goalRunId){
+  goalSubscriptions.push(pi.events.on("goal-run-id",value=>{
+   if(!value||typeof value!=="object")return;
+   const request=value as Record<string,unknown>;
+   if(request.session===goalSession&&typeof request.respond==="function")request.respond(authority.goalRunId!);
+  }));
+  goalSubscriptions.push(pi.events.on("goal-accounting",value=>{
+   if(!value||typeof value!=="object")return;
+   const event=value as Record<string,unknown>;
+   if(event.runId!==authority.goalRunId||event.session!==goalSession||!Array.isArray(event.pending))return;
+   const payload={type:event.type,runId:event.runId,session:event.session,recordId:event.recordId,timestamp:event.timestamp,persisted:event.persisted};
+   event.pending.push(requestParent(parentEndpoint(),{type:"goal-accounting",payload}).then(()=>{}));
+  }));
+  pi.on("turn_start",async(_event,ctx)=>{
+   try{
+    const result=await requestParent(parentEndpoint(),{type:"goal-admit"}) as {allowed?:unknown;reason?:unknown;guidance?:unknown};
+    goalGuidance=typeof result?.guidance==="string"?result.guidance:undefined;
+    if(result?.allowed!==true){ctx.ui.notify(typeof result?.reason==="string"?result.reason:"Owning goal paused further work","warning");ctx.abort()}
+   }catch(error){ctx.ui.notify(`Goal admission unavailable: ${error instanceof Error?error.message:String(error)}`,"warning");ctx.abort()}
+  });
+  pi.on("context",event=>{
+   if(!goalGuidance)return;
+   return{messages:[...event.messages.filter(message=>!(message.role==="custom"&&message.customType==="goal-budget")),{role:"custom" as const,customType:"goal-budget",content:goalGuidance,display:false,timestamp:0}]};
+  });
+  pi.on("session_shutdown",()=>{goalSession=undefined;goalGuidance=undefined;for(const unsubscribe of goalSubscriptions)unsubscribe()});
+ }
  pi.on("session_start",async(_event,ctx)=>{
   pi.setActiveTools(pi.getAllTools().filter(tool=>allowed.has(tool.name)&&tool.exposure!=="deferred"&&tool.exposure!=="codemode").map(tool=>tool.name));
   if(!process.env.PI_SUBAGENT_ENDPOINT)return;
   const sessionId=ctx.sessionManager.getSessionId(),sessionFile=ctx.sessionManager.getSessionFile();
   if(!sessionId.trim()||!sessionFile)throw new Error("Child session is not durable");
   const endpoint=parentEndpoint();
+  goalSession=sessionFile;
   const response=await requestParent(endpoint,{type:"session-identity",payload:{sessionId,sessionFile}}) as {parentSessionId?:unknown};
   if(typeof response?.parentSessionId!=="string"||!response.parentSessionId.trim())throw new Error("Authenticated parent session identity unavailable");
   writeSubagentLineage(pi,ctx,authority.agent,response.parentSessionId,endpoint.origin);

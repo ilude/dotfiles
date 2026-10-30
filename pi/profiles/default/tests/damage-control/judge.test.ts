@@ -2,7 +2,8 @@ import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
-import { review } from "../../lib/damage-control/judge.ts";
+import { interpretBrowserRequest, review } from "../../lib/damage-control/judge.ts";
+import * as accounting from "../../lib/bedrock/accounting.ts";
 import { modelFixture, registryFixture } from "../helpers/model-selection.ts";
 import { Context, DIRECT_INPUT_LIMIT } from "../../lib/damage-control/context.ts";
 import type { Evidence, PendingCall, Settings } from "../../lib/damage-control/types.ts";
@@ -29,6 +30,39 @@ function context(complete: ReturnType<typeof vi.fn<ExtensionContext["modelRegist
 const valid = { verdict: "allow", reason: "Known disposable target matches direct intent.", dismissedCandidates: ["delete"] };
 
 describe("Luna review", () => {
+  it("accounts actual errored responses across context-overflow attempts in the original session", async () => {
+    const account = vi.spyOn(accounting, "accountBedrockMessage").mockResolvedValue(undefined);
+    try {
+      const partial = { ...textResponse(null, "error", "Your input exceeds the context window of this model"), provider: "bedrock-mantle", responseModel: "actual-route" };
+      const success = textResponse(valid);
+      const complete = vi.fn().mockResolvedValueOnce(partial).mockResolvedValueOnce(success);
+      const ctx = { ...context(complete), sessionManager: { getSessionFile: () => "judge-origin.jsonl" } as ExtensionContext["sessionManager"] };
+      expect((await review(evidence(), ctx, settings, pending, () => 3)).status).toBe("valid");
+      expect(account).toHaveBeenCalledTimes(2);
+      expect(account).toHaveBeenNthCalledWith(1, partial, "judge-origin.jsonl");
+      expect(account).toHaveBeenNthCalledWith(2, success, "judge-origin.jsonl");
+    } finally { account.mockRestore(); }
+  });
+
+  it("accounts a late browser-intent partial response after cancellation without granting scope", async () => {
+    const account = vi.spyOn(accounting, "accountBedrockMessage").mockResolvedValue(undefined);
+    try {
+      let resolve!: (response: AssistantMessage) => void;
+      const complete = vi.fn(() => new Promise<AssistantMessage>(done => { resolve = done; }));
+      let session = "intent-origin.jsonl";
+      const ctx = { ...context(complete), sessionManager: { getSessionFile: () => session } as ExtensionContext["sessionManager"] };
+      const signal = new AbortController();
+      const request = { directText: "inspect the page" } as Parameters<typeof interpretBrowserRequest>[0];
+      const result = interpretBrowserRequest(request, ctx, settings, signal.signal);
+      signal.abort();
+      expect(await result).toEqual({ task: "replace", scopes: [] });
+      session = "other-session.jsonl";
+      const partial = { ...textResponse(null, "aborted"), provider: "bedrock-mantle", responseModel: "unknown-route" };
+      resolve(partial);
+      await vi.waitFor(() => expect(account).toHaveBeenCalledExactlyOnceWith(partial, "intent-origin.jsonl"));
+    } finally { account.mockRestore(); }
+  });
+
   it("uses the maintained prompt, exact Luna model, high reasoning, zero retries, and one completion", async () => {
     const complete = vi.fn().mockResolvedValue(textResponse(valid, "stop"));
     const ctx = context(complete);

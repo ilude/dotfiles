@@ -1,5 +1,21 @@
 # Agent process failure log
 
+## APR-git-ignore-approval - Ignored planning artifact reached an MR
+
+- **Reference:** EISA release-publishing MR discussion, 2026-10-30; AIF-git-ignore-approval, AIF-044 and APR-088.
+- **Observed:** Squashing local dev changes into a new MR included an already tracked archived plan under `.specs/`, despite that directory matching `.git/info/exclude`. Exclusions do not remove indexed files. The initial tracking mechanism was not established; this does not prove `/commit` force-added it.
+- **Finding:** `/commit` uses normal `git add -A` and restricts routine model mutation, but its reviewer lacked an explicit rule forbidding ignore overrides without specific approval. Planning/archival instructions calling for a commit must not be interpreted as an ignore exception.
+- **Correction:** At the user's request, added the no-bypass approval rule to default-profile preservation guidance and the independently loaded commit prompt. Staged additions require `check-ignore --no-index`; matching new candidates use the existing informed ignore decision or stay excluded. No new runtime gate or automatic untracking.
+- **Status:** Instruction changes are local and not committed/pushed. Existing EISA MR history is unchanged pending separate approval; future model adherence is not established.
+
+## APR-mr-description-task-log - Review summaries accumulated investigation history
+
+- **Reference:** Operator correction after merge-request description updates, 2026-10-29.
+- **Observed:** Repeated updates appended debugging history, superseded failures, test implementation details, and long lists of unchanged behavior. A new bullet was inserted before the existing introduction without restructuring the description. Live readback confirmed the clutter after the operator challenged whether the text was needed.
+- **Finding:** The descriptions were maintained as task logs rather than written for reviewers. Existing concise-communication and documentation-placement guidance already covers the distinction; another instruction paraphrase is not the remedy.
+- **Correction:** Rewrote both affected descriptions around actual changes, one necessary configuration action, current validation, and the issue link. Removed investigation narratives and unchanged-scope boilerplate.
+- **Status:** Live descriptions updated and read back. No code or instruction-policy changes.
+
 ## APR-ccyl-herdr-handoff - Claude review startup and answer recovery friction
 
 - **Reference:** Default sessions `01a18563-1cec-7622-afea-ff7d200ef5b5` (workflow discussion), `01a184f6-9f94-72cf-971f-532853874904` (records 155–183), and `01a17d70-fc1d-71de-a68f-7b83a6bdb034` (records 3132–3148), reviewed 2026-10-29 at operator request.
@@ -22,7 +38,7 @@
 - **Observed:** After being directed to plan the required layout change, the assistant repeatedly requested authorization to include the necessary Herdr changes and described that permission as the reason the plan was not ready. Its explanation did not plainly identify the unfinished technical design.
 - **Finding:** Planning may specify necessary cross-repository changes without authorizing immediate execution. Running the selected plan authorizes its specified implementation under the normal execution contract. The actual unfinished work was specifying the Herdr workspace-parent interface, owning source/build route, and bounded producer tasks; this was agent-owned planning, not an established missing operator decision.
 - **Correction:** Retract the redundant scope-approval demand. Distinguish unfinished technical planning from an external blocker, and do not imply that running the plan requires another implementation approval. Retain only genuinely separate publication/deployment boundaries.
-- **Status:** Explanation corrected in conversation. Plan still contains stale authorization-blocker language and an incomplete Herdr prerequisite; no plan revision or implementation performed in this correction. Existing planning instructions cover the distinction; no new policy added.
+- **Status:** Revised the plan to ready after tracing the existing `workspace report-metadata` API through nonexpiring tokens into client snapshots. That existing transport removes the need for a new parent API or server protocol; concrete tasks now extend the native Herdr client hierarchy/rendering and publish Pi's parent metadata. Removed false scope-approval blockers and preserved the no-agent-worktree requirement. No implementation, build, commit, publication, or instruction-policy change performed.
 
 ## APR-subagent-partial-mistaken-for-running - Settled partial outcomes read as live progress
 
