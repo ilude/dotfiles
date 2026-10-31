@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-10-31: Enable Zomboid garbage-bin deletion
+
+- Enable `TrashDeleteAll` in the managed game-server configuration so players can use the garbage-bin Delete All button. Deploy through the targeted service workflow without resetting the world or changing other gameplay settings.
+- Push homelab-infra commit `5e8acc4` and verify the deployed setting and running game container. All 479 public validation tests pass (one skipped); full validation stops at the private-values check because this checkout has no `values/` directory.
+
+
 ## 2026-10-30: Require approval before overriding Git ignores
 
 - Explicitly prohibit the default agent and private `/commit` reviewer from force-adding ignored files, weakening ignore rules, or bypassing `.gitignore`, `.git/info/exclude`, or global excludes without discussing the specific paths and reason and obtaining user approval. General implementation, archival, commit, or push authorization does not approve an exception.
