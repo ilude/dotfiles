@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-11-01: Make default Brave control functionality-first
+
+- At the operator's direction, remove custom Damage Control/AI browser action authorization, private-transfer bookkeeping, and page-request interception from owned and attached browser execution. Other tools retain their separate Damage Control behavior. Keep exact browser/process/session/target/frame checks, configured credential bindings, and native warning/manual CAPTCHA handling.
+- Capture raw screenshots without privacy inspection, masking/restoration, or top-level/per-frame approvals, superseding the narrower October 31 screenshot change. Browser connections now survive agent turns and disconnect on session switch or shutdown; attached Brave and its tabs remain open.
+- Add keyboard chords (`press`), multiline/tabular text insertion (`paste`), local file-input assignment (`upload`), and contenteditable `fill`. Paste does not change the OS clipboard; application-specific spreadsheet paste still requires actual cell verification.
+- Pass 305 browser-related tests and live acceptance through the registered on-disk tools in the operator's attached Brave: keyboard replacement, multiline input, contenteditable fill, a fixture's tabular paste handler, file upload, exact iframe editing, and PNG capture. Verify the actual Google Sheet opens and screenshots correctly, but make no sheet edits or universal compatibility claim. Full-profile typechecking still reports only the three existing context-type errors in `tests/codex-usage-tool.test.ts`.
+- Reload the settled default-profile Pi session or start a fresh process to load the new tool schemas. The functionality-first controller is not a browser/network sandbox and screenshots are not redacted; security hardening is deferred as requested.
+
 ## 2026-11-01: Route selective workflow learning through existing Pi skills
 
 - Add a short default-profile routing cue for meaningful operator corrections, bottlenecks, and reusable successful techniques. Extend `agent-process` to distinguish instruction problems from tooling, execution, and evaluation problems, updating relevant existing records rather than accumulating rules.
@@ -11,6 +19,23 @@
 - Enable `TrashDeleteAll` in the managed game-server configuration so players can use the garbage-bin Delete All button. Deploy through the targeted service workflow without resetting the world or changing other gameplay settings.
 - Push homelab-infra commit `5e8acc4` and verify the deployed setting and running game container. All 479 public validation tests pass (one skipped); full validation stops at the private-values check because this checkout has no `values/` directory.
 
+## 2026-10-31: Remove per-iframe screenshot authorization
+
+- At the operator's request, remove the separate read-authorization and privacy-inspection loop for embedded frames during screenshot capture. It incorrectly treated Google Sheets' blank helper frames as navigation destinations and blocked the entire screenshot.
+- Keep top-level screenshot authorization, browser/session identity checks, and sensitive-control masking and restoration across all frames. No change to navigation, field editing, or request interception.
+- Pass 181 focused browser tests, including screenshot capture with blank and cross-origin embedded frames without separate iframe approvals. Full-profile typechecking still reports the three existing context-type errors in `tests/codex-usage-tool.test.ts`. Reload the settled Pi session to load this change; live screenshot capture and sheet editing remain unverified.
+
+## 2026-10-31: Recognize dedicated-worker parent frames in browser attachment
+
+- Bind browser-level dedicated-worker attachment events through Chromium's exact `parentFrameId` when no parent target/session is supplied. Google Sheets exposed this missing relationship after the opaque-origin fix: the tool treated its worker as unrelated and closed the CDP connection.
+- Wait for initial managed-page frame mappings when needed, register worker guards before resuming paused execution, and continue refusing unknown or ambiguous ownership. Do not infer ownership from the selected tab or adopt unrelated workers.
+- Pass 156 focused browser tests and, after reload, verify a normal-tool text snapshot of the live spreadsheet with its worker and opaque frames present. Full-profile typechecking still reports only the three existing context-type errors in `tests/codex-usage-tool.test.ts`. Existing screenshot authorization does not support opaque blank-frame destinations, so visual layout inspection and the sheet update remain blocked; no sheet content has changed.
+
+## 2026-10-30: Fix browser snapshots with opaque embedded frames
+
+- Normalize Chromium's `://` and empty embedded-frame security origins to the opaque `null` origin. Google Sheets uses blank helper frames with this metadata; listing them previously threw `Invalid URL` and discarded the otherwise successful main-page snapshot.
+- Keep opaque frames classified as private without inheriting the parent page's origin. Browser ownership, destination authorization, and observation screening remain unchanged.
+- Pass 153 focused browser tests and verify corrected frame listing against the live spreadsheet. Full-profile typechecking remains blocked by three existing context-type errors in `tests/codex-usage-tool.test.ts`. Run `/reload` in a settled Pi session to load the fix; full live snapshot verification and sheet editing remain pending.
 
 ## 2026-10-30: Require approval before overriding Git ignores
 

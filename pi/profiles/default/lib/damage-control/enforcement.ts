@@ -187,6 +187,9 @@ export function registerGate(pi: ExtensionAPI, profile: string, repo: string, de
     // Executor authorization reuses the native read analysis/decision/prompt path,
     // but creates no tool-result, watchdog, bypass or successful-read evidence.
     async handle(event: ToolCallEvent, ctx: ExtensionContext, policyOnly = false) {
+      // Browser execution owns its session/target validation. Its functionality-first
+      // actions do not enter Damage Control adapters, approval review, or the watchdog.
+      if (event.toolName === "browser_session" || event.toolName === "browser_page") return;
       const watchdogCall = { tool: event.toolName, input: event.input, cwd: ctx.cwd };
       const stop = policyOnly ? undefined : breaker.before(watchdogCall);
       if (stop) {

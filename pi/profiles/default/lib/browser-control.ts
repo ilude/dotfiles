@@ -1,14 +1,12 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { getAgentDir, updateJsonObjectAtomic, writeJsonObjectAtomic } from "./settings-file.js";
 import { BrowserRuntime } from "./browser-runtime.js";
 import type { BrowserCdpTransport, CdpFrame } from "./browser-cdp-transport.js";
-import { BrowserRequestPolicy, hostVisibility, type BrowserRequestFacts, type BrowserRequestProjection, type BrowserRequestFailure } from "./browser-request-policy.js";
-import { samePolicyIdentity, type BrowserEffect, type BrowserEffectKind, type BrowserPolicyHandler, type PolicyIdentity } from "./browser-effect-contract.js";
 import type { CredentialTarget } from "./browser-credentials.js";
 import { BROWSER_CONTROL_STATE, browserTextExpression, projectBrowserText } from "./browser-observations.js";
+import { pressBrowserKey, pasteBrowserText, uploadBrowserFiles } from "./browser-input.js";
 
 export const MAX_OUTPUT = 50_000;
 export const MAX_ITEMS = 100;
@@ -18,7 +16,7 @@ export type ProfileMode = "isolated" | "real";
 export type SessionMode = "owned" | "attached";
 export type ExtensionMode = "enabled" | "disabled";
 export type SessionAction = "discover" | "status" | "start" | "attach" | "restart" | "stop";
-export type PageAction = "list" | "open" | "select" | "snapshot" | "scroll" | "screenshot" | "click" | "fill" | "close";
+export type PageAction = "list" | "open" | "select" | "snapshot" | "scroll" | "screenshot" | "click" | "fill" | "press" | "paste" | "upload" | "close";
 
 export interface BrowserProfileConfig {
 	profileDirectory: string;
@@ -273,7 +271,6 @@ export async function getTarget(port: number, targetId: string): Promise<Browser
 }
 
 export interface BrowserObservationHooks {
-	/** Local-only values. Never publish these arguments on an event bus or transcript. */
 	protect?(value: string, targetId: string, frameId: string, selector: string): void;
 	text?(text: string, source: { targetId: string; frameId: string; origin: string }, protectedValues: readonly string[], signal?: AbortSignal): Promise<string>;
 	beforeScreenshot?(transport: BrowserCdpTransport, targetId: string, protectedValues: readonly string[], signal?: AbortSignal): Promise<() => Promise<void>>;
@@ -282,15 +279,7 @@ export interface BrowserObservationHooks {
 }
 export interface BrowserPageOptions {
 	runtime: BrowserRuntime;
-	identity: () => PolicyIdentity;
-	lease?: () => { identity: PolicyIdentity; signal: AbortSignal };
-	policy: BrowserPolicyHandler;
-	localFile?: (path: string, signal: AbortSignal) => Promise<import("./browser-effect-contract.js").BrowserPolicyDecision>;
 	resolveCredential?: (reference: string, target: CredentialTarget, signal: AbortSignal) => Promise<string>;
-	/** Operator-configured form origin snapshot paired with the local resolver, never tool arguments. */
-	credentialOrigins?: (reference: string) => readonly string[];
-	observations?: BrowserObservationHooks;
-	resolveHost?: (host: string) => Promise<readonly string[]>;
 }
 /** Wait for caller/owner cancellation without imposing an automated-operation deadline. */
 async function actionWork<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
@@ -302,7 +291,7 @@ async function actionWork<T>(work: Promise<T>, signal: AbortSignal): Promise<T> 
 	});
 }
 export type BrowserFill = { value?: string; secret_ref?: string; frame_id?: string };
-type ControlFacts = { tag: string; type: string; name: string; autocomplete: string; label: string; form: string; href: string; captcha: boolean; password: boolean; loginForm: boolean; disabled: boolean; visible: boolean; readOnly: boolean };
+type ControlFacts = { tag: string; type: string; name: string; autocomplete: string; label: string; form: string; href: string; captcha: boolean; password: boolean; loginForm: boolean; disabled: boolean; visible: boolean; readOnly: boolean; contentEditable: boolean };
 type ControlResult = { ok: boolean; error?: string; visible?: boolean };
 export type BrowserActionResult = { visible: boolean };
 export type BrowserScroll = { scroll_mode?: "by" | "into_view"; selector?: string; delta_x?: number; delta_y?: number; frame_id?: string };
@@ -386,114 +375,43 @@ function uniqueControlExpression(selector: string): string {
 
 /** Fixed native setter remains independent of framework instance value trackers. */
 export function browserFillExpression(selector: string, value: string, facts?: ControlFacts): string {
-	return `(() => { ${uniqueControlExpression(selector)} if (element.readOnly) return { ok: false, error: 'control_readonly' }; ${facts ? `if (element.tagName.toLowerCase() !== ${JSON.stringify(facts.tag)} || (element.getAttribute('type') || '').toLowerCase() !== ${JSON.stringify(facts.type)} || (element.getAttribute('name') || '') !== ${JSON.stringify(facts.name)} || (element.getAttribute('autocomplete') || '') !== ${JSON.stringify(facts.autocomplete)} || (element.form ? element.form.action : '') !== ${JSON.stringify(facts.form)}) return { ok: false, error: 'control_changed' };` : ""} element.focus(); const prototype = element instanceof HTMLInputElement ? HTMLInputElement.prototype : element instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : undefined; const setter = prototype && Object.getOwnPropertyDescriptor(prototype, 'value')?.set; if (!setter) return { ok: false, error: 'control_invalid' }; setter.call(element, ${JSON.stringify(value)}); element.dispatchEvent(new Event('input', { bubbles: true })); element.dispatchEvent(new Event('change', { bubbles: true })); return { ok: true, visible: state.visible }; })()`;
+	return `(() => { ${uniqueControlExpression(selector)} if (element.readOnly) return { ok: false, error: 'control_readonly' }; ${facts ? `if (element.tagName.toLowerCase() !== ${JSON.stringify(facts.tag)} || (element.getAttribute('type') || '').toLowerCase() !== ${JSON.stringify(facts.type)} || (element.getAttribute('name') || '') !== ${JSON.stringify(facts.name)} || (element.getAttribute('autocomplete') || '') !== ${JSON.stringify(facts.autocomplete)} || (element.form ? element.form.action : '') !== ${JSON.stringify(facts.form)}) return { ok: false, error: 'control_changed' };` : ""} element.focus(); const contentEditable = element.isContentEditable || ['', 'true', 'plaintext-only'].includes(element.getAttribute('contenteditable')); if (contentEditable) element.textContent = ${JSON.stringify(value)}; else { const prototype = element instanceof HTMLInputElement ? HTMLInputElement.prototype : element instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : undefined; const setter = prototype && Object.getOwnPropertyDescriptor(prototype, 'value')?.set; if (!setter) return { ok: false, error: 'control_invalid' }; setter.call(element, ${JSON.stringify(value)}); } element.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: ${JSON.stringify(value)} })); element.dispatchEvent(new Event('change', { bubbles: true })); return { ok: true, visible: state.visible }; })()`;
 }
 
 /** Bounded executor URL-route evidence, not a claim to identify every private account UI. */
-function requestResourceEffect(resource: string): BrowserEffectKind | undefined {
-	let route = resource.toLowerCase(); try { route = decodeURIComponent(route); } catch { /* retain raw parser path */ }
-	if (/(?:^|\/)(?:delete|destroy|erase|remove-account)(?:[\/_-]|$)/.test(route)) return "delete";
-	if (/(?:^|\/)(?:admin)(?:[\/_-]|$)/.test(route)) return "admin";
-	if (/(?:^|\/)(?:security|settings|password|permissions|two-factor|2fa)(?:[\/_-]|$)/.test(route)) return "security";
-	if (/(?:^|\/)(?:purchase|checkout|payment|buy)(?:[\/_-]|$)/.test(route)) return "purchase";
-	if (/(?:^|\/)(?:messages?|direct|dm)(?:[\/_-]|$)/.test(route)) return "message";
-	if (/(?:^|\/)(?:comments?|reply|posts?|publish|tweet)(?:[\/_-]|$)/.test(route)) return "post";
-	return undefined;
-}
 function canonicalPageOrigin(origin: string): string { if (origin === "null" || origin === "file://") return origin; const url = new URL(origin); url.hostname = url.hostname.replace(/\.+$/, ""); return url.origin; }
-function frameOrigin(frame: Readonly<CdpFrame>): string { return frame.url.startsWith("file:") ? "file://" : canonicalPageOrigin(frame.securityOrigin); }
-function originVisibility(origin: string): "public" | "private" | "local" { return origin === "null" || origin === "file://" ? "private" : hostVisibility(new URL(origin).hostname); }
+function frameOrigin(frame: Readonly<CdpFrame>): string {
+	if (frame.url.startsWith("file:")) return "file://";
+	// Chromium can serialize opaque blank-frame origins as "://" or an empty string.
+	// Keep them opaque, never infer a trusted origin from the frame URL or parent.
+	if (frame.securityOrigin === "://" || frame.securityOrigin === "") return "null";
+	return canonicalPageOrigin(frame.securityOrigin);
+}
+function originVisibility(origin: string): "public" | "private" | "local" { if (origin === "null" || origin === "file://") return "private"; const host = new URL(origin).hostname; return /^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|\[::1\])/.test(host) ? "local" : "public"; }
 function actualCaptchaFrame(raw: string): boolean {
 	try { const url = new URL(raw); return ((url.hostname === "www.google.com" || url.hostname === "www.recaptcha.net") && url.pathname.startsWith("/recaptcha/")) || (url.hostname === "hcaptcha.com" || url.hostname.endsWith(".hcaptcha.com")); } catch { return false; }
 }
-export function browserAccountRoute(raw: string): boolean {
-	try { const url = new URL(raw); const route = decodeURIComponent(url.pathname).toLowerCase(); return /^\/(?:inbox|messages?|direct|account|accounts|settings|security|admin|billing|wallet|mail)(?:\/|$)/.test(route) || /^\/message\/inbox(?:\/|$)/.test(route); }
-	catch { return false; }
-}
-
 export class BrowserPageProtocol {
 	private transport?: BrowserCdpTransport;
-	private guard?: BrowserRequestPolicy;
-	private readonly requestFailures: BrowserRequestFailure[] = [];
-	/** Bounded value-free evidence remains available after a disconnect or run-end disposal. */
-	diagnostics(): BrowserRequestFailure[] { return this.requestFailures.map(failure => ({ ...failure })); }
-	diagnosticError(error: unknown): unknown {
-		const failures = this.diagnostics();
-		if (!failures.length) return error;
-		const message = error instanceof Error ? error.message : "Browser operation failed.";
-		return new BrowserControlError(error instanceof BrowserControlError ? error.code : "browser_failed", `${message}\nRecent browser request failures: ${JSON.stringify(failures)}`);
-	}
 	private sessionId?: string;
-	private identity?: PolicyIdentity;
 	private connecting?: Promise<BrowserCdpTransport>;
-	private sequence = 0;
 	private protectedValues = new Set<string>();
-	private protectedControls = new Map<string, Set<string>>();
-	private transfers: Array<{ targetId: string; frameId: string; origins: readonly string[]; sourceOrigin: string; selector: string; loaderId?: string; executionContextId?: number; value: string; kind: BrowserEffectKind; protected: boolean; sourceObservationIds: string[]; containsProtectedData: boolean; reference?: string }> = [];
+	private warningTargets = new Set<string>();
 	private lifetime = new AbortController();
-	private privateFrames = new Set<string>();
-	private ownerAbort?: { signal: AbortSignal; handler: () => void };
 	private readonly options?: BrowserPageOptions;
 	constructor(options?: BrowserPageOptions) { this.options = options; }
-	setObservationHooks(hooks: BrowserObservationHooks): void { if (this.options) this.options.observations = hooks; }
-	private settings(): BrowserPageOptions { if (!this.options) throw new BrowserControlError("policy_unavailable", "Browser policy is unavailable."); return this.options; }
 	private async connection(state: BrowserSessionState, signal?: AbortSignal, timeoutMs?: number): Promise<BrowserCdpTransport> {
-		const options = this.settings(), identity = options.identity();
-		if (this.sessionId !== state.sessionId || (this.identity && !samePolicyIdentity(this.identity, identity))) this.dispose();
-		this.sessionId = state.sessionId; this.identity = { ...identity };
+		if (this.sessionId !== state.sessionId) this.dispose();
+		this.sessionId = state.sessionId;
 		if (this.transport?.signal.aborted) this.dispose();
 		if (!this.transport) {
-			if (!this.connecting) this.connecting = (async () => {
-				const lease = options.lease?.();
-				if (lease && (lease.signal.aborted || !samePolicyIdentity(identity, lease.identity))) throw new BrowserControlError("cancelled", "Browser policy lease expired.");
-				const captured = this.lifetime;
-				if (lease) {
-					const handler = () => { if (this.lifetime === captured) this.dispose(); };
-					this.ownerAbort = { signal: lease.signal, handler }; lease.signal.addEventListener("abort", handler, { once: true });
-				}
-				const guard = new BrowserRequestPolicy({ cdpPort: state.cdpPort, identity: options.identity, policy: options.policy, localFile: options.localFile, resolveHost: options.resolveHost, effect: facts => this.requestEffect(facts), interceptRequests: state.sessionMode !== "attached", allowLocalhostTlsErrors: state.allowLocalhostTlsErrors === true, failure: failure => {
-					this.requestFailures.push(failure);
-					if (this.requestFailures.length > 8) this.requestFailures.shift();
-				} });
-				this.guard = guard;
-				const lifetime = this.lifetime;
-				const transport = await options.runtime.connectTransport(state, { register: guard.register, signal: lifetime.signal, timeoutMs });
-				if (lifetime.signal.aborted || !samePolicyIdentity(identity, options.identity())) { transport.dispose(); throw new BrowserControlError("cancelled", "Browser task changed during connection."); }
-				guard.bind(transport); this.transport = transport; return transport;
-			})();
-			try { await this.connecting; } catch (error) { this.dispose(); throw error; } finally { this.connecting = undefined; }
+			if (!this.connecting) this.connecting = this.options!.runtime.connectTransport(state, { register: async setup => {
+				if (setup.target.type === "page") { await setup.command("Page.enable"); await setup.command("Security.enable"); }
+			}, signal: this.lifetime.signal, timeoutMs });
+			try { this.transport = await this.connecting; this.transport.onEvent(event => this.observeNativeWarning(this.transport!, event)); } catch (error) { this.dispose(); throw error; } finally { this.connecting = undefined; }
 		}
 		await this.transport!.revalidate(signal);
 		return timeoutMs === undefined ? this.transport! : this.transport!.withCommandTimeout(timeoutMs);
-	}
-	private requestEffect(facts: BrowserRequestFacts): BrowserRequestProjection {
-		// No active login flag: every request uses its actual destination and local payload facts.
-		const raw = facts.rawUrl;
-		const decode = (value: string) => { try { return decodeURIComponent(value.replaceAll('+', ' ')); } catch { return value; } };
-		const urlSecret = [...this.protectedValues].some(value => raw.includes(value) || decode(raw).includes(value));
-		if (urlSecret) throw new BrowserControlError("credential_export", "Protected control values cannot be sent in browser URLs.");
-		const body = facts.postData;
-		const matching = body === undefined ? [] : this.transfers.filter(item => item.value && (body.includes(item.value) || decode(body).includes(item.value)));
-		if (matching.length) {
-			const consequential = facts.method === "GET" || facts.method === "HEAD" ? undefined : requestResourceEffect(facts.destination.resource);
-			const exact = (item: typeof matching[number]) => item.targetId === facts.targetId && item.frameId === facts.frameId && item.origins.includes(facts.destination.origin) && facts.sourceOrigin === item.sourceOrigin && item.loaderId === facts.frameLoaderId && item.executionContextId === facts.executionContextId && !consequential;
-			if (matching.some(item => item.protected && !exact(item))) throw new BrowserControlError("credential_export", "Protected values cannot be sent outside their bound field/frame operation or to a consequential endpoint.");
-			const item = matching.find(item => item.reference && exact(item)) ?? matching.find(exact);
-			if (item) {
-				let remainder = body!;
-				for (const represented of matching.filter(exact)) remainder = remainder.split(represented.value).join('[represented control value]').split(encodeURIComponent(represented.value)).join('[represented control value]');
-				const observed = this.options?.observations?.payload?.(remainder) ?? { sourceObservationIds: [], containsProtectedData: false };
-				const source = { sourceObservationIds: [...new Set([...item.sourceObservationIds, ...observed.sourceObservationIds])], containsProtectedData: item.containsProtectedData || observed.containsProtectedData };
-				if (item.reference && source.sourceObservationIds.length) throw new BrowserControlError("credential_export", "A bound credential submission cannot carry unrelated private observations.");
-				return { kind: item.kind, payload: item.reference ? { kind: "secret-ref", reference: item.reference, purpose: "login" } : { kind: "redacted", sourceObservationIds: source.sourceObservationIds, containsProtectedData: source.sourceObservationIds.length > 0 || (source.containsProtectedData && !item.protected) }, taskScoped: false };
-			}
-		}
-		const consequential = facts.method === "GET" || facts.method === "HEAD" ? undefined : requestResourceEffect(facts.destination.resource);
-		const protectedData = body !== undefined && [...this.protectedValues].some(value => body.includes(value) || decode(body).includes(value));
-		if (protectedData) throw new BrowserControlError("credential_export", "Protected control values cannot be exported by an unrelated request.");
-		const unknown = facts.hasBody && body === undefined;
-		const sources = this.options?.observations?.payload?.(`${raw}\n${body ?? ''}`) ?? { sourceObservationIds: [], containsProtectedData: false };
-		return { kind: consequential ?? (sources.containsProtectedData || sources.sourceObservationIds.length ? "export" : facts.method === "GET" || facts.method === "HEAD" ? "read" : "export"), payload: unknown || facts.hasBody || sources.containsProtectedData || sources.sourceObservationIds.length ? { kind: "redacted", sourceObservationIds: sources.sourceObservationIds, containsProtectedData: unknown || sources.containsProtectedData } : { kind: "none" }, taskScoped: false, ...(browserAccountRoute(facts.rawUrl) ? { targetVisibility: "private" as const, destinationVisibility: "private" as const } : {}) };
 	}
 	async list(state: BrowserSessionState, signal?: AbortSignal, timeoutMs?: number): Promise<BrowserTarget[]> {
 		const transport = await this.connection(state, signal, timeoutMs);
@@ -504,22 +422,39 @@ export class BrowserPageProtocol {
 	}
 	private async target(state: BrowserSessionState, targetId: string, signal?: AbortSignal, timeoutMs?: number): Promise<BrowserCdpTransport> {
 		const transport = await this.connection(state, signal, timeoutMs);
-		await transport.manage(targetId, signal); this.guard!.assertSafe(targetId);
+		await transport.manage(targetId, signal);
+		this.assertNativeSafe(targetId);
 		return transport;
+	}
+	private observeNativeWarning(transport: BrowserCdpTransport, event: { method: string; params: Record<string, unknown>; sessionId?: string }): void {
+		const target = transport.managedTargets().find(item => item.sessionId === event.sessionId);
+		if (!target) return;
+		if (event.method === "Page.interstitialShown" || event.method === "Security.certificateError") this.warningTargets.add(target.targetId);
+		if (event.method === "Page.interstitialHidden") this.warningTargets.delete(target.targetId);
+		if (event.method === "Security.visibleSecurityStateChanged") {
+			const state = event.params.visibleSecurityState as { securityState?: string; certificateSecurityState?: { certificateNetworkError?: string }; safetyTipInfo?: { safetyTipStatus?: string }; securityStateIssueIds?: string[] } | undefined;
+			const url = transport.managedTargets().find(item => item.targetId === target.targetId)?.url ?? "";
+			let host = ""; try { host = new URL(url).hostname.toLowerCase().replace(/\\.$/, ""); } catch { /* unknown URL */ }
+			const localhost = host === "localhost" || host.endsWith(".localhost") || host === "127.0.0.1" || host === "::1" || host === "[::1]";
+			const localTlsException = this.transport?.state.allowLocalhostTlsErrors === true && localhost && Boolean(state?.certificateSecurityState?.certificateNetworkError);
+			const warned = (state?.securityState === "insecure-broken" || Boolean(state?.certificateSecurityState?.certificateNetworkError)) && !localTlsException
+				|| Boolean(state?.securityStateIssueIds?.includes("malicious-content")) || ["badReputation", "lookalike"].includes(state?.safetyTipInfo?.safetyTipStatus ?? "");
+			if (warned) this.warningTargets.add(target.targetId);
+		}
+	}
+	private assertNativeSafe(targetId: string): void {
+		if (this.warningTargets.has(targetId)) throw new BrowserControlError("native_warning", "The browser reports a native security warning. Resolve it manually without bypassing TLS or Safe Browsing.");
 	}
 	async open(state: BrowserSessionState, url: string, signal?: AbortSignal, timeoutMs?: number): Promise<BrowserTarget> {
 		const transport = await this.connection(state, signal, timeoutMs);
 		signal = this.actionSignal(transport, signal);
 		const target = await transport.create(signal);
-		const destination = await this.guard!.authorizeNavigation(target.targetId, url, signal);
-		await transport.command(target.targetId, "Page.navigate", { url: destination.url }, { signal });
-		return { id: target.targetId, url: destination.url, type: "page" };
+		this.assertNativeSafe(target.targetId);
+		await transport.command(target.targetId, "Page.navigate", { url }, { signal });
+		return { id: target.targetId, url, type: "page" };
 	}
 	async select(state: BrowserSessionState, targetId: string, signal?: AbortSignal, timeoutMs?: number): Promise<void> {
 		const transport = await this.target(state, targetId, signal, timeoutMs);
-		const frame = await this.frame(transport, targetId, undefined, signal);
-		if (/^https?:/.test(frame.securityOrigin)) await this.observePrivacy(transport, frame, signal);
-		if (/^https?:/.test(frame.securityOrigin)) await this.authorize(targetId, frame, "read", { kind: "none" }, "Select exact page account/read context", undefined, signal);
 		await transport.command(targetId, "Page.bringToFront", {}, { signal });
 	}
 	private async frame(transport: BrowserCdpTransport, targetId: string, frameId?: string, signal?: AbortSignal): Promise<Readonly<CdpFrame>> {
@@ -529,7 +464,7 @@ export class BrowserPageProtocol {
 		return frames[0]!;
 	}
 	private async evaluate<T>(transport: BrowserCdpTransport, frame: Readonly<CdpFrame>, expression: string, signal?: AbortSignal): Promise<T> {
-		await transport.revalidateFrame(frame, signal); this.guard!.assertSafe(frame.targetId);
+		await transport.revalidateFrame(frame, signal); this.assertNativeSafe(frame.targetId);
 		if (frame.executionContextId === undefined) throw new BrowserControlError("frame_unavailable", "The exact frame has no current execution context.");
 		const response = await transport.command<{ result?: { value?: T }; exceptionDetails?: unknown }>(frame.targetId, "Runtime.evaluate", { expression, contextId: frame.executionContextId, returnByValue: true }, { signal });
 		if (response.exceptionDetails || response.result?.value === undefined) throw new BrowserControlError("control_failed", "Browser control inspection or execution failed.");
@@ -544,123 +479,51 @@ export class BrowserPageProtocol {
 	}
 	async snapshot(state: BrowserSessionState, targetId: string, signal?: AbortSignal, frameId?: string, selector?: string, timeoutMs?: number): Promise<string> {
 		const transport = await this.target(state, targetId, signal, timeoutMs), frame = await this.frame(transport, targetId, frameId, signal);
-		await this.observePrivacy(transport, frame, signal);
-		await this.authorize(targetId, frame, "read", { kind: "none" }, "Observe rendered page labels without control values", undefined, signal);
 		const text = await this.evaluate<string | { error: string }>(transport, frame, browserTextExpression(selector), signal);
 		await transport.revalidateFrame(frame, signal);
 		if (typeof text !== "string") this.controlFailure(text.error, frame, targetId);
 		const filtered = this.filter(text);
-		return this.settings().observations?.text ? await this.settings().observations!.text!(filtered, { targetId, frameId: frame.frameId, origin: frameOrigin(frame) }, [...this.protectedValues], signal) : filtered;
+		return filtered;
 	}
 	async scroll(state: BrowserSessionState, targetId: string, input: BrowserScroll, signal?: AbortSignal, timeoutMs?: number): Promise<BrowserScrollResult> {
 		validateScroll(input);
 		const transport = await this.target(state, targetId, signal, timeoutMs), frame = await this.frame(transport, targetId, input.frame_id, signal);
 		signal = this.actionSignal(transport, signal);
-		const identity = { ...this.settings().identity() };
-		await this.observePrivacy(transport, frame, signal);
-		await this.authorize(targetId, frame, "read", { kind: "none" }, "Scroll bounded exact-frame viewport; lazy-loading may generate normal page traffic; movement does not mean content was read", undefined, signal);
-		await this.revalidateAction(identity, targetId, frame, signal);
 		const result = await this.evaluate<BrowserScrollResult | { error: string }>(transport, frame, browserScrollExpression(input), signal);
 		if ("error" in result) this.controlFailure(result.error, frame, targetId);
-		await this.revalidateAction(identity, targetId, frame, signal);
 		return result;
 	}
 	async screenshot(state: BrowserSessionState, targetId: string, outputPath: string, signal?: AbortSignal, timeoutMs?: number): Promise<{ origin: string; classification: "public" | "private" }> {
 		const transport = await this.target(state, targetId, signal, timeoutMs);
 		const root = await this.frame(transport, targetId, undefined, signal);
-		await this.observePrivacy(transport, root, signal);
-		await this.authorize(targetId, root, "read", { kind: "none" }, "Capture actual page observation with sensitive controls masked", undefined, signal);
-		const frameIds = [...new Set((await transport.frameList(targetId, signal)).map(frame => frame.frameId))];
-		const frames = await Promise.all(frameIds.map(frameId => transport.frame(targetId, frameId, signal)));
-		for (const frame of frames) {
-			if (frame.frameId === root.frameId) continue;
-			await this.observePrivacy(transport, frame, signal);
-			await this.authorize(targetId, frame, "read", { kind: "none" }, "Capture exact embedded frame observation", undefined, signal);
-		}
-		const restore: Array<() => Promise<void>> = [];
-		try {
-			const hook = this.settings().observations?.beforeScreenshot;
-			if (hook) restore.push(await hook(transport, targetId, [...this.protectedValues], signal));
-			else for (const frame of frames) {
-				const selectors = [...(this.protectedControls.get(frame.frameId) ?? [])];
-				await this.evaluate(transport, frame, `(() => { const controls = new Set([...document.querySelectorAll('input,textarea,select')]); for (const selector of ${JSON.stringify(selectors)}) { const element = document.querySelector(selector); if (element) controls.add(element); } for (const element of controls) { if (element.hasAttribute('data-pi-browser-mask')) continue; element.setAttribute('data-pi-browser-mask', element.style.getPropertyValue('visibility')); element.style.setProperty('visibility', 'hidden', 'important'); } return true; })()`, signal);
-				restore.push(async () => { await this.evaluate(transport, frame, `(() => { for (const element of document.querySelectorAll('[data-pi-browser-mask]')) { const value = element.getAttribute('data-pi-browser-mask'); if (value) element.style.setProperty('visibility', value); else element.style.removeProperty('visibility'); element.removeAttribute('data-pi-browser-mask'); } return true; })()`); });
-			}
-			this.guard!.assertSafe(targetId); await transport.revalidate(signal);
-			const response = await transport.command<{ data?: string }>(targetId, "Page.captureScreenshot", { format: "png" }, { signal });
-			if (!response.data) throw new BrowserControlError("screenshot_failed", "CDP returned no screenshot data.");
-			await fs.promises.mkdir(path.dirname(outputPath), { recursive: true }); await fs.promises.writeFile(outputPath, Buffer.from(response.data, "base64"));
-			return { origin: frameOrigin(root), classification: this.observationClass({ targetId: root.targetId, frameId: root.frameId, origin: frameOrigin(root) }) };
-		} finally { let failed = false; for (const cleanup of restore.reverse()) { try { await cleanup(); } catch { failed = true; } } if (failed) throw new BrowserControlError("screenshot_restore_failed", "Sensitive-control masking could not be restored; inspect the page manually."); }
+		await transport.revalidate(signal); this.assertNativeSafe(targetId);
+		const response = await transport.command<{ data?: string }>(targetId, "Page.captureScreenshot", { format: "png" }, { signal });
+		if (!response.data) throw new BrowserControlError("screenshot_failed", "CDP returned no screenshot data.");
+		await fs.promises.mkdir(path.dirname(outputPath), { recursive: true }); await fs.promises.writeFile(outputPath, Buffer.from(response.data, "base64"));
+		return { origin: frameOrigin(root), classification: originVisibility(frameOrigin(root)) === "public" ? "public" : "private" };
 	}
-	observationClass(source: { targetId: string; frameId: string; origin: string }): "public" | "private" { return this.privateFrames.has(JSON.stringify([source.targetId, source.frameId])) || originVisibility(source.origin) !== "public" ? "private" : "public"; }
-	private async observePrivacy(transport: BrowserCdpTransport, frame: Readonly<CdpFrame>, signal?: AbortSignal): Promise<void> {
-		const privateControl = await this.evaluate<boolean>(transport, frame, `(() => !!document.querySelector('input[autocomplete="one-time-code"]'))()`, signal);
-		const key = JSON.stringify([frame.targetId, frame.frameId]);
-		if (browserAccountRoute(frame.url) || privateControl === true) this.privateFrames.add(key); else this.privateFrames.delete(key);
-	}
+	observationClass(source: { origin: string; targetId?: string; frameId?: string }): "public" | "private" { return originVisibility(source.origin) === "public" ? "public" : "private"; }
 	private controlFailure(error: string | undefined, frame: Readonly<CdpFrame>, targetId: string): never {
 		const messages: Record<string, string> = { selector_invalid: "Invalid CSS selector.", selector_missing: "Selector did not match an element.", selector_ambiguous: "Selector matches multiple elements; use one uniquely verified selector.", control_disabled: "Control is disabled; choose an enabled control after observing current state.", control_readonly: "Control is read-only.", control_invalid: "Control is not editable.", control_changed: "Control changed before execution.", scroll_unavailable: "The exact frame has no scrolling document." };
 		const code = error && Object.hasOwn(messages, error) ? error : "control_changed";
 		throw new BrowserControlError(code, `${messages[code]} Snapshot target_id=${JSON.stringify(this.filter(targetId))} frame_id=${JSON.stringify(this.filter(frame.frameId))} again; for a missing/ambiguous subtree root, omit selector first. Do not guess or automatically retry the action.`);
 	}
 	private async inspect(transport: BrowserCdpTransport, frame: Readonly<CdpFrame>, targetId: string, selector: string, signal?: AbortSignal): Promise<ControlFacts> {
-		const facts = await this.evaluate<ControlFacts | ControlResult>(transport, frame, `(() => { ${uniqueControlExpression(selector)} const captcha = !!element.closest('.g-recaptcha,.h-captcha') || (element.tagName === 'IFRAME' && (() => { try { const url = new URL(element.src); return ((url.hostname === 'www.google.com' || url.hostname === 'www.recaptcha.net') && url.pathname.startsWith('/recaptcha/')) || url.hostname === 'hcaptcha.com' || url.hostname.endsWith('.hcaptcha.com'); } catch { return false; } })()); return { tag: element.tagName.toLowerCase(), type: (element.getAttribute('type') || '').toLowerCase(), name: (element.getAttribute('name') || '').slice(0, 100), autocomplete: (element.getAttribute('autocomplete') || '').slice(0,100), label: (element.getAttribute('aria-label') || Array.from(element.labels || []).map(label => label.textContent || '').join(' ') || (['INPUT','TEXTAREA','SELECT'].includes(element.tagName) ? '' : element.textContent) || '').slice(0,200), form: element.form ? element.form.action : '', href: element.href || '', ...state, readOnly: !!element.readOnly, captcha, loginForm: !!element.form?.querySelector('input[type="password"],input[autocomplete="current-password"]'), password: element.getAttribute('type') === 'password' || element.getAttribute('autocomplete') === 'current-password' || element.getAttribute('autocomplete') === 'new-password' }; })()`, signal);
+		const facts = await this.evaluate<ControlFacts | ControlResult>(transport, frame, `(() => { ${uniqueControlExpression(selector)} const captcha = !!element.closest('.g-recaptcha,.h-captcha') || (element.tagName === 'IFRAME' && (() => { try { const url = new URL(element.src); return ((url.hostname === 'www.google.com' || url.hostname === 'www.recaptcha.net') && url.pathname.startsWith('/recaptcha/')) || url.hostname === 'hcaptcha.com' || url.hostname.endsWith('.hcaptcha.com'); } catch { return false; } })()); return { tag: element.tagName.toLowerCase(), type: (element.getAttribute('type') || '').toLowerCase(), name: (element.getAttribute('name') || '').slice(0, 100), autocomplete: (element.getAttribute('autocomplete') || '').slice(0,100), label: (element.getAttribute('aria-label') || Array.from(element.labels || []).map(label => label.textContent || '').join(' ') || (['INPUT','TEXTAREA','SELECT'].includes(element.tagName) ? '' : element.textContent) || '').slice(0,200), form: element.form ? element.form.action : '', href: element.href || '', ...state, readOnly: !!element.readOnly, contentEditable: !!element.isContentEditable || ['', 'true', 'plaintext-only'].includes(element.getAttribute('contenteditable')), captcha, loginForm: !!element.form?.querySelector('input[type="password"],input[autocomplete="current-password"]'), password: element.getAttribute('type') === 'password' || element.getAttribute('autocomplete') === 'current-password' || element.getAttribute('autocomplete') === 'new-password' }; })()`, signal);
 		if ("ok" in facts) this.controlFailure(facts.error, frame, targetId);
 		if (facts.captcha || actualCaptchaFrame(frame.url)) throw new BrowserControlError("manual_captcha", "Complete the actual CAPTCHA manually; other page controls remain available.");
 		return facts;
 	}
-	private classify(facts: ControlFacts, frame: Readonly<CdpFrame>, fill: boolean): BrowserEffectKind {
-		const context = `${facts.label} ${facts.name} ${facts.form ? new URL(facts.form).pathname : ''} ${facts.href ? new URL(facts.href).pathname : ''}`;
-		if (/delete|remove account|erase|destroy/i.test(context)) return "delete";
-		if (/security|two.factor|2fa|change.password|reset.password|new-password|permissions/i.test(context + facts.autocomplete)) return "security";
-		if (/purchase|checkout|buy|pay now/i.test(context)) return "purchase";
-		if (/message|send.dm/i.test(context)) return "message";
-		if (/post|publish|comment|reply|submit.article/i.test(context)) return "post";
-		if (fill && originVisibility(frameOrigin(frame)) === "local") return "dev-form";
-		if (facts.password || facts.loginForm || /^(username|current-password|one-time-code)$/.test(facts.autocomplete) || /log.?in|sign.?in/i.test(context)) return "login";
-		if (!fill && !facts.form && /^(accept(?: all)?|allow(?: all)?|agree|continue|reject(?: all)?|close|dismiss)(?: cookies)?$/i.test(facts.label.trim())) return "read";
-		if (originVisibility(frameOrigin(frame)) === "local") return "dev-form";
-		return fill ? "export" : facts.href ? "navigate" : "export";
-	}
 	private actionSignal(transport: BrowserCdpTransport, signal?: AbortSignal): AbortSignal {
 		return AbortSignal.any([this.lifetime.signal, transport.signal, ...(signal ? [signal] : [])]);
-	}
-	private controlDestination(targetId: string, frame: Readonly<CdpFrame>, facts?: ControlFacts): URL {
-		const destination = new URL(facts?.form || facts?.href || frame.url);
-		if (destination.username || destination.password || !["http:", "https:", "file:"].includes(destination.protocol)) throw new BrowserControlError("destination_refused", "Control destinations require HTTP/HTTPS or an explicitly authorized local file, without embedded credentials.");
-		destination.hostname = destination.hostname.replace(/\.+$/, "");
-		if ([frameOrigin(frame), destination.origin, targetId, frame.frameId].some(value => this.filter(value) !== value)) throw new BrowserControlError("protected_metadata", "Protected data cannot enter browser policy metadata.");
-		return destination;
-	}
-	private async revalidateAction(identity: PolicyIdentity, targetId: string, frame: Readonly<CdpFrame>, signal: AbortSignal): Promise<void> {
-		if (signal.aborted || !samePolicyIdentity(identity, this.settings().identity())) throw new BrowserControlError("cancelled", "Browser task changed.");
-		const bounded = AbortSignal.any([signal, AbortSignal.timeout(20_000)]);
-		await actionWork(this.transport!.revalidateFrame(frame, bounded), bounded); this.guard!.assertSafe(targetId);
-		if (signal.aborted || !samePolicyIdentity(identity, this.settings().identity())) throw new BrowserControlError("cancelled", "Browser task changed.");
-	}
-	private async authorize(targetId: string, frame: Readonly<CdpFrame>, kind: BrowserEffectKind, payload: BrowserEffect["payload"], expectedEffect: string, facts?: ControlFacts, signal?: AbortSignal): Promise<void> {
-		const options = this.settings(), identity = { ...options.identity() };
-		const pending = this.actionSignal(this.transport!, signal);
-		if (pending.aborted) throw new BrowserControlError("cancelled", "Browser action cancelled.");
-		if (kind === "read" && frame.url.startsWith("file:")) {
-			if (!options.localFile || (await actionWork(options.localFile(fileURLToPath(new URL(frame.url)), pending), pending)).outcome !== "allow") throw new BrowserControlError("action_refused", "Local file observation requires current filesystem-policy authorization.");
-			await this.revalidateAction(identity, targetId, frame, pending); return;
-		}
-		const destination = this.controlDestination(targetId, frame, facts);
-		const effect: BrowserEffect = { id: `browser-control-${++this.sequence}`, identity, kind, action: facts ? "control" : "observe", target: { targetId, frameId: frame.frameId, origin: frameOrigin(frame), visibility: this.privateFrames.has(JSON.stringify([frame.targetId, frame.frameId])) ? "private" : originVisibility(frameOrigin(frame)), ...(facts ? { control: this.filter(`${facts.tag} ${facts.type} ${facts.name} ${facts.label}`).slice(0, 300) } : {}) }, destination: { origin: destination.origin, resource: this.filter(destination.pathname), visibility: hostVisibility(destination.hostname) }, payload, expectedEffect, taskScoped: false };
-		const decision = await actionWork(options.policy(effect, pending), pending);
-		if (decision.outcome !== "allow") throw new BrowserControlError("action_refused", decision.reason);
-		await this.revalidateAction(identity, targetId, frame, pending);
 	}
 	async click(state: BrowserSessionState, targetId: string, selector: string, signal?: AbortSignal, frameId?: string, timeoutMs?: number): Promise<BrowserActionResult> {
 		const transport = await this.target(state, targetId, signal, timeoutMs), frame = await this.frame(transport, targetId, frameId, signal), facts = await this.inspect(transport, frame, targetId, selector, signal);
 		signal = this.actionSignal(transport, signal);
-		await this.authorize(targetId, frame, this.classify(facts, frame, false), { kind: "none" }, state.sessionMode === "attached" ? "Click actual control; attached page traffic is not intercepted or independently approved" : "Click actual control; resulting intercepted transfers are independently guarded", facts, signal);
-		const navigation = facts.href ? await this.guard!.authorizeNavigation(targetId, facts.href, signal) : undefined;
+		const navigation = facts.href ? new URL(facts.href).href : undefined;
 		const current = await this.inspect(transport, frame, targetId, selector, signal);
 		if (!sameControlFacts(current, facts)) this.controlFailure("control_changed", frame, targetId);
-		const result = await this.evaluate<ControlResult>(transport, frame, `(() => { ${uniqueControlExpression(selector)} ${navigation ? `element.href = ${JSON.stringify(navigation.url)};` : ""} element.click(); return { ok: true, visible: state.visible }; })()`, signal);
+		const result = await this.evaluate<ControlResult>(transport, frame, `(() => { ${uniqueControlExpression(selector)} ${navigation ? `element.href = ${JSON.stringify(navigation)};` : ""} element.click(); return { ok: true, visible: state.visible }; })()`, signal);
 		if (!result.ok) this.controlFailure(result.error, frame, targetId);
 		return { visible: result.visible === true };
 	}
@@ -669,48 +532,51 @@ export class BrowserPageProtocol {
 		if ((fill.value === undefined) === (fill.secret_ref === undefined)) throw new BrowserControlError("value_required", "Fill requires exactly one of value or secret_ref.");
 		const transport = await this.target(state, targetId, signal, timeoutMs), frame = await this.frame(transport, targetId, fill.frame_id, signal), facts = await this.inspect(transport, frame, targetId, selector, signal);
 		signal = this.actionSignal(transport, signal);
-		const identity = { ...this.settings().identity() };
 		if (facts.readOnly) this.controlFailure("control_readonly", frame, targetId);
-		if (!["input", "textarea"].includes(facts.tag) || ["file", "hidden", "checkbox", "radio", "submit", "button"].includes(facts.type)) throw new BrowserControlError("control_invalid", "Fill requires an actual editable input or textarea.");
-		const sources = fill.value === undefined ? { sourceObservationIds: [], containsProtectedData: false } : this.settings().observations?.payload?.(fill.value) ?? { sourceObservationIds: [], containsProtectedData: false };
-		const payload: BrowserEffect["payload"] = fill.secret_ref !== undefined ? { kind: "secret-ref", reference: fill.secret_ref, purpose: "login" } : { kind: "redacted", sourceObservationIds: sources.sourceObservationIds, containsProtectedData: sources.containsProtectedData || [...this.protectedValues].some(value => fill.value!.includes(value)) };
-		const observedKind = this.classify(facts, frame, true);
-		const kind = fill.secret_ref !== undefined && observedKind === "dev-form" && (facts.password || facts.loginForm || facts.autocomplete === "username") ? "login" : observedKind;
-		await this.authorize(targetId, frame, kind, payload, state.sessionMode === "attached" ? "Fill actual field; input/change handlers can immediately transmit; attached page traffic is not intercepted or independently approved" : "Fill actual field; input/change handlers can immediately transmit; resulting intercepted transfers are independently guarded", facts, signal);
+		if ((!facts.contentEditable && !["input", "textarea"].includes(facts.tag)) || ["file", "hidden", "checkbox", "radio", "submit", "button"].includes(facts.type)) throw new BrowserControlError("control_invalid", "Fill requires an editable input, textarea, or contenteditable element.");
 		// Reinspect exact field/form immediately before local resolution, then again before setter.
 		if (!sameControlFacts(await this.inspect(transport, frame, targetId, selector, signal), facts)) this.controlFailure("control_changed", frame, targetId);
 		let value = fill.value;
 		if (fill.secret_ref !== undefined) {
-			if (kind !== "login" || !this.settings().resolveCredential) throw new BrowserControlError("credential_unavailable", "Credential references require a bound login field.");
+			if (!this.options?.resolveCredential) throw new BrowserControlError("credential_unavailable", "Credential references require a configured credential binding.");
 			const root = await this.frame(transport, targetId, undefined, signal);
 			try {
 				const bounded = AbortSignal.any([signal, AbortSignal.timeout(20_000)]);
-				value = await actionWork(this.settings().resolveCredential!(fill.secret_ref, { origin: root.securityOrigin, frameOrigin: frame.securityOrigin, field: facts.password ? "password" : facts.autocomplete === "username" ? "username" : facts.name || facts.autocomplete || facts.type, ...(facts.form ? { formOrigin: new URL(facts.form).origin } : {}) }, bounded), bounded);
+				value = await actionWork(this.options.resolveCredential(fill.secret_ref, { origin: root.securityOrigin, frameOrigin: frame.securityOrigin, field: facts.password ? "password" : facts.autocomplete === "username" ? "username" : facts.name || facts.autocomplete || facts.type, ...(facts.form ? { formOrigin: new URL(facts.form).origin } : {}) }, bounded), bounded);
 				// A child login frame does not establish that its top-level credential origin survived resolution.
 				await actionWork(transport.revalidateFrame(root, bounded), bounded);
 			} catch { throw new BrowserControlError("credential_unavailable", "Bound browser credential is unavailable or the destination is not authorized."); }
 		}
-		const destination = new URL(facts.form || frame.url);
-		const origins = fill.secret_ref ? this.settings().credentialOrigins?.(fill.secret_ref) ?? [canonicalPageOrigin(destination.origin)] : [canonicalPageOrigin(destination.origin)];
-		this.transfers = this.transfers.filter(item => item.targetId !== frame.targetId || item.frameId !== frame.frameId || item.selector !== selector);
-		this.transfers.push({ targetId: frame.targetId, frameId: frame.frameId, origins: [...origins], sourceOrigin: frameOrigin(frame), selector, loaderId: frame.loaderId, executionContextId: frame.executionContextId, value: value!, kind, protected: facts.password || fill.secret_ref !== undefined, sourceObservationIds: sources.sourceObservationIds, containsProtectedData: sources.containsProtectedData, ...(fill.secret_ref ? { reference: fill.secret_ref } : {}) });
-		if (facts.password || fill.secret_ref !== undefined) {
-			this.protectedValues.add(value!); const controls = this.protectedControls.get(frame.frameId) ?? new Set<string>(); controls.add(selector); this.protectedControls.set(frame.frameId, controls);
-			this.settings().observations?.protect?.(value!, targetId, frame.frameId, selector);
-		}
-		// Keep the complete post-secret boundary without making a second policy decision.
-		// Newly resolved secrets can match origins/IDs that were safe before resolution.
-		this.controlDestination(targetId, frame, facts);
-		await this.revalidateAction(identity, targetId, frame, signal);
+		await transport.revalidateFrame(frame, signal);
 		if (!sameControlFacts(await this.inspect(transport, frame, targetId, selector, signal), facts)) this.controlFailure("control_changed", frame, targetId);
+		if (facts.password || fill.secret_ref !== undefined) this.protectedValues.add(value!);
 		const result = await this.evaluate<ControlResult>(transport, frame, browserFillExpression(selector, value!, facts), signal);
 		value = undefined;
 		if (!result.ok) this.controlFailure(result.error, frame, targetId);
 		return { visible: result.visible === true };
 	}
+	private async inputFrame(transport: BrowserCdpTransport, targetId: string, frameId?: string, selector?: string, signal?: AbortSignal): Promise<Readonly<CdpFrame>> {
+		const frame = await this.frame(transport, targetId, frameId, signal);
+		if (actualCaptchaFrame(frame.url)) throw new BrowserControlError("manual_captcha", "Complete the actual CAPTCHA manually; other page controls remain available.");
+		if (selector !== undefined) await this.inspect(transport, frame, targetId, selector, signal);
+		return frame;
+	}
+	async press(state: BrowserSessionState, targetId: string, key: string, signal?: AbortSignal, frameId?: string, selector?: string, timeoutMs?: number): Promise<void> {
+		const transport = await this.target(state, targetId, signal, timeoutMs), frame = await this.inputFrame(transport, targetId, frameId, selector, signal);
+		await pressBrowserKey(transport, targetId, frame, key, selector, this.actionSignal(transport, signal));
+	}
+	async paste(state: BrowserSessionState, targetId: string, value: string, signal?: AbortSignal, frameId?: string, selector?: string, timeoutMs?: number): Promise<void> {
+		const transport = await this.target(state, targetId, signal, timeoutMs), frame = await this.inputFrame(transport, targetId, frameId, selector, signal);
+		await pasteBrowserText(transport, targetId, frame, value, selector, this.actionSignal(transport, signal));
+	}
+	async upload(state: BrowserSessionState, targetId: string, selector: string, files: string[], signal?: AbortSignal, frameId?: string, timeoutMs?: number): Promise<void> {
+		const transport = await this.target(state, targetId, signal, timeoutMs), frame = await this.inputFrame(transport, targetId, frameId, selector, signal);
+		await uploadBrowserFiles(transport, frame, selector, files, this.actionSignal(transport, signal));
+	}
 	async close(state: BrowserSessionState, targetId: string, signal?: AbortSignal, timeoutMs?: number): Promise<void> {
 		const transport = await this.target(state, targetId, signal, timeoutMs);
+		this.assertNativeSafe(targetId);
 		await transport.command(targetId, "Target.closeTarget", { targetId }, { signal });
 	}
-	dispose(): void { if (this.ownerAbort) this.ownerAbort.signal.removeEventListener("abort", this.ownerAbort.handler); this.ownerAbort = undefined; this.lifetime.abort(); this.lifetime = new AbortController(); this.guard?.dispose(); this.options?.runtime.disposeTransport(); this.transport = undefined; this.guard = undefined; this.connecting = undefined; this.sessionId = undefined; this.identity = undefined; this.protectedValues.clear(); this.protectedControls.clear(); this.transfers = []; this.privateFrames.clear(); this.options?.observations?.clear?.(); }
+	dispose(): void { this.lifetime.abort(); this.lifetime = new AbortController(); this.options?.runtime.disposeTransport(); this.transport = undefined; this.connecting = undefined; this.sessionId = undefined; this.protectedValues.clear(); this.warningTargets.clear(); }
 }

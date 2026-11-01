@@ -1,9 +1,7 @@
 import path from "node:path";
 import fs from "node:fs";
 import { getAgentDir } from "../lib/settings-file.js";
-import { browserPolicyIdentity, browserPolicyLease, requestBrowserPolicy, requestBrowserLocalFilePolicy, samePolicyIdentity, type PolicyIdentity } from "../lib/browser-effect-contract.js";
-import { browserCredentialConfigPath, parseBrowserCredentialConfig, createBrowserCredentialResolver, type BrowserCredentialConfig } from "../lib/browser-credentials.js";
-import { createBrowserObservationHooks } from "../lib/browser-observations.js";
+import { browserCredentialConfigPath, parseBrowserCredentialConfig, createBrowserCredentialResolver } from "../lib/browser-credentials.js";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { StringEnum } from "@earendil-works/pi-ai";
 import { Type, type Static } from "typebox";
@@ -31,11 +29,11 @@ import {
 } from "../lib/browser-control.js";
 
 const SESSION_ACTIONS = ["discover", "status", "start", "attach", "restart", "stop"] as const;
-const PAGE_ACTIONS = ["list", "open", "select", "snapshot", "scroll", "screenshot", "click", "fill", "close"] as const;
+const PAGE_ACTIONS = ["list", "open", "select", "snapshot", "scroll", "screenshot", "click", "fill", "press", "paste", "upload", "close"] as const;
 
 const SessionParameters = Type.Object({
 	action: StringEnum(SESSION_ACTIONS),
-	timeout_ms: Type.Optional(Type.Integer({ minimum: 1_000, maximum: 300_000, description: "Optional overall call deadline and CDP timeout in milliseconds; CDP commands default to 30000. Policy deadlines remain separate." })),
+	timeout_ms: Type.Optional(Type.Integer({ minimum: 1_000, maximum: 300_000, description: "Optional overall call deadline and CDP timeout in milliseconds; CDP commands default to 30000. Overrides apply only to this call." })),
 	profile_mode: Type.Optional(StringEnum(["isolated", "real"] as const)),
 	profile_alias: Type.Optional(Type.String()),
 	cdp_port: Type.Optional(Type.Integer({ minimum: 1, maximum: 65535 })),
@@ -47,15 +45,17 @@ const SessionParameters = Type.Object({
 
 const PageParameters = Type.Object({
 	action: StringEnum(PAGE_ACTIONS),
-	timeout_ms: Type.Optional(Type.Integer({ minimum: 1_000, maximum: 300_000, description: "Optional overall call deadline and CDP timeout in milliseconds; CDP commands default to 30000. Policy deadlines remain separate." })),
+	timeout_ms: Type.Optional(Type.Integer({ minimum: 1_000, maximum: 300_000, description: "Optional overall call deadline and CDP timeout in milliseconds; CDP commands default to 30000. Overrides apply only to this call." })),
 	session_id: Type.String(),
 	target_id: Type.Optional(Type.String()),
 	url: Type.Optional(Type.String()),
-	selector: Type.Optional(Type.String({ description: "Unique exact-frame CSS selector. Optional subtree root for snapshot or container for scroll by; required for click/fill and scroll into_view. Scroll selectors are limited to 2000 characters." })),
+	selector: Type.Optional(Type.String({ description: "Unique exact-frame CSS selector. Optional subtree root for snapshot or container for scroll by; required for click/fill/upload and scroll into_view. For press/paste it optionally focuses an element; otherwise use current focus. Scroll selectors are limited to 2000 characters." })),
 	scroll_mode: Type.Optional(StringEnum(["by", "into_view"] as const, { description: "Scroll only: by (default) moves document or selected container by deltas; into_view moves a selected element's ancestors within this exact frame, at most 16 containers and 2000 pixels per axis each. Re-snapshot after scrolling." })),
 	delta_x: Type.Optional(Type.Integer({ minimum: -2000, maximum: 2000, description: "Scroll by only: horizontal pixels. At least one delta must be nonzero." })),
 	delta_y: Type.Optional(Type.Integer({ minimum: -2000, maximum: 2000, description: "Scroll by only: vertical pixels. into_view takes no deltas." })),
 	value: Type.Optional(Type.String()),
+	key: Type.Optional(Type.String({ description: "press: named key or chord, such as Enter, Tab, Control+a, or ControlOrMeta+a." })),
+	files: Type.Optional(Type.Array(Type.String(), { description: "upload: local file paths. Relative paths resolve against the tool working directory; an empty list clears the file input." })),
 	secret_ref: Type.Optional(Type.String()),
 	frame_id: Type.Optional(Type.String()),
 	output_path: Type.Optional(Type.String()),
@@ -84,6 +84,8 @@ type PageInput = {
 	delta_x?: number;
 	delta_y?: number;
 	value?: string;
+	key?: string;
+	files?: string[];
 	secret_ref?: string;
 	frame_id?: string;
 	output_path?: string;
@@ -105,11 +107,6 @@ const BrowserResultSchema = Type.Object({
 	candidates: Type.Optional(Type.Array(Type.Object({ userDataDir: Type.String(), profileDirectory: Type.String(), displayName: Type.String(), configuredAliases: Type.Array(Type.String()) }))),
 	candidateCount: Type.Optional(Type.Number()), targets: Type.Optional(Type.Array(Type.Object({ id: Type.String(), url: Type.String(), type: Type.Optional(Type.String()) }))),
 	count: Type.Optional(Type.Number()), targetId: Type.Optional(Type.String()), url: Type.Optional(Type.String()),
-	requestFailures: Type.Optional(Type.Array(Type.Object({
-		phase: StringEnum(["navigation", "intercepted"] as const),
-		stage: StringEnum(["safety", "identity", "destination", "frame", "source", "projection", "classification", "policy", "postcheck", "dispatch"] as const),
-		code: Type.String(), cancellation: StringEnum(["none", "policy-disposed", "target-disconnected", "caller-aborted", "deadline"] as const),
-	}, { additionalProperties: false }), { maxItems: 8 })),
 	snapshot: Type.Optional(Type.String()),
 	visible: Type.Optional(Type.Boolean()),
 	scroll: Type.Optional(Type.Object({
@@ -181,52 +178,27 @@ function requireTarget(input: PageInput): string {
 export default function registerBrowserControl(pi: ExtensionAPI) {
 	const sessions = new BrowserSessionProtocol();
 	let credentials: ReturnType<typeof createBrowserCredentialResolver> | undefined;
-	let credentialIdentity: PolicyIdentity | undefined;
-	let credentialConfig: BrowserCredentialConfig | undefined;
 	let credentialLifetime = new AbortController();
-	const identity = () => {
-		const current = browserPolicyIdentity(pi.events);
-		if (!current) throw new BrowserControlError("policy_unavailable", "Damage Control browser policy is unavailable; enable it before this action.");
-		return current;
-	};
 	const pages = new BrowserPageProtocol({
-		runtime: sessions, identity,
-		lease: () => { const lease = browserPolicyLease(pi.events); if (!lease) throw new BrowserControlError("policy_unavailable", "Browser policy lifetime is unavailable."); return lease; },
-		policy: (effect, signal) => requestBrowserPolicy(pi.events, effect, signal),
-		localFile: (nativePath, signal) => requestBrowserLocalFilePolicy(pi.events, identity(), nativePath, signal),
-		credentialOrigins: reference => { const binding = credentialConfig?.bindings[reference]; return binding ? [...(binding.form_origins ?? binding.frame_origins ?? binding.origins)] : []; },
+		runtime: sessions,
 		resolveCredential: async (reference, target, signal) => {
-			const current = identity(), lease = browserPolicyLease(pi.events);
-			if (!lease || !samePolicyIdentity(current, lease.identity)) throw new BrowserControlError("credential_unavailable", "Browser credential lifetime expired.");
-			if (!credentialIdentity || !samePolicyIdentity(current, credentialIdentity)) {
-				credentials?.clear(); credentialLifetime.abort(); credentialLifetime = new AbortController(); credentials = undefined; credentialConfig = undefined;
-				credentialIdentity = { ...current };
-			}
+			if (credentialLifetime.signal.aborted) throw new BrowserControlError("credential_unavailable", "Browser session ended.");
 			if (!credentials) {
 				let config;
 				try { config = parseBrowserCredentialConfig(JSON.parse(fs.readFileSync(browserCredentialConfigPath(getAgentDir()), "utf8"))); }
 				catch { throw new Error("Browser credential configuration unavailable."); }
-				credentialConfig = config;
-				credentials = createBrowserCredentialResolver(config, (command, args, options) => pi.exec(command, args, options), AbortSignal.any([credentialLifetime.signal, lease.signal]));
+				credentials = createBrowserCredentialResolver(config, (command, args, options) => pi.exec(command, args, options), credentialLifetime.signal);
 			}
-			return await credentials.resolve(reference, target, AbortSignal.any([signal, credentialLifetime.signal, lease.signal]));
+			return await credentials.resolve(reference, target, AbortSignal.any([signal, credentialLifetime.signal]));
 		},
 	});
-	pages.setObservationHooks(createBrowserObservationHooks({ events: pi.events, identity, classify: source => pages.observationClass(source) }));
 	let state: BrowserSessionState | undefined;
-	const dispose = () => { pages.dispose(); credentials?.clear(); credentials = undefined; credentialConfig = undefined; credentialLifetime.abort(); credentialLifetime = new AbortController(); credentialIdentity = undefined; };
+	const dispose = () => { pages.dispose(); credentials?.clear(); credentials = undefined; credentialLifetime.abort(); credentialLifetime = new AbortController(); };
 	pi.on("session_start", () => { dispose(); state = loadBrowserState(); });
-	// CDP interception must not outlive the run and open approvals for idle page traffic.
-	// Disposal disconnects tooling only; the browser and its tabs remain operator-owned.
-	pi.on("agent_end", dispose);
 	pi.on("session_before_switch", dispose);
-	pi.on("session_tree", dispose);
-	pi.on("input", event => { if ((event.source === "interactive" || event.source === "rpc") && !event.streamingBehavior) dispose(); });
 	const navigateInitial = async (url: string | undefined, signal?: AbortSignal, timeoutMs?: number) => {
 		if (!url || !state) return;
-		try {
-			const target = await pages.open(state, url, signal, timeoutMs); state = { ...state, targetId: target.id }; await saveBrowserState(state);
-		} catch (error) { throw pages.diagnosticError(error); }
+		const target = await pages.open(state, url, signal, timeoutMs); state = { ...state, targetId: target.id }; await saveBrowserState(state);
 	};
 
 	registerProfileCommand(pi, "browser-setup", {
@@ -275,8 +247,7 @@ export default function registerBrowserControl(pi: ExtensionAPI) {
 			if (input.action === "status") {
 				const command = await sessions.status(signal);
 				state = loadBrowserState();
-				const requestFailures = pages.diagnostics();
-				return toolResult(`${command.stdout || "Browser session is absent."}${requestFailures.length ? `\nRecent browser request failures: ${JSON.stringify(requestFailures)}` : ""}`, { state: publicState(state), status: parseSessionStatus(command.stdout), requestFailures });
+				return toolResult(command.stdout || "Browser session is absent.", { state: publicState(state), status: parseSessionStatus(command.stdout) });
 			}
 
 			if (input.action === "start") {
@@ -339,7 +310,7 @@ export default function registerBrowserControl(pi: ExtensionAPI) {
 	pi.registerTool({
 		name: "browser_page",
 		label: "Browser Page",
-		description: "Operate on exact session/target/frame IDs with task and destination policy. Snapshot first; use its unique selectors or focus a subtree with selector when truncated. Scroll with scroll_mode by (default), optional container selector and nonzero delta_x/delta_y (integer pixels, each -2000..2000), or into_view with required element selector and no deltas. Re-snapshot after scrolling, then act on current selector/state evidence; movement is not proof all virtualized content was read. Prefer state evidence over network-idle waits. Fill uses exactly one value or locally bound secret_ref. Actual CAPTCHA completion is manual; cookies, storage, arbitrary evaluation and security-warning bypass are unavailable.",
+		description: "Operate on exact session/target/frame IDs. Snapshot first; use its unique selectors or focus a subtree with selector when truncated. Scroll with scroll_mode by (default), optional container selector and nonzero delta_x/delta_y (integer pixels, each -2000..2000), or into_view with required element selector and no deltas. Re-snapshot after scrolling. Fill replaces input/textarea/contenteditable text with value or locally bound secret_ref. Press sends key chords; paste preserves tabs/newlines using value. Press/paste optionally focus selector; otherwise use focus in the chosen frame. Upload assigns local files to a file-input selector. Screenshots are raw captures. No custom action approvals or network interception. Actual CAPTCHA completion is manual; cookies, storage, arbitrary evaluation and security-warning bypass are unavailable.",
 		promptSnippet: "Use one exact session ID and raw CDP target ID for bounded page actions",
 		parameters: PageParameters,
 		outputSchema: BrowserResultSchema,
@@ -394,11 +365,26 @@ export default function registerBrowserControl(pi: ExtensionAPI) {
 					const result = await pages.fill(state, targetId, input.selector, { value: input.value, secret_ref: input.secret_ref, frame_id: input.frame_id }, signal, input.timeout_ms);
 					return toolResult(`Filled selector on target ${targetId}.${result.visible ? "" : " Warning: the acted-on control was not rendered; snapshot this exact frame to inspect the outcome."}`, { state: publicState(state), targetId, visible: result.visible });
 				}
+				if (input.action === "press") {
+					if (!input.key) throw new BrowserControlError("key_required", "Press requires a key or chord.");
+					await pages.press(state, targetId, input.key, signal, input.frame_id, input.selector, input.timeout_ms);
+					return toolResult(`Pressed ${JSON.stringify(input.key)} on target ${targetId}.`, { state: publicState(state), targetId });
+				}
+				if (input.action === "paste") {
+					if (input.value === undefined) throw new BrowserControlError("value_required", "Paste requires value text.");
+					await pages.paste(state, targetId, input.value, signal, input.frame_id, input.selector, input.timeout_ms);
+					return toolResult(`Pasted text on target ${targetId}.`, { state: publicState(state), targetId });
+				}
+				if (input.action === "upload") {
+					if (!input.selector || input.files === undefined) throw new BrowserControlError("files_required", "Upload requires a file-input selector and files array.");
+					await pages.upload(state, targetId, input.selector, input.files.map(file => path.resolve(ctx.cwd, file)), signal, input.frame_id, input.timeout_ms);
+					return toolResult(`Assigned ${input.files.length} file(s) on target ${targetId}.`, { state: publicState(state), targetId });
+				}
 				await pages.close(state, targetId, signal, input.timeout_ms);
 				if (state.targetId === targetId) state = { ...state, targetId: undefined };
 				await saveBrowserState(state);
 				return toolResult(`Closed raw CDP target ${targetId}.`, { state: publicState(state), targetId });
-			} catch (error) { throw pages.diagnosticError(error); }
+			} catch (error) { throw error; }
 		},
 	});
 
