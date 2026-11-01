@@ -1,5 +1,37 @@
 # Agent process failure log
 
+## APR-parallel-creation-narrowing - Coordination advice displaced requested parallel creation
+
+- **Reference:** Character chassis restart, 2026-11-01; related AIF-asset-review-target and APR-relative-progress-design-lock.
+- **Observed:** After discussing independent regional creators and whole-model integration, the operator authorized restarting work. Parent framed regional parallelism as unselected, accepted a one-creator coordination recommendation, and launched only one asset author. The operator had to restate the intended parallel work.
+- **Finding:** Parent narrowed the intended execution and supplied that narrowed premise to the adviser. Advice about minimizing workers did not authorize changing the user's intended approach. Existing intent-preservation guidance already applies; no new general role/count rule needed.
+- **Correction:** Preserved the initial author's checkpoint, launched head/neck, upper-body and lower-body creators concurrently in isolated identical authored-source copies, and retained the initial author for actual Blender whole-model integration. Shared interfaces coordinate work, not freeze rejected anatomy.
+- **Status:** Corrected setup running; artistic outcome remains open. Workflow writer checks actual instruction conflicts without creating another manager or universal agent partition.
+
+## APR-asset-review-author-substitution - Author direction displaced independent target judgment
+
+- **Reference:** B5.1 character anatomy review, 2026-11-01; related AIF-asset-review-target and APR-relative-progress-design-lock.
+- **Observed:** Writable art direction plus orchestrator inspection produced repeated local-improvement candidates. The operator still found the current result inadequate and explicitly requested fresh adversarial Opus High/Sol High reviews and an agreement/difference comparison.
+- **Finding:** Candidate/not-approved labels did not fix insufficient whole-target visual judgment. Existing guidance already calls for fresh independent target/reference reviews; author self-review is not that independent check.
+- **Correction:** Fresh read-only reviewers receive identical current/reference images and neutral target without prior verdicts. Pause source changes and report their actual convergence/disagreement; no new permanent dual-review gate or automatic implementation.
+- **Status:** Both independent High reviews completed with the same overall not-ready verdict and overlapping shoulder/unstyled-face findings, differing priorities. Read-only comparison completed; no new asset pass assigned. No broader causal claim or instruction change.
+
+## APR-relative-progress-design-lock - Relative preference turned into final constraints
+
+- **Related:** AIF-asset-review-target and its repeated premature-completion incidents.
+- **Observed:** The operator said an earlier intermediate character was better proportioned than a later candidate, while calling both inadequate. The orchestrator converted that comparison into a requirement to preserve the earlier proportions and qualified remaining defects as conflicting with the operator's supposed preference.
+- **Finding:** The operator had not approved or frozen either version. Existing whole-goal/continuation guidance already covered this; the failure was interpretation and adherence, not missing rules.
+- **Correction:** Removed the invented lock from active state/handoff. Opus/Sol is to continue improving the whole requested character, with intermediate versions as evidence rather than final designs. No new instruction framework or per-adjustment approval gate.
+- **Status:** Handoff corrected. Artistic outcome remains open; effectiveness not yet established.
+
+## APR-comparison-baseline-provenance - Baseline recaptured from candidate assets
+
+- **Reference:** Local asset comparison, 2026-10-31; related AIF-asset-review-target.
+- **Observed:** After correcting render framing, the author recaptured the baseline from the already-modified scene. Independent review saw no change. PNG file hashes differed, but decoded baseline/candidate images were identical.
+- **Finding:** Mesh and export data confirmed the implementation was real; the baseline source was wrong. Successful builds and filenames did not establish comparison provenance.
+- **Correction:** Restored pre-change assets from branch-start Git objects and recaptured controlled pairs. Actual mesh positions, export positions and decoded-image differences confirmed the corrected comparison. A new independent review assessed the corrected evidence.
+- **Status:** Capture defect resolved; artistic target remains in progress. Existing comparable-evidence guidance applies. No new standing gate or instruction change.
+
 ## APR-git-ignore-approval - Ignored planning artifact reached an MR
 
 - **Reference:** EISA release-publishing MR discussion, 2026-10-30; AIF-git-ignore-approval, AIF-044 and APR-088.
@@ -17,6 +49,8 @@
 - **Status:** Live descriptions updated and read back. No code or instruction-policy changes.
 
 ## APR-ccyl-herdr-handoff - Claude review startup and answer recovery friction
+
+- **2026-10-31 recurrence:** A prompt call reported submission, but a bounded wait timed out and the exact pane remained idle with a pasted draft and zero context usage. Confirmed that state, submitted the existing draft with one Enter, then observed working state and recovered the completed review. No duplicate prompt or session restart. Existing ambiguous-submission guidance applies; no runtime change.
 
 - **Reference:** Default sessions `01a18563-1cec-7622-afea-ff7d200ef5b5` (workflow discussion), `01a184f6-9f94-72cf-971f-532853874904` (records 155–183), and `01a17d70-fc1d-71de-a68f-7b83a6bdb034` (records 3132–3148), reviewed 2026-10-29 at operator request.
 - **Observed:** One Opus/high review completed, but the operator reported a Herdr failure and requested recovery; Pi recovered the answer from the exact Claude project transcript. Another launch waited for an Opus output match before discovering a workspace-trust dialog, then asked the operator rather than answering it. The earlier local launch also displayed a non-blocking missing Herdr startup hook pointing at another Windows account.
@@ -303,6 +337,8 @@
 - **Status:** Planning only. `.specs/explorer-inspection-mode/plan.md` records the approved behavior and implementation work. Runtime changes, tests, commits, and publication are not performed or authorized by this record.
 
 ## APR-084 - Prepared closeout recovered but returned stale cleanup state and contradictory plan progress
+
+- **2026-10-31 recurrence:** Ordinary removal of an owned Windows worktree failed with `Filename too long` after integration/push. Registration inspection showed it was already deregistered while the directory remained. Removed only that committed task copy using its exact extended-length Windows path, then deleted its merged task branch. Confirmed no remnant; external review evidence and unrelated changes remained intact. No new cleanup framework or policy.
 
 - **Reference:** Default orchestrator `01a10244-393e-70fb-a73d-b88eeb6f36e6` and Integrator successor `01a10270-4f7e-75aa-b307-3cc4fdd53b98`, reviewed 2026-10-03; TCA-015.
 - **Observed:** The task was committed, integrated, and cleaned up locally. After Git's Windows long-path removal error, the handoff returned `worktree: registered` (record `acd6df92`) although subsequent registration inspection showed it absent. The Integrator removed the exact remnant and received COMPLETED (`5fe73e32`). Cleanup already models deregistered remnants and can remove them on retry; its removal-error catch returns before refreshing registration.
