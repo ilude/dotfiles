@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-11-01: Route selective workflow learning through existing Pi skills
+
+- Add a short default-profile routing cue for meaningful operator corrections, bottlenecks, and reusable successful techniques. Extend `agent-process` to distinguish instruction problems from tooling, execution, and evaluation problems, updating relevant existing records rather than accumulating rules.
+- Keep detailed procedures on demand, preserve shared-edit approval and explicit project-local evolution authority, and separate captured evidence from executable policy. Brief capture does not end an unfinished task; later comparable work assesses usefulness without per-turn reflection or scheduled monitoring.
+- This is an instruction-only refinement, not a runtime trigger, new memory store, or background optimizer. Source review and incident walkthroughs check consistency, not future adherence. Load through a fresh default-profile session or settled-only `/reload` with no active or retained subagents.
+
 ## 2026-10-31: Enable Zomboid garbage-bin deletion
 
 - Enable `TrashDeleteAll` in the managed game-server configuration so players can use the garbage-bin Delete All button. Deploy through the targeted service workflow without resetting the world or changing other gameplay settings.
