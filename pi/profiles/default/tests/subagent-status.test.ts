@@ -29,6 +29,37 @@ it("distinguishes retained completion and follow-up outcomes without replaying t
  expect(text).toContain("original assignment is retained separately");
  expect(outcomeText({...followUp,processState:"exited"})).toContain("retained record closed; follow-up unavailable");
 });
+it("makes settled partial and blocked assignments explicit without inferring resource cleanup",()=>{
+ const base:ChildRecord={id:"unfinished",agent:"probe",origin:"a",surface:"visible",status:"settled",retained:false,userOwned:false,turns:1,createdAt:"2026-09-08T00:00:00Z",updatedAt:"2026-09-08T00:00:02Z",assignmentStartedAt:"2026-09-08T00:00:00Z",assignmentFinishedAt:"2026-09-08T00:00:02Z",processState:"exited",paneState:"closed",result:"Research is underway; more results later."};
+ for(const outcome of ["partial","blocked"] as const){
+  const text=outcomeText({...base,outcome,cleanup:{attempted:true,attempts:1,complete:true,process:"closed",pane:"closed",launcher:"not-applicable",errors:[]}});
+  expect(text).toContain(`${outcome}; assignment settled`);
+  expect(text).toContain("not live progress or a pending parent/user question");
+  expect(text).toContain("No further work continues automatically");
+  expect(text).toContain("explicit follow-up assignment");
+  expect(text).toContain("subagent_control message");
+  expect(text).toContain("Resources: process exited · pane closed");
+  expect(text).toContain("Cleanup: complete");
+  expect(text).toContain("duration 2s");
+  expect(text).not.toContain("elapsed");
+ }
+ const open=outcomeText({...base,outcome:"partial",exchangeKind:"follow-up",processState:"running",paneState:"open",cleanup:{attempted:true,attempts:1,complete:false,process:"open",pane:"open",launcher:"not-applicable",errors:["pane close failed"]}});
+ expect(open).toContain("follow-up partial; assignment settled");
+ expect(open).toContain("Resources: process running · pane open");
+ expect(open).toContain("Cleanup: unresolved (pane close failed)");
+ expect(open).not.toContain("Cleanup: complete");
+ const unknown=outcomeText({...base,outcome:"blocked",processState:undefined,paneState:undefined} as unknown as ChildRecord);
+ expect(unknown).not.toContain("Resources:");
+ expect(unknown).not.toContain("Cleanup:");
+ for(const phase of ["waiting-parent","waiting-user"] as const){
+  const waiting=outcomeText({...base,status:"waiting",outcome:"blocked",phase,requestId:"pending-question"});
+  expect(waiting).toContain(phase==="waiting-parent"?"parent reply pending":"needs user-only input; use escalate");
+  expect(waiting).not.toContain("assignment settled");
+  expect(waiting).not.toContain("No further work continues automatically");
+ }
+ expect(outcomeText({...base,status:"running",outcome:"partial"})).toContain("working:");
+ expect(outcomeText({...base,questionResolution:{requestId:"question",outcome:"answered",by:"parent"}})).toBe("Subagent probe parent question answered by parent (request question).");
+});
 it("replaces the module-local owner on an explicit reset",async()=>{
  const before=getSubagentRuntime();
  const replacement=await resetSubagentRuntime();

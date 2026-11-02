@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-11-01: Resolve targeted planning and runtime feedback findings
+
+- Continue ordinary planning through one consequential question at a time, incorporate answers, and reach executable readiness. Replace competing draft/stopping cues in the owning skill and template while preserving explicitly requested drafts, genuine external blockers, settled decisions, and the planning/execution boundary.
+- Label settled partial/blocked subagent assignments as terminal outcomes, not live progress or pending questions. Explain explicit follow-up and show recorded process/pane and cleanup state without changing saved-conversation reopening, retention, or retry behavior.
+- Render partial or unexpected analytics call arguments without unchecked array/object assumptions, including the previously observed `profiles.join` crash path. Keep the analytics API and valid-call presentation unchanged.
+- Pass all 16 focused subagent-status and analytics-render tests. Full-profile typecheck still reports the three existing context-fixture errors in unchanged `tests/codex-usage-tool.test.ts`. Source/instruction review found no additional task-related defects; live attached-client behavior and future planning adherence remain unverified. Load through a fresh default-profile process or settled-only `/reload` with no active or retained subagents.
+- Separately diagnose seven October 30 follow-up readiness failures across four children: two also reported cleanup ownership errors. The complete ledger is in the existing weekly review; historical startup transitions and loaded runtime remain unavailable, so no startup repair or deadline change is inferred.
+
 ## 2026-11-01: Make default Brave control functionality-first
 
 - At the operator's direction, remove custom Damage Control/AI browser action authorization, private-transfer bookkeeping, and page-request interception from owned and attached browser execution. Other tools retain their separate Damage Control behavior. Keep exact browser/process/session/target/frame checks, configured credential bindings, and native warning/manual CAPTCHA handling.

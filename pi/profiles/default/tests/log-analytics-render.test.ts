@@ -57,6 +57,28 @@ describe("log analytics user-facing rendering", () => {
 		expect(plain(tool.renderCall!({} as LogAnalyticsInput, theme, context({})))).toContain("Preparing request");
 	});
 
+	it("renders partial and unexpected raw call shapes without throwing", () => {
+		const tool = registered();
+		const calls: unknown[] = [null, undefined, "query", [],
+			{ operation: "query", profiles: "default", sources: "session_entries", sessionRefs: {}, sessionIds: "id", interval: null, filters: [], parameters: "partial" },
+			{ operation: "search", profiles: ["default", null, {}], sources: [null, "session_entries"], sessionRefs: [null, "partial", { profile: "default" }], sessionIds: [null, "id"], interval: { since: "2026-09-01" }, filters: { role: "user" }, parameters: { since: null } },
+			{ operation: "follow_up", occurrence: "partial" },
+			{ operation: "follow_up", occurrence: { profile: "default", session: null, fileKey: "partial" } },
+		];
+		for (const args of calls) for (const expanded of [false, true]) for (const width of [16, 100]) {
+			const input = args as LogAnalyticsInput;
+			const text = plain(tool.renderCall!(input, theme, context({}, expanded)), width);
+			expect(text).toContain("Log Analytics");
+		}
+		const malformed = calls[4] as LogAnalyticsInput;
+		expect(plain(tool.renderCall!(malformed, theme, context({}, true)))).toContain("Profiles: active profile");
+		const mixed = calls[5] as LogAnalyticsInput;
+		const text = plain(tool.renderCall!(mixed, theme, context({}, true)));
+		expect(text).toContain("Profiles: default · session history");
+		expect(text).toContain("Session IDs: id");
+		expect(text).toContain("Parameter since: null");
+	});
+
 	it("renders compact search progress and exact follow-up without fetching on expansion", () => {
 		const search = { profiles: ["default", "legacy"], matches: [{ occurrence: { profile: "default", session: { profile: "default", sessionId: "last-week" }, fileKey: "a".repeat(64), byteOffset: 128, byteLength: 80, recordOrdinal: 2, recordKey: "failure" }, timestamp: "2026-09-05T00:00:00.000Z", entryType: "message", messageRole: "toolResult", toolName: "subagent", isError: true, snippet: "The result determines the next edit.", blockingDecisions: [{ toolName: "subagent", agent: "explorer", action: "launch", background: false, blocking: true, reason: "The result determines the next edit.", reasonSource: "model" }] }], nextCursor: "cursor-secret", complete: false, stopReason: "result_limit", coverage: { selectedFiles: 4, selectedBytes: 4096, examinedFiles: 1, examinedRecords: 3, examinedBytes: 512, safelyPrunedFiles: 0, malformedRecords: 0, oversizedRecords: 0, timestampGaps: 0, diagnostics: [], diagnosticsTruncated: false, inventoryChanges: [], page: { examinedFiles: 1, examinedRecords: 3, examinedBytes: 512, malformedRecords: 0, oversizedRecords: 0 }, cumulative: { examinedFiles: 1, examinedRecords: 3, examinedBytes: 512, malformedRecords: 0, oversizedRecords: 0 }, remainingFiles: 3, capturedHorizons: [{ fileKey: "a".repeat(64), bytes: 4096 }], exclusions: { excludedFiles: 0, diagnostics: [], diagnosticsTruncated: false } } };
 		const compact = rendered(search);

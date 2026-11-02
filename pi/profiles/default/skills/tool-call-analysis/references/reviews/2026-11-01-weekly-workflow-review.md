@@ -66,6 +66,36 @@ TCA-017 records the October 20 child crash at `args.profiles?.join is not a func
 - `APR-comparison-baseline-provenance` is an evaluation-evidence defect with a recorded correction, not grounds for another standing gate.
 - Existing records distinguish evidence, hypotheses, remedy, authority, and status. This review found no demonstrated need for a new feedback store, curator, scheduler, automatic prompt optimizer, mandatory reflection cycle, or wholesale feedback-system rewrite. Reconcile a record's status when its owning task supplies new evidence; do not equate implemented wording with proven effectiveness.
 
-## Disposition
+## Initial review disposition
 
 Save this report and its concise analysis-log entry. No shared instruction changes, runtime fixes, new tests, reload, commit, or push. The smallest proposed instruction edit is the planning-loop consolidation; the strongest tooling follow-ups concern settled-partial presentation, the isolated `/commit` scope case, and the known renderer crash path. Implementation choices and any expanded work remain for operator approval.
+
+## Authorized follow-up: focused startup/ownership diagnosis
+
+The operator subsequently authorized one implementation agent for the three recommended fixes and a separate read-only startup/ownership investigation. The latter returned findings; parent independently recovered the complete seven-notification ledger below after the agent report left two IDs unspecified. This follow-up does not authorize a startup repair or the separate `/commit` investigation.
+
+Scope: parent `01a17de6-f956-7574-bad4-16819c300ebd`, interval `[2026-10-30T23:40:00Z,2026-10-31T00:10:00Z)`. The session file has native key `f4e65d75c78260f2cfa94f86e9460b5e3bd8c4f2f1196337428050cc787a5299`. Bounded parsed-JSONL extraction recovered the top-level custom-message contents and lifecycle details; no source history was changed.
+
+| Record / line | Child | Exchange | Started UTC | Cleanup at notification |
+| --- | --- | --- | --- | --- |
+| `f95bfcd7` / 1398 | Iris | `a9059f89-148a-42c1-add5-a94a8c1293cd` | 23:47:24.284 | Complete; pane and launcher closed |
+| `592086ff` / 1403 | Maya | `8c9f816f-ec1f-46e2-986b-7046a614f4a5` | 23:47:24.284 | Complete; pane and launcher closed |
+| `ef68fcb0` / 1404 | Nora | `8a89cbc7-9e6f-4a06-a775-03a43e4aff42` | 23:47:24.284 | Incomplete; ownership error; pane and launcher open |
+| `32a884c9` / 1405 | Clara | `87da456b-5b02-4ab2-af2b-9e2f92ec74b7` | 23:47:24.283 | Complete; pane and launcher closed |
+| `964b94de` / 1459 | Clara | `9a33572d-a15f-4c15-9686-2a34353cb41e` | 23:49:25.971 | Incomplete; ownership error; pane and launcher open |
+| `f7137492` / 1464 | Maya | `a5f64c90-c0b1-4379-86f6-6f1e550b8284` | 23:49:25.971 | Complete; pane and launcher closed |
+| `0bb595dc` / 1470 | Maya | `e9d4c15d-ceaf-44b2-ac18-c0b062c55022` | 23:50:16.377 | Complete; pane and launcher closed |
+
+All seven were reopened follow-up exchanges after original research had returned. All recorded `Visible child did not become ready` at approximately 30 seconds; these are seven exchanges across four children within one parent, not seven independent sessions. Iris later completed a retry: `subagent_control` result `a57dbef0`, line 1428. Other attempts cannot be called recovered merely because cleanup eventually closed resources.
+
+Current source inspection by the explorer separates two boundaries: `VisibleChild.start()` in `lib/subagents/visible.ts` waits for `appReady`, while `SubagentLayout.place()/observe()/close()` in `lib/subagents/layout.ts` maintain child-to-pane ownership. The timeout does not identify which startup stage stalled. The ownership error means cleanup lacked the matching current child/pane ownership entry; it does not prove why readiness failed. Two notifications show that symptom; five do not.
+
+Exact historical pane/workspace transitions, startup logs, and loaded runtime version were not established. A native lookup did not recover Nora's child-session header, limiting child-side reconstruction. The evidence narrows the problem to follow-up reopening/readiness and some cleanup ownership state, but does not establish an initiating race or one common root cause. The next useful diagnosis is exact-attempt correlation with existing child/bootstrap/Herdr records if available, not longer deadlines, automatic retry, or a speculative ownership bypass. No startup repair or reproduction was performed.
+
+## Authorized implementation outcome
+
+The planning skill/template continuation loop, terminal partial/blocked outcome clarity, and analytics raw-argument renderer hardening are implemented. Parent inspected the scoped diff and complete revised planning guidance; no additional task-related defects were identified. These changes add no always-loaded routing rules, retry mechanism, or feedback infrastructure. Planning guidance remains conditional; no provider cache-effect claim is made.
+
+Developer checks: `pnpm test subagent-status.test.ts log-analytics-render.test.ts` passed both files and all 16 tests. `pnpm run typecheck` still reports three existing errors at lines 19, 26, and 31 of unchanged `tests/codex-usage-tool.test.ts`: its context fixture lacks `tools`/`executeTool`. The first test invocation could not resolve Node in pnpm's Windows child; prepending Node's directory to command-local PATH recovered the checks without a repository environment change. Whitespace checks passed. No live attached-client test or future-adherence evaluation was performed.
+
+Existing AIF-planning-to-ready, APR-subagent-partial-mistaken-for-running, TCA-018, and the root changelog now record implementation versus unverified effectiveness. No commit, push, or reload. Use a fresh default-profile process or `/reload` only when no subagents are active or retained. Startup repair and the separate `/commit` scope investigation remain outside this implementation.

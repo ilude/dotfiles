@@ -35,13 +35,18 @@ reopening them.
    Use the [plan template](references/plan-template.md), combining or omitting
    sections that add no useful information.
 3. Separate user requirements, verified facts, proposals, and unresolved decisions.
-   Investigate discoverable facts. When uncertainty could materially change scope,
-   architecture, or acceptance, explain the choices and consequences, recommend
-   one with reasons, and ask a focused question. Handle routine technical details
-   using judgment. Recommendations do not become requirements until agreed. Do not
-   call the selected executable scope ready while a consequential decision within
-   it remains open. Keep explicitly deferred work visible but outside that scope's
-   acceptance criteria and dependencies; it must not block independent approved work.
+   Investigate discoverable facts and choose routine technical details yourself.
+   When user judgment could materially change scope, architecture, or acceptance,
+   explain the choices and consequences, recommend one with reasons, and ask one
+   consequential question at a time. Incorporate the answer into the plan, continue
+   technical investigation, and ask the next question only if still needed. Preserve
+   settled decisions; recommendations do not become requirements until agreed.
+   Continue ordinary planning until the selected scope is executable, not merely
+   drafted. If the user intentionally requests a draft, honor that stopping point.
+   If a genuine external prerequisite blocks readiness, record what is missing,
+   who must act, and the next action rather than claiming readiness. Keep explicitly
+   deferred work outside that scope's acceptance criteria and dependencies; it must
+   not block independent approved work.
 4. Write named Markdown checkbox tasks with concrete changes, dependencies, relevant
    paths or contracts, finite checks, and observable done conditions. Shape tasks as
    independently assignable outcomes: separate shared prerequisites from parallel
@@ -98,8 +103,9 @@ reopening them.
    and complete authorized closeout from the plan alone? Does each behavior-changing
    restriction come from an agreed requirement, applicable repository policy, or
    demonstrated task need? Remove unsupported restrictions or present them as proposals
-   outside the executable scope. Fix consequential gaps, then stop. A draft with
-   explicit open decisions is more honest than false readiness.
+   outside the executable scope. Resolve remaining gaps through investigation and
+   the question-and-answer loop above, then mark the plan ready and hand it off.
+   Readiness completes planning; it does not authorize execution.
 
 See [agent-process](../agent-process/SKILL.md) when reviewing workflow feedback or
 changing instructions. Ordinary planning does not require another feedback review.
