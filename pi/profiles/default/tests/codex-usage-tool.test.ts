@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { ExtensionAPI, ExtensionContext, ToolDefinition } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionToolContext, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Check } from "typebox/value";
 import register from "../extensions/codex-usage-tool.ts";
 import { fetchCodexUsage } from "../lib/codex-usage.ts";
@@ -11,7 +11,7 @@ function setup() {
   if (!tool) throw new Error("tool not registered");
   return tool;
 }
-const ctx = { modelRegistry: {} } as ExtensionContext;
+const ctx = { modelRegistry: {}, tools: {}, executeTool: vi.fn() } as unknown as ExtensionToolContext;
 describe("codex_usage", () => {
   it("reports the weekly window regardless of its position and exposes structured data", async () => {
     vi.mocked(fetchCodexUsage).mockResolvedValue({ rate_limit: { primary_window: { limit_window_seconds: 604800, used_percent: 73, reset_at: 1800000000 }, secondary_window: { limit_window_seconds: 18000, used_percent: 12 } } });

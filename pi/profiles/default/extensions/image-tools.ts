@@ -353,7 +353,7 @@ export default function registerImageTools(pi: ExtensionAPI): void {
 		description: "Safely crop, resize, rotate, convert, or compress a local image with metadata stripped by default.",
 		parameters: imageTransformSchema,
 		execute(_id, params, signal, _onUpdate, ctx) {
-			return transformImage(params, signal, ctx.cwd ?? process.cwd());
+			return transformImage({ ...params, format: typeof params.format === "string" ? params.format : undefined }, signal, ctx.cwd ?? process.cwd());
 		},
 	});
 }

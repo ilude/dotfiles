@@ -15,7 +15,7 @@ initTheme("dark", false);
 setKeybindings(new KeybindingsManager());
 const theme = getThemeByName("dark")!;
 function context(args: Partial<LogAnalyticsInput>, expanded = false, isError = false): ToolRenderContext {
-	return { args: args as LogAnalyticsInput, expanded, isError, state: {}, lastComponent: undefined, toolCallId: "test", cwd: "/fixture", executionStarted: true, argsComplete: true, isPartial: false, showImages: false, durationMs: undefined, outputPad: 0, invalidate() {} };
+	return { args: args as LogAnalyticsInput, expanded, isError, state: {}, lastComponent: undefined, toolCallId: "test", cwd: "/fixture", executionStarted: true, argsComplete: true, isPartial: false, showImages: false, durationMs: undefined, outputPad: 0, keyText: () => "ctrl+o", keyHint: (_key, description) => `ctrl+o ${description}`, invalidate() {} };
 }
 function registered(): Tool {
 	const pi = createMockPi();
@@ -42,7 +42,7 @@ describe("log analytics user-facing rendering", () => {
 	it("shows scope and SQL preview, with full parameters and references only when expanded", () => {
 		const tool = registered();
 		const args: LogAnalyticsInput = { operation: "query", profiles: ["default", "legacy"], sources: ["session_entries"],
-			sql: "SELECT tool_name, count(*) AS failures FROM session_entries WHERE is_error GROUP BY tool_name",
+			sql: "SELECT tool_name, count(*) AS failures FROM session_entries WHERE is_error GROUP BY tool_name", execution: "automatic",
 			parameters: { since: "2026-09-01" }, sessionRefs: [{ profile: "default", sessionId: "session-id", fileKey: "a".repeat(64) }] };
 		const collapsed = plain(tool.renderCall!(args, theme, context(args)));
 		expect(collapsed).toContain("Log Analytics · Query logs");

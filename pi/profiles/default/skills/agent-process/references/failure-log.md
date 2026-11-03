@@ -1,5 +1,21 @@
 # Agent process failure log
 
+## APR-art-capability-and-visible-delivery - Repeated coordination did not establish modeling ability
+
+- **Reference:** Character chassis work, 2026-11-01; related APR-asset-review-author-substitution and AIF-asset-review-target.
+- **Observed:** Internal character iterations advanced while the user-facing review board remained on old versions. The operator reported no visible output, then rejected the result relative to the time spent and challenged why another reset would differ. Inspection found that changed authors still used the same broad cross-section/falloff surface-reshaping family.
+- **Finding:** Fresh agents, repeated reviews and local improvements did not demonstrate the missing modeling capability. An early visible checkpoint can limit wasted work but cannot supply artistic ability. The problem was not solved by another instruction paraphrase or manager.
+- **Correction:** Opened an actual current-image gallery without disturbing unfinished feedback. With explicit operator approval, made a small fresh landmark/polygon construction proof and displayed it beside actual references before a full rebuild. Parent and fresh independent review still found inadequate eye/socket and jaw/neck forms; did not present a different construction method or low vertex count as artistic success or launch another full rebuild.
+- **Status:** Visible proof delivered, capability not established, full character goal unmet. No new universal gate, quota or shared instruction policy. The bounded demonstration does not complete the parent goal; its continuation boundary was explicitly agreed for this attempt.
+
+## APR-native-capture-errors - Accepted timings without checking full-scene errors
+
+- **Reference:** Cedar performance work, 2026-11-01; related APR-comparison-baseline-provenance.
+- **Observed:** A shader optimization passed headless suites and a small native appearance fixture, but full-neighborhood performance captures logged shader-instance buffer allocation errors while exiting 0. Parent published the feature and timings without checking those capture logs. A later renderer experiment exposed the missed errors.
+- **Finding:** The existing explicit-completion/no-errors requirement was not applied to the actual measured workload. Small-fixture appearance parity and valid-looking timing JSON did not establish full-scene correctness; this was an evidence-checking failure, not a missing universal gate.
+- **Correction:** Increased the existing buffer capacity, withdrew the erroring performance series and reran both variants with the same corrected capacity. Four full-scene native captures explicitly completed with zero logged errors; canonical timings now use that series. Experimental rendering-thread results with separate texture errors remain unaccepted.
+- **Status:** Capacity defect corrected and clean measurements obtained. The parent 120 FPS goal remains open. No shared instruction-policy change or extra review ceremony added.
+
 ## APR-parallel-creation-narrowing - Coordination advice displaced requested parallel creation
 
 - **Reference:** Character chassis restart, 2026-11-01; related AIF-asset-review-target and APR-relative-progress-design-lock.

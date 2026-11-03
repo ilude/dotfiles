@@ -92,7 +92,7 @@ type PageInput = {
 };
 
 function toolResult(text: string, details: Static<typeof BrowserResultSchema> = {}) {
-	const structuredContent = { ...details };
+	const structuredContent = details as unknown as import("@earendil-works/pi-ai").JsonValue;
 	return { content: [{ type: "text" as const, text: redactOutput(text) }], details, structuredContent };
 }
 
@@ -352,7 +352,7 @@ export default function registerBrowserControl(pi: ExtensionAPI) {
 					if (!input.output_path) throw new BrowserControlError("output_required", "Screenshot requires an output path.");
 					const outputPath = path.resolve(ctx.cwd, input.output_path);
 					const source = await pages.screenshot(state, targetId, outputPath, signal, input.timeout_ms);
-					const observation = { ...source, source: "browser" as const, trust: "untrusted" as const, kind: "image" as const, screening: "not-screened" as const };
+					const observation = { ...source, source: "browser" as const, trust: "untrusted" as const, kind: "image" as const, classification: source.classification as "public" | "private", screening: "not-screened" as const };
 					return toolResult(`Screenshot saved to ${redactOutput(outputPath)}. Untrusted browser image; origin=${source.origin}; classification=${source.classification}; visual screening not performed.`, { state: publicState(state), targetId, observation });
 				}
 				if (input.action === "click") {

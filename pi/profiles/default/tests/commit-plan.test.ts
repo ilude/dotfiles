@@ -53,7 +53,7 @@ let root: string;
 const git = (cwd: string, ...args: string[]) => execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8", timeout: 15000, windowsHide: true });
 const exec: ExtensionAPI["exec"] = async (command, args, options) => new Promise((resolve) => {
 	execFile(command, args, { encoding: "utf8", timeout: options?.timeout, signal: options?.signal, windowsHide: true }, (error, stdout, stderr) => {
-		resolve({ stdout, stderr, code: error ? typeof error.code === "number" ? error.code : 1 : 0, killed: Boolean(error?.killed) });
+		resolve({ stdout, stderr, code: error ? typeof error.code === "number" ? error.code : 1 : 0, killed: Boolean(error?.killed), truncated: false });
 	});
 });
 function init(cwd: string, baseline = true) {

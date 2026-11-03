@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-11-02: Support Pi 1.4.0 and 1.5.0 in the default profile
+
+- Prefer the host-injected keybinding hint helper when rendering subagent and log-analytics results, retaining the imported helper as a fallback for older Pi versions. Serialize browser structured output as JSON and narrow image transform parameters at the schema boundary to accommodate API type differences.
+- Update log-analytics renderer fixtures for injected keybinding helpers and the required query execution option. Keep changes in the default profile; legacy remains untouched.
+- Pass the full default-profile typecheck and 110 focused log-analytics, subagent-presentation, Codex usage, and commit tests under Pi 1.5.0. Typecheck default-profile extension/library sources against Pi 1.4.0 using a temporary TypeScript path mapping; no global Pi installation or package configuration changed. Pass the native damage-control loader/composition smoke with Pi 1.5.0. Pi 1.4.0 native CLI composition was not run.
+
 ## 2026-11-01: Resolve targeted planning and runtime feedback findings
 
 - Continue ordinary planning through one consequential question at a time, incorporate answers, and reach executable readiness. Replace competing draft/stopping cues in the owning skill and template while preserving explicitly requested drafts, genuine external blockers, settled decisions, and the planning/execution boundary.

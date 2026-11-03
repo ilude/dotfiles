@@ -230,6 +230,9 @@ export const renderAnalyticsResult: NonNullable<Tool["renderResult"]> = (result,
 			lines.push(clean(data.limits));
 		}
 	} else return [expanded ? clean(fallback()) : preview(fallback(), 400)];
-	if (!expanded) lines.push(theme.fg("dim", keyHint("app.tools.expand", "for full returned values, SQL and diagnostics")));
+	if (!expanded) {
+		const hints = context as typeof context & { keyHint?: typeof keyHint };
+		lines.push(theme.fg("dim", (hints.keyHint ?? keyHint)("app.tools.expand", "for full returned values, SQL and diagnostics")));
+	}
 	return lines;
 });
