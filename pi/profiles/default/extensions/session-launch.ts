@@ -464,6 +464,11 @@ async function executeNewTerminal(args: string, ctx: CommandContext): Promise<vo
 
 async function executeBranch(args: string, ctx: CommandContext, pi: ExtensionAPI): Promise<void> {
 	const parentManager = ctx.sessionManager;
+	const hasConversation = parentManager?.getBranch().some(entry => entry.type === "message" && (entry.message.role === "user" || entry.message.role === "assistant"));
+	if (!hasConversation) {
+		await executeNewInstance(args, ctx);
+		return;
+	}
 	const leafId = parentManager?.getLeafId?.();
 	if (!parentManager?.createBranchedSession || !leafId) throw new Error("Cannot branch this session yet: no persisted session leaf is available.");
 	const parentSessionFile = parentManager.getSessionFile();

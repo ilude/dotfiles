@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-11-03: Open a fresh Pi instance when branching an empty session
+
+- Make `/branch` use the same fresh-instance launch path as `/pi` when the current branch has no user or assistant conversation, including after `/clear`. Preserve the cwd, profile, and optional title without creating a dummy session file or branch metadata. Conversations with history retain normal branching behavior.
+
 ## 2026-11-02: Support Pi 1.4.0 and 1.5.0 in the default profile
 
 - Prefer the host-injected keybinding hint helper when rendering subagent and log-analytics results, retaining the imported helper as a fallback for older Pi versions. Serialize browser structured output as JSON and narrow image transform parameters at the schema boundary to accommodate API type differences.

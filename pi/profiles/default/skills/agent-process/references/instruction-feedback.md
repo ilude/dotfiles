@@ -1,5 +1,15 @@
 # Agent instruction feedback log
 
+## AIF-progress-vs-coordination - Internal handoffs confused operator progress
+
+- **Reference:** Survival-demo furnishing/deck Team Lead execution, 2026-11-03.
+- **Feedback:** The operator replied "huh?" after a user-facing update about a pending vanity-dimension handoff.
+- **Evidence:** The operator had authorized implementation. The update exposed routine agent-to-agent interface coordination without a user decision or meaningful delivered outcome, making it sound like an unexplained blocker.
+- **Correction:** Explained that no operator action was needed. Keep routine handoffs internal; user-facing updates should describe recognizable progress, demonstrated problems, or a specific required decision. Existing plain/direct communication guidance already covers this application failure.
+- **Execution follow-up:** The operator then corrected repeated claims that workers were running. All three old assignment IDs returned `Unknown child`; live Herdr inspection found none of them. Saved notes and historical partial returns had been mistaken for current activity. Why execution ended was not established.
+- **Correction:** Recovered saved progress, launched replacement owned assignments, and verified the exact new sessions as working in live Herdr panes before reporting restart. Treat live-state observations as timestamped evidence, not durable facts. Related AIF-087 covers the separate error of inferring global state from the current runtime registry alone.
+- **Status:** Record only, no prompt/runtime change. Authorized furnishing, porch/deck, door and bathroom-layout work remains unfinished and resumed; no completion claim.
+
 ## AIF-asset-review-target - Fresh target-based asset reviews
 
 - **Reference:** Survival-demo asset review correction, 2026-10-29; related AIF-animation-deliverable-scope and APR-ccyl-herdr-handoff.
@@ -38,6 +48,7 @@
 - **Feedback:** Ordinary planning should ask needed questions one at a time and reach an executable plan, rather than stop after producing a draft.
 - **Evidence:** Current planning guidance already assigns technical investigation to the agent and requires consequential clarification. It lacks an explicit sequential continuation loop and ends with a competing draft/stopping cue. Historical sample identified a September 30 speculative approval blocker and the October 29 unfinished replacement, alongside successful continuations. Keyword scans do not establish a representative failure rate. The October 29 13:08 ready transition belongs to the earlier rejected plan, not later completion of the replacement draft.
 - **Proposal:** Consolidate ordinary planning into investigation, one consequential user question with context/recommendation, incorporation of answers, and continuation to ready. Keep explicitly requested drafts and genuine blockers honest; do not ask generic checklist questions, reopen settled choices, or shift discoverable facts to the user. Dependent cleanup remains conditional on actual completion.
+- **2026-11-03 execution recurrence:** During survival-demo world-generation discussion, the operator accepted a concrete nine-chunk first-draft approach after research. The orchestrator committed design notes and explicitly stopped before implementation, prompting the operator to challenge the repeated delay. No remaining consequential design question had been identified. Correction: begin the agreed prototype rather than inventing another planning/approval boundary; documentation and delegation are supporting work, not the playable outcome. Existing scope/continuity guidance covers this adherence failure; no new instruction rule added.
 - **Status:** Operator approved implementation after the November 1 weekly review. Consolidated the planning skill/template into investigation, sequential consequential clarification, and continuation to executable readiness, preserving intentional drafts, genuine blockers, settled choices, and the planning/execution boundary. Parent read the complete revised skill/template against the request. Future model adherence is unverified; load refreshed guidance through a fresh process or settled-only reload. Existing unrelated log edits preserved; no commit or push.
 
 ## AIF-indoor-lighting-scope - Apply lighting corrections across indoor locations
