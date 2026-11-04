@@ -67,8 +67,23 @@ it.each([false, true])("delivers lib changes to separately loaded footer and cle
   const command = r.loaded.extensions.flatMap(ext => [...ext.commands]).find(([name]) => name === "clear")![1];
   await command.handler("", { ...r.ctx, newSession } as any);
   expect(reload).toHaveBeenCalledOnce();
+  // This lightweight loader uses notify for command acknowledgment, not appendEntry.
+  expect(r.ctx.ui.notify.mock.calls).toEqual([["/clear", "info"]]);
   expect(requestReloadState({ events: bus })).toBeUndefined();
   expect(vi.getTimerCount()).toBe(0);
+});
+it("/clear starts an unchanged session without leaving a progress notification", async () => {
+  const r = await load();
+  const reload = vi.fn();
+  const newSession = vi.fn(async (options: { withSession: (ctx: { reload: typeof reload }) => Promise<void> }) => {
+    await r.stop();
+    await options.withSession({ reload });
+  });
+  const command = r.loaded.extensions.flatMap(ext => [...ext.commands]).find(([name]) => name === "clear")![1];
+  await command.handler("", { ...r.ctx, newSession } as unknown as Parameters<typeof command.handler>[1]);
+  expect(newSession).toHaveBeenCalledOnce();
+  expect(reload).not.toHaveBeenCalled();
+  expect(r.ctx.ui.notify.mock.calls).toEqual([["/clear", "info"]]);
 });
 it("preserves pending changes with cached factories, and clears after source reevaluation", async () => {
   let r = await load();

@@ -97,7 +97,7 @@ it("keeps the local quiet-subagent override across Herdr integration refreshes",
   await vi.waitFor(() => expect(requests.filter(request => request.method === "pane.report_agent").at(-1)?.params.state).toBe("unknown"));
 });
 
-it("retries rejected reports, warns once, and clears status after recovery", async () => {
+it("retries rejected reports without transcript warnings and clears status after recovery", async () => {
   socketResponse = { error: { type: "invalid_request" } };
   vi.resetModules();
   const { default: register } = await import("../extensions/herdr-agent-state.ts");
@@ -113,10 +113,10 @@ it("retries rejected reports, warns once, and clears status after recovery", asy
   await vi.waitFor(() => expect(requests).toHaveLength(4));
   expect(requests.filter(({ method }) => method === "pane.report_agent_session")).toHaveLength(2);
   expect(requests.filter(({ method }) => method === "pane.report_agent")).toHaveLength(2);
-  expect(ui.notify).toHaveBeenCalledTimes(1);
+  expect(ui.notify).not.toHaveBeenCalled();
   expect(ui.setStatus).toHaveBeenCalledWith("herdr-reporting", "Herdr status reporting unavailable");
   socketResponse = { result: { type: "ok" } };
   handlers.agent_start({}, ctx);
   await vi.waitFor(() => expect(ui.setStatus).toHaveBeenLastCalledWith("herdr-reporting", undefined));
-  expect(ui.notify).toHaveBeenCalledTimes(1);
+  expect(ui.notify).not.toHaveBeenCalled();
 });

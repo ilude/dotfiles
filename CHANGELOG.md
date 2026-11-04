@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-11-04: Keep Pi clear-session progress out of the transcript
+
+- Keep Herdr delivery failures in the existing recoverable footer status instead of also appending a permanent warning to the conversation. Preserve report retries, response validation, and automatic status clearing after successful delivery.
+- Remove `/clear`'s persistent “Starting a new session…” notification. Preserve session replacement, automatic reload when profile resources changed, command acknowledgment, and actionable cleanup/reload warnings.
+- Add regression coverage for quiet clears with unchanged and changed resources. Focused clear/error tests and default-profile typechecking pass. The complete reload integration file still reports timer-count failures in its existing lifecycle assertions; live terminal repaint behavior is not verified by these tests.
+- Trace separate debugger text over the editor to a temporary live-inspector probe used during session-upload diagnosis, not to `/clear` or a configured launch flag. No debugger launch configuration is changed.
+
+## 2026-11-04: Reduce repeated archive work in idle Pi sessions
+
+- Check a source's full file fingerprint against its committed archive checkpoint before creating a per-source lock or opening the source. Unchanged files no longer create and remove lock directories in every connected Pi session. Changed files retain the existing locked recheck, path validation, upload, and checkpoint behavior.
+- Preserve backup coverage, the per-session scan schedule, and legacy exclusion. Do not add a shared backup-worker election. Pass 20 focused archive tests and Onclave typechecking; a local three-worker unchanged-file fixture used about 60% less CPU time. Existing Pi processes must reload or restart to load the change; workstation-wide CPU improvement has not yet been measured.
+
 ## 2026-11-04: Reconcile analytics fixes with upstream Pi compatibility updates
 
 - Merge the local analytics-rendering and native test-context corrections with the published GitHub updates, retaining both sets of regression coverage and the injected keybinding-hint support. Keep test fixtures compatible with the installed Pi 1.4 API without removing the newer hint and subprocess-result fields.

@@ -4,8 +4,9 @@
 // Herdr sounds on background working -> idle; children deliver results to their parent
 // and close, while blocked approval prompts must still sound. Keep the override below
 // after integration refresh; herdr-agent-state.test.ts guards against losing it.
-// LOCAL EXCEPTION: validate response envelopes and expose delivery failures as a
-// non-blocking status/warning. Preserve this alongside the quiet-child override.
+// LOCAL EXCEPTION: validate response envelopes and expose delivery failures in a
+// recoverable footer status, not persistent transcript warnings. Preserve this
+// alongside the quiet-child override.
 // HERDR_INTEGRATION_ID=pi
 // HERDR_INTEGRATION_VERSION=9
 // @ts-nocheck
@@ -201,7 +202,6 @@ export default function (pi) {
   let lastState: AgentState | undefined;
   let lastMessage: string | undefined;
   let rootSession = false;
-  let warned = false;
   const subagentSession = Boolean(process.env.PI_SUBAGENT_AUTHORITY);
 
   function desiredState() {
@@ -251,13 +251,8 @@ export default function (pi) {
       return;
     }
     rootSession = true;
-    warned = false;
     reportDelivery = delivered => {
       ctx.ui?.setStatus?.("herdr-reporting", delivered ? undefined : "Herdr status reporting unavailable");
-      if (!delivered && !warned) {
-        warned = true;
-        ctx.ui?.notify?.("Herdr status reporting failed after retrying. Pi will continue normally.", "warning");
-      }
     };
     updateSessionRef(ctx);
     await reportSession(event?.reason);

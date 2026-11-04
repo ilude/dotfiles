@@ -17,7 +17,6 @@ export default function clearCommand(pi: ExtensionAPI): void {
 			}
 			if (!state) ctx.ui.notify("Reload monitoring unavailable; starting a new session without automatic reload.", "warning");
 			const reloadNeeded = Boolean(state?.needed && !state.error);
-			ctx.ui.notify(reloadNeeded ? "Starting a new session and reloading changed profile resources..." : "Starting a new session...", "info");
 			let resetComplete = true;
 			try {
 				await requestSubagentRuntimeReset(pi);
