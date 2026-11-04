@@ -21,5 +21,13 @@
 /browser-credentials.json
 /browser/
 /sessions/
+
+# Migrated Onclave workflow data. Existing local copies are historical only.
+/skills/agent-process/references/instruction-feedback.md
+/skills/agent-process/references/failure-log.md
+/skills/agent-process/references/knowledge/
+/skills/tool-call-analysis/references/analysis-log.md
+/skills/tool-call-analysis/references/classification-feedback.md
+/skills/tool-call-analysis/references/reviews/
 /.herdr-plugin/
 /bedrock-cur-snapshot.json

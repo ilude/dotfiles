@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-11-03: Build online Onclave improvement-record storage
+
+- Add Onclave service, signed client, deferred Pi tool, and import tooling for process feedback, failures, synthesized knowledge, tool-call reviews, and classification corrections. Keep instructions and implementation in Git while preparing workflow data for centralized storage.
+- Preserve source references and Markdown, derive machine/process/session/repository provenance for new captures, and reject stale revisions or conflicting record IDs rather than overwriting concurrent work. Report failed writes as not saved; offline caching and automatic consolidation remain deferred.
+- Deploy the signed API and additive database migration through the existing Onclave service role. Import and read-back verify 206 current records, including uncommitted additions; switch active skills to centralized storage and remove eight data files from Git tracking while retaining ignored local historical copies. Git history is unchanged.
+- Verify signed workstation access and CI's full test/integration suite. The local Tailscale client reports `NoState`, so remote Tailscale-path acceptance remains unverified; LAN access works. Offline caching and server-side consolidation are not part of this milestone.
+
 ## 2026-11-03: Open a fresh Pi instance when branching an empty session
 
 - Make `/branch` use the same fresh-instance launch path as `/pi` when the current branch has no user or assistant conversation, including after `/clear`. Preserve the cwd, profile, and optional title without creating a dummy session file or branch metadata. Conversations with history retain normal branching behavior.

@@ -9,20 +9,20 @@ This skill owns a durable history of tool-call reviews and operator corrections.
 
 ## Persistent workflow
 
-1. Before every tool-call or subagent-failure review, read [the classification feedback log](references/classification-feedback.md) completely. Search [the analysis log](references/analysis-log.md) for relevant mechanisms, tools, or comparable incidents and read the matching entries. Expand to linked incidents or more history only when missing evidence could change the classification, cause, or remedy.
+1. Use `onclave_improvement` to retrieve all `classification` records, paging until complete, before every tool-call or subagent-failure review. Search `analysis` records for relevant mechanisms, tools, or comparable incidents and get matching records. Expand to linked incidents or more history only when missing evidence could change the classification, cause, or remedy. Follow [centralized storage](../agent-process/SKILL.md#centralized-storage) for capture, revision-safe updates, and unavailable-service behavior; report retrieval gaps rather than implying complete coverage.
 2. Define the profiles and exact `[since, until)` interval before retrieval. Review every selected session when exhaustive coverage is requested.
 3. Classify observed events using this skill and all non-superseded operator feedback. Separate verified facts from suspected causes.
-4. Append an analysis-log entry after each review. Record:
+4. Capture an Onclave `analysis` record after each review. Record:
    - review ID and date;
    - profiles and exact interval;
    - selected sessions and records or bytes when known;
    - retrieval methods, completion state, exclusions, malformed input, and other coverage limits;
    - normalized findings with occurrence and distinct-session counts;
    - isolated incidents kept out of recurring findings;
-   - report or artifact paths;
+   - related Onclave `review` record IDs for detailed reports or other evidence references;
    - remediation and unresolved status.
-5. Append operator corrections about definitions, counting, presentation, or scope to the classification feedback log. Link the review or incident that prompted them and mark superseded interpretations explicitly.
-6. When operator feedback changes this executable taxonomy or workflow, update `SKILL.md` only when the operator directs or approves the change. Keep detailed history in the logs rather than expanding the executable instructions with examples already covered by a rule.
+5. Capture operator corrections about definitions, counting, presentation, or scope as `classification` records. Link the review or incident that prompted them and mark superseded interpretations explicitly. Store detailed reports as `review` records, not Git-tracked artifacts.
+6. When operator feedback changes this executable taxonomy or workflow, update `SKILL.md` only when the operator directs or approves the change. Keep detailed history in Onclave rather than expanding the executable instructions with examples already covered by a rule.
 7. Do not create telemetry, background indexing, approval gates, operational limits, or automatic reviews. Existing session records remain authoritative.
 
 Classify the observed event before counting or diagnosing it. A red result, nonzero exit code, HTTP error status, failed test, or unsuccessful requested operation is not by itself a tool-call failure.
