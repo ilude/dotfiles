@@ -17,6 +17,18 @@
 - Merge the local analytics-rendering and native test-context corrections with the published GitHub updates, retaining both sets of regression coverage and the injected keybinding-hint support. Keep test fixtures compatible with the installed Pi 1.4 API without removing the newer hint and subprocess-result fields.
 - Pass default-profile typechecking and 65 focused analytics-rendering, Codex usage, goal, and commit-plan tests under Pi 1.4. No Pi installation or runtime configuration change is made by this merge; Pi 1.5 checks were not rerun locally.
 
+## 2026-11-04: Share Herdr companion placement and own dedicated pane lifetimes
+
+- Route programmatic shell, command, and agent companions through the same serialized layout owner as visible Pi subagents, preserving the primary orchestrator's full-width lower row and existing readable overflow. Nested coordinators use the originating primary, not a competing layout anchor. Preserve external/manual layouts rather than rearranging live work.
+- Add dedicated command launches with task, agent, and persistent-service lifetimes. Capture exit status and recent terminal output before retiring task/agent panes, and retrieve saved results by job ID after closure. Dedicated `ccyl` launches still use the existing shell profile/provider routing; ordinary interactive `pi`, `ccyl`, and user terminals keep their behavior.
+- Keep service panes until explicitly closed and avoid idle-shell sweeps. Windows foreground-shell classification was observed alongside live benchmark, Godot, and Python descendants. Dedicated Windows hosts also terminate their shell after the command returns, avoiding the profile-loaded PowerShell exit hang reproduced during acceptance. Explicit close/interrupt protects the actual calling pane rather than whichever pane another client has focused.
+- Pass default-profile typechecking, 175 focused tests, and isolated Windows Herdr acceptance for mixed placement, output capture, and task retirement without a replacement shell. Real Claude interaction and attached-client rendering remain unverified; existing production panes were not rearranged or closed. Reload settled Pi sessions or start fresh processes to load the tool and guidance changes; no Herdr restart or plugin relink is required.
+
+## 2026-11-03: Keep Claude usage right-aligned in resized panes
+
+- Query the live terminal width for the custom Claude Code status line, including when hook output is piped, before falling back to `COLUMNS`. Reserve footer side padding so right-aligned usage is not placed beyond the available line in narrower ccyl panes.
+- Preserve provider-specific usage and left-side shortening; remove the fixed 40-column minimum and 400-column maximum from width detection.
+
 ## 2026-11-03: Add native Pi session and log archival
 
 - Extend Onclave with a separate signed archive facility for full native session JSONL and the existing Bedrock usage, Codex cache-observation, adapter audit, and Herdr naming logs. Preserve raw bytes and unknown session entries rather than replacing them with improvement-note summaries.

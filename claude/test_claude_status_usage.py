@@ -70,6 +70,40 @@ def test_pi_style_context_and_right_aligned_usage():
     assert bedrock.startswith("bedrock:")
 
 
+def test_status_width_tracks_live_pane_instead_of_columns(monkeypatch):
+    monkeypatch.setenv("COLUMNS", "200")
+    monkeypatch.setattr(status.os, "get_terminal_size", lambda fd: os.terminal_size((100, 30)))
+    assert status.status_width() == 96
+    monkeypatch.setattr(status.os, "get_terminal_size", lambda fd: os.terminal_size((60, 30)))
+    assert status.status_width() == 56
+
+
+def test_status_width_uses_controlling_terminal_when_piped(monkeypatch):
+    def terminal_size(fd):
+        if fd != 123:
+            raise OSError("not a terminal")
+        return os.terminal_size((80, 30))
+
+    closed = []
+    monkeypatch.setattr(status.os, "get_terminal_size", terminal_size)
+    monkeypatch.setattr(status.os, "open", lambda *args: 123)
+    monkeypatch.setattr(status.os, "close", closed.append)
+    assert status.status_width() == 76
+    assert closed == [123]
+
+
+def test_status_width_falls_back_without_a_terminal(monkeypatch):
+    def unavailable(*args):
+        raise OSError("no terminal")
+
+    monkeypatch.setattr(status.os, "get_terminal_size", unavailable)
+    monkeypatch.setattr(status.os, "open", unavailable)
+    monkeypatch.setenv("COLUMNS", "80")
+    assert status.status_width() == 76
+    monkeypatch.setenv("COLUMNS", "invalid")
+    assert status.status_width() == 96
+
+
 def test_live_effort_overrides_saved_settings(tmp_path, monkeypatch, capsys):
     import io
     import sys

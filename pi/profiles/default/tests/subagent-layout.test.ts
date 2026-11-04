@@ -6,6 +6,8 @@ vi.mock("../lib/subagents/herdr-layout-api.ts", async importOriginal => ({
   createPaneFocus: vi.fn(),
 }));
 import type { HerdrCli } from "../lib/herdr-cli.ts";
+import * as herdrCli from "../lib/herdr-cli.ts";
+import { SubagentRuntime } from "../lib/subagents/runtime.ts";
 import { CHILDREN_PER_ROW, CHILDREN_PER_TAB, LayoutReconciliationError, SubagentLayout, layoutSlot } from "../lib/subagents/layout.ts";
 
 class LayoutFixture {
@@ -142,23 +144,25 @@ class LayoutFixture {
       this.focus = this.focusAfterSwap ?? args[3];
       return "";
     }
-    if (command === "plugin pane") {
-      if (args[2] === "close") {
+    if (command === "plugin pane" || command === "pane split" || command === "tab create") {
+      if (command === "plugin pane" && args[2] === "close") {
         const wasFocused = this.focus === args[3];
         this.panes.delete(args[3]);
         if (wasFocused) this.focus = "w1:p1";
         return "";
       }
       if (this.failOpen) throw new Error("open failed");
-      const target = this.panes.get(args[args.indexOf("--target-pane") + 1]);
+      const targetFlag = command === "pane split" ? "--pane" : "--target-pane";
+      const target = this.panes.get(args[args.indexOf(targetFlag) + 1]);
       const workspaceId = target?.workspace_id ?? args[args.indexOf("--workspace")+1];
-      const tabId = args.includes("--placement") && args[args.indexOf("--placement") + 1] === "tab" ? `${workspaceId}:t${this.nextTab++}` : target.tab_id;
+      const newTab = command === "tab create" || (args.includes("--placement") && args[args.indexOf("--placement") + 1] === "tab");
+      const tabId = newTab ? `${workspaceId}:t${this.nextTab++}` : target.tab_id;
       this.tabs.add(tabId);
       if (!this.tabTitles.has(tabId)) this.tabTitles.set(tabId, "New tab");
       const paneId = `${workspaceId}:p${this.nextPane++}`;
       this.panes.set(paneId, { pane_id: paneId, tab_id: tabId, workspace_id: workspaceId, terminal_id:`terminal-${paneId}`, label: "Pi", rect: { x: 0, y: 0, width: 50, height: 20 } });
       if (this.focusAfterOpen) this.focus = this.focusAfterOpen;
-      return JSON.stringify({ result: { plugin_pane: { pane: this.panes.get(paneId) } } });
+      return JSON.stringify({ result: { plugin_pane: { pane: this.panes.get(paneId) }, pane: this.panes.get(paneId), root_pane: this.panes.get(paneId) } });
     }
     if (command === "tab close") {
       this.tabs.delete(args[2]);
@@ -175,6 +179,49 @@ function allocations(count: number) {
 }
 
 describe("subagent layout contract", () => {
+  it("routes a nested caller's companions through the runtime's existing visible-child owner", async () => {
+    const fixture=new LayoutFixture();
+    const spy=vi.spyOn(herdrCli,"createHerdrCli").mockReturnValue(fixture.cli);
+    const runtime=new SubagentRuntime();
+    try {
+      const shared=runtime["layoutFor"]("origin");
+      await shared.place("origin",{childId:"lead",role:"teamlead",callerPane:"w1:p1",cwd:"C:/work",title:"Lead",plugin:"local.pi",entrypoint:"pi"});
+      const response=await runtime.companion("origin","not-the-primary",{action:"place",id:"companion:logs",cwd:"C:/work",title:"Logs"},"lead");
+      expect(response.placement).toMatchObject({tabId:"w1:t1",column:1});
+      expect(shared.snapshot("origin")).toHaveLength(2);
+      expect(shared.caller("origin")).toBe("w1:p1");
+    } finally { await runtime.shutdown("quit"); spy.mockRestore(); }
+  });
+  it("shares the upper row and overflow between a defined child and shell companions", async () => {
+    const fixture = new LayoutFixture();
+    const layout = new SubagentLayout(fixture.cli);
+    const base = { callerPane:"w1:p1", cwd:"C:/work", title:"Work" };
+    const child = await layout.place("origin", { ...base, childId:"child", plugin:"local.pi", entrypoint:"pi" });
+    const shell = await layout.place("origin", { ...base, childId:"companion:shell" });
+    const overflow = await layout.place("origin", { ...base, childId:"companion:overflow" });
+    expect(shell).toMatchObject({tabId:child.tabId,column:1,row:0});
+    expect(overflow.tabId).not.toBe(child.tabId);
+    expect(fixture.calls).toContainEqual(["pane","split","--pane",child.paneId,"--direction","right","--cwd","C:/work","--no-focus"]);
+    await layout.close("origin",shell.childId,shell.paneId);
+    expect(fixture.calls).toContainEqual(["pane","close",shell.paneId]);
+    expect(layout.snapshot("origin").every(pane=>pane.tabIndex===0)).toBe(true);
+    expect(fixture.panes.has("w1:p1")).toBe(true);
+  });
+
+  it("puts a first shell above the caller and preserves pre-existing manual panes", async () => {
+    const fixture = new LayoutFixture();
+    const layout = new SubagentLayout(fixture.cli);
+    const shell = await layout.place("origin", {childId:"companion:first",callerPane:"w1:p1",cwd:"C:/work",title:"Shell"});
+    expect(fixture.calls).toContainEqual(["pane","split","--pane","w1:p1","--direction","down","--cwd","C:/work","--no-focus"]);
+    expect(fixture.calls).toContainEqual(["pane","swap","--source-pane","w1:p1","--target-pane",shell.paneId]);
+    const manualFixture = new LayoutFixture();
+    manualFixture.panes.set("manual",{pane_id:"manual",tab_id:"w1:t1",workspace_id:"w1",rect:{x:50,y:0,width:50,height:40}});
+    const manualLayout = new SubagentLayout(manualFixture.cli);
+    const next = await manualLayout.place("origin",{childId:"companion:next",callerPane:"w1:p1",cwd:"C:/work",title:"Shell"});
+    expect(next.tabId).not.toBe("w1:t1");
+    expect(manualFixture.calls.some(args=>args[0]==="pane"&&["split","swap","resize"].includes(args[1]))).toBe(false);
+  });
+
   it("resolves a stale inherited caller alias to its current public pane identity", async () => {
     const cli: HerdrCli = async args => {
       expect(args).toEqual(["pane","current","--current"]);

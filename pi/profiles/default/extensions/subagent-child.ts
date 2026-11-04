@@ -13,6 +13,7 @@ import type { ChildRecord } from "../lib/subagents/rpc.ts";
 import { writeSubagentLineage } from "../lib/subagents/lineage.ts";
 import type { CloseoutManifest } from "../lib/plan-integration/contracts.ts";
 import { samePlatformPath } from "../lib/path-identity.ts";
+import { HERDR_COMPANION_REQUEST, type CompanionEvent, type CompanionResponse } from "../lib/herdr-companions.ts";
 interface CloseoutHandoff { manifest:CloseoutManifest; provenance:{source:"subagent-runtime";version:1;childId:string;agent:"integrator";parentSessionId:string;targetCheckout:string} }
 interface Authority { id:string; agent:string; tools:string[]; delegates:string[]; parentId?:string; goalRunId?:string; cwd:string; skills:string[]; surface?:string; closeout?:CloseoutHandoff }
 function isCloseoutManifest(value:unknown):value is CloseoutManifest {
@@ -62,6 +63,12 @@ export default function childAuthority(pi:ExtensionAPI){
   if(authority.closeout&&endpoint.origin!==authority.closeout.provenance.parentSessionId)throw new Error("Integrator parent-session provenance mismatch");
   return endpoint;
  };
+ const stopCompanions=pi.events?.on?.(HERDR_COMPANION_REQUEST,(value:unknown)=>{
+  const event=value as CompanionEvent;
+  if(!allowed.has("herdr_layout")||!allowed.has("herdr_pane"))return;
+  event.accept(requestParent(parentEndpoint(),{type:"herdr-companion",payload:event.request}).then(value=>value as CompanionResponse));
+ });
+ pi.on("session_shutdown",()=>stopCompanions?.());
  if(authority.goalRunId){
   goalSubscriptions.push(pi.events.on("goal-run-id",value=>{
    if(!value||typeof value!=="object")return;

@@ -11,6 +11,7 @@ import { workspaceRoot } from "./workspace.ts";
 import { NameAllocator } from "./names.ts";
 import { SubagentLayout } from "./layout.ts";
 import { createHerdrCli } from "../herdr-cli.ts";
+import { companionPlacement, parseCompanionRequest, type CompanionRequest, type CompanionResponse } from "../herdr-companions.ts";
 import { composedAgentPrompt } from "./guidance.ts";
 import type { CloseoutManifest } from "../plan-integration/contracts.ts";
 import { validateCloseoutManifest } from "../plan-integration/closeout.ts";
@@ -321,6 +322,12 @@ if(this.pending.get(id)?.origin!==origin)return;this.pending.delete(id);this.que
    if(pending&&pending.parentId!==identity.child)throw new Error("Outcome acknowledgement is outside direct child ownership");
    this.acknowledge(identity.origin,message.payload);return{accepted:true};
   }
+  if(message.type==="herdr-companion"){
+   if(!context.input.definition.tools.includes("herdr_layout")||!context.input.definition.tools.includes("herdr_pane"))throw new Error("Herdr companions are outside frozen authority");
+   if(child.record.status==="settled"||!child.record.paneId)throw new Error("Companion caller is unavailable");
+   const request=parseCompanionRequest(message.payload);
+   return this.companion(identity.origin,child.record.paneId,request,identity.child);
+  }
   if(message.type==="delegate"){
    if(child.record.status==="settled")throw new Error("Parent assignment is settled");
    const payload=message.payload as {agent?:unknown;instructions?:unknown;retain?:unknown;background?:unknown;cwd?:unknown;model?:unknown;effort?:unknown;skills?:unknown;surface?:unknown;closeoutManifest?:unknown};
@@ -545,6 +552,18 @@ if(this.pending.get(id)?.origin!==origin)return;this.pending.delete(id);this.que
   if(matches.length===1)return matches[0];
   if(matches.length>1)throw new Error(`Ambiguous child id or name: ${idOrName}`);
   return undefined;
+ }
+ async companion(origin:string,callerPane:string,request:CompanionRequest,parentId?:string):Promise<CompanionResponse>{
+  const layout=this.layoutFor(origin);
+  if(request.action==="place"){
+   const placement=await layout.place(origin,companionPlacement(request,layout.caller(origin)??callerPane,parentId));
+   return {handled:true,placement};
+  }
+  const placement=layout.snapshot(origin).find(item=>item.childId.startsWith("companion:")&&item.paneId===request.pane);
+  if(!placement)return {handled:false};
+  if(request.action==="close")await layout.close(origin,placement.childId,placement.paneId);
+  if(request.action==="release")await layout.release(origin,placement.childId);
+  return {handled:true,placement};
  }
  private layoutFor(origin:string){let layout=this.layouts.get(origin);if(!layout){layout=new SubagentLayout(createHerdrCli(),undefined,(childId,paneId)=>{const child=this.children.get(childId);if(child){child.record.paneId=paneId;child.record.updatedAt=new Date().toISOString();this.publish(origin)}});this.layouts.set(origin,layout)}return layout}
  hasActiveResources(){

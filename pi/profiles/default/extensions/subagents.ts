@@ -5,6 +5,7 @@ import { getAgentDir, type ExtensionAPI, type ExtensionContext } from "@earendil
 import { Type } from "typebox";
 import { loadDefinitions, resolveAgentEffort, resolveModel, EFFORTS, type AgentDefinition, type AgentEffort } from "../lib/subagents/definitions.ts";
 import { VisibleChild } from "../lib/subagents/visible.ts";
+import { HERDR_COMPANION_REQUEST, type CompanionEvent } from "../lib/herdr-companions.ts";
 import { getSubagentRuntime, retireSubagentRuntime, resetSubagentRuntime, SUBAGENT_RUNTIME_RESET, type Delivery } from "../lib/subagents/runtime.ts";
 import { outcomeText } from "../lib/subagents/status.ts";
 import { parentVisibleRecord, presentationDetails, progressResult, renderSubagentCall, renderSubagentControlCall, renderSubagentMessage, renderSubagentResult } from "../lib/subagents/presentation.ts";
@@ -73,6 +74,11 @@ export default function subagents(pi:ExtensionAPI){
   }
  };
  const successor=new CloseoutSuccessorHandoff(undefined,(owner,kind,evidence)=>{successorNotices.push({origin:owner,kind,evidence});flushSuccessorNotices();});
+ const unsubscribeCompanions=pi.events?.on?.(HERDR_COMPANION_REQUEST,(value:unknown)=>{
+  const event=value as CompanionEvent;
+  if(!current||event.origin!==current.sessionManager.getSessionId())return;
+  event.accept(active().companion(event.origin,event.callerPane,event.request));
+ })??(()=>{});
  let unsubscribeReset=(pi as any).events?.on?.(SUBAGENT_RUNTIME_RESET,(respond:any)=>{if(typeof respond==="function")respond((async()=>{runtime=await resetSubagentRuntime("clear");})());})??(()=>{});
  (pi as any).registerMessageRenderer?.("subagent-result",renderSubagentMessage);
  pi.on("session_start",(_e,ctx)=>{
@@ -108,7 +114,7 @@ export default function subagents(pi:ExtensionAPI){
    if(!cleanup.complete)console.error(`[subagent cleanup] ${cleanup.failures.map(f=>`${f.id}: ${f.error}`).join("; ")}`);
   }
   if(e.reason==="reload"&&owner)await retireSubagentRuntime();
-  if(e.reason==="quit"||e.reason==="reload"){await successor.close();unsubscribeReset();unsubscribeReset=()=>{};}
+  if(e.reason==="quit"||e.reason==="reload"){await successor.close();unsubscribeCompanions();unsubscribeReset();unsubscribeReset=()=>{};}
  });
  pi.on("message_end",(event,ctx)=>{
   const message=event.message as any;
