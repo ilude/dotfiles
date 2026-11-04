@@ -121,6 +121,16 @@ export function successorAdmission(env = process.env) {
 }
 
 export async function main() {
+  if (process.env.PI_HERDR_COMMAND_FILE) {
+    const { runCommandHost } = await import("./pi-herdr-command-host.mjs");
+    const result = await runCommandHost(process.env.PI_HERDR_COMMAND_FILE);
+    if (result.keepOpen) {
+      process.stdout.write("\nCommand has exited. This service or diagnostic pane remains until explicitly closed.\n");
+      process.stdin.resume();
+      await new Promise(resolve => process.stdin.once("end", resolve));
+    }
+    return;
+  }
   const target = process.argv[2];
   if (process.argv.length !== 3 || !target || !isAbsolute(target) || !existsSync(target)) throw new Error("Expected setup-owned absolute Pi package or entrypoint");
   // Resolve the stable dependency link afresh for every new process. Explicit

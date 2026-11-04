@@ -21,11 +21,14 @@ export interface LayoutPlacementRequest {
   callerPane: string;
   cwd: string;
   title: string;
-  plugin: string;
-  entrypoint: string;
+  /** Omitted for an ordinary managed shell companion. */
+  plugin?: string;
+  entrypoint?: string;
   env?: string[];
   parentId?: string;
   role?: string;
+  /** Runs inside the placement queue, before another launch can migrate this pane. */
+  admitted?: (terminalId: string) => void;
 }
 export interface LayoutPlacement extends LayoutChild {}
 export class LayoutPlacementError extends Error {
@@ -46,7 +49,7 @@ export class LayoutReconciliationError extends Error {
 interface Rect { x: number; y: number; width: number; height: number }
 interface Geometry { area: Rect; panes: Map<string, Rect> }
 interface ManagedTab { id: string; workspaceId: string; index: number; dirty: boolean; geometry?: Geometry; title?: string }
-type OwnedChild = LayoutChild & LayoutMember & {title: string; tabKey: LayoutTab; anchor: boolean};
+type OwnedChild = LayoutChild & LayoutMember & {title: string; tabKey: LayoutTab; anchor: boolean; plugin: boolean};
 interface Group {
   callerPane: string;
   callerTerminalId?: string;
@@ -100,6 +103,21 @@ export class SubagentLayout {
     return [...(this.groups.get(origin)?.children.values() ?? [])].map(publicChild);
   }
 
+  caller(origin: string): string | undefined { return this.groups.get(origin)?.callerPane; }
+
+  /** Stop managing a pane deliberately moved elsewhere, without closing it. */
+  async release(origin: string, childId: string): Promise<void> {
+    const group = this.groups.get(origin);
+    if (!group) return;
+    await this.serial(group, async () => {
+      group.children.delete(childId);
+      await this.observe(group);
+      await this.reconcile(group);
+      await this.polish(group);
+      if (!group.children.size) this.groups.delete(origin);
+    });
+  }
+
   async place(origin: string, request: LayoutPlacementRequest): Promise<LayoutPlacement> {
     let group = this.groups.get(origin);
     if (!group) {
@@ -120,9 +138,13 @@ export class SubagentLayout {
         if (!wanted) throw new Error("Desired layout omitted the visible child");
         const destination = this.destination(owner,wanted);
         const workspaceId = await this.destinationWorkspace(owner,wanted.tab);
-        const args = ["plugin","pane","open","--plugin",request.plugin,"--entrypoint",request.entrypoint];
-        if (destination.target) args.push("--placement","split","--direction",destination.direction,"--target-pane",destination.target);
-        else args.push("--placement","tab","--workspace",workspaceId);
+        const args = request.plugin
+          ? ["plugin","pane","open","--plugin",request.plugin,"--entrypoint",request.entrypoint ?? "pi"]
+          : destination.target ? ["pane","split","--pane",destination.target] : ["tab","create","--workspace",workspaceId];
+        if (request.plugin) {
+          if (destination.target) args.push("--placement","split","--direction",destination.direction,"--target-pane",destination.target);
+          else args.push("--placement","tab","--workspace",workspaceId);
+        } else if (destination.target) args.push("--direction",destination.direction);
         args.push("--cwd",request.cwd);
         for (const env of request.env ?? []) args.push("--env",env);
         args.push("--no-focus");
@@ -130,7 +152,7 @@ export class SubagentLayout {
         const identity = paneIdentity(response.plugin_pane?.pane ?? response.pane ?? response.root_pane);
         const tab = this.registerTab(owner,wanted.tab,identity.tabId,workspaceId);
         const child: OwnedChild = {...member,...identity,workspaceId,tabIndex:tab.index,
-          row:wanted.row,column:wanted.column,anchor:wanted.anchor,tabKey:wanted.tab,title:request.title.slice(0,160).trim()};
+          row:wanted.row,column:wanted.column,anchor:wanted.anchor,tabKey:wanted.tab,title:request.title.slice(0,160).trim(),plugin:!!request.plugin};
         // Register before identity checks and polish so failure cleanup owns this exact returned pane.
         owner.children.set(child.childId,child);
         try {
@@ -139,6 +161,10 @@ export class SubagentLayout {
           if (pane.workspace_id !== workspaceId || pane.tab_id !== child.tabId) throw new Error("Created pane identity changed");
           await this.cli(["pane","rename",child.paneId,child.title]);
           await this.polish(owner);
+          if (request.admitted) {
+            if (typeof pane.terminal_id !== "string") throw new Error("Command pane omitted terminal identity; command not admitted");
+            request.admitted(pane.terminal_id);
+          }
         } catch (error) {
           throw new LayoutPlacementError(String(error),publicChild(child));
         }
@@ -160,7 +186,7 @@ export class SubagentLayout {
       // Geometry diagnosis must not prevent owned-process cleanup. A failed
       // live-list check below still fails normally rather than forgetting ownership.
       await this.observe(group).catch(() => undefined);
-      if ((await this.livePanes(group)).has(paneId)) await this.cli(["plugin","pane","close",paneId]);
+      if ((await this.livePanes(group)).has(paneId)) await this.cli(owned.plugin ? ["plugin","pane","close",paneId] : ["pane","close",paneId]);
       group.children.delete(childId);
       try {
         await this.reconcile(group);
@@ -271,6 +297,10 @@ export class SubagentLayout {
       if (!representative) continue;
       const current = await this.geometry(representative);
       const previous = tab.geometry;
+      const expected = new Set([...group.children.values()].filter(child => child.tabKey === key).map(child => child.paneId));
+      if (key === "origin") expected.add(group.callerPane);
+      // Existing user panes are not a region this owner may subdivide or repair.
+      if ([...current.panes.keys()].some(id => !expected.has(id))) tab.dirty = true;
       // Herdr recomputes split rectangles when the terminal area changes, including
       // minimum-size clamping. That is not evidence of a manual divider edit.
       const resized = previous && (previous.area.width !== current.area.width || previous.area.height !== current.area.height);

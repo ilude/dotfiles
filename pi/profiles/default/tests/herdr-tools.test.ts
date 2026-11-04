@@ -306,7 +306,7 @@ it("recovers across coordinator sessions while preserving active agents and clos
   ];
   const cli = vi.fn<HerdrCli>(async args => {
     if (args[0] === "pane" && args[1] === "list") return json({ panes });
-    if (args[0] === "api" && args[1] === "snapshot") return json({ snapshot: { focused_pane_id: "current-orchestrator" } });
+    if (args[0] === "pane" && args[1] === "current") return json({ pane: panes[0] });
     if (args[0] === "agent" && args[1] === "list") return json({ agents: [
       { name: "earlier-coordinator", pane_id: "old-coordinator-pane", kind: "pi", status: "idle" },
       { name: "validator", pane_id: "validator-pane", kind: "pi", status: "working" },
@@ -343,17 +343,19 @@ it("recovers across coordinator sessions while preserving active agents and clos
   expect(cli).toHaveBeenCalledWith(["pane", "close", "stale-worker-2"], { signal: undefined });
 });
 
-it("uses live focused pane identity instead of inherited pane environment for destructive actions", async () => {
+it("protects the live caller rather than inherited IDs or another client's focused pane", async () => {
   vi.stubEnv("HERDR_ENV", "1"); vi.stubEnv("HERDR_SOCKET_PATH", "fixture"); vi.stubEnv("HERDR_PANE_ID", "stale-inherited-pane"); vi.stubEnv("HERDR_WORKSPACE_ID", "w1");
   const registered: Record<string, any> = {};
   const cli = vi.fn<HerdrCli>(async args => {
     if (args[0] === "pane" && args[1] === "get") return json({ pane: { pane_id: args[2] } });
-    if (args[0] === "api" && args[1] === "snapshot") return json({ snapshot: { focused_pane_id: "live-caller-pane" } });
+    if (args[0] === "pane" && args[1] === "current") return json({ pane: { pane_id: "live-caller-pane", tab_id: "w1:t1", workspace_id: "w1" } });
+    if (args[0] === "api" && args[1] === "snapshot") return json({ snapshot: { focused_pane_id: "another-client-pane" } });
     return "";
   });
   tools({ registerTool(t: any) { registered[t.name] = t; }, on() {} } as unknown as ExtensionAPI, cli);
   const pane = (name: string) => registered.herdr_pane.execute("id", { action: "close", pane: name }, undefined, undefined, ctx);
   await expect(pane("stale-inherited-pane")).resolves.toBeDefined();
+  await expect(pane("another-client-pane")).resolves.toBeDefined();
   await expect(pane("live-caller-pane")).rejects.toThrow("own pane");
   expect(cli).toHaveBeenCalledWith(["pane", "close", "stale-inherited-pane"], { signal: undefined });
   expect(cli).not.toHaveBeenCalledWith(["pane", "close", "live-caller-pane"], { signal: undefined });
@@ -416,7 +418,7 @@ it("requires an existing exact pane but permits non-caller interrupt/close witho
   const cli = vi.fn<HerdrCli>(async args => {
     if (args[0] === "pane" && args[1] === "get" && args[2] === "missing") return json({ pane: { pane_id: "other" } });
     if (args[0] === "pane" && args[1] === "get") return json({ pane: { pane_id: args[2] } });
-    if (args[0] === "api" && args[1] === "snapshot") return json({ snapshot: { focused_pane_id: "p1" } });
+    if (args[0] === "pane" && args[1] === "current") return json({ pane: { pane_id: "p1", tab_id: "w1:t1", workspace_id: "w1" } });
     if (args[0] === "pane" && args[1] === "read") return "x".repeat(20000);
     return "";
   });

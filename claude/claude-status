@@ -178,6 +178,32 @@ def context_label(data: dict) -> str:
     return f"{percent:.0f}% {compact_tokens(used)}/{compact_tokens(size)}"
 
 
+def status_width() -> int:
+    # Status hooks have piped stdin/stdout. Query the live terminal, not a
+    # COLUMNS value inherited before the pane was resized.
+    columns = None
+    try:
+        columns = os.get_terminal_size(sys.stderr.fileno()).columns
+    except (OSError, ValueError, AttributeError):
+        pass
+    if not columns:
+        try:
+            fd = os.open("CONOUT$" if os.name == "nt" else "/dev/tty", os.O_RDONLY)
+            try:
+                columns = os.get_terminal_size(fd).columns
+            finally:
+                os.close(fd)
+        except OSError:
+            pass
+    if not columns:
+        try:
+            columns = int(os.environ.get("COLUMNS", "100"))
+        except ValueError:
+            columns = 100
+    # Claude Code renders the footer inside its horizontal padding.
+    return max(1, columns - 4)
+
+
 def align_right(left: str, right: str, width: int) -> str:
     plain = lambda value: re.sub(r"\x1b\[[0-9;]*m", "", value)
     gap = width - len(plain(left)) - len(plain(right))
@@ -270,11 +296,7 @@ def main() -> None:
         line = line.replace(f" | {version_label}", f" | {GREEN}{context}{RESET} | {version_label}")
     quota, bedrock = usage_details(data)
     usage = bedrock if is_bedrock() else quota
-    try:
-        width = max(40, min(400, int(os.environ.get("COLUMNS", "100"))))
-    except ValueError:
-        width = 100
-    sys.stdout.write(align_right(line, usage, width) + "\n")
+    sys.stdout.write(align_right(line, usage, status_width()) + "\n")
 
 
 if __name__ == "__main__":

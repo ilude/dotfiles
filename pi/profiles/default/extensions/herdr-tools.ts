@@ -1,13 +1,17 @@
 import { getAgentDir, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { JsonValue } from "@earendil-works/pi-ai";
 import { Text } from "@earendil-works/pi-tui";
-import { basename, join } from "node:path";
+import { basename, join, resolve } from "node:path";
+import { realpathSync } from "node:fs";
+import { randomUUID } from "node:crypto";
 import { resumeHerdrSession } from "../lib/herdr-resume.ts";
 import { Type, type TSchema } from "typebox";
 import { Value } from "typebox/value";
 import { compactPane, createHerdrCli, herdrContext, inspectPane, inspectShell, OUTPUT_LIMIT, result, type HerdrCli } from "../lib/herdr-cli.ts";
 import { herdrAgentAction, type HerdrAgentAction } from "../lib/herdr-agent.ts";
-import { focusedPane } from "../lib/subagents/herdr-layout-api.ts";
+import { currentPaneIdentity } from "../lib/subagents/herdr-layout-api.ts";
+import { requestCompanion } from "../lib/herdr-companions.ts";
+import { prepareCommand, collectCommand, type CommandJob } from "../lib/herdr-command.ts";
 
 const choice = <T extends string>(values: T[]) => Type.Union(values.map(value => Type.Literal(value)));
 const paneInventoryItemSchema = Type.Object({
@@ -46,7 +50,10 @@ const agentOutputSchema = Type.Object({
   output: Type.Optional(Type.String()), submitted: Type.Optional(Type.Boolean()), waited: Type.Optional(Type.Boolean()), response: Type.Optional(agentResponseSchema),
   keys: Type.Optional(Type.Array(Type.String())), error: Type.Optional(Type.Object({ message: Type.String() })),
 }, { additionalProperties: true });
-const paneOutputSchema = Type.Object({ action: Type.String(), pane: Type.Optional(Type.String()), tab: Type.Optional(Type.String()), workspace: Type.Optional(Type.String()), previousPane: Type.Optional(Type.String()), previousTab: Type.Optional(Type.String()), focused: Type.Optional(Type.Boolean()), renamed: Type.Optional(Type.Boolean()), closed: Type.Optional(Type.Boolean()), interruptSubmitted: Type.Optional(Type.Boolean()), matched: Type.Optional(Type.String()), output: Type.Optional(Type.String()), submitted: Type.Optional(Type.Boolean()), error: Type.Optional(Type.Object({ message: Type.String() })) }, { additionalProperties: true });
+const paneOutputSchema = Type.Object({
+  job: Type.Optional(Type.String()), lifetime: Type.Optional(Type.String()), resultFile: Type.Optional(Type.String()),
+  state: Type.Optional(Type.String()), exitCode: Type.Optional(Type.Union([Type.Number(), Type.Null()])), signal: Type.Optional(Type.Union([Type.String(), Type.Null()])), cleanupError: Type.Optional(Type.String()),
+  action: Type.String(), pane: Type.Optional(Type.String()), tab: Type.Optional(Type.String()), workspace: Type.Optional(Type.String()), previousPane: Type.Optional(Type.String()), previousTab: Type.Optional(Type.String()), focused: Type.Optional(Type.Boolean()), renamed: Type.Optional(Type.Boolean()), closed: Type.Optional(Type.Boolean()), interruptSubmitted: Type.Optional(Type.Boolean()), matched: Type.Optional(Type.String()), output: Type.Optional(Type.String()), submitted: Type.Optional(Type.Boolean()), error: Type.Optional(Type.Object({ message: Type.String() })) }, { additionalProperties: true });
 function structured(value: unknown, action: string, schema: TSchema) {
   const content = JSON.stringify(value);
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(`Herdr ${action} returned a non-object result`);
@@ -113,15 +120,26 @@ export async function checkedCommand(pi: Pick<ExtensionAPI, "events">, cli: Herd
   return structured({ pane, submitted: true }, "run", paneOutputSchema);
 }
 export default function herdrTools(pi: ExtensionAPI, cli: HerdrCli = createHerdrCli()) {
+  const jobs = new Map<string, CommandJob>();
+  pi.on?.("session_start", (_event, ctx) => {
+    jobs.clear();
+    for (const entry of ctx.sessionManager.getBranch()) {
+      if (entry.type !== "custom" || entry.customType !== "herdr-command-job") continue;
+      const job = entry.data as Partial<CommandJob> | undefined;
+      if (job && typeof job.id === "string" && typeof job.directory === "string" && typeof job.pane === "string" && (job.lifetime === "task" || job.lifetime === "agent" || job.lifetime === "service")) {
+        jobs.set(job.id, { id: job.id, directory: job.directory, pane: job.pane, lifetime: job.lifetime });
+      }
+    }
+  });
   pi.registerTool({
     name: "herdr_layout", label: "Herdr layout",
-    description: "Inspect/create process panes, tabs, or workspaces, or resume a Pi session UUID in a focused tab or separate workspace. Resume uses the saved cwd and active profile, checks startup, and returns created IDs.",
+    description: "Inspect panes, create a managed shell companion above the full-width primary orchestrator, create an explicit tab/workspace, or resume a Pi session. Managed companions share subagent capacity and overflow; interactive shells stay open. Use herdr_pane launch for dedicated commands/agents that close on exit.",
     exposure: "deferred",
     outputSchema: layoutOutputSchema,
     parameters: Type.Object({
       action: choice(["list", "split", "tab", "workspace", "resume"]),
       session: Type.Optional(Type.String({ description: "Existing session UUID, required for resume" })),
-      placement: Type.Optional(choice(["tab", "workspace"])), direction: Type.Optional(choice(["right", "down"])),
+      placement: Type.Optional(choice(["tab", "workspace"])), direction: Type.Optional(Type.Union([Type.Literal("right"), Type.Literal("down")], { description: "Legacy hint; managed split placement follows the shared row policy" })),
       cwd: Type.Optional(Type.String()), label: Type.Optional(Type.String({ maxLength: 80 })), focus: Type.Optional(Type.Boolean()),
     }),
     renderCall(args, theme) { return renderCall("layout", args, theme); },
@@ -176,9 +194,16 @@ export default function herdrTools(pi: ExtensionAPI, cli: HerdrCli = createHerdr
         return structured({ panes: inventory, total: panes.length, truncated: panes.length > inventory.length }, params.action, layoutOutputSchema);
       }
       const cwd = params.cwd || ctx.cwd;
-      const args = params.action === "split"
-        ? ["pane", "split", "--pane", caller.pane, "--direction", params.direction || "right", "--cwd", cwd, "--no-focus"]
-        : params.action === "workspace"
+      if (params.action === "split") {
+        const current = await currentPaneIdentity(cli);
+        const response = await requestCompanion(pi, ctx.sessionManager.getSessionId(), current.pane_id, {
+          action: "place", id: `companion:${randomUUID()}`, cwd, title: params.label || "Terminal",
+        });
+        if (!response.placement) throw new Error("Herdr companion placement omitted identity");
+        const p = response.placement;
+        return structured({ pane: p.paneId, tab: p.tabId, workspace: p.workspaceId, focused: false, lifetime: "shell" }, params.action, layoutOutputSchema);
+      }
+      const args = params.action === "workspace"
           ? ["workspace", "create", "--cwd", cwd, ...(params.label ? ["--label", params.label] : []), params.focus ? "--focus" : "--no-focus"]
           : ["tab", "create", "--workspace", caller.workspace, "--cwd", cwd, "--no-focus"];
       const response = result(await cli(args, { signal }));
@@ -236,11 +261,14 @@ export default function herdrTools(pi: ExtensionAPI, cli: HerdrCli = createHerdr
   });
   pi.registerTool({
     name: "herdr_pane", label: "Herdr pane",
-    description: "Read, run, wait, rename, move, interrupt, or close a process pane. Move places it in a new tab in an existing workspace and preserves focus by default. Run requires an idle Bash/PowerShell shell. Interrupt and close target an exact existing pane; Pi refuses control of its own pane.",
+    description: "Launch a managed command/agent companion, collect its saved result, or read/run/wait/rename/move/interrupt/close an existing pane. Launch uses the shell profile (including ccyl), saves exit status and up to 200 terminal rows, then closes task/agent panes on process exit. Service panes remain until explicitly closed. Run uses an existing persistent shell. Never infer completion from shell/idle detection.",
+    promptGuidelines: ["Use herdr_pane launch with lifetime task for finite work, agent for a dedicated ccyl or pi process, and service for intentionally persistent servers/logs. Collect by returned job ID after exit; live interactive agents remain until exited, not merely idle. Use herdr_layout split only for an intentionally persistent interactive shell."],
     exposure: "deferred",
     outputSchema: paneOutputSchema,
     parameters: Type.Object({
-      action: choice(["read", "run", "wait", "rename", "move", "interrupt", "close"]), pane: Type.String(),
+      action: choice(["launch", "collect", "read", "run", "wait", "rename", "move", "interrupt", "close"]), pane: Type.Optional(Type.String()),
+      job: Type.Optional(Type.String({ description: "Launch job ID, required for collect, including after the pane closes" })),
+      lifetime: Type.Optional(Type.Union([Type.Literal("task"), Type.Literal("agent"), Type.Literal("service")])), cwd: Type.Optional(Type.String()),
       command: Type.Optional(Type.String({ maxLength: 32000 })), label: Type.Optional(Type.String({ maxLength: 80 })),
       workspace: Type.Optional(Type.String({ description: "Destination workspace ID, required for move" })), focus: Type.Optional(Type.Boolean()),
       match: Type.Optional(Type.String({ maxLength: 1000 })), lines: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
@@ -255,6 +283,8 @@ export default function herdrTools(pi: ExtensionAPI, cli: HerdrCli = createHerdr
       if (!data || typeof data !== "object" || Array.isArray(data)) return renderDetails(raw, raw, expanded, theme);
       const item = data as Record<string, any>; let summary: string;
       if (context.args.action === "wait") summary = `${item.matched ? `matched “${short(item.matched)}”` : "output matched"}${item.output ? `\n${previewOutput(item.output, expanded)}` : ""}`;
+      else if (context.args.action === "launch") summary = `launched · ${item.lifetime || "task"}${context.args.label ? ` · ${context.args.label}` : ""}`;
+      else if (context.args.action === "collect") summary = item.state === "exited" ? `exited · ${item.exitCode ?? item.signal ?? "unknown status"}${item.cleanupError ? " · cleanup needs attention" : ""}${errorSummary(item) ? `\n${errorSummary(item)}` : ""}${item.output ? `\n${previewOutput(item.output, expanded)}` : ""}` : "still running";
       else if (context.args.action === "run") summary = "command submitted";
       else if (context.args.action === "rename") summary = `renamed${context.args.label ? ` · ${context.args.label}` : ""}`;
       else if (context.args.action === "move") summary = `moved${context.args.label ? ` · ${context.args.label}` : ""}${item.focused ? " · focused" : ""}`;
@@ -263,7 +293,38 @@ export default function herdrTools(pi: ExtensionAPI, cli: HerdrCli = createHerdr
       return renderDetails(raw, summary, expanded, theme);
     },
     async execute(id, params, signal, _update, ctx) {
-      const caller = herdrContext(); const pane = required(params.pane, "pane");
+      const caller = herdrContext();
+      if (params.action === "launch") {
+        const command = required(params.command, "command"), cwd = resolve(params.cwd || ctx.cwd), lifetime = params.lifetime || "task";
+        let decision: Promise<{ block: true; reason: string } | undefined> | undefined;
+        pi.events.emit("herdr:check-command", {
+          event: { type: "tool_call", toolName: process.platform === "win32" ? "powershell" : "bash", toolCallId: id, input: { command } },
+          ctx: { ...ctx, cwd, signal }, accept(value: typeof decision) { decision = value; },
+        });
+        if (!decision) throw new Error("Damage Control command gate unavailable; nothing launched");
+        const denied = await decision;
+        if (denied?.block) throw new Error(denied.reason);
+        signal?.throwIfAborted();
+        const plugins = result(await cli(["plugin", "list", "--plugin", "local.pi", "--json"], { signal })).plugins;
+        const pluginCommand = plugins?.find((plugin: {plugin_id?:string}) => plugin.plugin_id === "local.pi")?.panes?.find((pane: {id?:string}) => pane.id === "pi")?.command;
+        const expected = resolve(realpathSync.native(getAgentDir()), "../../../scripts/pi-herdr-launch.mjs");
+        if (!Array.isArray(pluginCommand) || typeof pluginCommand[1] !== "string" || realpathSync.native(pluginCommand[1]) !== realpathSync.native(expected)) throw new Error("local.pi is not linked to this profile's repository bootstrap");
+        const current = await currentPaneIdentity(cli), owner = ctx.sessionManager.getSessionId();
+        const prepared = prepareCommand(command, cwd, lifetime), jobId = `companion:${randomUUID()}`;
+        const placed = await requestCompanion(pi, owner, current.pane_id, { action: "place", id: jobId, cwd, title: params.label || (lifetime === "agent" ? "Agent" : "Command"), commandFile: prepared.file });
+        if (!placed.placement) throw new Error(`Command placement omitted identity; inspect ${prepared.directory} before retrying`);
+        const p = placed.placement;
+        const job: CommandJob = { id: jobId, directory: prepared.directory, pane: p.paneId, lifetime };
+        jobs.set(jobId, job); pi.appendEntry("herdr-command-job", job);
+        return structured({ pane: p.paneId, tab: p.tabId, workspace: p.workspaceId, job: jobId, lifetime, resultFile: join(prepared.directory, "result.json"), submitted: true }, params.action, paneOutputSchema);
+      }
+      if (params.action === "collect") {
+        const job = jobs.get(required(params.job, "job"));
+        if (!job) throw new Error("Unknown command job in this session");
+        const value = await collectCommand(job, params.timeoutSeconds || 0, signal);
+        return structured({ job: job.id, lifetime: job.lifetime, resultFile: join(job.directory, "result.json"), ...value, error: value.error ? {message:value.error} : undefined }, params.action, paneOutputSchema);
+      }
+      const pane = required(params.pane, "pane");
       const inspected = await inspectPane(cli, pane, signal);
       if (params.action === "read") return structured({ pane, output: String(await cli(["pane", "read", pane, "--source", "recent-unwrapped", "--lines", String(params.lines || 80)], { signal })).slice(0, 16000) }, params.action, paneOutputSchema);
       if (params.action === "wait") {
@@ -272,8 +333,8 @@ export default function herdrTools(pi: ExtensionAPI, cli: HerdrCli = createHerdr
         return structured({ pane, matched: response.matched_line, output: response.read?.text?.slice(-8000) }, params.action, paneOutputSchema);
       }
       if (params.action === "close" || params.action === "interrupt") {
-        const liveCallerPane = await focusedPane(cli);
-        if (pane === liveCallerPane) throw new Error("Refusing to control Pi's own pane");
+        const liveCallerPane = await currentPaneIdentity(cli);
+        if (pane === liveCallerPane.pane_id) throw new Error("Refusing to control Pi's own pane");
       } else if (pane === caller.pane) {
         throw new Error("Refusing to control Pi's own pane");
       }
@@ -286,10 +347,12 @@ export default function herdrTools(pi: ExtensionAPI, cli: HerdrCli = createHerdr
         const moved = response.move_result?.pane;
         if (moved?.workspace_id !== workspace) throw new Error("Herdr move returned the wrong destination workspace");
         const compact = compactPane(moved);
+        await requestCompanion(pi, ctx.sessionManager?.getSessionId() ?? "", caller.pane, { action: "release", pane });
         return structured({ ...compact, previousPane: response.move_result.previous_pane_id, previousTab: response.move_result.previous_tab_id, focused: params.focus === true }, params.action, paneOutputSchema);
       }
       if (params.action === "close") {
-        await cli(["pane", "close", pane], { signal });
+        const managed = await requestCompanion(pi, ctx.sessionManager?.getSessionId() ?? "", caller.pane, { action: "close", pane });
+        if (!managed.handled) await cli(["pane", "close", pane], { signal });
         return structured({ pane, closed: true }, params.action, paneOutputSchema);
       }
       await cli(["pane", "send-keys", pane, "ctrl+c"], { signal });
