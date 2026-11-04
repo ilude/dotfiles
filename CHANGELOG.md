@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-04: Reconcile analytics fixes with upstream Pi compatibility updates
+
+- Merge the local analytics-rendering and native test-context corrections with the published GitHub updates, retaining both sets of regression coverage and the injected keybinding-hint support. Keep test fixtures compatible with the installed Pi 1.4 API without removing the newer hint and subprocess-result fields.
+- Pass default-profile typechecking and 65 focused analytics-rendering, Codex usage, goal, and commit-plan tests under Pi 1.4. No Pi installation or runtime configuration change is made by this merge; Pi 1.5 checks were not rerun locally.
+
 ## 2026-11-04: Share Herdr companion placement and own dedicated pane lifetimes
 
 - Route programmatic shell, command, and agent companions through the same serialized layout owner as visible Pi subagents, preserving the primary orchestrator's full-width lower row and existing readable overflow. Nested coordinators use the originating primary, not a competing layout anchor. Preserve external/manual layouts rather than rearranging live work.
@@ -79,6 +84,16 @@
 - Normalize Chromium's `://` and empty embedded-frame security origins to the opaque `null` origin. Google Sheets uses blank helper frames with this metadata; listing them previously threw `Invalid URL` and discarded the otherwise successful main-page snapshot.
 - Keep opaque frames classified as private without inheriting the parent page's origin. Browser ownership, destination authorization, and observation screening remain unchanged.
 - Pass 153 focused browser tests and verify corrected frame listing against the live spreadsheet. Full-profile typechecking remains blocked by three existing context-type errors in `tests/codex-usage-tool.test.ts`. Run `/reload` in a settled Pi session to load the fix; full live snapshot verification and sheet editing remain pending.
+
+## 2026-10-30: Correct Pi tool contexts in usage and goal tests
+
+- Use Pi's native tool-context type in the Codex usage and goal-control test fixtures, including the nested-tool members, and replace the goal test's handwritten tool callback interface with the native tool definition. Preserve existing assertions and production behavior.
+- All 15 focused tests pass, and default-profile typechecking now passes without suppressing the three context-type errors. No runtime reload is needed for these test-only corrections.
+
+## 2026-10-30: Prevent analytics display crashes on streamed arguments
+
+- Treat in-progress analytics call arguments as unvalidated display input rather than assuming complete arrays and nested records. Skip unusable collection values while retaining available scope details in collapsed and expanded views, preventing a display error from terminating a subagent.
+- Preserve execution-time schema validation and model-facing results. No question-cancellation, subagent lifecycle, browser, or legacy behavior changes. Load the fix with a fresh default-profile process or `/reload` when no subagents are active or retained.
 
 ## 2026-10-30: Require approval before overriding Git ignores
 

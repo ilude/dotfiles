@@ -10,7 +10,10 @@ import { analyticsFixture, recentMessage } from "./helpers/analytics-fixture.js"
 import type { queryAnalytics } from "../lib/log-analytics/api.js";
 
 type Tool = ToolDefinition<typeof analyticsSchema, unknown>;
-type ToolRenderContext = Parameters<NonNullable<Tool["renderCall"]>>[2];
+type ToolRenderContext = Parameters<NonNullable<Tool["renderCall"]>>[2] & {
+	keyText: () => string;
+	keyHint: (key: string, description: string) => string;
+};
 initTheme("dark", false);
 setKeybindings(new KeybindingsManager());
 const theme = getThemeByName("dark")!;
@@ -42,7 +45,7 @@ describe("log analytics user-facing rendering", () => {
 	it("shows scope and SQL preview, with full parameters and references only when expanded", () => {
 		const tool = registered();
 		const args: LogAnalyticsInput = { operation: "query", profiles: ["default", "legacy"], sources: ["session_entries"],
-			sql: "SELECT tool_name, count(*) AS failures FROM session_entries WHERE is_error GROUP BY tool_name", execution: "automatic",
+			sql: "SELECT tool_name, count(*) AS failures FROM session_entries WHERE is_error GROUP BY tool_name", execution: "standard",
 			parameters: { since: "2026-09-01" }, sessionRefs: [{ profile: "default", sessionId: "session-id", fileKey: "a".repeat(64) }] };
 		const collapsed = plain(tool.renderCall!(args, theme, context(args)));
 		expect(collapsed).toContain("Log Analytics · Query logs");
@@ -160,6 +163,27 @@ describe("log analytics user-facing rendering", () => {
 			expect(JSON.parse(result.content[0].text)).toEqual(result.details);
 			expect(JSON.stringify(result)).toBe(before);
 		} finally { await fixture.dispose(); }
+	});
+
+	it.each([
+		{ profiles: "default" },
+		{ profiles: {} },
+		{ profiles: [null, "default"] },
+		{ sources: "session_entries" },
+		{ sessionRefs: {} },
+		{ sessionRefs: [null, { profile: "default", sessionId: "one" }] },
+		{ sessionIds: "one" },
+		{ sessionIds: [null, "one"] },
+	])("renders streamed collection arguments without throwing: %j", fragment => {
+		const tool = registered();
+		// Streaming arguments reach renderCall before execution-time schema validation.
+		const args = { operation: "search", ...fragment } as unknown as LogAnalyticsInput;
+		for (const expanded of [false, true]) {
+			const streamingContext = { ...context(args, expanded), argsComplete: false, executionStarted: false };
+			const text = plain(tool.renderCall!(args, theme, streamingContext));
+			expect(text).toContain("Log Analytics · Search records");
+			expect(text).not.toContain("undefined");
+		}
 	});
 
 	it("renders incomplete streamed occurrence arguments without throwing", () => {
