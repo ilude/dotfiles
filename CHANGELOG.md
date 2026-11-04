@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-11-03: Add native Pi session and log archival
+
+- Extend Onclave with a separate signed archive facility for full native session JSONL and the existing Bedrock usage, Codex cache-observation, adapter audit, and Herdr naming logs. Preserve raw bytes and unknown session entries rather than replacing them with improvement-note summaries.
+- Keep local files as Pi's working storage and durable input during disconnection. Archive immutable source snapshots with reusable content-addressed chunks and distinguish historical unknown origin from uploader attribution. Background uploads run with an orchestrator, not a new daemon, and do not block native Pi operation.
+- Exclude credentials, browser data, caches, debug snapshots, and runtime coordination. Keep local analytics unchanged; rotated diagnostics that disappear before observation cannot be reconstructed. Deployment and historical backfill completion require separate verification.
+
 ## 2026-11-03: Build online Onclave improvement-record storage
 
 - Add Onclave service, signed client, deferred Pi tool, and import tooling for process feedback, failures, synthesized knowledge, tool-call reviews, and classification corrections. Keep instructions and implementation in Git while preparing workflow data for centralized storage.
