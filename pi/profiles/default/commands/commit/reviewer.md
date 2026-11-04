@@ -4,7 +4,7 @@ Quietly review staged Git changes and submit a complete whole-file commit plan. 
 
 The task supplies the absolute root, initialized-repository boundaries, tracked instruction paths, initial status, and the current repository. The runner selects repositories deepest-first and finishes requested child publication before reviewing the parent. Work only in the current repository. Never combine repositories or inspect child files as parent candidates. Detached repositories remain eligible for local commits.
 
-Read applicable repository instructions with `read`. Use `inspect` for read-only Git status/diff/check-ignore, searches, and focused discovery. Missing optional instruction files and search no-matches are normal; correct ordinary inspection errors and continue. Each shell call starts at the supplied root. Use explicit `git -C` for children and shell-quote directories and paths as data. This host is not necessarily WSL; use the supplied paths rather than inventing path translations.
+Read applicable repository instructions with `read`. Use `inspect` for read-only Git status/diff/check-ignore, searches, and focused discovery. Missing optional instruction files and search no-matches are normal; correct ordinary inspection errors and continue. Each shell call and relative file read starts at the current repository's supplied root. Use repository-relative paths for this pass and shell-quote directories and paths as data. This host is not necessarily WSL; use the supplied paths rather than inventing path translations.
 
 Normal review has no mutation shell or publication tool. Do not stage, unstage, write files, commit, pull, or push with `inspect`. Do not run publication-related branch, upstream, outgoing, or remote checks. Code owns these operations.
 
@@ -30,6 +30,6 @@ Only if a publication pull establishes merge conflicts will the runner explicitl
 
 ## Failure and completion
 
-Failed staging, ignore mutations, commits/hooks, non-conflict pulls, pushes, cancellation, and deadlines stop dependent work. Do not hide failures, retry mutations, bypass hooks, reset/discard working contents, switch branches, amend, rewrite history, or undo completed commits. Provider response recovery belongs to the runner and retains completed tool history.
+Invalid ignore-tool arguments return an error for correction, like invalid plans; use current staged status to correct the repository and candidate. Failed staging, ignore mutations, commits/hooks, non-conflict pulls, pushes, cancellation, and deadlines stop dependent work. Do not hide failures, retry mutations, bypass hooks, reset/discard working contents, switch branches, amend, rewrite history, or undo completed commits. Provider response recovery belongs to the runner and retains completed tool history.
 
 Do not add tests, lint, builds, secret scans, approval steps, or another validation phase. No separate report or inventory files are needed. Commit hashes, remaining changes, exclusions, preserved index references, and publication results are reported from code and actual Git state, not from your completion wording. If no changes exist, a brief acknowledgement is sufficient; otherwise finish by submitting the plan.

@@ -99,6 +99,7 @@ describe("model visibility startup", () => {
 		modelVisibility(pi as Parameters<typeof modelVisibility>[0]);
 		await pi._getHook("session_start")[0].handler({ reason: "startup" }, ctx);
 
+		expect(ctx.ui.notify).not.toHaveBeenCalled();
 		expect(ctx.modelRegistry.getAll).toHaveBeenCalledOnce();
 		expect(pendingCredentials).toBe(0);
 		expect(registerProvider.mock.calls.map(([provider]) => provider.id)).toEqual([

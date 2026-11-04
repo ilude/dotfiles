@@ -87,11 +87,12 @@ export function buildCommitTask(push: boolean, root: string, inventory: readonly
 	return `Review the staged changes and submit a complete commit plan now. ${push ? "Publication is code-owned, including clean initialized submodules with outgoing referenced commits. Do not check outgoing commits or run pull/push. The runner integrates and publishes children before parents, silently skipping detached entries. It will request conflict resolution separately if needed." : "Push was NOT requested. Do not run publication-related branch, upstream, outgoing, remote, or push checks or commands."}
 
 Location (JSON-quoted absolute path; decode and shell-quote as data):
-Repository root: ${JSON.stringify(root)}
+Workflow root: ${JSON.stringify(root)}
+Repository root: ${JSON.stringify(currentRepository === "." ? root : join(root, currentRepository))}
 Host platform: ${process.platform}. Bash runs locally on this host. Use the supplied paths as data; on Windows this is not WSL: prefer root-relative paths or forward-slash Windows paths, not invented /mnt/c paths.
 
 Current repository: ${currentRepository}. Work only in this repository for this pass. The runner has preserved index-only content, run git add -A, applied the settings policy, and staged child gitlinks before staged review. Read applicable instructions and staged diffs, then call submit_commit_plan covering every current changed path exactly once. Do not process other repositories in this pass.\n\nRepository inventory (boundaries and initial state, not a candidate list):
-${inventory.join("\n\n")}`;
+${inventory.map(entry => entry.startsWith(`Repository: ${currentRepository}\n`) ? entry : entry.split("\n")[0]).join("\n\n")}`;
 }
 
 export interface CommitRunResult {
@@ -322,8 +323,8 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 					const refs = await git(["for-each-ref", "--format=%(refname)", remoteRef], combined, repository);
 					return !refs.split("\n").includes(remoteRef) || Number(await git(["rev-list", "--count", `${remoteRef}..HEAD`], combined, repository)) > 0;
 				};
-				const read = createReadTool(root);
-				const shell = createBashTool(root);
+				let read = createReadTool(root);
+				let shell = createBashTool(root);
 				const conflictShell: typeof shell = {
 					...shell,
 					description: "Resolve only the current repository's established publication pull conflicts, then stage and commit the merge with normal hooks. Never pull, push, switch branches, rewrite history, or discard unrelated work. Actual mutation failure stops dependent work. " + shell.description,
@@ -374,16 +375,22 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 								parameters: Type.Object({ repo: Type.String(), candidate: Type.String(), reason: Type.String(), pattern: Type.String() }),
 								execute: async (_id, input) => {
 									const { repo, candidate, reason, pattern } = input as { repo: string; candidate: string; reason: string; pattern: string };
-									if (!ctx.hasUI) throw new Error(`User input required for ${candidate}: ${reason}. Run /commit interactively.`);
+									const active = activeTools.get(_id);
 									const id = normalizeRepositoryId(repo);
 									const repository = repositoriesById.get(id);
 									if (!repository) throw new Error(`Repository is not in the supplied inventory: ${repo}`);
 									if (repository !== currentRepository) throw new Error(`Ignore decisions must target the current repository: ${repositoryId(root!, currentRepository)}`);
 									if (!candidate || /^[\\/]/.test(candidate) || /^[A-Za-z]:/.test(candidate) || candidate.split(/[\\/]+/).includes(".."))
 										throw new Error(`Candidate must be repository-relative: ${candidate}`);
+									// Bad reviewer arguments are correctable. Failed Git operations,
+									// user cancellation, and ignore mutations still stop the run.
+									if (active) active.terminal = true;
 									const added = await git(["--literal-pathspecs", "diff", "--cached", "--diff-filter=A", "--name-only", "-z", "--", candidate], combined, repository);
-									if (!added.split("\0").includes(candidate)) throw new Error(`Ignore decisions require a staged new file, not a tracked modification: ${candidate}`);
+									if (active) active.terminal = false;
+									if (!added.split("\0").includes(candidate)) throw new Error(`Not a staged new file in ${id}: ${candidate}. Correct the repository/candidate using current staged status. Tracked modifications do not need ignore decisions.`);
 									const rule = validateGitignorePattern(pattern);
+									if (active) active.terminal = true;
+									if (!ctx.hasUI) throw new Error(`User input required for ${candidate}: ${reason}. Run /commit interactively.`);
 									pauseTimer();
 									progress("Waiting for ignore-file decision…");
 									try {
@@ -424,7 +431,7 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 				unsubscribe = agent.subscribe((event) => {
 					if (event.type === "tool_execution_start") {
 						progress(event.toolName === "bash" || event.toolName === "inspect" ? "Running Git/shell command…" : event.toolName === "read" ? "Reading repository instructions and changes…" : event.toolName === "submit_commit_plan" ? "Validating commit plan…" : "Preparing ignore-file decision…");
-						activeTools.set(event.toolCallId, { description: describeCommitTool(event.toolName, event.args), startedAt: Date.now(), terminal: event.toolName === "ask_ignore" || event.toolName === "bash" });
+						activeTools.set(event.toolCallId, { description: describeCommitTool(event.toolName, event.args), startedAt: Date.now(), terminal: event.toolName === "bash" });
 					}
 					if (event.type === "tool_execution_end") {
 						const active = activeTools.get(event.toolCallId);
@@ -518,6 +525,11 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 				const reviewTools = reviewer.state.tools;
 				for (const repository of [...repositories].sort((a, b) => b.length - a.length)) {
 					currentRepository = repository;
+					// Each repository gets its own conversation and relative-path tools.
+					// Keep retries/publication follow-ups within that repository's context.
+					reviewer.reset();
+					read = createReadTool(repository);
+					shell = createBashTool(repository);
 					const repo = repositoryId(root, repository);
 					progress("Staging repository changes…");
 					await prepareRepository(repository);

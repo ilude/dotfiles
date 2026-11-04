@@ -1,5 +1,24 @@
 # Changelog
 
+## 2026-11-04: Isolate commit reviews and refresh the Chrome host launcher
+
+- Start each child or parent repository's commit review with its own transcript, relative-path tools, and candidate inventory. Keep other repository names only as boundary context so child and parent files are not mixed during review.
+- Let invalid ignore-request arguments return to the reviewer for correction without opening a dialog or ending the run. Preserve stopping behavior for failed Git operations, cancellation, required noninteractive input, and ignore mutations.
+- Refresh the Windows Claude Chrome native-host wrapper to use the current user's npm-installed executable instead of the previous user's WinGet path.
+
+## 2026-11-04: Share one archive uploader across Pi sessions
+
+- Keep one background uploader per machine and canonical profile instead of having every open Pi session repeatedly scan the same logs. Live validation of the earlier unchanged-file optimization still found substantial duplicate work, so this supersedes the decision to defer shared worker ownership.
+- Retain ownership between scans. Standby sessions make lightweight ownership checks and take over after the owner stops or exits; an owner without an available client yields as well. Forward sync requests from standby sessions to the owner, checking at most every five seconds while idle, while keeping the owner's existing one-minute wait between completed periodic scans.
+- Reuse local PID/token claims and dead-owner recovery. Preserve source-level claims, committed checkpoints, raw backup bytes, approved source coverage, and legacy exclusion. Expose an owner flag in local archive status without writing coordination activity into archived logs.
+- Pass four real-process ownership tests covering repeated scans, abrupt and graceful takeover, standby sync forwarding, disconnected ownership, and profile isolation, alongside the 20 existing focused archive tests and Onclave typechecking. Reload six inactive sessions and verify one shared owner retaining the same claim across a 259-second live observation. Seven background Pi processes averaged 0.30 CPU cores combined; earlier eight-process observations averaged 0.86–1.10 cores, but differing process counts and activity prevent a controlled percentage-improvement claim. Active conversations were left untouched and still need a reload to join shared ownership.
+
+## 2026-11-04: Quiet Pi startup, clear, and reload output
+
+- Hide Pi's startup header, model scope, and loaded-resource dump with the default profile's `quietStartup` setting.
+- Refresh Codex usage only in the footer during session lifecycle events, without appending automatic Codex/Bedrock reports or pending report markers. Keep full reports available through `/usage` and `/bedrock`.
+- Apply model visibility filters without an informational transcript banner. Preserve filtering, background usage refresh, and footer status.
+
 ## 2026-11-04: Keep Pi clear-session progress out of the transcript
 
 - Keep Herdr delivery failures in the existing recoverable footer status instead of also appending a permanent warning to the conversation. Preserve report retries, response validation, and automatic status clearing after successful delivery.

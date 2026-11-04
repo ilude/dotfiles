@@ -488,17 +488,6 @@ async function applyProviderFilters(
 
 export default function registerModelVisibilityExtension(pi: ExtensionAPI) {
 	pi.on("session_start", async (_event, ctx) => {
-		const messages: string[] = [];
-		for (const { provider, result } of await applyProviderFilters(ctx)) {
-			if (result.after < result.before) {
-				messages.push(`${provider}: ${result.before} -> ${result.after}`);
-			}
-		}
-		if (messages.length > 0) {
-			ctx.ui.notify(
-				`[model-visibility] Hidden older/blocked models (${messages.join(", ")})`,
-				"info",
-			);
-		}
+		await applyProviderFilters(ctx);
 	});
 }

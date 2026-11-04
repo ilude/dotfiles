@@ -28,6 +28,7 @@ let commands: string[];
 let execs: string[][];
 let completion: string;
 let toolSets: string[][];
+let requestTexts: string[];
 const git = (cwd: string, ...args: string[]) => execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8", timeout: 15000, windowsHide: true });
 const bash = (command: string): Call => ({ name: "bash", arguments: { command } });
 const inspect = (command: string): Call => ({ name: "inspect", arguments: { command } });
@@ -59,8 +60,9 @@ function publicationFixture(child: string) {
 }
 beforeEach(() => {
 	root = realpathSync(mkdtempSync(join(tmpdir(), "commit-staging-"))); init(root);
-	steps = []; results = []; answers = []; commands = []; execs = []; completion = "Pushed"; toolSets = [];
+	steps = []; results = []; answers = []; commands = []; execs = []; completion = "Pushed"; toolSets = []; requestTexts = [];
 	provider.stream.mockReset().mockImplementation((_model, context) => {
+		requestTexts.push(JSON.stringify(context.messages));
 		results = context.messages.filter(m => m.role === "toolResult") as typeof results;
 		const system = context.messages.filter(m => m.role === "system").at(-1);
 		toolSets.push(system?.toolsAdded?.map(tool => tool.name) ?? []);
@@ -119,14 +121,53 @@ it.each(["Include in commit", "Add to .gitignore", "Leave untracked"])("applies 
 	}
 });
 
-it("keeps tracked feedback eligible and refuses to treat it as a new ignore candidate", async () => {
+it("corrects an invalid ignore request without asking the user or excluding tracked feedback", async () => {
 	const candidate = "instruction-feedback.md";
 	writeFileSync(join(root, candidate), "A feedback record is not permission to commit.\n"); git(root, "add", candidate); git(root, "commit", "--quiet", "-m", "feedback baseline");
 	writeFileSync(join(root, candidate), "Operator feedback correction\n"); answers.push("Leave untracked");
-	steps.push(ask(candidate), plan("forbidden", [candidate]));
-	await expect(run()).rejects.toThrow("Ignore decisions require a staged new file");
-	expect(answers).toEqual(["Leave untracked"]); expect(git(root, "diff", "--cached", "--name-only").trim()).toBe(candidate);
-	expect(git(root, "show", `HEAD:${candidate}`)).toContain("not permission to commit");
+	steps.push(ask(candidate), plan("feedback correction", [candidate]));
+	const report = await run();
+	expect(results[0]?.isError).toBe(true); expect(JSON.stringify(results[0]?.content)).toContain("Not a staged new file in .");
+	expect(answers).toEqual(["Leave untracked"]); expect(git(root, "diff", "--cached", "--name-only").trim()).toBe("");
+	expect(git(root, "show", `HEAD:${candidate}`)).toBe("Operator feedback correction\n"); expect(report.text).toContain("feedback correction");
+});
+
+it("isolates child and parent conversations, candidate inventories, and relative tool roots", async () => {
+	const { child } = submoduleFixture();
+	writeFileSync(join(child, "base.txt"), "child review sentinel\n");
+	writeFileSync(join(root, "root-only.txt"), "parent file contents\n");
+	steps.push(inspect("git diff --cached"), { name: "read", arguments: { path: "base.txt" } }, plan("child edit", ["base.txt"], "modules/child"),
+		inspect("git diff --cached"), { name: "read", arguments: { path: "root-only.txt" } }, plan("parent edit and pin", ["root-only.txt", "modules/child"]));
+	const report = await run();
+	expect(requestTexts[0]).not.toContain("root-only.txt");
+	expect(requestTexts[2]).toContain("child review sentinel");
+	expect(requestTexts[3]).not.toContain("child review sentinel");
+	expect(requestTexts[3]).not.toContain("Plan accepted");
+	expect(JSON.stringify(results.map(result => result.content))).toContain("parent file contents");
+	expect(git(child, "show", "HEAD:base.txt")).toBe("child review sentinel\n");
+	expect(git(root, "status", "--porcelain")).toBe(""); expect(report.text).toContain("parent edit and pin");
+}, 30_000);
+
+it("recovers a root-file ignore request during a clean child pass without a dialog", async () => {
+	submoduleFixture(); writeFileSync(join(root, "root-only.txt"), "parent file\n");
+	answers.push("Leave untracked");
+	steps.push({ name: "ask_ignore", arguments: { ...ask("root-only.txt").arguments, repo: "modules/child" } }, empty("modules/child"), plan("parent file", ["root-only.txt"]));
+	const report = await run();
+	expect(requestTexts[1]).toContain("Not a staged new file in modules/child");
+	expect(answers).toEqual(["Leave untracked"]); expect(report.text).toContain("parent file");
+	expect(git(root, "show", "HEAD:root-only.txt")).toBe("parent file\n");
+}, 30_000);
+
+it.each([
+	{ repo: "missing", candidate: "new.txt", pattern: "new.txt" },
+	{ repo: ".", candidate: "../new.txt", pattern: "new.txt" },
+	{ repo: ".", candidate: "new.txt", pattern: "!new.txt" },
+])("corrects invalid ignore arguments before any dialog: %j", async args => {
+	writeFileSync(join(root, "new.txt"), "new file\n"); answers.push("Leave untracked");
+	steps.push({ name: "ask_ignore", arguments: { ...ask("new.txt").arguments, ...args } }, plan("new file", ["new.txt"]));
+	const report = await run();
+	expect(results[0]?.isError).toBe(true); expect(answers).toEqual(["Leave untracked"]); expect(report.text).toContain("new file");
+	expect(git(root, "show", "HEAD:new.txt")).toBe("new file\n");
 });
 
 it("reports reviewer-selected exclusion reasons and unstages them without losing contents", async () => {
