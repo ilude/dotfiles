@@ -34,7 +34,8 @@ function harness() {
   } as unknown as ExtensionCommandContext;
   const toolCtx: ExtensionToolContext = {
     ...ctx,
-    tools: [],
+    // This unused catalog stub accommodates Pi 1.4 and 1.5 tool shapes.
+    tools: {} as ExtensionToolContext["tools"],
     executeTool: vi.fn<ExtensionToolContext["executeTool"]>(),
   };
   goalExtension(api);

@@ -14,7 +14,8 @@ function setup() {
 const baseContext = { modelRegistry: {} } as ExtensionContext;
 const ctx: ExtensionToolContext = {
   ...baseContext,
-  tools: [],
+  // This unused catalog stub accommodates Pi 1.4 and 1.5 tool shapes.
+  tools: {} as ExtensionToolContext["tools"],
   executeTool: vi.fn<ExtensionToolContext["executeTool"]>(),
 };
 describe("codex_usage", () => {

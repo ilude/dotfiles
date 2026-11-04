@@ -26,6 +26,7 @@
 
  - Inspect relevant evidence before deciding. Test assumptions that could invalidate the approach early. Stop investigating when further evidence would not change the next action.
  - Support factual claims with evidence; label assumptions and uncertainty. When challenged, recheck the claim before defending it or giving another explanation.
+ - Use `agent-process` for meaningful operator corrections or reusable workflow lessons, including bottlenecks and successful techniques. Keep capture selective; do not turn routine task progress into a review.
 
  ## Proportionality
 

@@ -1,5 +1,78 @@
 # Changelog
 
+## 2026-11-04: Reconcile analytics fixes with upstream Pi compatibility updates
+
+- Merge the local analytics-rendering and native test-context corrections with the published GitHub updates, retaining both sets of regression coverage and the injected keybinding-hint support. Keep test fixtures compatible with the installed Pi 1.4 API without removing the newer hint and subprocess-result fields.
+- Pass default-profile typechecking and 65 focused analytics-rendering, Codex usage, goal, and commit-plan tests under Pi 1.4. No Pi installation or runtime configuration change is made by this merge; Pi 1.5 checks were not rerun locally.
+
+## 2026-11-03: Add native Pi session and log archival
+
+- Extend Onclave with a separate signed archive facility for full native session JSONL and the existing Bedrock usage, Codex cache-observation, adapter audit, and Herdr naming logs. Preserve raw bytes and unknown session entries rather than replacing them with improvement-note summaries.
+- Keep local files as Pi's working storage and durable input during disconnection. Archive immutable source snapshots with reusable content-addressed chunks and distinguish historical unknown origin from uploader attribution. Background uploads run with an orchestrator, not a new daemon, and do not block native Pi operation.
+- Exclude credentials, browser data, caches, debug snapshots, and runtime coordination. Keep local analytics unchanged; rotated diagnostics that disappear before observation cannot be reconstructed. Deployment and historical backfill completion require separate verification.
+
+## 2026-11-03: Build online Onclave improvement-record storage
+
+- Add Onclave service, signed client, deferred Pi tool, and import tooling for process feedback, failures, synthesized knowledge, tool-call reviews, and classification corrections. Keep instructions and implementation in Git while preparing workflow data for centralized storage.
+- Preserve source references and Markdown, derive machine/process/session/repository provenance for new captures, and reject stale revisions or conflicting record IDs rather than overwriting concurrent work. Report failed writes as not saved; offline caching and automatic consolidation remain deferred.
+- Deploy the signed API and additive database migration through the existing Onclave service role. Import and read-back verify 206 current records, including uncommitted additions; switch active skills to centralized storage and remove eight data files from Git tracking while retaining ignored local historical copies. Git history is unchanged.
+- Verify signed workstation access and CI's full test/integration suite. The local Tailscale client reports `NoState`, so remote Tailscale-path acceptance remains unverified; LAN access works. Offline caching and server-side consolidation are not part of this milestone.
+
+## 2026-11-03: Open a fresh Pi instance when branching an empty session
+
+- Make `/branch` use the same fresh-instance launch path as `/pi` when the current branch has no user or assistant conversation, including after `/clear`. Preserve the cwd, profile, and optional title without creating a dummy session file or branch metadata. Conversations with history retain normal branching behavior.
+
+## 2026-11-02: Support Pi 1.4.0 and 1.5.0 in the default profile
+
+- Prefer the host-injected keybinding hint helper when rendering subagent and log-analytics results, retaining the imported helper as a fallback for older Pi versions. Serialize browser structured output as JSON and narrow image transform parameters at the schema boundary to accommodate API type differences.
+- Update log-analytics renderer fixtures for injected keybinding helpers and the required query execution option. Keep changes in the default profile; legacy remains untouched.
+- Pass the full default-profile typecheck and 110 focused log-analytics, subagent-presentation, Codex usage, and commit tests under Pi 1.5.0. Typecheck default-profile extension/library sources against Pi 1.4.0 using a temporary TypeScript path mapping; no global Pi installation or package configuration changed. Pass the native damage-control loader/composition smoke with Pi 1.5.0. Pi 1.4.0 native CLI composition was not run.
+
+## 2026-11-01: Resolve targeted planning and runtime feedback findings
+
+- Continue ordinary planning through one consequential question at a time, incorporate answers, and reach executable readiness. Replace competing draft/stopping cues in the owning skill and template while preserving explicitly requested drafts, genuine external blockers, settled decisions, and the planning/execution boundary.
+- Label settled partial/blocked subagent assignments as terminal outcomes, not live progress or pending questions. Explain explicit follow-up and show recorded process/pane and cleanup state without changing saved-conversation reopening, retention, or retry behavior.
+- Render partial or unexpected analytics call arguments without unchecked array/object assumptions, including the previously observed `profiles.join` crash path. Keep the analytics API and valid-call presentation unchanged.
+- Pass all 16 focused subagent-status and analytics-render tests. Full-profile typecheck still reports the three existing context-fixture errors in unchanged `tests/codex-usage-tool.test.ts`. Source/instruction review found no additional task-related defects; live attached-client behavior and future planning adherence remain unverified. Load through a fresh default-profile process or settled-only `/reload` with no active or retained subagents.
+- Separately diagnose seven October 30 follow-up readiness failures across four children: two also reported cleanup ownership errors. The complete ledger is in the existing weekly review; historical startup transitions and loaded runtime remain unavailable, so no startup repair or deadline change is inferred.
+
+## 2026-11-01: Make default Brave control functionality-first
+
+- At the operator's direction, remove custom Damage Control/AI browser action authorization, private-transfer bookkeeping, and page-request interception from owned and attached browser execution. Other tools retain their separate Damage Control behavior. Keep exact browser/process/session/target/frame checks, configured credential bindings, and native warning/manual CAPTCHA handling.
+- Capture raw screenshots without privacy inspection, masking/restoration, or top-level/per-frame approvals, superseding the narrower October 31 screenshot change. Browser connections now survive agent turns and disconnect on session switch or shutdown; attached Brave and its tabs remain open.
+- Add keyboard chords (`press`), multiline/tabular text insertion (`paste`), local file-input assignment (`upload`), and contenteditable `fill`. Paste does not change the OS clipboard; application-specific spreadsheet paste still requires actual cell verification.
+- Pass 305 browser-related tests and live acceptance through the registered on-disk tools in the operator's attached Brave: keyboard replacement, multiline input, contenteditable fill, a fixture's tabular paste handler, file upload, exact iframe editing, and PNG capture. Verify the actual Google Sheet opens and screenshots correctly, but make no sheet edits or universal compatibility claim. Full-profile typechecking still reports only the three existing context-type errors in `tests/codex-usage-tool.test.ts`.
+- Reload the settled default-profile Pi session or start a fresh process to load the new tool schemas. The functionality-first controller is not a browser/network sandbox and screenshots are not redacted; security hardening is deferred as requested.
+
+## 2026-11-01: Route selective workflow learning through existing Pi skills
+
+- Add a short default-profile routing cue for meaningful operator corrections, bottlenecks, and reusable successful techniques. Extend `agent-process` to distinguish instruction problems from tooling, execution, and evaluation problems, updating relevant existing records rather than accumulating rules.
+- Keep detailed procedures on demand, preserve shared-edit approval and explicit project-local evolution authority, and separate captured evidence from executable policy. Brief capture does not end an unfinished task; later comparable work assesses usefulness without per-turn reflection or scheduled monitoring.
+- This is an instruction-only refinement, not a runtime trigger, new memory store, or background optimizer. Source review and incident walkthroughs check consistency, not future adherence. Load through a fresh default-profile session or settled-only `/reload` with no active or retained subagents.
+
+## 2026-10-31: Enable Zomboid garbage-bin deletion
+
+- Enable `TrashDeleteAll` in the managed game-server configuration so players can use the garbage-bin Delete All button. Deploy through the targeted service workflow without resetting the world or changing other gameplay settings.
+- Push homelab-infra commit `5e8acc4` and verify the deployed setting and running game container. All 479 public validation tests pass (one skipped); full validation stops at the private-values check because this checkout has no `values/` directory.
+
+## 2026-10-31: Remove per-iframe screenshot authorization
+
+- At the operator's request, remove the separate read-authorization and privacy-inspection loop for embedded frames during screenshot capture. It incorrectly treated Google Sheets' blank helper frames as navigation destinations and blocked the entire screenshot.
+- Keep top-level screenshot authorization, browser/session identity checks, and sensitive-control masking and restoration across all frames. No change to navigation, field editing, or request interception.
+- Pass 181 focused browser tests, including screenshot capture with blank and cross-origin embedded frames without separate iframe approvals. Full-profile typechecking still reports the three existing context-type errors in `tests/codex-usage-tool.test.ts`. Reload the settled Pi session to load this change; live screenshot capture and sheet editing remain unverified.
+
+## 2026-10-31: Recognize dedicated-worker parent frames in browser attachment
+
+- Bind browser-level dedicated-worker attachment events through Chromium's exact `parentFrameId` when no parent target/session is supplied. Google Sheets exposed this missing relationship after the opaque-origin fix: the tool treated its worker as unrelated and closed the CDP connection.
+- Wait for initial managed-page frame mappings when needed, register worker guards before resuming paused execution, and continue refusing unknown or ambiguous ownership. Do not infer ownership from the selected tab or adopt unrelated workers.
+- Pass 156 focused browser tests and, after reload, verify a normal-tool text snapshot of the live spreadsheet with its worker and opaque frames present. Full-profile typechecking still reports only the three existing context-type errors in `tests/codex-usage-tool.test.ts`. Existing screenshot authorization does not support opaque blank-frame destinations, so visual layout inspection and the sheet update remain blocked; no sheet content has changed.
+
+## 2026-10-30: Fix browser snapshots with opaque embedded frames
+
+- Normalize Chromium's `://` and empty embedded-frame security origins to the opaque `null` origin. Google Sheets uses blank helper frames with this metadata; listing them previously threw `Invalid URL` and discarded the otherwise successful main-page snapshot.
+- Keep opaque frames classified as private without inheriting the parent page's origin. Browser ownership, destination authorization, and observation screening remain unchanged.
+- Pass 153 focused browser tests and verify corrected frame listing against the live spreadsheet. Full-profile typechecking remains blocked by three existing context-type errors in `tests/codex-usage-tool.test.ts`. Run `/reload` in a settled Pi session to load the fix; full live snapshot verification and sheet editing remain pending.
+
 ## 2026-10-30: Correct Pi tool contexts in usage and goal tests
 
 - Use Pi's native tool-context type in the Codex usage and goal-control test fixtures, including the nested-tool members, and replace the goal test's handwritten tool callback interface with the native tool definition. Preserve existing assertions and production behavior.

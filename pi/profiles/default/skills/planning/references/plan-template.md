@@ -33,11 +33,16 @@ applicable `AGENTS.md` files before acting.
 
 State fixed outcomes, interfaces, defaults, ownership, and behavior branches needed
 by later tasks. Distinguish them from adaptable technical approaches. Resolve
-consequential uncertainty within the selected executable scope while authoring; if
-user judgment is still needed for that scope, keep `status: draft`, explain the choices
-and recommendation, and ask a focused question. List explicitly deferred work separately,
-without making it an acceptance criterion or dependency of independent approved work.
-Do not predetermine routine implementation details.
+consequential uncertainty within the selected executable scope while authoring.
+Investigate discoverable facts yourself. When user judgment is needed, keep
+`status: draft`, explain the choices and consequences, recommend one with reasons,
+and ask one consequential question at a time. Incorporate each answer, preserve
+settled decisions, and continue investigation and clarification until the plan is
+executable; then mark it ready without starting implementation. Stop earlier only
+for an intentionally requested draft or a genuine external blocker, recording the
+missing prerequisite, action owner, and next action. List explicitly deferred work
+separately, without making it an acceptance criterion or dependency of independent
+approved work. Leave routine implementation details adaptable.
 
 ## Execution guidance
 

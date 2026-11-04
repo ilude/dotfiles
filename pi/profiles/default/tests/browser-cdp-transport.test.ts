@@ -395,6 +395,33 @@ describe("session-owned managed identity", () => {
 		await vi.waitFor(async () => expect((await transport.frame("root", "login-frame")).executionContextId).toBeUndefined());
 	});
 
+	it.each(["startup", "ready"])("binds browser-level workers to their exact parent frame during %s", async timing => {
+		const { wire, transport, registrations } = await managedFixture();
+		const worker = { method: "Target.attachedToTarget", params: { sessionId: "worker-session", waitingForDebugger: true, targetInfo: { targetId: "worker", type: "worker", parentFrameId: "frame-session-root" } } };
+		if (timing === "startup") wire.setHandler(command => {
+			if (command.method !== "Target.autoAttachRelated") return false;
+			wire.send({ method: "Target.attachedToTarget", params: { sessionId: "session-root", waitingForDebugger: false, targetInfo: { targetId: "root", type: "page", url: "https://task.example/" } } });
+			wire.send(worker);
+			wire.send({ id: command.id, result: {} });
+			return true;
+		});
+		await transport.manage("root");
+		if (timing === "ready") wire.send(worker);
+		await waitFor(() => wire.commands.some(command => command.sessionId === "worker-session" && command.method === "Runtime.runIfWaitingForDebugger"));
+		expect(registrations).toEqual(["root", "worker"]);
+		expect(transport.managedTargets().find(target => target.targetId === "worker")).toMatchObject({ rootTargetId: "root", parentTargetId: "root" });
+		const methods = wire.commands.filter(command => command.sessionId === "worker-session").map(command => command.method);
+		expect(methods.indexOf("Fetch.enable")).toBeLessThan(methods.indexOf("Runtime.runIfWaitingForDebugger"));
+	});
+
+	it("refuses browser-level workers whose parent frame is outside managed targets", async () => {
+		const { wire, transport, registrations } = await managedFixture(); await transport.manage("root");
+		wire.send({ method: "Target.attachedToTarget", params: { sessionId: "unrelated-worker-session", waitingForDebugger: true, targetInfo: { targetId: "unrelated-worker", type: "worker", parentFrameId: "unrelated-frame" } } });
+		await waitFor(() => transport.signal.aborted);
+		expect(registrations).toEqual(["root"]);
+		expect(wire.commands.some(command => command.sessionId === "unrelated-worker-session")).toBe(false);
+	});
+
 	it("registers nested worker descendants before resuming their execution", async () => {
 		const { wire, transport, registrations } = await managedFixture(); await transport.manage("root");
 		wire.send({ method: "Target.attachedToTarget", sessionId: "session-root", params: { sessionId: "worker-session", waitingForDebugger: true, targetInfo: { targetId: "worker", type: "worker" } } });

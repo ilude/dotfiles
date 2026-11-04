@@ -32,52 +32,50 @@ function bytes(n: number): string { return n < 1024 ? `${n} B` : n < 1024 ** 2 ?
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return value !== null && typeof value === "object" && !Array.isArray(value);
 }
-function stringList(value: unknown): string[] {
-	return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
-}
-function occurrenceLabel(ref: unknown): string | null {
-	if (!isRecord(ref) || typeof ref.profile !== "string" || !isRecord(ref.session) || typeof ref.session.sessionId !== "string") return null;
-	return `${clean(ref.profile)}/${clean(ref.session.sessionId)}`;
+function record(value: unknown): Record<string, unknown> { return isRecord(value) ? value : {}; }
+function strings(value: unknown): string[] { return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : []; }
+function occurrenceLabel(value: unknown): string | null {
+	const ref = record(value), session = record(ref.session);
+	if (typeof ref.profile !== "string" || typeof session.sessionId !== "string") return null;
+	return `${clean(ref.profile)}/${clean(session.sessionId)}`;
 }
 function component(build: (width: number) => string[]): Component {
 	return { render: width => width < 1 ? [] : new Text(build(width).join("\n"), 0, 0).render(width).map(line => truncateToWidth(line, width)), invalidate() {} };
 }
 
 export const renderAnalyticsCall: NonNullable<Tool["renderCall"]> = (rawArgs, theme, context) => component(() => {
-	// Call arguments can still be streaming and have not passed execution validation.
-	const args: Record<string, unknown> = isRecord(rawArgs) ? rawArgs : {};
+	// Call arguments can still be streaming, before schema validation.
+	const args = record(rawArgs);
+	const profiles = strings(args.profiles), sourceIds = strings(args.sources), sessionIds = strings(args.sessionIds);
+	const sessionRefs = Array.isArray(args.sessionRefs) ? args.sessionRefs.filter(isRecord) : [];
 	const expanded = context.expanded;
 	const title = args.operation === "catalog" ? "Available sources" : args.operation === "sessions" ? "Find sessions" : args.operation === "query" ? "Query logs" : args.operation === "search" ? "Search records" : args.operation === "follow_up" ? "Follow up occurrence" : args.operation === "session_lineage" ? "Find session lineage" : "Preparing request…";
 	const lines = [theme.fg("toolTitle", theme.bold("Log Analytics")) + " · " + title];
 	if (args.operation === "catalog" || !args.operation) return lines;
 	if (args.operation === "follow_up") {
+		if (!isRecord(args.occurrence)) return lines;
 		const ref = args.occurrence;
-		if (!isRecord(ref)) return lines;
 		const label = occurrenceLabel(ref);
 		if (label) lines.push(`Occurrence: ${label}`);
 		lines.push(theme.fg("muted", `Context: ${clean(args.before ?? 2)} before · ${clean(args.after ?? 2)} after`));
 		if (expanded && ref.fileKey !== undefined) lines.push(`File key: ${clean(ref.fileKey)}${ref.byteOffset !== undefined ? ` · offset: ${clean(ref.byteOffset)}` : ""}${ref.recordOrdinal !== undefined ? ` · ordinal: ${clean(ref.recordOrdinal)}` : ""}`);
 		return lines;
 	}
-	const profileIds = stringList(args.profiles);
-	const sourceIds = stringList(args.sources);
-	const sessionRefs = Array.isArray(args.sessionRefs) ? args.sessionRefs.filter(isRecord) : [];
-	const sessionIds = stringList(args.sessionIds);
-	lines.push(theme.fg("muted", `Profiles: ${profileIds.join(" + ") || "active profile"}${sourceIds.length ? ` · ${sources(sourceIds)}` : args.operation === "search" ? ` · ${searchSource}` : ""}`));
+	lines.push(theme.fg("muted", `Profiles: ${profiles.map(clean).join(" + ") || "active profile"}${sourceIds.length ? ` · ${sources(sourceIds)}` : args.operation === "search" ? ` · ${searchSource}` : ""}`));
 	if (args.cwd !== undefined) lines.push(`Project: ${expanded ? clean(args.cwd) : preview(args.cwd)}`);
 	if (sessionRefs.length) lines.push(`Scope: ${count(sessionRefs.length, "selected session")}`);
 	if (sessionIds.length) lines.push(`Filter: ${count(sessionIds.length, "session ID")}`);
 	if (args.sessionId) lines.push(`Session: ${expanded ? clean(args.sessionId) : preview(args.sessionId, 24)}`);
 	if (args.cursor) lines.push(theme.fg("muted", `Continuing ${args.operation === "search" ? "record search" : "session listing"}`));
 	if (isRecord(args.interval)) lines.push(`Interval: ${clean(args.interval.since)} to ${clean(args.interval.until)} [since, until)`);
-	if (isRecord(args.filters)) lines.push(`Filters: ${Object.entries(args.filters).map(([key, value]) => `${key}=${preview(value, 80)}`).join(" · ")}`);
+	if (isRecord(args.filters)) lines.push(`Filters: ${Object.entries(args.filters).map(([key, value]) => `${clean(key)}=${preview(value, 80)}`).join(" · ")}`);
 	if (args.sql) lines.push(theme.fg("muted", `${args.execution === "large" ? "Large SQL" : "SQL"}: ${expanded ? `\n${clean(args.sql)}` : preview(args.sql)}`));
 	if (args.operation === "query") lines.push(theme.fg("muted", `Requested execution: ${clean(args.execution ?? "automatic")}`));
 	if (expanded) {
 		if (args.maxRows !== undefined) lines.push(`Row limit: ${clean(args.maxRows)}`);
 		if (args.maxBytes !== undefined) lines.push(`Output bytes: ${clean(args.maxBytes)}`);
 		if (args.operation === "search" && args.maxResults !== undefined) lines.push(`Match limit: ${clean(args.maxResults)}`);
-		for (const [key, value] of Object.entries(isRecord(args.parameters) ? args.parameters : {})) lines.push(`Parameter ${clean(key)}: ${clean(value)}`);
+		for (const [key, value] of Object.entries(record(args.parameters))) lines.push(`Parameter ${clean(key)}: ${clean(value)}`);
 		for (const ref of sessionRefs) lines.push(`Session: ${clean(ref.profile)}/${clean(ref.sessionId)}${ref.fileKey ? ` · file key: ${clean(ref.fileKey)}` : ""}`);
 		if (sessionIds.length) lines.push(`Session IDs: ${sessionIds.map(clean).join(", ")}`);
 	}
@@ -232,6 +230,9 @@ export const renderAnalyticsResult: NonNullable<Tool["renderResult"]> = (result,
 			lines.push(clean(data.limits));
 		}
 	} else return [expanded ? clean(fallback()) : preview(fallback(), 400)];
-	if (!expanded) lines.push(theme.fg("dim", keyHint("app.tools.expand", "for full returned values, SQL and diagnostics")));
+	if (!expanded) {
+		const hints = context as typeof context & { keyHint?: typeof keyHint };
+		lines.push(theme.fg("dim", (hints.keyHint ?? keyHint)("app.tools.expand", "for full returned values, SQL and diagnostics")));
+	}
 	return lines;
 });

@@ -19,6 +19,7 @@ type RenderContext = {
   executionStarted?: boolean;
   expanded?: boolean;
   invalidate?: () => void;
+  keyHint?: (keybinding: "app.tools.expand", description: string) => string;
 };
 
 function value(input: unknown): string {
@@ -205,7 +206,7 @@ function lifecycleLine(record: PresentedRecord): string {
   return `${name}: ${activeDescription(record)}`;
 }
 
-function resultComponent(record: PresentedRecord, expanded: boolean, theme: Theme, includeIdentity = false): any {
+function resultComponent(record: PresentedRecord, expanded: boolean, theme: Theme, includeIdentity = false, context?: RenderContext): any {
   // The launch row owns identity, model, timing and prompt. Paired result rows only add state and output.
   const state = outcomeLabel(record);
   const title = includeIdentity ? `${identity(record)} · ${state}` : state;
@@ -227,7 +228,7 @@ function resultComponent(record: PresentedRecord, expanded: boolean, theme: Them
   if (includeIdentity) {
     lines.push(`Model: ${record.model ?? "default"} [${record.effort ?? "default"}]`);
     const prompt = value(record.assignment);
-    if (prompt) lines.push(expanded ? `Prompt:\n${bounded(prompt, Infinity)}` : `Prompt: ${oneLine(prompt, PROMPT_LIMIT)} ${theme.fg("dim", keyHint("app.tools.expand", "for full prompt"))}`);
+    if (prompt) lines.push(expanded ? `Prompt:\n${bounded(prompt, Infinity)}` : `Prompt: ${oneLine(prompt, PROMPT_LIMIT)} ${theme.fg("dim", (context?.keyHint ?? keyHint)("app.tools.expand", "for full prompt"))}`);
     const timing = startLine(record);
     if (timing) lines.push(timing);
   }
@@ -289,12 +290,12 @@ export function renderSubagentResult(result: any, options: { expanded?: boolean;
     const passedPrompt = value(context.state?.args?.instructions ?? context.args?.instructions);
     const displayRecord = passedPrompt ? { ...record, assignment: passedPrompt } : record;
     if (context.state?.args?.agent && context.state?.callComponent) {
-      if (options?.expanded) return resultComponent(displayRecord, true, theme);
+      if (options?.expanded) return resultComponent(displayRecord, true, theme, false, context);
       if (record.status === "settled") return new Text("", 0, 0);
       return new Text(lifecycleLine(displayRecord), 0, 0);
     }
     if (!options?.expanded) return new Text(lifecycleLine(displayRecord), 0, 0);
-    return resultComponent(displayRecord, true, theme);
+    return resultComponent(displayRecord, true, theme, false, context);
   }
   if (options?.isPartial) return new Text(theme.fg("warning", "Subagent is working…"), 0, 0);
   const error = result?.details && typeof result.details.error === "string" ? result.details.error : undefined;
@@ -357,11 +358,12 @@ export function presentationDetails(record: ChildRecord & { dispatch?: DispatchM
   };
 }
 
-export function renderSubagentMessage(message: any, options: { expanded?: boolean; outputPad?: number }, theme: Theme): any {
+export function renderSubagentMessage(message: any, options: { expanded?: boolean; outputPad?: number; keyHint?: RenderContext["keyHint"] }, theme: Theme): any {
   const record = recordFromResult(message);
   if (record) {
-    if (options?.expanded) return resultComponent(record, true, theme, true);
-    return new Text(lifecycleLine(record), options?.outputPad ?? 0, 0);
+    if (options?.expanded) return resultComponent(record, true, theme, true, options);
+    const hint = (options?.keyHint ?? keyHint)("app.tools.expand", "for full prompt");
+    return new Text(`${lifecycleLine(record)} ${theme.fg("dim", hint)}`, options?.outputPad ?? 0, 0);
   }
   const text = typeof message?.content === "string" ? message.content : resultText(message);
   const firstBreak = text.indexOf("\n");

@@ -59,7 +59,9 @@ function stateText(record: ChildRecord): string {
       : record.phase === "redirecting" ? "redirecting current turn" : "working";
   }
   const outcome = record.outcome ?? "settled";
-  if (record.exchangeKind && record.exchangeKind !== "original") return `${record.exchangeKind} ${outcome}`;
+  const exchange = record.exchangeKind && record.exchangeKind !== "original" ? `${record.exchangeKind} ` : "";
+  if (outcome === "partial" || outcome === "blocked") return `${exchange}${outcome}; assignment settled`;
+  if (exchange) return `${exchange}${outcome}`;
   if (outcome === "complete" && record.retained && record.processState !== "exited") return "completed, retained for follow-up";
   return outcome;
 }
@@ -67,6 +69,14 @@ function stateText(record: ChildRecord): string {
 export function outcomeText(record: ChildRecord): string {
   if(record.questionResolution) return `Subagent ${identity(record)} parent question ${record.questionResolution.outcome} by ${record.questionResolution.by} (request ${record.questionResolution.requestId}).`;
   const lines = [`Subagent ${identity(record)} (${record.id}) ${stateText(record)}:`];
+  const unfinished = record.status === "settled" && (record.outcome === "partial" || record.outcome === "blocked");
+  if (unfinished) {
+    lines.push("This is a terminal assignment outcome, not live progress or a pending parent/user question. No further work continues automatically.");
+    lines.push("Further work requires an explicit follow-up assignment. Use subagent_control message with this subagent ID to continue in its saved conversation, when available.");
+    const resources = [record.processState ? `process ${record.processState}` : undefined, record.paneState ? `pane ${record.paneState}` : undefined].filter(Boolean);
+    if (resources.length) lines.push(`Resources: ${resources.join(" · ")}.`);
+    if (record.cleanup?.complete) lines.push("Cleanup: complete.");
+  }
   if (record.exchangeId) {
     lines.push(`Exchange: ${exchangeLabel(record)}${record.exchangeKind && record.exchangeKind !== "original" ? "; original assignment is retained separately" : ""}.`);
   }

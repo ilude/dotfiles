@@ -10,12 +10,15 @@ import { analyticsFixture, recentMessage } from "./helpers/analytics-fixture.js"
 import type { queryAnalytics } from "../lib/log-analytics/api.js";
 
 type Tool = ToolDefinition<typeof analyticsSchema, unknown>;
-type ToolRenderContext = Parameters<NonNullable<Tool["renderCall"]>>[2];
+type ToolRenderContext = Parameters<NonNullable<Tool["renderCall"]>>[2] & {
+	keyText: () => string;
+	keyHint: (key: string, description: string) => string;
+};
 initTheme("dark", false);
 setKeybindings(new KeybindingsManager());
 const theme = getThemeByName("dark")!;
 function context(args: Partial<LogAnalyticsInput>, expanded = false, isError = false): ToolRenderContext {
-	return { args: args as LogAnalyticsInput, expanded, isError, state: {}, lastComponent: undefined, toolCallId: "test", cwd: "/fixture", executionStarted: true, argsComplete: true, isPartial: false, showImages: false, durationMs: undefined, outputPad: 0, invalidate() {} };
+	return { args: args as LogAnalyticsInput, expanded, isError, state: {}, lastComponent: undefined, toolCallId: "test", cwd: "/fixture", executionStarted: true, argsComplete: true, isPartial: false, showImages: false, durationMs: undefined, outputPad: 0, keyText: () => "ctrl+o", keyHint: (_key, description) => `ctrl+o ${description}`, invalidate() {} };
 }
 function registered(): Tool {
 	const pi = createMockPi();
@@ -42,7 +45,7 @@ describe("log analytics user-facing rendering", () => {
 	it("shows scope and SQL preview, with full parameters and references only when expanded", () => {
 		const tool = registered();
 		const args: LogAnalyticsInput = { operation: "query", profiles: ["default", "legacy"], sources: ["session_entries"],
-			sql: "SELECT tool_name, count(*) AS failures FROM session_entries WHERE is_error GROUP BY tool_name",
+			sql: "SELECT tool_name, count(*) AS failures FROM session_entries WHERE is_error GROUP BY tool_name", execution: "standard",
 			parameters: { since: "2026-09-01" }, sessionRefs: [{ profile: "default", sessionId: "session-id", fileKey: "a".repeat(64) }] };
 		const collapsed = plain(tool.renderCall!(args, theme, context(args)));
 		expect(collapsed).toContain("Log Analytics · Query logs");
@@ -55,6 +58,28 @@ describe("log analytics user-facing rendering", () => {
 		expect(expanded).toContain("Parameter since: 2026-09-01");
 		expect(expanded).toContain("a".repeat(64));
 		expect(plain(tool.renderCall!({} as LogAnalyticsInput, theme, context({})))).toContain("Preparing request");
+	});
+
+	it("renders partial and unexpected raw call shapes without throwing", () => {
+		const tool = registered();
+		const calls: unknown[] = [null, undefined, "query", [],
+			{ operation: "query", profiles: "default", sources: "session_entries", sessionRefs: {}, sessionIds: "id", interval: null, filters: [], parameters: "partial" },
+			{ operation: "search", profiles: ["default", null, {}], sources: [null, "session_entries"], sessionRefs: [null, "partial", { profile: "default" }], sessionIds: [null, "id"], interval: { since: "2026-09-01" }, filters: { role: "user" }, parameters: { since: null } },
+			{ operation: "follow_up", occurrence: "partial" },
+			{ operation: "follow_up", occurrence: { profile: "default", session: null, fileKey: "partial" } },
+		];
+		for (const args of calls) for (const expanded of [false, true]) for (const width of [16, 100]) {
+			const input = args as LogAnalyticsInput;
+			const text = plain(tool.renderCall!(input, theme, context({}, expanded)), width);
+			expect(text).toContain("Log Analytics");
+		}
+		const malformed = calls[4] as LogAnalyticsInput;
+		expect(plain(tool.renderCall!(malformed, theme, context({}, true)))).toContain("Profiles: active profile");
+		const mixed = calls[5] as LogAnalyticsInput;
+		const text = plain(tool.renderCall!(mixed, theme, context({}, true)));
+		expect(text).toContain("Profiles: default · session history");
+		expect(text).toContain("Session IDs: id");
+		expect(text).toContain("Parameter since: null");
 	});
 
 	it("renders compact search progress and exact follow-up without fetching on expansion", () => {

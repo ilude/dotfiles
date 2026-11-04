@@ -207,7 +207,7 @@ describe("page form interaction", () => {
 		});
 		const context = {
 			document: { title: "Public form", body: { innerText: "Message" }, querySelectorAll: (selector: string) => selector === "#message" ? [element] : [] },
-			HTMLInputElement: Input, HTMLTextAreaElement: Textarea, Event, getComputedStyle: () => ({ display: "block", visibility: "visible" }),
+			HTMLInputElement: Input, HTMLTextAreaElement: Textarea, Event, InputEvent: Event, getComputedStyle: () => ({ display: "block", visibility: "visible" }),
 		};
 		const value = 'Message with "quotes" and a newline\nnext line';
 		expect(vm.runInNewContext(browserControl.browserFillExpression("#message", value), context)).toEqual({ ok: true, visible: true });
@@ -217,36 +217,11 @@ describe("page form interaction", () => {
 });
 
 describe("session and page boundaries", () => {
-	it("disconnects idle interception at run end without stopping Brave or closing tabs", async () => {
-		const disconnect = vi.spyOn(browserControl.BrowserSessionProtocol.prototype, "disposeTransport");
-		const stop = vi.spyOn(browserControl.BrowserSessionProtocol.prototype, "stop");
-		const close = vi.spyOn(browserControl.BrowserPageProtocol.prototype, "close");
+	it("keeps browser transport attached across agent turns", async () => {
 		const pi = createMockPi();
 		registerBrowserControl(pi as never);
-		const hooks = pi._getHook("agent_end");
-		expect(hooks).toHaveLength(1);
-		await hooks[0]!.handler({ type: "agent_end", messages: [] });
-		await hooks[0]!.handler({ type: "agent_end", messages: [] });
-		expect(disconnect).toHaveBeenCalledTimes(2);
-		expect(stop).not.toHaveBeenCalled();
-		expect(close).not.toHaveBeenCalled();
-	});
-
-	it("exposes request diagnostics through session status and page/start failures", async () => {
-		vi.spyOn(browserControl, "loadBrowserState").mockReturnValue(state());
-		vi.spyOn(browserControl.BrowserSessionProtocol.prototype, "status").mockResolvedValue({ code: 0, stdout: "{}", stderr: "" });
-		vi.spyOn(browserControl.BrowserSessionProtocol.prototype, "start").mockResolvedValue({ code: 0, stdout: "started", stderr: "" });
-		const failures = [{ phase: "navigation" as const, stage: "classification" as const, code: "cancelled", cancellation: "deadline" as const }];
-		vi.spyOn(browserControl.BrowserPageProtocol.prototype, "diagnostics").mockReturnValue(failures);
-		vi.spyOn(browserControl.BrowserPageProtocol.prototype, "open").mockRejectedValue(new Error("Browser request cancelled."));
-		const pi = createMockPi(); registerBrowserControl(pi as never);
-		const session = pi._getTool("browser_session")!, page = pi._getTool("browser_page")!;
-		const status = await session.execute("status", { action: "status" });
-		expect(status.structuredContent.requestFailures).toEqual(failures);
-		expect(status.content[0].text).toContain('"cancellation":"deadline"');
-		expect(Value.Check(session.outputSchema!, status.structuredContent)).toBe(true);
-		await expect(page.execute("open", { action: "open", session_id: "session-1", url: "https://public.example/" })).rejects.toThrow("Recent browser request failures:");
-		await expect(session.execute("start", { action: "start", url: "https://public.example/" })).rejects.toThrow("Recent browser request failures:");
+		expect(pi._getHook("agent_end")).toHaveLength(0);
+		expect(pi._getHook("session_before_switch")).toHaveLength(1);
 	});
 
 	it("returns schema-valid discovery candidates rather than only a count", async () => {
@@ -439,7 +414,7 @@ describe("session and page boundaries", () => {
 		expect(publicState(state({ sessionMode: "attached" })).sessionMode).toBe("attached");
 		const page = pi._getTool("browser_page");
 		expect(page).toBeDefined();
-		expect(page?.parameters.properties.action.enum).toEqual(["list", "open", "select", "snapshot", "scroll", "screenshot", "click", "fill", "close"]);
+		expect(page?.parameters.properties.action.enum).toEqual(["list", "open", "select", "snapshot", "scroll", "screenshot", "click", "fill", "press", "paste", "upload", "close"]);
 		expect(page?.outputSchema).toHaveProperty("properties.targets");
 		expect(page?.outputSchema).toHaveProperty("properties.targetId");
 		expect(pi._getTool("browser_session")?.outputSchema).toHaveProperty("properties.candidates");

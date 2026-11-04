@@ -159,6 +159,11 @@ describe("subagent presentation", () => {
     expect(automatic).toContain("Cleanup failed: pane remained open");
   });
 
+  it("uses the host keybinding helper for collapsed subagent messages", () => {
+    const text = plain(renderSubagentMessage({ details: { ...base, status: "settled", outcome: "complete" } }, { keyHint: (_key, description) => `host hint: ${description}` }, theme), 120);
+    expect(text).toContain("host hint: for full prompt");
+  });
+
   it("renders automatic outcomes as a named message rather than JSON", () => {
     const message = renderSubagentMessage({ customType: "subagent-result", content: "Subagent Clara · explorer complete:\n# Done\n\nResult", details: { displayName: "Clara", agent: "explorer", outcome: "complete", assignment: "Inspect files" } }, { expanded: true }, theme);
     const text = plain(message, 80);

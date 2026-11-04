@@ -397,14 +397,30 @@ export class BrowserCdpTransport {
 		}
 	}
 
-	private attached(event: CdpEvent): void {
+	private attached(event: CdpEvent, frameMappingsReady = false): void {
 		const info = record(event.params.targetInfo), sessionId = string(event.params.sessionId), targetId = string(info?.targetId);
 		if (!info || !sessionId || !targetId) { this.dispose(); return; }
 		const parentId = string(info.parentId);
-		const parent = event.sessionId ? this.sessions.get(event.sessionId) : parentId ? this.targets.get(parentId) : undefined;
+		let parent = event.sessionId ? this.sessions.get(event.sessionId) : parentId ? this.targets.get(parentId) : undefined;
 		const openerId = string(info.openerId);
 		const opener = openerId ? this.targets.get(openerId) : undefined;
 		const root = this.requestedRoots.has(targetId);
+		// autoAttachRelated can report dedicated workers at browser level with only
+		// parentFrameId. Bind that exact frame, not the sole/most recently selected tab.
+		const parentFrameId = info.type === "worker" ? string(info.parentFrameId) : undefined;
+		if (!root && !parent && !opener && parentFrameId) {
+			const matches = [...this.frames.values()].filter(frame => frame.frameId === parentFrameId);
+			const executable = matches.filter(frame => frame.executionContextId !== undefined);
+			const candidates = executable.length ? executable : matches;
+			if (candidates.length === 1) parent = this.targets.get(candidates[0]!.targetId);
+			if (!parent && !frameMappingsReady) {
+				// The worker can arrive before its parent's initial Page.getFrameTree reply.
+				// Resolve ownership only after current page registrations complete.
+				const registrations = [...this.targets.values()].filter(target => target.type === "page" || target.type === "iframe").map(target => this.registrations.get(target.targetId));
+				void Promise.all(registrations).then(() => { if (!this.closed) this.attached(event, true); }, () => this.dispose());
+				return;
+			}
+		}
 		if (!root && !parent && !opener) { this.dispose(); return; } // Unexpected auto-attachment is not silently adopted.
 		const existing = this.targets.get(targetId);
 		if (existing) {

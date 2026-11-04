@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import os from "node:os";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import * as control from "../lib/browser-control.js";
 import { BrowserCdpTransport, type BrowserCdpOptions, type ManagedTargetSetup } from "../lib/browser-cdp-transport.js";
@@ -23,7 +24,7 @@ class Socket extends EventTarget {
 		queueMicrotask(() => {
 			if (command.method === "Target.autoAttachRelated") this.message({ method: "Target.attachedToTarget", params: { sessionId: `session-${command.params.targetId}`, targetInfo: { targetId: command.params.targetId, type: "page", url: "https://public.example/" } } });
 			if (command.method === "Runtime.enable") this.message({ method: "Runtime.executionContextCreated", sessionId: command.sessionId, params: { context: { id: 1, auxData: { frameId: "frame", isDefault: true } } } });
-			this.reply(command, command.method === "Page.getFrameTree" ? { frameTree: { frame: { id: "frame", url: "https://public.example/", securityOrigin: "https://public.example", loaderId: "loader" } } } : command.method === "Target.createTarget" ? { targetId: "created" } : command.method === "Runtime.evaluate" ? { result: { value: false } } : {});
+			this.reply(command, command.method === "Page.getFrameTree" ? { frameTree: { frame: { id: "frame", url: "https://public.example/", securityOrigin: "https://public.example", loaderId: "loader" } } } : command.method === "Target.createTarget" ? { targetId: "created" } : command.method === "Runtime.evaluate" ? { result: { value: String(command.params.expression).includes("const captcha") ? { tag: String(command.params.expression).includes("#field") ? "input" : "button", type: String(command.params.expression).includes("#field") ? "text" : "button", name: "", autocomplete: "", label: "Continue", form: "", href: "", captcha: false, password: false, loginForm: false, disabled: false, visible: true, readOnly: false } : String(command.params.expression).includes("element.click()") || String(command.params.expression).includes("setter.call") ? { ok: true, visible: true } : false } } : command.method === "Page.captureScreenshot" ? { data: Buffer.from("actual page image").toString("base64") } : {});
 		});
 	}
 	close() { this.dispatchEvent(new Event("close")); }
@@ -39,13 +40,40 @@ async function fixture() {
 		return transport;
 	});
 	const runtime = { connectTransport: connect, disposeTransport: () => transport?.dispose() } as unknown as BrowserRuntime;
-	const pages = new control.BrowserPageProtocol({ runtime, identity: () => ({ sessionId: "session", branchId: "branch", generation: 0 }), policy: async () => ({ outcome: "allow", reason: "Synthetic read" }), resolveHost: async () => ["93.184.216.34"] });
+	const pages = new control.BrowserPageProtocol({ runtime });
 	cleanups.push(() => pages.dispose());
 	return { socket, pages, connect, setups, transport: () => transport! };
 }
 async function flush() { await vi.advanceTimersByTimeAsync(0); }
 
 describe("call-local browser timeouts", () => {
+	it("captures the actual page without a masking or inspection prerequisite", async () => {
+		const f = await fixture();
+		const directory = fs.mkdtempSync(path.join(os.tmpdir(), "browser-screenshot-"));
+		cleanups.push(() => fs.rmSync(directory, { recursive: true, force: true }));
+		const output = path.join(directory, "capture.png");
+		await expect(f.pages.screenshot(state, "root", output)).resolves.toMatchObject({ origin: "https://public.example", classification: "public" });
+		expect(fs.readFileSync(output, "utf8")).toBe("actual page image");
+		expect(f.socket.commands.some(command => command.method === "Runtime.evaluate")).toBe(false);
+		expect(f.socket.commands.some(command => command.method === "Page.captureScreenshot")).toBe(true);
+	});
+	it("runs exact-selector click and fill in an owned session without request interception", async () => {
+		const f = await fixture();
+		await expect(f.pages.click(state, "root", "#continue")).resolves.toEqual({ visible: true });
+		await expect(f.pages.fill(state, "root", "#field", "disposable")).resolves.toEqual({ visible: true });
+		expect(f.socket.commands.some(command => command.method === "Fetch.enable")).toBe(false);
+		expect(f.socket.commands.some(command => String(command.params.expression).includes("element.click()"))).toBe(true);
+		expect(f.socket.commands.some(command => String(command.params.expression).includes("setter.call"))).toBe(true);
+	});
+
+	it("keeps native browser interstitial warnings blocking page operations", async () => {
+		const f = await fixture();
+		await f.pages.select(state, "root");
+		f.socket.message({ method: "Page.interstitialShown", sessionId: "session-root", params: {} });
+		await expect(f.pages.snapshot(state, "root")).rejects.toMatchObject({ code: "native_warning" });
+		expect(f.socket.commands.some(command => command.method === "Runtime.evaluate")).toBe(false);
+	});
+
 	it("lets a 60-second page call complete CDP at 45 seconds, including first target setup", async () => {
 		const f = await fixture();
 		f.socket.hold = command => command.method === "Security.enable";

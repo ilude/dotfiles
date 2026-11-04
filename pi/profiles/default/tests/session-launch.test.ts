@@ -266,6 +266,23 @@ it("launches silently, awaits delayed plugin open, passes title ownership, focus
 	expect(calls.slice(2)).toEqual([["tab", "focus", "w9:t4"]]);
 });
 
+it.each([false, true])("opens a fresh instance when the session has no conversation (metadata=%s)", async metadata => {
+	const { commands, ctx } = fixture();
+	const root = mkdtempSync(join(tmpdir(), "session-launch-empty-"));
+	roots.push(root);
+	const parent = SessionManager.create(root, join(root, "sessions"));
+	if (metadata) parent.appendCustomEntry("session-profile", { profile: "default" });
+	const sessionFile = parent.getSessionFile()!;
+	expect(existsSync(sessionFile)).toBe(false);
+	await commands.branch.handler("fresh tab", { ...ctx, cwd: root, sessionManager: parent });
+	const launchArgs = vi.mocked(execFile).mock.calls.find(call => (call[1] as string[])[0] === "plugin")![1] as string[];
+	expect(launchArgs).toContain("PI_HERDR_SESSION_FILE=");
+	expect(launchArgs).toContain("PI_HERDR_TAB_TITLE=fresh tab");
+	expect(launchArgs).toContain(root);
+	expect(existsSync(sessionFile)).toBe(false);
+	expect(parent.getEntries().some(entry => entry.type === "custom" && entry.customType === "session-branch")).toBe(false);
+});
+
 it("branches through an independent real manager and persists reciprocal visible evidence", async () => {
 	const { commands, ctx, parent, renderers } = realBranchFixture();
 	const parentId = parent.getSessionId();

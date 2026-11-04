@@ -97,7 +97,7 @@ beforeEach(() => {
 		else if (operation[0] === "branch") stdout = "main";
 		else if (operation[0] === "pull" || operation[0] === "push") stdout = "";
 		else throw new Error(`Unexpected Git operation: ${operation.join(" ")}`);
-		return { stdout, stderr: "", code: 0, killed: false };
+		return { stdout, stderr: "", code: 0, killed: false, truncated: false };
 	});
 });
 afterEach(() => vi.restoreAllMocks());
@@ -166,7 +166,7 @@ it("never retries a transport-looking code-executed hook failure or executes lat
 	changed.set("unfinished.txt", "M "); changed.set("later.txt", "M ");
 	const original = git.getMockImplementation()!;
 	git.mockImplementation(async (command, args, options) => args[2] === "commit"
-		? { stdout: "", stderr: "WebSocket error from Git hook", code: 1, killed: false }
+		? { stdout: "", stderr: "WebSocket error from Git hook", code: 1, killed: false, truncated: false }
 		: original(command, args, options));
 	responses.push({ message: message([{ ...submit("first"), arguments: { repo: ".", commits: [{ subject: "first", paths: ["unfinished.txt"] }, { subject: "queued", paths: ["later.txt"] }], exclusions: [] } }], "toolUse") });
 	await expect(start().run).rejects.toThrow(/Git commit failed: WebSocket error from Git hook/);
@@ -274,8 +274,8 @@ it("uses a longer timeout only for publication", async () => {
 it("confirms a timed-out push from the remote without retrying it", async () => {
 	const original = git.getMockImplementation()!;
 	git.mockImplementation(async (command, args, options) => {
-		if (args[2] === "push") return { stdout: "", stderr: "", code: 1, killed: true };
-		if (args[2] === "ls-remote") return { stdout: "old-head\trefs/heads/main\n", stderr: "", code: 0, killed: false };
+		if (args[2] === "push") return { stdout: "", stderr: "", code: 1, killed: true, truncated: false };
+		if (args[2] === "ls-remote") return { stdout: "old-head\trefs/heads/main\n", stderr: "", code: 0, killed: false, truncated: false };
 		return original(command, args, options);
 	});
 	responses.push({ message: done() }); const result = await start(undefined, true).run;
@@ -288,8 +288,8 @@ it("confirms a timed-out push from the remote without retrying it", async () => 
 it.each(["different-head", "unavailable"])("reports unknown publication when timed-out push verification is %s", async remote => {
 	const original = git.getMockImplementation()!;
 	git.mockImplementation(async (command, args, options) => {
-		if (args[2] === "push") return { stdout: "", stderr: "", code: 1, killed: true };
-		if (args[2] === "ls-remote") return { stdout: "other-head\trefs/heads/main\n", stderr: "network unavailable", code: remote === "unavailable" ? 1 : 0, killed: false };
+		if (args[2] === "push") return { stdout: "", stderr: "", code: 1, killed: true, truncated: false };
+		if (args[2] === "ls-remote") return { stdout: "other-head\trefs/heads/main\n", stderr: "network unavailable", code: remote === "unavailable" ? 1 : 0, killed: false, truncated: false };
 		return original(command, args, options);
 	});
 	responses.push({ message: done() }); const error = await start(undefined, true).run.catch(error => error as Error);
