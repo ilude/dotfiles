@@ -11,7 +11,6 @@ type SearchResult = Awaited<ReturnType<typeof searchAnalytics>>;
 type FollowUpResult = Awaited<ReturnType<typeof followUpAnalytics>>;
 type LineageResult = Awaited<ReturnType<typeof sessionLineageAnalytics>>;
 type CatalogResult = { sources: ReturnType<typeof analyticsCatalog>; defaults: Record<string, unknown>; limits: string };
-type RenderArgs = { operation?: string; profiles?: string[]; sessionId?: string; sources?: string[]; sessionRefs?: { profile: string; sessionId: string; fileKey?: string }[]; cwd?: string; sessionIds?: string[]; cursor?: string; interval?: { since: string; until: string }; filters?: Record<string, unknown>; sql?: string; execution?: string; maxRows?: number; maxBytes?: number; maxResults?: number; parameters?: Record<string, unknown>; occurrence?: { profile?: string; session?: { sessionId?: string }; fileKey?: string; byteOffset?: number; recordOrdinal?: number }; before?: number; after?: number };
 const sourceNames: Record<string, string> = {
 	session_entries: "session history", bedrock_usage: "Bedrock usage", codex_cache_observations: "Codex cache observations",
 };
@@ -30,8 +29,14 @@ function preview(value: unknown, limit = 160): string {
 function count(n: number, noun: string): string { return `${n} ${noun}${n === 1 ? "" : "s"}`; }
 function sources(ids: readonly string[]): string { return ids.map(id => sourceNames[id] ?? clean(id)).join(", "); }
 function bytes(n: number): string { return n < 1024 ? `${n} B` : n < 1024 ** 2 ? `${(n / 1024).toFixed(1)} KiB` : `${(n / 1024 ** 2).toFixed(1)} MiB`; }
-function occurrenceLabel(ref: { profile?: unknown; session?: { sessionId?: unknown } } | undefined): string | null {
-	if (!ref || typeof ref.profile !== "string" || typeof ref.session?.sessionId !== "string") return null;
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+function stringList(value: unknown): string[] {
+	return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
+function occurrenceLabel(ref: unknown): string | null {
+	if (!isRecord(ref) || typeof ref.profile !== "string" || !isRecord(ref.session) || typeof ref.session.sessionId !== "string") return null;
 	return `${clean(ref.profile)}/${clean(ref.session.sessionId)}`;
 }
 function component(build: (width: number) => string[]): Component {
@@ -39,37 +44,42 @@ function component(build: (width: number) => string[]): Component {
 }
 
 export const renderAnalyticsCall: NonNullable<Tool["renderCall"]> = (rawArgs, theme, context) => component(() => {
-	const args = rawArgs as unknown as RenderArgs;
+	// Call arguments can still be streaming and have not passed execution validation.
+	const args: Record<string, unknown> = isRecord(rawArgs) ? rawArgs : {};
 	const expanded = context.expanded;
 	const title = args.operation === "catalog" ? "Available sources" : args.operation === "sessions" ? "Find sessions" : args.operation === "query" ? "Query logs" : args.operation === "search" ? "Search records" : args.operation === "follow_up" ? "Follow up occurrence" : args.operation === "session_lineage" ? "Find session lineage" : "Preparing request…";
 	const lines = [theme.fg("toolTitle", theme.bold("Log Analytics")) + " · " + title];
 	if (args.operation === "catalog" || !args.operation) return lines;
 	if (args.operation === "follow_up") {
 		const ref = args.occurrence;
-		if (!ref) return lines;
+		if (!isRecord(ref)) return lines;
 		const label = occurrenceLabel(ref);
 		if (label) lines.push(`Occurrence: ${label}`);
-		lines.push(theme.fg("muted", `Context: ${args.before ?? 2} before · ${args.after ?? 2} after`));
-		if (expanded && ref.fileKey !== undefined) lines.push(`File key: ${clean(ref.fileKey)}${ref.byteOffset !== undefined ? ` · offset: ${ref.byteOffset}` : ""}${ref.recordOrdinal !== undefined ? ` · ordinal: ${ref.recordOrdinal}` : ""}`);
+		lines.push(theme.fg("muted", `Context: ${clean(args.before ?? 2)} before · ${clean(args.after ?? 2)} after`));
+		if (expanded && ref.fileKey !== undefined) lines.push(`File key: ${clean(ref.fileKey)}${ref.byteOffset !== undefined ? ` · offset: ${clean(ref.byteOffset)}` : ""}${ref.recordOrdinal !== undefined ? ` · ordinal: ${clean(ref.recordOrdinal)}` : ""}`);
 		return lines;
 	}
-	lines.push(theme.fg("muted", `Profiles: ${args.profiles?.join(" + ") || "active profile"}${args.sources?.length ? ` · ${sources(args.sources)}` : args.operation === "search" ? ` · ${searchSource}` : ""}`));
+	const profileIds = stringList(args.profiles);
+	const sourceIds = stringList(args.sources);
+	const sessionRefs = Array.isArray(args.sessionRefs) ? args.sessionRefs.filter(isRecord) : [];
+	const sessionIds = stringList(args.sessionIds);
+	lines.push(theme.fg("muted", `Profiles: ${profileIds.join(" + ") || "active profile"}${sourceIds.length ? ` · ${sources(sourceIds)}` : args.operation === "search" ? ` · ${searchSource}` : ""}`));
 	if (args.cwd !== undefined) lines.push(`Project: ${expanded ? clean(args.cwd) : preview(args.cwd)}`);
-	if (args.sessionRefs?.length) lines.push(`Scope: ${count(args.sessionRefs.length, "selected session")}`);
-	if (args.sessionIds?.length) lines.push(`Filter: ${count(args.sessionIds.length, "session ID")}`);
+	if (sessionRefs.length) lines.push(`Scope: ${count(sessionRefs.length, "selected session")}`);
+	if (sessionIds.length) lines.push(`Filter: ${count(sessionIds.length, "session ID")}`);
 	if (args.sessionId) lines.push(`Session: ${expanded ? clean(args.sessionId) : preview(args.sessionId, 24)}`);
 	if (args.cursor) lines.push(theme.fg("muted", `Continuing ${args.operation === "search" ? "record search" : "session listing"}`));
-	if (args.interval) lines.push(`Interval: ${clean(args.interval.since)} to ${clean(args.interval.until)} [since, until)`);
-	if (args.filters) lines.push(`Filters: ${Object.entries(args.filters).map(([key, value]) => `${key}=${preview(value, 80)}`).join(" · ")}`);
+	if (isRecord(args.interval)) lines.push(`Interval: ${clean(args.interval.since)} to ${clean(args.interval.until)} [since, until)`);
+	if (isRecord(args.filters)) lines.push(`Filters: ${Object.entries(args.filters).map(([key, value]) => `${key}=${preview(value, 80)}`).join(" · ")}`);
 	if (args.sql) lines.push(theme.fg("muted", `${args.execution === "large" ? "Large SQL" : "SQL"}: ${expanded ? `\n${clean(args.sql)}` : preview(args.sql)}`));
-	if (args.operation === "query") lines.push(theme.fg("muted", `Requested execution: ${args.execution ?? "automatic"}`));
+	if (args.operation === "query") lines.push(theme.fg("muted", `Requested execution: ${clean(args.execution ?? "automatic")}`));
 	if (expanded) {
-		if (args.maxRows !== undefined) lines.push(`Row limit: ${args.maxRows}`);
-		if (args.maxBytes !== undefined) lines.push(`Output bytes: ${args.maxBytes}`);
-		if (args.operation === "search" && args.maxResults !== undefined) lines.push(`Match limit: ${args.maxResults}`);
-		for (const [key, value] of Object.entries(args.parameters ?? {})) lines.push(`Parameter ${clean(key)}: ${clean(value)}`);
-		for (const ref of args.sessionRefs ?? []) lines.push(`Session: ${clean(ref.profile)}/${clean(ref.sessionId)}${ref.fileKey ? ` · file key: ${clean(ref.fileKey)}` : ""}`);
-		if (args.sessionIds?.length) lines.push(`Session IDs: ${args.sessionIds.map(clean).join(", ")}`);
+		if (args.maxRows !== undefined) lines.push(`Row limit: ${clean(args.maxRows)}`);
+		if (args.maxBytes !== undefined) lines.push(`Output bytes: ${clean(args.maxBytes)}`);
+		if (args.operation === "search" && args.maxResults !== undefined) lines.push(`Match limit: ${clean(args.maxResults)}`);
+		for (const [key, value] of Object.entries(isRecord(args.parameters) ? args.parameters : {})) lines.push(`Parameter ${clean(key)}: ${clean(value)}`);
+		for (const ref of sessionRefs) lines.push(`Session: ${clean(ref.profile)}/${clean(ref.sessionId)}${ref.fileKey ? ` · file key: ${clean(ref.fileKey)}` : ""}`);
+		if (sessionIds.length) lines.push(`Session IDs: ${sessionIds.map(clean).join(", ")}`);
 	}
 	return lines;
 });

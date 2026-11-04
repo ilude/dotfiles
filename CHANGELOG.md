@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-10-30: Correct Pi tool contexts in usage and goal tests
+
+- Use Pi's native tool-context type in the Codex usage and goal-control test fixtures, including the nested-tool members, and replace the goal test's handwritten tool callback interface with the native tool definition. Preserve existing assertions and production behavior.
+- All 15 focused tests pass, and default-profile typechecking now passes without suppressing the three context-type errors. No runtime reload is needed for these test-only corrections.
+
+## 2026-10-30: Prevent analytics display crashes on streamed arguments
+
+- Treat in-progress analytics call arguments as unvalidated display input rather than assuming complete arrays and nested records. Skip unusable collection values while retaining available scope details in collapsed and expanded views, preventing a display error from terminating a subagent.
+- Preserve execution-time schema validation and model-facing results. No question-cancellation, subagent lifecycle, browser, or legacy behavior changes. Load the fix with a fresh default-profile process or `/reload` when no subagents are active or retained.
+
 ## 2026-10-30: Require approval before overriding Git ignores
 
 - Explicitly prohibit the default agent and private `/commit` reviewer from force-adding ignored files, weakening ignore rules, or bypassing `.gitignore`, `.git/info/exclude`, or global excludes without discussing the specific paths and reason and obtaining user approval. General implementation, archival, commit, or push authorization does not approve an exception.

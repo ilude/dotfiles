@@ -140,6 +140,27 @@ describe("log analytics user-facing rendering", () => {
 		} finally { await fixture.dispose(); }
 	});
 
+	it.each([
+		{ profiles: "default" },
+		{ profiles: {} },
+		{ profiles: [null, "default"] },
+		{ sources: "session_entries" },
+		{ sessionRefs: {} },
+		{ sessionRefs: [null, { profile: "default", sessionId: "one" }] },
+		{ sessionIds: "one" },
+		{ sessionIds: [null, "one"] },
+	])("renders streamed collection arguments without throwing: %j", fragment => {
+		const tool = registered();
+		// Streaming arguments reach renderCall before execution-time schema validation.
+		const args = { operation: "search", ...fragment } as unknown as LogAnalyticsInput;
+		for (const expanded of [false, true]) {
+			const streamingContext = { ...context(args, expanded), argsComplete: false, executionStarted: false };
+			const text = plain(tool.renderCall!(args, theme, streamingContext));
+			expect(text).toContain("Log Analytics · Search records");
+			expect(text).not.toContain("undefined");
+		}
+	});
+
 	it("renders incomplete streamed occurrence arguments without throwing", () => {
 		const tool = registered();
 		const partial = { operation: "follow_up", occurrence: { profile: "default" } } as unknown as LogAnalyticsInput;

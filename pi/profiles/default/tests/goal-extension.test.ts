@@ -1,4 +1,4 @@
-import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext, ExtensionToolContext, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import goalExtension, { parseGoalCommand } from "../extensions/goal.ts";
 import { GOAL_ENTRY_TYPE } from "../lib/goal/contract.ts";
@@ -9,11 +9,10 @@ const readUsage = vi.hoisted(() => vi.fn());
 vi.mock("../lib/goal/usage.ts", () => ({ readGoalUsage: readUsage }));
 type Handler = (event: Record<string, unknown>, ctx: ExtensionContext) => unknown;
 interface ControlInput { action: "checkpoint" | "question" | "complete" | "blocker" | "pause"; summary: string; findings?: string[] }
-interface ControlTool { execute(id: string, input: ControlInput, signal: AbortSignal, update: undefined, ctx: ExtensionContext): Promise<unknown> }
 function harness() {
   const handlers = new Map<string, Handler>();
   const commands = new Map<string, Parameters<ExtensionAPI["registerCommand"]>[1]>();
-  const tools = new Map<string, ControlTool>();
+  const tools = new Map<string, ToolDefinition>();
   const branch: unknown[] = [];
   const listeners = new Map<string, Set<(value: unknown) => void>>();
   const events = {
@@ -24,7 +23,7 @@ function harness() {
   const api = {
     on: (name: string, handler: Handler) => { handlers.set(name, handler); },
     registerCommand: (name: string, def: Parameters<ExtensionAPI["registerCommand"]>[1]) => { commands.set(name, def); },
-    registerTool: (tool: ControlTool & { name: string }) => { tools.set(tool.name, tool); },
+    registerTool: (tool: ToolDefinition) => { tools.set(tool.name, tool); },
     appendEntry: (customType: string, data: unknown) => { branch.push({ type: "custom", customType, data: structuredClone(data) }); },
     sendMessage: send, events,
   } as unknown as ExtensionAPI;
@@ -33,10 +32,15 @@ function harness() {
     ui: { setStatus: vi.fn(), notify },
     modelRegistry: {}, abort, waitForIdle: async () => {}, signal: new AbortController().signal,
   } as unknown as ExtensionCommandContext;
+  const toolCtx: ExtensionToolContext = {
+    ...ctx,
+    tools: [],
+    executeTool: vi.fn<ExtensionToolContext["executeTool"]>(),
+  };
   goalExtension(api);
   const emit = (name: string, event: Record<string, unknown> = {}) => handlers.get(name)?.(event, ctx);
   const command = (args: string) => commands.get("goal")!.handler(args, ctx);
-  const control = (input: ControlInput) => tools.get("goal_control")!.execute("control", input, new AbortController().signal, undefined, ctx);
+  const control = (input: ControlInput) => tools.get("goal_control")!.execute("control", input, new AbortController().signal, undefined, toolCtx);
   const state = () => branch.filter((e): e is { data: { runId: string; outcome: string; authority: { decisions: string[] } }; customType: string } => !!e && typeof e === "object" && "customType" in e && e.customType === GOAL_ENTRY_TYPE).at(-1)?.data;
   emit("session_start");
   return { emit, command, control, branch, state, send, abort, notify, events };
