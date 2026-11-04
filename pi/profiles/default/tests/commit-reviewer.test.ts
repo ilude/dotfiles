@@ -57,6 +57,7 @@ it("validates and appends one ignore rule without duplicates", async () => {
 
 it("retains complete failure commands, including the tail and original whitespace", () => {
 	expect(describeCommitTool("read", { path: "AGENTS.md" })).toBe("file read: AGENTS.md");
+	expect(describeCommitTool("ask_ignore", { repo: "modules/child", candidate: "root-only.txt" })).toBe("ignore decision: root-only.txt (repository modules/child)");
 	const command = `pwd && git diff -- '${"x".repeat(400)}'\n&& git check-ignore 'file with  spaces.lock'`;
 	for (const name of ["bash", "inspect"]) expect(describeCommitTool(name, { command })).toBe(`shell command: ${command}`);
 });

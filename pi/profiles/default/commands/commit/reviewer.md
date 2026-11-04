@@ -2,7 +2,7 @@ Quietly review staged Git changes and submit a complete whole-file commit plan. 
 
 ## Scope and tools
 
-The task supplies the absolute root, initialized-repository boundaries, tracked instruction paths, initial status, and the current repository. The runner selects repositories deepest-first and finishes requested child publication before reviewing the parent. Work only in the current repository. Never combine repositories or inspect child files as parent candidates. Detached repositories remain eligible for local commits.
+The task supplies the workflow and current repository roots, initialized-repository boundaries, and the current repository's tracked instruction paths and status. The runner selects repositories deepest-first and finishes requested child publication before reviewing the parent. Work only in the current repository. Never combine repositories or inspect child files as parent candidates. Detached repositories remain eligible for local commits.
 
 Read applicable repository instructions with `read`. Use `inspect` for read-only Git status/diff/check-ignore, searches, and focused discovery. Missing optional instruction files and search no-matches are normal; correct ordinary inspection errors and continue. Each shell call and relative file read starts at the current repository's supplied root. Use repository-relative paths for this pass and shell-quote directories and paths as data. This host is not necessarily WSL; use the supplied paths rather than inventing path translations.
 

@@ -15,7 +15,7 @@ import { Type } from "typebox";
 import { commitShellCommand, formatStatus } from "./tools.ts";
 import { executeCommitPlan, parseCommitStatus, validateCommitPlan, type CommitPlan } from "./plan.ts";
 
-const MODEL_FAMILY = "luna";
+const MODEL_FAMILY = "terra";
 const FALLBACK_PROVIDER = "anthropic";
 const FALLBACK_FAMILY = "haiku";
 const WORKFLOW_TIMEOUT_MS = 180_000;
@@ -71,7 +71,7 @@ export function describeCommitTool(name: string, args: unknown): string {
 		return `shell command${command ? `: ${command}` : ""}`;
 	}
 	if (name === "read") return `file read: ${String(input.path ?? "unknown")}`;
-	if (name === "ask_ignore") return `ignore decision: ${String(input.repo ?? ".")}/${String(input.candidate ?? input.path ?? "unknown")}`;
+	if (name === "ask_ignore") return `ignore decision: ${String(input.candidate ?? input.path ?? "unknown")} (repository ${String(input.repo ?? ".")})`;
 	if (name === "submit_commit_plan") return `commit plan: ${String(input.repo ?? ".")}`;
 	return `tool ${name}`;
 }
@@ -89,9 +89,9 @@ export function buildCommitTask(push: boolean, root: string, inventory: readonly
 Location (JSON-quoted absolute path; decode and shell-quote as data):
 Workflow root: ${JSON.stringify(root)}
 Repository root: ${JSON.stringify(currentRepository === "." ? root : join(root, currentRepository))}
-Host platform: ${process.platform}. Bash runs locally on this host. Use the supplied paths as data; on Windows this is not WSL: prefer root-relative paths or forward-slash Windows paths, not invented /mnt/c paths.
+Host platform: ${process.platform}. Bash runs locally on this host. Use the supplied paths as data; on Windows this is not WSL: prefer repository-relative paths or forward-slash Windows paths, not invented /mnt/c paths.
 
-Current repository: ${currentRepository}. Work only in this repository for this pass. The runner has preserved index-only content, run git add -A, applied the settings policy, and staged child gitlinks before staged review. Read applicable instructions and staged diffs, then call submit_commit_plan covering every current changed path exactly once. Do not process other repositories in this pass.\n\nRepository inventory (boundaries and initial state, not a candidate list):
+Current repository: ${currentRepository}. Work only in this repository for this pass. The runner has preserved index-only content, run git add -A, applied the settings policy, and staged child gitlinks before staged review. Read applicable instructions and staged diffs, then call submit_commit_plan covering every current changed path exactly once. Do not process other repositories in this pass.\n\nRepository inventory (current repository details and other repository boundaries, not a cross-repository candidate list):
 ${inventory.map(entry => entry.startsWith(`Repository: ${currentRepository}\n`) ? entry : entry.split("\n")[0]).join("\n\n")}`;
 }
 
@@ -116,6 +116,7 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 			resumeTimer();
 			let agent: Agent | undefined;
 			let selectedModel: Model<Api> | undefined;
+			let thinkingLevel: "low" | "medium" = "medium";
 			let unsubscribe: (() => void) | undefined;
 			const abort = () => agent?.abort();
 			combined.addEventListener("abort", abort, { once: true });
@@ -180,9 +181,10 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 				try { model = await resolveLatestCodexModelFromRuntime(MODEL_FAMILY, runtime, combined); }
 				catch (error) {
 					combined.throwIfAborted();
-					progress(`Luna unavailable (${error instanceof Error ? error.message : String(error)}); using ${FALLBACK_FAMILY}…`);
+					progress(`Terra unavailable (${error instanceof Error ? error.message : String(error)}); using ${FALLBACK_FAMILY}…`);
 					model = await resolveFallbackModel(runtime, combined);
 					usedFallback = true;
+					thinkingLevel = "low";
 				}
 				selectedModel = model;
 
@@ -332,7 +334,7 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 				};
 				agent = new Agent({
 					initialState: {
-						model, thinkingLevel: "low",
+						model, thinkingLevel,
 						systemPrompt: readFileSync(join(dirname(fileURLToPath(import.meta.url)), "reviewer.md"), "utf8"),
 						tools: [
 							{
@@ -374,7 +376,8 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 								description: "After staging, ask whether an uncertain new file should be included, added to that repository's .gitignore, or left untracked. Exclusions are unstaged without deleting working contents; ignore changes are staged.",
 								parameters: Type.Object({ repo: Type.String(), candidate: Type.String(), reason: Type.String(), pattern: Type.String() }),
 								execute: async (_id, input) => {
-									const { repo, candidate, reason, pattern } = input as { repo: string; candidate: string; reason: string; pattern: string };
+									const { repo, candidate: candidatePath, reason, pattern } = input as { repo: string; candidate: string; reason: string; pattern: string };
+									const candidate = normalizeRepositoryId(candidatePath);
 									const active = activeTools.get(_id);
 									const id = normalizeRepositoryId(repo);
 									const repository = repositoriesById.get(id);
@@ -387,7 +390,13 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 									if (active) active.terminal = true;
 									const added = await git(["--literal-pathspecs", "diff", "--cached", "--diff-filter=A", "--name-only", "-z", "--", candidate], combined, repository);
 									if (active) active.terminal = false;
-									if (!added.split("\0").includes(candidate)) throw new Error(`Not a staged new file in ${id}: ${candidate}. Correct the repository/candidate using current staged status. Tracked modifications do not need ignore decisions.`);
+									if (!added.split("\0").includes(candidate)) {
+										if (active) active.terminal = true;
+										const entry = parseCommitStatus(await git(STATUS_ARGS, combined, repository)).find(entry => entry.path === candidate);
+										if (active) active.terminal = false;
+										if (!entry) throw new Error(`Path is not changed in ${id}: ${candidate}. Use this repository's current staged status.`);
+										throw new Error(`Not a staged new file in ${id}: ${candidate} (status ${entry.xy}). ${entry.xy === "??" ? "Stage new files before requesting an ignore decision." : "Tracked modifications do not need ignore decisions."}`);
+									}
 									const rule = validateGitignorePattern(pattern);
 									if (active) active.terminal = true;
 									if (!ctx.hasUI) throw new Error(`User input required for ${candidate}: ${reason}. Run /commit interactively.`);
@@ -486,16 +495,18 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 						if (failure) throw new Error(failure);
 						const last = lastError();
 						if (!last || usedFallback) break;
-						// Luna failed after retries: continue the same transcript on Haiku.
+						// Terra failed after retries: continue the same transcript on Haiku.
 						let fallback: Model<Api>;
 						try { fallback = await resolveFallbackModel(runtime, combined); }
 						catch { break; }
 						usedFallback = true;
 						model = fallback;
 						selectedModel = fallback;
-						progress(`Luna failed (${last.errorMessage ?? "error"}); retrying with ${fallback.id}…`);
+						progress(`Terra failed (${last.errorMessage ?? "error"}); retrying with ${fallback.id}…`);
 						reviewer.state.messages = reviewer.state.messages.slice(0, -1);
 						reviewer.state.model = fallback;
+						thinkingLevel = "low";
+						reviewer.state.thinkingLevel = thinkingLevel;
 						await reviewer.continue();
 					}
 					combined.throwIfAborted();
@@ -605,5 +616,5 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 			});
 			const report = [summary, ...preservedIndex, ...leftOut.map(line => `Left out: ${line}`), ...exclusions, publication].filter(Boolean).join("\n");
 			if (failure) throw new Error(`${failure}\n${report}\nStopped; existing commits and changes were not undone.`);
-			return { text: report, elapsedMs: WORKFLOW_TIMEOUT_MS - remaining, model: `${selectedModel?.provider}/${selectedModel?.id}:low`, usage };
+			return { text: report, elapsedMs: WORKFLOW_TIMEOUT_MS - remaining, model: `${selectedModel?.provider}/${selectedModel?.id}:${thinkingLevel}`, usage };
 }

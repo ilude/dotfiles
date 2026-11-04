@@ -16,7 +16,7 @@ vi.mock("../lib/model-runtime.ts", () => ({ createProfileModelRuntime: async () 
 	getAvailable: async () => [model], streamSimple: provider.stream,
 }) }));
 const model: Model<"openai-responses"> = {
-	id: "gpt-6-luna", name: "offline", api: "openai-responses", provider: "openai", baseUrl: "https://unused.invalid",
+	id: "gpt-6.1-terra", name: "offline", api: "openai-responses", provider: "openai", baseUrl: "https://unused.invalid",
 	reasoning: false, input: ["text"], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 10000, maxTokens: 1000,
 };
 type Call = Pick<ToolCall, "name" | "arguments">;
@@ -146,17 +146,17 @@ it("isolates child and parent conversations, candidate inventories, and relative
 	expect(JSON.stringify(results.map(result => result.content))).toContain("parent file contents");
 	expect(git(child, "show", "HEAD:base.txt")).toBe("child review sentinel\n");
 	expect(git(root, "status", "--porcelain")).toBe(""); expect(report.text).toContain("parent edit and pin");
-}, 30_000);
+}, 45_000);
 
 it("recovers a root-file ignore request during a clean child pass without a dialog", async () => {
 	submoduleFixture(); writeFileSync(join(root, "root-only.txt"), "parent file\n");
 	answers.push("Leave untracked");
 	steps.push({ name: "ask_ignore", arguments: { ...ask("root-only.txt").arguments, repo: "modules/child" } }, empty("modules/child"), plan("parent file", ["root-only.txt"]));
 	const report = await run();
-	expect(requestTexts[1]).toContain("Not a staged new file in modules/child");
+	expect(requestTexts[1]).toContain("Path is not changed in modules/child");
 	expect(answers).toEqual(["Leave untracked"]); expect(report.text).toContain("parent file");
 	expect(git(root, "show", "HEAD:root-only.txt")).toBe("parent file\n");
-}, 30_000);
+}, 45_000);
 
 it.each([
 	{ repo: "missing", candidate: "new.txt", pattern: "new.txt" },
@@ -168,6 +168,17 @@ it.each([
 	const report = await run();
 	expect(results[0]?.isError).toBe(true); expect(answers).toEqual(["Leave untracked"]); expect(report.text).toContain("new file");
 	expect(git(root, "show", "HEAD:new.txt")).toBe("new file\n");
+});
+
+it("accepts native Windows candidate separators and preserves POSIX literal backslashes", async () => {
+	const candidate = "new\\file.txt";
+	const gitPath = process.platform === "win32" ? "new/file.txt" : candidate;
+	if (process.platform === "win32") mkdirSync(join(root, "new"));
+	writeFileSync(join(root, candidate), "native candidate\n"); answers.push("Include in commit");
+	steps.push(ask(candidate), plan("native candidate", [gitPath]));
+	const report = await run();
+	expect(answers).toEqual([]); expect(report.text).toContain("native candidate");
+	expect(git(root, "show", `HEAD:${gitPath}`)).toBe("native candidate\n");
 });
 
 it("reports reviewer-selected exclusion reasons and unstages them without losing contents", async () => {

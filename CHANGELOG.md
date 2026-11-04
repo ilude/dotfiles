@@ -1,9 +1,15 @@
 # Changelog
 
+## 2026-11-04: Use Terra at medium effort for Pi commits
+
+- Switch `/commit` from latest Luna at low effort to latest available native OpenAI Terra at medium effort, currently `gpt-6.1-terra`, to try improved review reliability alongside the repository-scoping repair.
+- Preserve the existing latest Anthropic Haiku fallback at low effort, same-repository retry history, quiet command output, whole-file plans, and child-before-parent execution/publication. Leave the main conversation model unchanged. Improved live commit judgment is not yet established.
+
 ## 2026-11-04: Isolate commit reviews and refresh the Chrome host launcher
 
 - Start each child or parent repository's commit review with its own transcript, relative-path tools, and candidate inventory. Keep other repository names only as boundary context so child and parent files are not mixed during review.
 - Let invalid ignore-request arguments return to the reviewer for correction without opening a dialog or ending the run. Preserve stopping behavior for failed Git operations, cancellation, required noninteractive input, and ignore mutations.
+- Distinguish ignore candidates absent from the selected repository from changed files that are not staged additions. Accept native Windows candidate separators without changing POSIX literal backslashes. Label the repository separately instead of displaying a misleading concatenated path. Preserve retry/publication context within a repository, code-owned whole-file commits, hooks, ignore approvals, and actual-Git result reporting without new runtime gates.
 - Refresh the Windows Claude Chrome native-host wrapper to use the current user's npm-installed executable instead of the previous user's WinGet path.
 
 ## 2026-11-04: Share one archive uploader across Pi sessions

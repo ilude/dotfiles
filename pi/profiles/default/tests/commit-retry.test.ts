@@ -21,7 +21,7 @@ vi.mock("@earendil-works/pi-coding-agent", async (importOriginal) => {
 });
 
 const model: Model<"openai-responses"> = {
-	id: "gpt-6-luna", name: "offline", api: "openai-responses", provider: "openai",
+	id: "gpt-6.1-terra", name: "offline", api: "openai-responses", provider: "openai",
 	baseUrl: "https://unused.invalid", reasoning: false, input: ["text"],
 	cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 1000, maxTokens: 1000,
 };
@@ -49,10 +49,11 @@ const root = realpathSync(process.cwd());
 
 beforeEach(() => {
 	responses = []; requests = []; commits = []; progress = []; changed = new Map(); index = []; committedPaths = [];
-	doubles.getAvailable.mockReset().mockResolvedValue([{ ...model, id: "gpt-5.6-luna" }, model]);
+	doubles.getAvailable.mockReset().mockResolvedValue([{ ...model, id: "gpt-5.6-terra" }, model]);
 	doubles.shell.mockReset().mockImplementation(async (id) => ({ content: [{ type: "text", text: `completed ${id}` }], details: {} }));
 	doubles.stream.mockReset().mockImplementation((_model, context, options) => {
 		expect(options?.maxRetries).toBe(0);
+		expect(options?.reasoning).toBe(_model.provider === "anthropic" ? "low" : "medium");
 		const system = context.messages.find((message) => message.role === "system");
 		requests.push({ systemPrompt: typeof system?.content === "string" ? system.content : "", messages: structuredClone(context.messages), tools: system?.toolsAdded });
 		const response = responses.shift();
@@ -124,7 +125,7 @@ it.each([false, true])("retries the same response context after a completed insp
 	changed.set("unfinished.txt", " M");
 	responses.push({ message: message([inspect("staged review")], "toolUse") }, { message: failed(), started }, { message: message([submit("reviewed commit")], "toolUse") });
 	const result = await start().run;
-	expect(result.model).toBe("openai/gpt-6-luna:low");
+	expect(result.model).toBe("openai/gpt-6.1-terra:medium");
 	expect(doubles.getAvailable).toHaveBeenCalledWith("openai", { signal: expect.any(AbortSignal) });
 	expect(commits).toEqual(["reviewed commit"]);
 	expect(requests[2]).toEqual(requests[1]);
@@ -309,17 +310,17 @@ const haiku = { ...model, id: "claude-haiku-4-5", provider: "anthropic", api: "a
 const withHaiku = () => doubles.getAvailable.mockImplementation(async provider => provider === "anthropic"
 	? [{ ...haiku, id: "claude-haiku-4-5-20251001" }, { ...haiku, id: "claude-haiku-4-4" }, haiku] : [model]);
 
-it("continues the same transcript on the latest Anthropic Haiku after Luna fails", async () => {
+it("continues the same transcript on the latest Anthropic Haiku after Terra fails", async () => {
 	withHaiku(); changed.set("unfinished.txt", "M ");
 	const models: string[] = [];
 	doubles.stream.mockImplementation(((original) => (m, c, o) => { models.push(m.id); return original(m, c, o); })(doubles.stream.getMockImplementation()!));
 	responses.push({ message: message([inspect("staged review")], "toolUse") }, { message: failed("insufficient_quota") }, { message: message([submit("reviewed commit")], "toolUse") });
 	const result = await start().run;
-	expect(models).toEqual(["gpt-6-luna", "gpt-6-luna", "claude-haiku-4-5"]); expect(requests[2]!.messages).toEqual(requests[1]!.messages);
+	expect(models).toEqual(["gpt-6.1-terra", "gpt-6.1-terra", "claude-haiku-4-5"]); expect(requests[2]!.messages).toEqual(requests[1]!.messages);
 	expect(result.model).toBe("anthropic/claude-haiku-4-5:low"); expect(commits).toEqual(["reviewed commit"]);
 });
 
-it("uses Haiku when no Luna model is available", async () => {
+it("uses Haiku when no Terra model is available", async () => {
 	doubles.getAvailable.mockImplementation(async provider => provider === "anthropic" ? [haiku] : []); responses.push({ message: done() });
 	expect((await start().run).model).toBe("anthropic/claude-haiku-4-5:low");
 });
