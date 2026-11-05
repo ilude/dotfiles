@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-05: Record the initial Hatchery runner direction
+
+- Accept TypeScript/Node with pinned Alchemy v2, our own narrow Proxmox provider, and SSH configuration facilities for initial work. Place the runner command on the existing onramp host, called over SSH by existing agents, with persistent local allocation state and BWS-backed configuration rather than new permanent infrastructure.
+- Record the decision, reasons, experiment findings, validation limits, published checkpoint, and remaining work in Hatchery's handoff and align its design documents. The runner is not deployed, the public recipe/command API remains open, and broader disposable guest ownership still requires agreement; existing OpenTofu guests remain unchanged.
+
 ## 2026-11-05: Evaluate Alchemy with one disposable Proxmox VM
 
 - Add a pinned Alchemy v2 experiment in Hatchery with a custom Proxmox VM resource and an agentless SSH-managed file. Keep the product API, framework selection, and broader compute ownership unresolved.
