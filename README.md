@@ -24,6 +24,8 @@ For contributor and coding-agent onboarding, start with `AGENTS.md`.
 
 ## Installation
 
+Recursive cloning requires access to the private `homelab-infra` Forgejo submodule. Configure a machine-local `forgejo` SSH alias and your authorized personal key first; its URL is `git@forgejo:mike/homelab-infra.git`. Keep the actual service address in local SSH configuration, not this repository. The submodule's [hosting instructions](modules/homelab-infra/README.md#repository-hosting) include a public-safe example.
+
 > **Note:** Dotbot uses `force: true` for symlinks, which will overwrite existing files at target locations (including `~/.claude/`). Back up any existing configuration before running the installer for the first time.
 
 ### Linux / Git Bash / MSYS2

@@ -8,5 +8,5 @@
 	branch = feature/v2-broker-core
 [submodule "homelab-infra"]
 	path = modules/homelab-infra
-	url = git@github.com:ilude/homelab-infra.git
+	url = git@forgejo:mike/homelab-infra.git
 	branch = main

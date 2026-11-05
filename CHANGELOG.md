@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-04: Move homelab infrastructure hosting to private Forgejo
+
+- Move the canonical `homelab-infra` repository to private Forgejo under `mike/homelab-infra`, preserving Git history, branches, and tags. Retain the GitHub repository as an archived, read-only migration snapshot rather than deleting it.
+- Use `git@forgejo:mike/homelab-infra.git` for the submodule and its origin. Each workstation needs a local `forgejo` SSH alias and an authorized personal key before recursive cloning; keep the real service address out of tracked configuration. Preserve public-safe source rules, BWS ownership, and the separate nested `values/` repository.
+
 ## 2026-11-04: Use Terra at medium effort for Pi commits
 
 - Switch `/commit` from latest Luna at low effort to latest available native OpenAI Terra at medium effort, currently `gpt-6.1-terra`, to try improved review reliability alongside the repository-scoping repair.
