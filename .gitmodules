@@ -4,9 +4,13 @@
 	ignore = dirty
 [submodule "onclave"]
 	path = modules/onclave
-	url = git@github.com:traefikturkey/onclave.git
+	url = git@forgejo:mike/onclave.git
 	branch = feature/v2-broker-core
 [submodule "homelab-infra"]
 	path = modules/homelab-infra
 	url = git@forgejo:mike/homelab-infra.git
+	branch = main
+[submodule "hatchery"]
+	path = modules/hatchery
+	url = git@forgejo:mike/hatchery.git
 	branch = main

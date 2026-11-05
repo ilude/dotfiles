@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-11-05: Start Hatchery as a disposable-compute product
+
+- Add private Forgejo `mike/hatchery` as the `modules/hatchery/` submodule on `main`, with a documentation-only PRD, architecture direction, decision ledger, contributor instructions, and a portable project design skill.
+- Record ephemeral, immutable, code-defined compute for agents, our own agentless SSH configuration facilities, SSH-key authentication across controlled transports, and abstract secret access with BWS first. Preserve open language, microVM, and provisioning-ownership decisions rather than treating proposals as implemented behavior.
+- Keep Hatchery product work separate from homelab-infra deployment and site configuration. No compute resources, service deployments, or existing Proxmox ownership contracts change during repository setup.
+
+## 2026-11-05: Move the active Onclave branch and release path to Forgejo
+
+- Move only `feature/v2-broker-core` and its full ancestor history to private `mike/onclave`, keeping that branch as the Forgejo default and local tracking branch. Retain the GitHub repository read-only after replacement verification; do not copy the other branch refs.
+- Run checks and SHA-tagged core image publication in Forgejo Actions and the private `onclave` organization's container namespace. Package privacy follows its owning user or organization, not the linked private Git repository, so keep the Git repository at `mike/onclave` without changing the `mike` account's visibility. Add an Onclave-scoped container runner instance on the existing host without broadening the values repository's deployment-runner registration. Keep publisher and read-only deployment credentials separate and BWS-owned.
+- Extend managed Onclave deployment to authenticated commit-pinned Forgejo source files and private OCI pulls while preserving source checksums, immutable image digests, and the core-only rollout's pin-only boundary. Use the normal service role for the initial hosting-provider switch.
+- Restore the existing managed Forgejo HTTPS service and correct its stale runner host alias. Supply inventory-backed Forgejo host mappings to the runner's job containers and the Onclave deployment host, retaining HTTPS verification. Use the deploy user's registry authentication file through the supported systemd environment for automatic Podman pulls. Preserve exact authenticated SSH host keys across multiple direct-access handoffs in one playbook rather than clearing keys collected earlier in that execution.
+
 ## 2026-11-04: Move homelab infrastructure hosting to private Forgejo
 
 - Move the canonical `homelab-infra` repository to private Forgejo under `mike/homelab-infra`, preserving Git history, branches, and tags. Retain the GitHub repository as an archived, read-only migration snapshot rather than deleting it.
