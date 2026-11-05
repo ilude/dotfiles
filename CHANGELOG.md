@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-11-05: Separate Onclave images from production deployment
+
+- Keep Onclave responsible for application code, image builds, and local development/test assets. Publish the source-SHA image first and advance the private registry's `latest` tag only after successful checks and publication; embed the source revision in the image instead of injecting it from infrastructure.
+- Make homelab-infra's native Quadlets the production authority and move PostgreSQL backup/restore helpers there. Retire source-file downloads, application commit/checksum/tag/digest inputs, and the old commit-based core rollout rather than maintaining competing deployment paths. Preserve dependency pins, native storage, application secrets, and existing service topology.
+- Use Podman's daily rootless auto-update timer for Onclave core only, with persistent read-only private-registry authentication. Configuration applies retain the installed application image, including when a configuration change requires a restart; first installation pulls `latest`, and the updater owns subsequent image advancement.
+- Keep `traefikturkey/onclave` available and unarchived. Preserve the separate Onclave, homelab-infra, and workstation repositories and their ownership boundaries.
+
 ## 2026-11-05: Start Hatchery as a disposable-compute product
 
 - Add private Forgejo `mike/hatchery` as the `modules/hatchery/` submodule on `main`, with a documentation-only PRD, architecture direction, decision ledger, contributor instructions, and a portable project design skill.
