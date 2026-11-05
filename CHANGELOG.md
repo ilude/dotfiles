@@ -37,6 +37,10 @@
 
 - Move the canonical `homelab-infra` repository to private Forgejo under `mike/homelab-infra`, preserving Git history, branches, and tags. Retain the GitHub repository as an archived, read-only migration snapshot rather than deleting it.
 - Use `git@forgejo:mike/homelab-infra.git` for the submodule and its origin. Each workstation needs a local `forgejo` SSH alias and an authorized personal key before recursive cloning; keep the real service address out of tracked configuration. Preserve public-safe source rules, BWS ownership, and the separate nested `values/` repository.
+## 2026-11-05: Allow one-response approval of flagged web fetches
+
+- When Luna flags fetched content, show the user its URL and flagged excerpts and allow reading that response once as untrusted source material. This supports capturing and reviewing deliberately instructional documents, such as agent prompts, without treating their contents as permission to execute them.
+- Preserve screening on every fetch, blocking without approval or a UI, cancellation, acquisition routing, and search-result behavior. Approved responses carry a warning and `flagged-approved` metadata; no allowlist or model-controlled bypass is added. Reload Pi to load the change.
 
 ## 2026-11-04: Use Terra at medium effort for Pi commits
 

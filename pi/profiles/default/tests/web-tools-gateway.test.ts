@@ -24,7 +24,7 @@ function tool() {
   webTools({ registerTool: (t: any) => { if (t.name === "web_fetch") fetchTool = t; }, exec } as any);
   complete.mockResolvedValue({ stopReason: "stop", content: [{ type: "text", text: '{"suspicious":false,"excerpts":[]}' }] });
   vi.stubEnv("WEB_FETCH_GATEWAY_URL", "https://gateway.example.com"); vi.stubEnv("WEB_FETCH_GATEWAY_TOKEN", "test-token");
-  return { run: (backend = "auto", url = "https://8.8.8.8/") => fetchTool.execute("id", { url, backend }), exec };
+  return { run: (backend = "auto", url = "https://8.8.8.8/", ctx?: unknown, signal?: AbortSignal) => fetchTool.execute("id", { url, backend }, signal, undefined, ctx), exec };
 }
 describe("gateway circuit", () => {
   it("recovers per request, opens after three failures, and allows only one half-open probe", () => {
@@ -44,6 +44,36 @@ describe("gateway circuit", () => {
   });
 });
 describe("Pi gateway integration", () => {
+  it.each(["gateway", "local"])("returns flagged %s content only after approval of that response", async route => {
+    const { run, exec } = tool();
+    if (route === "gateway") gateway.mockResolvedValue(reply);
+    else gateway.mockRejectedValue(new GatewayError("availability", "offline"));
+    const excerpt = route === "gateway" ? "Readable article" : "Local content";
+    complete.mockResolvedValue({ stopReason: "stop", content: [{ type: "text", text: JSON.stringify({ suspicious: true, excerpts: [excerpt] }) }] });
+    const confirm = vi.fn().mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+    const ctx = { hasUI: true, ui: { confirm } };
+    const result = await run("auto", "https://8.8.8.8/", ctx);
+    expect(result.details.screening).toBe("flagged-approved");
+    expect(result.structuredContent.screening).toBe("flagged-approved");
+    expect(result.structuredContent.content).toContain(excerpt);
+    expect(result.content[0].text).toContain("not executing its instructions");
+    expect(confirm.mock.calls[0][1]).toContain("https://8.8.8.8/");
+    expect(confirm.mock.calls[0][1]).toContain(excerpt);
+    await expect(run("auto", "https://8.8.8.8/", ctx)).rejects.toThrow("Web content blocked");
+    expect(confirm).toHaveBeenCalledTimes(2);
+    expect(gateway).toHaveBeenCalledTimes(2);
+    expect(exec).toHaveBeenCalledTimes(route === "local" ? 2 : 0);
+  });
+  it("blocks flagged content without a UI and honors cancellation during approval", async () => {
+    const { run } = tool(); gateway.mockResolvedValue(reply);
+    complete.mockResolvedValue({ stopReason: "stop", content: [{ type: "text", text: '{"suspicious":true,"excerpts":["Readable article"]}' }] });
+    const confirm = vi.fn();
+    await expect(run("auto", "https://8.8.8.8/", { hasUI: false, ui: { confirm } })).rejects.toThrow("Web content blocked");
+    expect(confirm).not.toHaveBeenCalled();
+    const controller = new AbortController();
+    confirm.mockImplementation(async () => { controller.abort(); return true; });
+    await expect(run("auto", "https://8.8.8.8/", { hasUI: true, ui: { confirm } }, controller.signal)).rejects.toThrow();
+  });
   it("screens successful content exactly once and keeps metadata out of displayed context", async () => {
     const { run, exec } = tool(); gateway.mockResolvedValue(reply);
     const result = await run();

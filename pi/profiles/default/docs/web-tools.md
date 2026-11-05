@@ -40,7 +40,7 @@ extraction fails. This sends the original URL, including its query string, to
 `r.jina.ai`. Private/local URLs remain directly accessible and are not sent to
 Jina. Metadata checks also cover IPv4-mapped IPv6. Local Node fetching remains
 an inherited check-before-fetch path, not a complete DNS-pinning boundary. There are no domain allowlists or
-approval prompts. The search fallback chain shares a 10-second deadline. Pi cancellation
+network-access approval prompts. The search fallback chain shares a 10-second deadline. Pi cancellation
 propagates into requests, extraction, and review; process failures are errors.
 
 Returned source content is bounded to 45000 bytes/1800 lines before review;
@@ -99,8 +99,13 @@ The review returns a structured verdict with up to three exact suspicious
 excerpts. It looks for attempts to control the consuming assistant, not general
 subject-matter safety. Ordinary documentation and quoted attack examples are
 not inherently injections. Clean content is returned without a screening banner.
-A suspicious verdict throws a generic tool error before any fetched content or
-flagged excerpt is returned to the conversation. Reviewer prose is not passed
+A suspicious fetch verdict opens a user confirmation dialog when a UI is available,
+showing the requested URL and up to three flagged excerpts as untrusted text. Approval
+releases only that already-fetched response with a warning and `flagged-approved`
+screening metadata. It permits reading, capture, and review, not execution of embedded
+instructions. No approval is remembered and the model cannot grant it through tool
+arguments. Declining, cancellation, or having no UI keeps flagged content blocked.
+Search results retain the existing block behavior. Reviewer prose is not passed
 through as instructions. Nested usage is returned to Pi for accounting.
 
 Review has a 15-second deadline. An unavailable model, timeout, or malformed
@@ -110,7 +115,7 @@ returning content. No fallback reviewer or retry loop is added.
 
 This is best-effort detection, not a complete security boundary: Luna can miss
 attacks or be influenced by them. Content it flags is blocked from the main
-conversation context. Detection quality needs further research and evaluation
+conversation context unless the user approves that fetch response once. Detection quality needs further research and evaluation
 against realistic attacks and benign documentation. This port does not claim
 measured injection resistance.
 
@@ -131,6 +136,6 @@ fixtures. Linux gateway package checks run in its owning infrastructure reposito
 (network and configured profile authentication required; consumes model usage).
 The live tests cover ordinary, exact-phrase, site-restricted, and official-documentation
 queries, fetch a relevant returned URL, and check that both outputs receive
-Luna screening. A flagged result fails the tool without returning source content. An initial live probe falsely flagged a tool-generated search
+Luna screening. A flagged result without user approval fails the tool without returning source content. An initial live probe falsely flagged a tool-generated search
 header; headers were removed from review input and empty results now bypass
 review. This is one integration check, not a detection-quality benchmark.
