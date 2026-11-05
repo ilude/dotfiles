@@ -19,6 +19,8 @@ This vault is a context pool, not a build mandate. Promote ideas only when they 
 
 - [SearXNG search reliability](projects/searxng-search-reliability.md) - controlled engine/proxy/solver findings, managed rollout, and evidence limits.
 
+- [CLIProxyAPI account hub](projects/cliproxyapi-account-hub.md) - partial capture of the t3dotgg multi-account hub guide with reviewed comments and forks, cache and routing findings, and coverage limits.
+
 - [claude_prompts](claude_prompts.md) - source-based extraction of Claude Code system-prompt text and prompt-selection rules.
 - [source-control-and-agentic-dev-services](projects/source-control-and-agentic-dev-services.md) - GitHub-alternative and agentic developer-tool services discussed positively in the GitHub alternatives video.
 - [agent-skills-ecosystem](projects/agent-skills-ecosystem.md) - skill standards, repositories, validators, and meta-skill patterns.
