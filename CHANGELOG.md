@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-11-05: Evaluate Alchemy with one disposable Proxmox VM
+
+- Add a pinned Alchemy v2 experiment in Hatchery with a custom Proxmox VM resource and an agentless SSH-managed file. Keep the product API, framework selection, and broader compute ownership unresolved.
+- Add a homelab-owned controller adapter that reuses validated BWS configuration and the existing pinned Debian cloud image. Use a tiny per-guest NoCloud ISO for DHCP, guest-agent startup, and a dedicated SSH key rather than requiring router access or a static address. Keep credentials and isolated Alchemy state outside tracked source and do not reuse OpenTofu state.
+- Record the explicitly approved ownership exception for one scratch VM and its bootstrap ISO. Existing guests, services, DNS, routers, and OpenTofu resources remain outside the experiment. The syntax-comparison examples remain hypothetical.
+- Distinguish unreachable SSH state from a confirmed missing file. Alchemy recreates missing resources before updating drifted ones, so reporting a file as missing merely because its VM is stopped can block the VM-first repair path.
+- Exercise live creation and SSH readiness, no-op deployment, a file-only update, stopped-VM drift repair, and repeated teardown. Independently confirm the scratch VM, ISO, and disks are gone while preexisting guest IDs remain. Keep explicit drift checks distinct from unchanged deployments; this is not a general production-readiness result.
+
 ## 2026-11-05: Separate Onclave images from production deployment
 
 - Keep Onclave responsible for application code, image builds, and local development/test assets. Publish the source-SHA image first and advance the private registry's `latest` tag only after successful checks and publication; embed the source revision in the image instead of injecting it from infrastructure.
