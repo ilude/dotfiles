@@ -10,7 +10,3 @@
 	path = modules/homelab-infra
 	url = git@forgejo:mike/homelab-infra.git
 	branch = main
-[submodule "hatchery"]
-	path = modules/hatchery
-	url = git@forgejo:mike/hatchery.git
-	branch = main

@@ -1,11 +1,5 @@
 # Changelog
 
-## 2026-11-05: Start Hatchery as a disposable-compute product
-
-- Add private Forgejo `mike/hatchery` as the `modules/hatchery/` submodule on `main`, with a documentation-only PRD, architecture direction, decision ledger, contributor instructions, and a portable project design skill.
-- Record ephemeral, immutable, code-defined compute for agents, our own agentless SSH configuration facilities, SSH-key authentication across controlled transports, and abstract secret access with BWS first. Preserve open language, microVM, and provisioning-ownership decisions rather than treating proposals as implemented behavior.
-- Keep Hatchery product work separate from homelab-infra deployment and site configuration. No compute resources, service deployments, or existing Proxmox ownership contracts change during repository setup.
-
 ## 2026-11-05: Move the active Onclave branch and release path to Forgejo
 
 - Move only `feature/v2-broker-core` and its full ancestor history to private `mike/onclave`, keeping that branch as the Forgejo default and local tracking branch. Retain the GitHub repository read-only after replacement verification; do not copy the other branch refs.
