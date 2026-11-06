@@ -2,6 +2,7 @@
 
 ## 2026-11-05: Restore fresh Pi registration with Onclave
 
+- Add concise infrastructure contributor guidance for new persistent container directories: distinguish host-managed and container-owned paths, account for rootless UID/GID mapping, preserve established ownership during normal applies, and verify service writes after reapplying configuration.
 - Preserve RabbitMQ's existing container-owned data-directory permissions during normal infrastructure applies. The previous directory setup reset ownership to the host deploy user, preventing RabbitMQ from creating new agent queues while API health endpoints still returned success.
 - Repair the live directory ownership and restart RabbitMQ and core to recover failed queues without deleting queues, changing databases, or advancing the application image. Verify fresh signed registration, heartbeat, delivery polling, and a native default-profile Pi connection, then reapply configuration and confirm ownership is retained. Add a regression check for first-install initialization versus existing container-owned storage.
 
