@@ -17,6 +17,8 @@ a roadmap or commitment to build everything captured here.
   experiments, datasets, deployment candidates, and user-effort override policy.
 - [osint/index](osint/index.md) - OSINT directories, agent integrations, reading,
   and collection-accountability research.
+- [homelab-os/index](homelab-os/index.md) - opinionated, agent-first Linux appliance,
+  base OS and virtualization research, and Proxmox development.
 
 ## Topic convention
 

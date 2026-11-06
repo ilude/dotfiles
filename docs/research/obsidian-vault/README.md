@@ -13,6 +13,7 @@ it needs more specific guidance.
 - [agent-workflows/index](agent-workflows/index.md) — agent workflow research and Pi/dotfiles ideas
 - [prompt-router/index](prompt-router/index.md) — prompt-router curation, experiments, datasets, and routing policy research
 - [osint/index](osint/index.md) - OSINT directories, agent integrations, reading, and collection-accountability research
+- [homelab-os/index](homelab-os/index.md) - opinionated, agent-first Linux appliance, base OS research, and Proxmox development
 
 ## Current topics
 
@@ -23,6 +24,8 @@ it needs more specific guidance.
   candidates, and user-effort override policy.
 - `osint/` - OSINT resource directories, agent-assisted investigation sources,
   and provenance-preserving collection guidance.
+- `homelab-os/` - immutable Linux appliance exploration, provisioning and updates,
+  and Kubernetes/KubeVirt candidates.
 
 ## Adding a topic
 
