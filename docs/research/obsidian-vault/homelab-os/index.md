@@ -122,11 +122,18 @@ stack. Its small footprint and compatibility have not been measured.
 
 ## Discussion handoff
 
-The technical discussion paused after the operator identified KubeVirt as an
-option if Kubernetes is the base. This corrected the earlier assumption that
-host-installed QEMU/libvirt packaging had to be the deciding base-OS constraint.
-KubeVirt supplies that userspace; host kernel, device access, storage, and runtime
-compatibility still need evaluation. Firecracker remains separate.
+The current thread is whether k3s plus KubeVirt is a practical foundation for
+a single-node appliance that can grow. The operator's KubeVirt suggestion
+corrected the earlier assumption that host-installed QEMU/libvirt packaging had
+to be the deciding base-OS constraint. KubeVirt supplies that userspace; host
+kernel, device access, storage, and runtime compatibility still need evaluation.
+Firecracker remains separate.
+
+[Follow-up research](kubernetes-first-research.md) established single-node
+operation as a normal topology, documented k3s resource baselines and datastore
+growth options, and identified persistent k3s state/token requirements. Aggregate
+appliance overhead remains unmeasured; no datastore or node-role policy was
+selected.
 
 The operator pushed back on repeated abstract product framing and hand-waving.
 The useful discussion is concrete technical choices, evidence, and maintenance
@@ -138,9 +145,34 @@ material requirements and research findings. Exact wording and the full sequence
 of deliberation are not archived here; the source session ID is a reference, not
 an embedded transcript. The current architecture remains exploratory.
 
+## Operator-supplied reference
+
+- [YouTube video: 2dD4HXg-YJ4](https://www.youtube.com/watch?v=2dD4HXg-YJ4)
+
+Status: unreviewed. The operator supplied this URL immediately before requesting
+a portable, committed handoff. Its title and transcript have not been retrieved,
+and no claims or recommendations from it have been incorporated into the notes.
+
+## Resume on another machine
+
+Suggested opening prompt for a fresh session:
+
+> Read `docs/research/obsidian-vault/homelab-os/README.md` and all linked topic
+> notes. Continue the concrete technical discussion about an opinionated,
+> agent-first, immutable homelab OS, developed on Proxmox first. We are evaluating
+> Hadron/Kairos or Flatcar, with k3s plus KubeVirt as a possible foundation and
+> Firecracker still separate. No stack has been selected and no implementation
+> has been authorized. The index contains a user-supplied YouTube reference that
+> has not yet been reviewed. Preserve the distinction between researched facts,
+> proposals, and operator decisions.
+
+The notes must be present in the checkout on the other machine. A local commit
+alone does not publish them to the repository remote.
+
 ## Notes
 
 - [Base OS and virtualization research](base-os-research.md)
+- [Kubernetes-first follow-up](kubernetes-first-research.md)
 - [Bootstrap, updates, and Proxmox development](proxmox-development.md)
 - [Topic entry point](README.md)
 - [Vault index](../index.md)

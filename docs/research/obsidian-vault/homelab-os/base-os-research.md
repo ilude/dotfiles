@@ -197,5 +197,9 @@ Flatcar remains a comparison candidate, with an explicit ZFS/update caveat.
 Neither is selected. KubeVirt prevents absence of a host libvirt package from
 being used as a premature rejection criterion.
 
-Ceph, Btrfs, Samba, NFS, S3, PXE enrollment, resource overhead, and the agent
-implementation have not received equivalent compatibility research.
+The [Kubernetes-first follow-up](kubernetes-first-research.md) covers documented
+resource baselines, single-node operation, datastore growth, and first-host
+state. Aggregate runtime overhead is still unmeasured.
+
+Ceph, Btrfs, Samba, NFS, S3, PXE enrollment, and the agent implementation have not
+received equivalent compatibility research.
