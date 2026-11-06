@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-05: Clarify Hatchery's long-term replacement goal
+
+- Record the operator's goal for Hatchery to replace homelab-infra once its ideas prove out. Keep disposable compute as the initial proving ground rather than a permanent product boundary; the current management split is transitional, with no immediate migration or expanded first-version scope.
+- Update Hatchery's PRD and related design documents, and require accepted product changes to be reflected in the PRD during the discussion rather than only in chat or supplementary records. Preserve current resource ownership until deliberate handover and keep private site configuration/secrets separate from reusable product code.
+
 ## 2026-11-05: Restore fresh Pi registration with Onclave
 
 - Add concise infrastructure contributor guidance for new persistent container directories: distinguish host-managed and container-owned paths, account for rootless UID/GID mapping, preserve established ownership during normal applies, and verify service writes after reapplying configuration.
