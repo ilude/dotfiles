@@ -32,6 +32,7 @@ let requestTexts: string[];
 const git = (cwd: string, ...args: string[]) => execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8", timeout: 15000, windowsHide: true });
 const bash = (command: string): Call => ({ name: "bash", arguments: { command } });
 const inspect = (command: string): Call => ({ name: "inspect", arguments: { command } });
+const blocked = (reason: string): Call => ({ name: "report_commit_blocker", arguments: { reason } });
 const inRepo = (cwd: string, command: string) => `git -C '${cwd.replace(/\\/g, "/")}' ${command}`;
 const ask = (candidate: string): Call => ({ name: "ask_ignore", arguments: { repo: ".", candidate, reason: "Generated cache with uncertain repository policy", pattern: candidate } });
 const plan = (subject: string, paths: string[], repo = ".", exclusions: Array<{ path: string; reason: string }> = []): Call => ({
@@ -101,7 +102,7 @@ it("stages before review, includes staged new files, and executes whole-file gro
 	expect(git(root, "show", "HEAD~1", "--format=", "--name-only").trim()).toBe("base.txt");
 	expect(readFileSync(join(root, "new.txt"), "utf8")).toBe("new staged contents\n"); expect(report.text).toContain("first");
 	expect(execs.some(args => /branch|remote|push/.test(args[2] ?? ""))).toBe(false);
-	expect(toolSets[0]).toEqual(["submit_commit_plan", "inspect", "read", "ask_ignore"]);
+	expect(toolSets[0]).toEqual(["submit_commit_plan", "report_commit_blocker", "inspect", "read", "ask_ignore"]);
 	expect(provider.stream).toHaveBeenCalledTimes(2);
 });
 
@@ -242,20 +243,22 @@ it.each(["restore --worktree -- base.txt", "restore -- base.txt", "restore -SW -
 	expect(readFileSync(join(root, "base.txt"), "utf8")).toBe("working edit\n"); expect(report.text).toContain("kept");
 });
 
-it("reports the complete failed conflict mutation command beyond 300 characters and blocks queued mutations", async () => {
+it("returns full failed conflict diagnostics, blocks queued mutations, and lets the agent correct the command", async () => {
 	const remote = join(root, ".git", "shell-failure-remote.git"), seed = join(root, ".git", "shell-failure-seed");
 	git(root, "init", "--quiet", "--bare", remote); git(root, "remote", "add", "origin", remote); git(root, "push", "--quiet", "-u", "origin", "main");
 	git(root, "clone", "--quiet", "--branch", "main", remote, seed); git(seed, "config", "user.name", "Offline test"); git(seed, "config", "user.email", "offline@example.invalid");
 	writeFileSync(join(seed, "base.txt"), "remote conflict\n"); git(seed, "add", "-A"); git(seed, "commit", "--quiet", "-m", "remote conflict"); git(seed, "push", "--quiet");
 	writeFileSync(join(root, "base.txt"), "local conflict\n"); git(root, "add", "-A"); git(root, "commit", "--quiet", "-m", "local conflict");
 	const command = `git add -- '${"missing".repeat(60)}'`;
-	steps.push(empty(), [bash(command), bash("git add base.txt && git commit -m forbidden")]);
-	const error = await run(true).catch(error => error as Error);
-	expect(String(error)).toContain(`shell command: ${command} failed`);
-	expect(git(root, "log", "-1", "--format=%s").trim()).toBe("local conflict");
-	expect(git(root, "diff", "--name-only", "--diff-filter=U").trim()).toBe("base.txt");
-	expect(execs.some(args => args[2] === "push")).toBe(false);
-}, 30_000);
+	steps.push(empty(), [bash(command), bash("git add base.txt && git commit -m forbidden")], bash("printf 'resolved conflict\\n' > base.txt && git add base.txt && git commit -m 'resolved merge'"));
+	const report = await run(true);
+	expect(requestTexts.some(text => text.includes(command))).toBe(true);
+	expect(requestTexts.some(text => text.includes("The previous mutation failed"))).toBe(true);
+	expect(git(root, "log", "-1", "--format=%s").trim()).toBe("resolved merge");
+	expect(git(root, "log", "--format=%s")).not.toContain("forbidden");
+	expect(git(root, "diff", "--name-only", "--diff-filter=U").trim()).toBe("");
+	expect(report.text).toContain("Pushed.");
+}, 60_000);
 
 it.each(["add -- nonexistent.txt", "restore --staged -- nonexistent.txt", "-C nonexistent commit -m failure", "push --recurse-submodules=no nonexistent HEAD:refs/heads/main"])("retains failed conflict-shell mutation behavior: %s", async operation => {
 	writeFileSync(join(root, "new.txt"), "remaining\n");
@@ -279,21 +282,52 @@ it("commits newly staged contents normally in an unborn repository", async () =>
 	const report = await run(); expect(report.text).toContain("first-commit"); expect(git(root, "show", "HEAD:first.txt")).toBe("first commit contents\n");
 });
 
-it("stops a failed hook without running a later planned commit", async () => {
+it("reviews a file arriving after a commit and preserves an operator exclusion across fresh staging", async () => {
+	writeFileSync(join(root, "new.txt"), "first group\n"); writeFileSync(join(root, "cache.txt"), "keep locally\n");
+	const hook = join(root, ".git", "hooks", "post-commit");
+	writeFileSync(hook, "#!/bin/sh\nif ! test -f arrived.txt; then printf 'new work\\n' > arrived.txt; fi\n"); chmodSync(hook, 0o755);
+	answers.push("Leave untracked");
+	steps.push(ask("cache.txt"), plan("first group", ["new.txt"], ".", [{ path: "cache.txt", reason: "Operator chose Leave untracked" }]), inspect("git diff --cached -- arrived.txt"), plan("new arrival", ["arrived.txt"], ".", [{ path: "cache.txt", reason: "Operator chose Leave untracked" }]));
+	const report = await run();
+	expect(git(root, "log", "-2", "--format=%s").trim()).toBe("new arrival\nfirst group");
+	expect(git(root, "show", "HEAD:arrived.txt")).toBe("new work\n");
+	expect(readFileSync(join(root, "cache.txt"), "utf8")).toBe("keep locally\n"); expect(git(root, "status", "--short").trim()).toBe("?? cache.txt");
+	expect(report.text).toContain("Left out: cache.txt"); expect(requestTexts.some(text => text.includes("Unfinished eligible changes"))).toBe(true);
+}, 45_000);
+
+it("reviews formatter hook edits and commits the corrected contents without bypassing the hook", async () => {
+	writeFileSync(join(root, "base.txt"), "unformatted\n");
+	const hook = join(root, ".git", "hooks", "pre-commit");
+	writeFileSync(hook, "#!/bin/sh\nif grep -q unformatted base.txt; then printf 'formatted\\n' > base.txt; echo 'formatter updated base.txt' >&2; exit 1; fi\n"); chmodSync(hook, 0o755);
+	steps.push(plan("initial", ["base.txt"]), inspect("git diff --cached -- base.txt"), plan("formatted contents", ["base.txt"]));
+	const report = await run();
+	expect(git(root, "show", "HEAD:base.txt")).toBe("formatted\n"); expect(git(root, "status", "--porcelain")).toBe("");
+	expect(report.text).toContain("formatted contents"); expect(requestTexts.some(text => text.includes("formatter updated base.txt"))).toBe(true);
+	expect(execs.filter(args => args[2] === "commit")).toHaveLength(2);
+}, 45_000);
+
+it("does not blindly run later groups after a hook failure when the agent reports a blocker", async () => {
 	writeFileSync(join(root, "new.txt"), "remaining\n"); writeFileSync(join(root, "later.txt"), "later group\n");
 	const hook = join(root, ".git", "hooks", "pre-commit"); writeFileSync(hook, "#!/bin/sh\necho test-hook-failure >&2\nexit 1\n"); chmodSync(hook, 0o755);
-	steps.push({ name: "submit_commit_plan", arguments: { repo: ".", commits: [{ subject: "failure", paths: ["new.txt"] }, { subject: "queued", paths: ["later.txt"] }], exclusions: [] } });
+	steps.push({ name: "submit_commit_plan", arguments: { repo: ".", commits: [{ subject: "failure", paths: ["new.txt"] }, { subject: "queued", paths: ["later.txt"] }], exclusions: [] } }, blocked("The hook requires a user decision; test-hook-failure"));
 	await expect(run()).rejects.toThrow(/test-hook-failure[\s\S]*Stopped/);
-	expect(git(root, "log", "-1", "--format=%s").trim()).toBe("baseline"); expect(git(root, "diff", "--cached", "--name-only").trim()).toBe("new.txt");
+	expect(git(root, "log", "-1", "--format=%s").trim()).toBe("baseline"); expect(git(root, "diff", "--cached", "--name-only").trim()).toBe("later.txt\nnew.txt");
 	expect(execs.filter(args => args[2] === "commit")).toHaveLength(1);
 });
 
-it("stops failed ignore-file mutation before a queued plan", async () => {
+it("repairs an ignore mutation without losing the operator's exclusion or running a queued plan", async () => {
 	writeFileSync(join(root, "cache.txt"), "remaining\n"); mkdirSync(join(root, ".gitignore")); answers.push("Add to .gitignore");
-	steps.push([ask("cache.txt"), plan("forbidden", ["cache.txt"])]);
-	await expect(run()).rejects.toThrow(/Stopped/);
-	expect(git(root, "diff", "--cached", "--name-only").trim()).toBe("cache.txt"); expect(git(root, "log", "-1", "--format=%s").trim()).toBe("baseline");
-});
+	steps.push([ask("cache.txt"), plan("forbidden", ["cache.txt"])], bash("rmdir .gitignore && printf 'cache.txt\\n' > .gitignore"), plan("ignore cache", [".gitignore"], ".", [{ path: "cache.txt", reason: "Operator chose Add to .gitignore" }]));
+	const stream = provider.stream.getMockImplementation()!;
+	provider.stream.mockImplementation((model, context, options) => {
+		if (!steps.length) throw new Error(`Unexpected review continuation: ${JSON.stringify(context.messages.filter(message => message.role === "toolResult"))}`);
+		return stream(model, context, options);
+	});
+	const report = await run();
+	expect(git(root, "show", "HEAD:.gitignore")).toBe("cache.txt\n"); expect(git(root, "ls-files", "cache.txt")).toBe("");
+	expect(readFileSync(join(root, "cache.txt"), "utf8")).toBe("remaining\n"); expect(report.text).toContain("Left out: cache.txt");
+	expect(git(root, "log", "--format=%s")).not.toContain("forbidden");
+}, 45_000);
 
 it("cancels an ignore question retaining already staged work", async () => {
 	writeFileSync(join(root, "cache.txt"), "remaining\n"); steps.push(ask("cache.txt"), plan("forbidden", ["cache.txt"]));
@@ -302,8 +336,9 @@ it("cancels an ignore question retaining already staged work", async () => {
 
 it("does not publish or report success when staged files remain without a submitted plan", async () => {
 	writeFileSync(join(root, "uncommitted.txt"), "must remain staged\n"); git(root, "add", "uncommitted.txt"); const before = git(root, "rev-parse", "HEAD");
+	steps.push(blocked("Cannot resolve the remaining uncommitted.txt changes without user intent"));
 	const error = await run(true).catch(error => error as Error);
-	expect(error).toBeInstanceOf(Error); expect(String(error)).toContain("No valid submit_commit_plan received"); expect(String(error)).toContain("No commits created."); expect(String(error)).not.toContain("Pushed.");
+	expect(error).toBeInstanceOf(Error); expect(String(error)).toContain("Commit blocked:"); expect(String(error)).toContain("No commits created."); expect(String(error)).not.toContain("Pushed.");
 	expect(execs.some(args => args[2] === "push" || args[2] === "pull")).toBe(false); expect(git(root, "rev-parse", "HEAD")).toBe(before);
 	expect(git(root, "diff", "--cached", "--name-only").trim()).toBe("uncommitted.txt"); expect(readFileSync(join(root, "uncommitted.txt"), "utf8")).toBe("must remain staged\n");
 });
@@ -320,10 +355,10 @@ it("corrects an invalid plan before committing and publishing through code", asy
 it("rejects persistently invalid plans without commits, publication, or index changes", async () => {
 	writeFileSync(join(root, "first.txt"), "first\n"); writeFileSync(join(root, "omitted.txt"), "second\n"); git(root, "add", "-A");
 	const indexBefore = git(root, "write-tree"), headBefore = git(root, "rev-parse", "HEAD");
-	steps.push(plan("partial", ["first.txt"]), plan("partial", ["first.txt"]), plan("partial", ["first.txt"]));
-	await expect(run(true)).rejects.toThrow(/Commit plan invalid after 2 corrections:[\s\S]*Missing path: "omitted.txt"/);
+	steps.push(plan("partial", ["first.txt"]), plan("partial", ["first.txt"]), plan("partial", ["first.txt"]), blocked('Cannot decide inclusion: Missing path: "omitted.txt"'));
+	await expect(run(true)).rejects.toThrow(/Commit blocked:[\s\S]*Missing path: "omitted.txt"/);
 	expect(git(root, "write-tree")).toBe(indexBefore); expect(git(root, "rev-parse", "HEAD")).toBe(headBefore);
-	expect(execs.some(args => args[2] === "commit" || args[2] === "push" || args[2] === "pull")).toBe(false); expect(provider.stream).toHaveBeenCalledTimes(3);
+	expect(execs.some(args => args[2] === "commit" || args[2] === "push" || args[2] === "pull")).toBe(false); expect(provider.stream).toHaveBeenCalledTimes(4);
 });
 
 it("reports actual local-remote push results independently of completion wording", async () => {

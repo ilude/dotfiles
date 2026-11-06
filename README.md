@@ -126,14 +126,31 @@ or authenticate. To install/update it independently on Windows/Linux:
 ```sh
 python scripts/install-forgejo-cli.py
 fj version
-fj auth login --host https://forgejo.example.com
+fj auth add-token --host https://forgejo.example.com
 ```
 
-Use your actual Forgejo URL for interactive login; tokens and machine-specific
-host configuration stay outside the repository. Windows ARM64 has no upstream
+For a self-hosted instance, first reuse an existing suitably scoped token from
+its authorized credential store. Create one under
+`https://forgejo.example.com/user/settings/applications` only if no suitable
+stored token is available. Supply it on stdin to `add-token` (`add-key` is an
+alias). Browser-based `fj auth login` supports
+only selected hosts, not arbitrary self-hosted instances. Use your actual Forgejo
+URL; do not put tokens in command arguments or shell history. Tokens and
+machine-specific host configuration stay outside the repository. Windows ARM64 has no upstream
 release binary in the researched release (v0.7.0). Its Linux x86-64 binary requires
 glibc 2.39 (as provided by Ubuntu 24.04); older distributions need a compatible
 distro package or source build rather than this release binary.
+
+### Herdr desktop configuration
+
+`~/.config/herdr-app/` links to [`config/herdr-app/`](config/herdr-app/) on
+Windows, macOS, Linux and WSL. Settings, keybindings, themes and personal layouts
+and mods belong there. Herdr's generated support files, shipped layouts/mods and
+local runtime state stay Git-ignored. Clone shipped layouts or mods before editing
+them because Herdr replaces its own copies on startup.
+
+This is separate from the existing Herdr TUI configuration in `config/herdr/`;
+its configuration and workflows remain unchanged.
 
 ### T3 Code alongside Herdr
 

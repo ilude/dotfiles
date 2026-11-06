@@ -34,6 +34,7 @@ function message(content: AssistantMessage["content"], stopReason: AssistantMess
 }
 const inspect = (command: string) => ({ type: "toolCall" as const, id: command, name: "inspect", arguments: { command } });
 const submit = (subject: string, paths = ["unfinished.txt"]) => ({ type: "toolCall" as const, id: subject, name: "submit_commit_plan", arguments: { repo: ".", commits: [{ subject, paths }], exclusions: [] } });
+const blocked = (reason: string) => message([{ type: "toolCall", id: "blocker", name: "report_commit_blocker", arguments: { reason } }], "toolUse");
 const done = () => message([{ type: "text", text: "Done" }]);
 const failed = (error = "WebSocket error") => message([submit("must-not-execute")], "error", error);
 type Response = { message: AssistantMessage; started?: boolean };
@@ -54,7 +55,7 @@ beforeEach(() => {
 	doubles.stream.mockReset().mockImplementation((_model, context, options) => {
 		expect(options?.maxRetries).toBe(0);
 		expect(options?.reasoning).toBe(_model.provider === "anthropic" ? "low" : "medium");
-		const system = context.messages.find((message) => message.role === "system");
+		const system = context.messages.filter((message) => message.role === "system").at(-1);
 		requests.push({ systemPrompt: typeof system?.content === "string" ? system.content : "", messages: structuredClone(context.messages), tools: system?.toolsAdded });
 		const response = responses.shift();
 		if (!response) throw new Error("Unexpected model request");
@@ -134,7 +135,7 @@ it.each([false, true])("retries the same response context after a completed insp
 	expect(result.text).toBe("abc0 reviewed commit");
 	expect(progress.filter(text => text.startsWith("Retrying"))).toEqual(["Retrying model response (1/3)…"]);
 	expect(git.mock.calls.some(([, args]) => args[2] === "branch")).toBe(false);
-	expect(requests[0]!.tools?.map(tool => tool.name)).toEqual(["submit_commit_plan", "inspect", "read", "ask_ignore"]);
+	expect(requests[0]!.tools?.map(tool => tool.name)).toEqual(["submit_commit_plan", "report_commit_blocker", "inspect", "read", "ask_ignore"]);
 	expect(requests).toHaveLength(3); // Accepted submission ends without a post-submit response.
 });
 
@@ -163,17 +164,26 @@ it.each([
 	expect(requests).toHaveLength(1); expect(commits).toEqual([]);
 });
 
-it("never retries a transport-looking code-executed hook failure or executes later groups", async () => {
+it("returns a hook failure to the agent for repair and a fresh plan, not a blind mutation retry", async () => {
 	changed.set("unfinished.txt", "M "); changed.set("later.txt", "M ");
 	const original = git.getMockImplementation()!;
-	git.mockImplementation(async (command, args, options) => args[2] === "commit"
+	let repaired = false;
+	git.mockImplementation(async (command, args, options) => args[2] === "commit" && !repaired
 		? { stdout: "", stderr: "WebSocket error from Git hook", code: 1, killed: false, truncated: false }
 		: original(command, args, options));
-	responses.push({ message: message([{ ...submit("first"), arguments: { repo: ".", commits: [{ subject: "first", paths: ["unfinished.txt"] }, { subject: "queued", paths: ["later.txt"] }], exclusions: [] } }], "toolUse") });
-	await expect(start().run).rejects.toThrow(/Git commit failed: WebSocket error from Git hook/);
-	expect(requests).toHaveLength(1);
-	expect(git.mock.calls.filter(([, args]) => args[2] === "commit")).toHaveLength(1);
+	doubles.shell.mockImplementation(async () => { repaired = true; return { content: [{ type: "text", text: "Corrected the local hook input" }], details: {} }; });
+	responses.push(
+		{ message: message([{ ...submit("first"), arguments: { repo: ".", commits: [{ subject: "first", paths: ["unfinished.txt"] }, { subject: "queued", paths: ["later.txt"] }], exclusions: [] } }], "toolUse") },
+		{ message: message([{ type: "toolCall", id: "fix", name: "bash", arguments: { command: "fix hook input" } }], "toolUse") },
+		{ message: message([submit("reviewed remaining work", ["unfinished.txt", "later.txt"])], "toolUse") },
+	);
+	const result = await start().run;
+	expect(JSON.stringify(requests[1])).toContain("WebSocket error from Git hook");
+	expect(requests[1]!.tools?.map(tool => tool.name)).toContain("bash");
+	expect(doubles.shell).toHaveBeenCalledOnce(); expect(commits).toEqual(["reviewed remaining work"]);
+	expect(git.mock.calls.filter(([, args]) => args[2] === "commit")).toHaveLength(2);
 	expect(progress.some(text => text.startsWith("Retrying"))).toBe(false);
+	expect(result.text).toContain("reviewed remaining work");
 });
 
 it("cancels availability lookup without starting the review agent", async () => {
@@ -214,9 +224,9 @@ it("retains captured push permission and annotations through recovery without a 
 });
 
 it.each(["M ", " M", "??"])("refuses success or publication when no plan is submitted for %s changes", async xy => {
-	changed.set("unfinished.txt", xy); responses.push({ message: done() });
+	changed.set("unfinished.txt", xy); responses.push({ message: done() }, { message: blocked("Cannot resolve the remaining unfinished.txt changes without user intent") });
 	const error = await start(undefined, true).run.catch(error => error as Error);
-	expect(error).toBeInstanceOf(Error); expect(String(error)).toContain("No valid submit_commit_plan received");
+	expect(error).toBeInstanceOf(Error); expect(String(error)).toContain("Commit blocked:");
 	expect(String(error)).toContain("unfinished.txt"); expect(String(error)).not.toContain("Pushed."); expect(commits).toEqual([]);
 	expect(git.mock.calls.some(([, args]) => args[2] === "push" || args[2] === "pull")).toBe(false);
 });
@@ -241,18 +251,19 @@ it("corrects an invalid plan in the same Agent using exact validator errors", as
 	expect(JSON.stringify(requests[1]!.messages.at(-1))).toContain('Missing path: \\"unfinished.txt\\"');
 });
 
-it.each([false, true])("stops after the initial invalid plan and two corrections without index mutations (schema error=%s)", async schemaError => {
+it.each([false, true])("allows the agent to correct more than two invalid plans without executing them (schema error=%s)", async schemaError => {
 	changed.set("unfinished.txt", "M ");
 	const invalid = schemaError ? { type: "toolCall" as const, id: "bad-schema", name: "submit_commit_plan", arguments: { repo: "." } } : submit("incomplete", ["unknown.txt"]);
-	for (let i = 0; i < 3; i++) responses.push({ message: message([invalid], "toolUse") });
-	await expect(start().run).rejects.toThrow(/Commit plan invalid after 2 corrections/);
-	expect(requests).toHaveLength(3); expect(commits).toEqual([]); expect(index).toEqual(["unfinished.txt"]);
-	expect(git.mock.calls.some(([, args]) => ["read-tree", "restore", "commit"].includes(args[2]!))).toBe(false);
+	for (let i = 0; i < 4; i++) responses.push({ message: message([invalid], "toolUse") });
+	responses.push({ message: message([submit("corrected")], "toolUse") });
+	await start().run;
+	expect(requests).toHaveLength(5); expect(commits).toEqual(["corrected"]);
+	expect(git.mock.calls.filter(([, args]) => args[2] === "commit")).toHaveLength(1);
 });
 
 it("rejects a plan omitting a staged file rather than committing the covered group", async () => {
 	changed.set("unfinished.txt", "M "); changed.set("omitted.txt", "M ");
-	responses.push({ message: message([submit("partial")], "toolUse") }, { message: done() });
+	responses.push({ message: message([submit("partial")], "toolUse") }, { message: blocked('Missing path: "omitted.txt"; cannot decide its inclusion') });
 	await expect(start().run).rejects.toThrow('Missing path: "omitted.txt"');
 	expect(commits).toEqual([]); expect(index).toEqual(["unfinished.txt", "omitted.txt"]);
 });
@@ -263,6 +274,67 @@ it.each([false, true])("code unstages explicit exclusions while preserving their
 	const result = await start().run;
 	expect(result.text).toContain("Left out: excluded.txt: applicable repository rule");
 	expect(changed.get("excluded.txt")).toBe(" M"); expect(index).toEqual([]); expect(commits).toEqual([]);
+});
+
+it("reviews files discovered after a successful commit without repeating completed groups", async () => {
+	changed.set("unfinished.txt", "M ");
+	const original = git.getMockImplementation()!;
+	git.mockImplementation(async (command, args, options) => {
+		const result = await original(command, args, options);
+		if (args[2] === "commit" && commits.length === 1) changed.set("arrived.txt", "??");
+		return result;
+	});
+	responses.push({ message: message([submit("first")], "toolUse") }, { message: message([inspect("review new arrival")], "toolUse") }, { message: message([submit("new arrival", ["arrived.txt"])], "toolUse") });
+	const result = await start().run;
+	expect(commits).toEqual(["first", "new arrival"]); expect(changed.size).toBe(0);
+	expect(JSON.stringify(requests[1])).toContain("Unfinished eligible changes");
+	expect(JSON.stringify(requests[1])).toContain("arrived.txt");
+	expect(result.text).toContain("abc0 first\nabc1 new arrival");
+});
+
+it("asks for the missing plan rather than failing on an ordinary text completion", async () => {
+	changed.set("unfinished.txt", "M ");
+	responses.push({ message: done() }, { message: message([submit("finished")], "toolUse") });
+	expect((await start().run).text).toContain("finished");
+	expect(JSON.stringify(requests[1])).toContain("Review is incomplete");
+});
+
+it("lets the agent repair failed preparation before staging and reviewing again", async () => {
+	changed.set("unfinished.txt", "M ");
+	const original = git.getMockImplementation()!;
+	let failed = false;
+	git.mockImplementation(async (command, args, options) => {
+		if (args[2] === "add" && !failed) {
+			failed = true;
+			return { stdout: "", stderr: "temporary staging problem", code: 1, killed: false, truncated: false };
+		}
+		return original(command, args, options);
+	});
+	responses.push({ message: message([inspect("diagnose staging problem")], "toolUse") }, { message: done() }, { message: message([submit("after repair")], "toolUse") });
+	const result = await start().run;
+	expect(JSON.stringify(requests[0])).toContain("temporary staging problem");
+	expect(requests[0]!.tools?.map(tool => tool.name)).not.toContain("submit_commit_plan");
+	expect(requests[0]!.tools?.map(tool => tool.name)).toContain("bash");
+	expect(commits).toEqual(["after repair"]); expect(result.text).toContain("after repair");
+});
+
+it("returns a non-conflict pull failure to the agent before retrying code-owned publication", async () => {
+	const original = git.getMockImplementation()!;
+	let failed = false;
+	git.mockImplementation(async (command, args, options) => {
+		if (args[2] === "pull" && !failed) {
+			failed = true;
+			return { stdout: "", stderr: "temporary transport problem", code: 1, killed: false, truncated: false };
+		}
+		if (args[2] === "ls-remote") return { stdout: "old-head\trefs/heads/main\n", stderr: "", code: 0, killed: false, truncated: false };
+		return original(command, args, options);
+	});
+	responses.push({ message: done() }, { message: message([inspect("diagnose publication transport")], "toolUse") }, { message: done() }, { message: done() });
+	const result = await start(undefined, true).run;
+	expect(JSON.stringify(requests[1])).toContain("temporary transport problem");
+	expect(git.mock.calls.filter(([, args]) => args[2] === "pull")).toHaveLength(2);
+	expect(git.mock.calls.filter(([, args]) => args[2] === "push")).toHaveLength(1);
+	expect(result.text).toContain("Pushed.");
 });
 
 it("uses a longer timeout only for publication", async () => {

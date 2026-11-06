@@ -1,5 +1,41 @@
 # Changelog
 
+## 2026-11-06: Let the commit agent resolve routine workflow problems
+
+- Return incomplete execution, new files, hook changes, and ordinary Git/publication errors to the private reviewer for inspection, scoped repair, and a fresh plan instead of immediately failing the whole command. Preserve completed commits and require remaining contents to be reviewed rather than replaying the old snapshot.
+- Allow plan correction within the existing active-work deadline instead of imposing a two-correction limit. Give the agent an explicit blocker report for problems requiring user intent or access; cancellation, terminal provider failures, and unconfirmed push outcomes still stop safely.
+- Keep normal hooks, ignore approval, reviewed whole-file execution, code-owned publication, child-before-parent ordering, working-file preservation, and actual-state reporting. No new checks or approval gates run during `/commit`; reload the extension to load the runtime change.
+
+## 2026-11-06: Keep routine commit exclusions quiet
+
+- Let the default `/commit` reviewer use ordinary Git judgment to exclude obvious generated artifacts and caches without asking, including files not yet covered by ignore rules. Exclude newly added ignored files by default instead of turning every match into an inclusion question.
+- Reserve ignore dialogs for consequential inclusion ambiguities and concrete reasons to intentionally include ignored files. Keep explicit approval for ignore exceptions, existing tracked-file handling, working-file preservation, staging, and commit execution unchanged; no artifact classifier or new runtime gate is added.
+
+## 2026-11-06: Distinguish Pi's Herdr desktop and TUI hosts
+
+- Keep one default Pi profile and add runtime host context for Herdr desktop, original TUI, core-only terminals and ordinary terminals. Verify desktop membership through the caller's exact core terminal and space/tab labels; leave failed probes explicitly unverified rather than guessing from installed apps or terminal branding.
+- Route the existing `herdr` skill to separate desktop/core guidance and the preserved original TUI procedures. Read the desktop app's generated guide and API declarations for the installed version instead of copying its manual.
+- Keep existing TUI tools, visible-subagent behavior, tab launching, plans, naming and update coordination unchanged. These features are not yet ported to desktop. Load the new context and skill catalog with a settled `/reload` or fresh Pi session; no separate profile, dependency installation or desktop configuration change is needed.
+
+## 2026-11-06: Add the dedicated Hatchery command runner
+
+- Implement the approved non-onramp workflow: homelab-infra provisions a dedicated controller LXC and delivers explicit BWS-backed primary/secondary Proxmox bindings; Hatchery manages only newly allocated workload VMs. Existing guests, infrastructure ownership, networking, and production services remain unchanged.
+- Add the SSH-invoked `hatchery` command for plan/create, status/readiness, exec, upload/download, and destroy. Preserve immutable allocation identity, per-allocation SSH trust and isolated persistent state; serialize controller commands without adding a daemon, API, queue, scheduler, or database. Missing target images fail before mutation, with no fallback.
+- Install checksum-verified source and Node 26, pinned pnpm and Alchemy dependencies, and an isolated Python bootstrap helper. Keep site tokens in root-only files and exclude them from resource state; do not deliver the BWS bootstrap credential to the controller.
+- Record the follow-up split-DNS requirement and initial shared Caddy ingress choice: centralize virtual-host routing, HTTPS termination, and certificate management for the current small deployment while preserving intentional work/personal tailnet separation. One instance is justified now, not a hard future rule. The approved rollout uses a new dedicated proxy LXC with LAN and personal-tailnet HTTPS, Technitium internal records, and Cloudflare DNS-only external records. No WAN forwarding, Funnel, or public Internet ingress is authorized.
+- Retire the superseded homelab experiment launcher and operational runbook, including its duplicated bootstrap and scratch-lifecycle logic. Keep reusable workload code and historical acceptance evidence in Hatchery; homelab-infra retains controller provisioning and private configuration delivery.
+- Provide a separate checksum-pinned CLIProxyAPI trial recipe with loopback binding, independent API/management keys, and stock session affinity. Keep human Codex OAuth and an actual model request distinct from service readiness; preserve existing Claude Code, Codex, Pi, and `ccyl` authentication.
+
+## 2026-11-06: Manage Herdr desktop configuration in dotfiles
+
+- Link `~/.config/herdr-app/` to `config/herdr-app/` through both the cross-platform and WSL Dotbot configurations. Preserve the workstation's existing settings, keys and themes, with personal layouts and mods managed in the same directory.
+- Keep regenerated support files, upstream-owned layouts/mods, telemetry and local runtime state out of Git. Preserve those files locally and leave the separate Herdr TUI configuration and running core terminals unchanged.
+
+## 2026-11-06: Reopen Hatchery placement to avoid onramp VMs
+
+- Record the operator's preference to keep Hatchery deployments off existing onramp VMs, superseding the earlier, never-deployed onramp runner placement. Keep controller location and disposable-worker placement explicit and unresolved rather than silently selecting a replacement host.
+- Preserve the TypeScript/Node, Alchemy, Proxmox-provider, SSH-access, and isolated-state direction. Update Hatchery's requirements, architecture, decisions, and handoff without provisioning resources or transferring existing infrastructure ownership.
+
 ## 2026-11-06: Add direct homelab inventory lookups
 
 - Add a read-only `bws-snapshot.py lookup <field>` path in homelab-infra for one global inventory scalar, such as the configured Forgejo URL. Use the existing BWS locator and credentials, make one BWS request, and print only the requested value without rendering files or starting Docker.

@@ -22,7 +22,6 @@ const WORKFLOW_TIMEOUT_MS = 180_000;
 const GIT_TIMEOUT_MS = 15_000;
 const PUBLICATION_TIMEOUT_MS = 120_000;
 const RESPONSE_RETRIES = 3;
-const PLAN_CORRECTIONS = 2;
 const STATUS_ARGS = ["status", "--porcelain=v1", "-z", "--untracked-files=all", "--ignore-submodules=dirty"];
 
 /** Latest undated Haiku from the Anthropic subscription provider. */
@@ -127,7 +126,7 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 			const preservedIndex: string[] = [];
 			const exclusionsByRepository = new Map<string, Map<string, string>>();
 			const requiredExclusions = new Map<string, Map<string, string>>();
-			const activeTools = new Map<string, { description: string; startedAt: number; terminal: boolean }>();
+			const activeTools = new Map<string, { description: string; startedAt: number; terminal: boolean; mutating?: boolean }>();
 			const leftOut: string[] = [];
 			const publicationBranches = new Map<string, { path: string; branch: string }>();
 			let successfulPushes = 0;
@@ -204,9 +203,10 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 				const publishedHeads = new Map<string, string>();
 				let currentRepository = "";
 				let submittedPlan: CommitPlan | undefined;
-				let invalidPlanAttempts = 0;
 				let lastPlanErrors = "";
 				let resolvingConflict = false;
+				let mutationProblem: string | undefined;
+				let repairToolsPending = false;
 				const stageParentGitlinks = async (repository: string): Promise<string[]> => {
 					const links = children.get(repository) ?? [];
 					if (!links.length) return [];
@@ -236,7 +236,7 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 					const pending = await stageParentGitlinks(target.path);
 					if (pending.length) return pendingResult(pending);
 					const unfinished = await unfinishedPaths(target.path, combined);
-					if (unfinished.length) throw new Error(`Uncommitted changes in ${repo}; publication has not run:\n${unfinished.join("\n")}`);
+					if (unfinished.length) return { content: [{ type: "text" as const, text: `Review remaining changes before publishing ${repo}:\n${unfinished.join("\n")}` }], details: {}, needsReview: true };
 					if (publishedHeads.get(target.path) === await head(combined, target.path))
 						return { content: [{ type: "text" as const, text: "This repository HEAD has already been published." }], details: {} };
 					if (unresolvedPublicationConflict && unresolvedPublicationConflict !== normalizeRepositoryId(repo)) throw new Error("Publication blocked until the unresolved pull conflict is resolved and its repository is retried.");
@@ -259,7 +259,7 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 					const integratedLinks = await stageParentGitlinks(target.path);
 					if (integratedLinks.length) return pendingResult(integratedLinks);
 					const remaining = await unfinishedPaths(target.path, combined);
-					if (remaining.length) throw new Error(`Uncommitted changes after publication integration in ${repo}:\n${remaining.join("\n")}`);
+					if (remaining.length) return { content: [{ type: "text" as const, text: `Review remaining changes after integration in ${repo}:\n${remaining.join("\n")}` }], details: {}, needsReview: true };
 					const intendedHead = await head(combined, target.path);
 					attemptedPushes++;
 					unknownPushes.add(repo);
@@ -310,8 +310,12 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 							else await git(["--literal-pathspecs", "rm", "--cached", "--", ".pi/settings.json"], combined, repository);
 							await git(["add", "--", ".gitignore"], combined, repository);
 							const reason = "Repository-local Pi settings policy";
-							requiredExclusions.set(repository, new Map([[".pi/settings.json", reason]]));
-							exclusionsByRepository.set(repository, new Map([[".pi/settings.json", reason]]));
+							const required = requiredExclusions.get(repository) ?? new Map<string, string>();
+							required.set(".pi/settings.json", reason);
+							requiredExclusions.set(repository, required);
+							const excluded = exclusionsByRepository.get(repository) ?? new Map<string, string>();
+							excluded.set(".pi/settings.json", reason);
+							exclusionsByRepository.set(repository, excluded);
 							leftOut.push(`${repositoryId(root!, repository) === "." ? "" : `${repositoryId(root!, repository)}/`}.pi/settings.json: ${reason}`);
 						}
 					}
@@ -329,8 +333,18 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 				let shell = createBashTool(root);
 				const conflictShell: typeof shell = {
 					...shell,
-					description: "Resolve only the current repository's established publication pull conflicts, then stage and commit the merge with normal hooks. Never pull, push, switch branches, rewrite history, or discard unrelated work. Actual mutation failure stops dependent work. " + shell.description,
+					description: "Resolve only the current repository's established publication pull conflicts, then stage and commit the merge with normal hooks. Inspect failures and correct the operation before continuing. Never pull, push, switch branches, rewrite history, or discard unrelated work. " + shell.description,
 					execute: (id, args, toolSignal, update) => shell.execute(id, { ...args, command: commitShellCommand(args.command), timeout: 15 }, toolSignal, update),
+				};
+				const repairShell: typeof shell = {
+					...conflictShell,
+					description: "Repair the reported local commit or publication problem in this repository. Inspect actual state first and fix only issues whose resolution is clear, such as formatter changes or an incorrect command. Do not bypass hooks, checks, or ignore rules, discard work, switch branches, rewrite history, or change credentials. Leave ordinary staging, commits, pull, and push to the runner; you may stage resolved conflicts to clear an unmerged index. Report a blocker if user intent or access is required. After a successful repair call, the runner refreshes staging and returns current status for review. " + shell.description,
+					execute: async (id, args, toolSignal, update) => {
+						const result = await conflictShell.execute(id, args, toolSignal, update);
+						if (result.isError) return result;
+						await prepareRepository(currentRepository);
+						return { ...result, content: [...result.content, { type: "text" as const, text: `Runner refreshed staging after repair:\n${formatStatus(await git(STATUS_ARGS, combined, currentRepository))}` }] };
+					},
 				};
 				agent = new Agent({
 					initialState: {
@@ -339,7 +353,7 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 						tools: [
 							{
 								name: "submit_commit_plan", label: "Submit commit plan",
-								description: "Submit the complete reviewed whole-file plan for the current repository. Cover every path in current porcelain v1 -z status exactly once, in one commit or an exclusion with a concrete reason. Include both rename endpoints together. Subjects must be trimmed, nonempty single lines. An accepted plan ends review; code executes it. Validation errors allow two corrections before stopping without committing this repository.",
+								description: "Submit the complete reviewed whole-file plan for the current repository. Cover every path in current porcelain v1 -z status exactly once, in one commit or an exclusion with a concrete reason. Include both rename endpoints together. Subjects must be trimmed, nonempty single lines. An accepted plan ends review; code executes it. Use validation errors to correct the plan and continue. Invalid plans never authorize commits.",
 								parameters: Type.Object({
 									repo: Type.String(),
 									commits: Type.Array(Type.Object({ subject: Type.String(), paths: Type.Array(Type.String()) })),
@@ -357,8 +371,19 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 								},
 							},
 							{
+								name: "report_commit_blocker", label: "Report commit blocker",
+								description: "Stop only when you cannot safely resolve a commit problem within this task or need the user's decision or access. Explain the concrete obstacle and what is required. Do not use for routine correctable errors or newly discovered files; inspect, fix, and continue instead.",
+								parameters: Type.Object({ reason: Type.String({ minLength: 1 }) }),
+								execute: async (_id, input) => {
+									const { reason } = input as { reason: string };
+									if (!reason.trim()) throw new Error("Give the concrete unresolved obstacle.");
+									failure = `Commit blocked: ${reason.trim()}`;
+									return { content: [{ type: "text" as const, text: failure }], details: {}, terminate: true };
+								},
+							},
+							{
 								...shell, name: "inspect", label: "Inspect repository",
-								description: "Run read-only shell inspections, including Git status/diff/check-ignore and searches. Compound commands and pipes are allowed. Nonzero exits return to you for interpretation or correction, including normal no-match results. Never stage, unstage, write files, commit, pull, or push here. Normal review mutations belong to runner code; bash is available only during explicitly requested publication conflict resolution. " + shell.description,
+								description: "Run read-only shell inspections, including Git status/diff/check-ignore and searches. Compound commands and pipes are allowed. Nonzero exits return to you for interpretation or correction, including normal no-match results. Never stage, unstage, write files, commit, pull, or push here. Normal review mutations belong to runner code; bash is available only when the runner requests a repair or publication conflict resolution. " + shell.description,
 								execute: (id, args, toolSignal, update) => shell.execute(id, { ...(args as Parameters<typeof shell.execute>[1]), timeout: 15 }, toolSignal, update),
 							},
 							{ ...read, execute: async (id, input, toolSignal, update) => {
@@ -373,7 +398,7 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 							} },
 							{
 								name: "ask_ignore", label: "Ignore decision",
-								description: "After staging, ask whether an uncertain new file should be included, added to that repository's .gitignore, or left untracked. Exclusions are unstaged without deleting working contents; ignore changes are staged.",
+								description: "After staging, ask only about a genuinely consequential inclusion ambiguity or a concrete reason to intentionally include an ignored new file. Exclude obvious generated artifacts and honor existing ignore rules through the commit plan without asking. Choices are include, add to that repository's .gitignore, or leave untracked. Exclusions are unstaged without deleting working contents; ignore changes are staged.",
 								parameters: Type.Object({ repo: Type.String(), candidate: Type.String(), reason: Type.String(), pattern: Type.String() }),
 								execute: async (_id, input) => {
 									const { repo, candidate: candidatePath, reason, pattern } = input as { repo: string; candidate: string; reason: string; pattern: string };
@@ -385,8 +410,8 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 									if (repository !== currentRepository) throw new Error(`Ignore decisions must target the current repository: ${repositoryId(root!, currentRepository)}`);
 									if (!candidate || /^[\\/]/.test(candidate) || /^[A-Za-z]:/.test(candidate) || candidate.split(/[\\/]+/).includes(".."))
 										throw new Error(`Candidate must be repository-relative: ${candidate}`);
-									// Bad reviewer arguments are correctable. Failed Git operations,
-									// user cancellation, and ignore mutations still stop the run.
+									// Bad arguments are correctable; cancelled decisions remain terminal.
+									// Preserve the answer before attempting any correctable mutation.
 									if (active) active.terminal = true;
 									const added = await git(["--literal-pathspecs", "diff", "--cached", "--diff-filter=A", "--name-only", "-z", "--", candidate], combined, repository);
 									if (active) active.terminal = false;
@@ -407,10 +432,6 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 										if (!answer) throw new Error("Ignore-file decision cancelled.");
 										if (answer !== "Include in commit") {
 											combined.throwIfAborted();
-											if (answer === "Add to .gitignore") await appendGitignoreRule(repository, rule, combined);
-											// rm --cached also works before the repository's first commit.
-											await git(["--literal-pathspecs", "rm", "--cached", "--", candidate], combined, repository);
-											if (answer === "Add to .gitignore") await git(["add", "--", ".gitignore"], combined, repository);
 											const explanation = `${answer} (${reason})`;
 											const required = requiredExclusions.get(repository) ?? new Map<string, string>();
 											required.set(candidate, explanation);
@@ -419,6 +440,12 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 											excluded.set(candidate, explanation);
 											exclusionsByRepository.set(repository, excluded);
 											leftOut.push(`${id === "." ? "" : `${id}/`}${candidate}: ${explanation}`);
+											// Preserve the operator's choice even if its mutation needs repair.
+											if (active) { active.terminal = false; active.mutating = true; }
+											if (answer === "Add to .gitignore") await appendGitignoreRule(repository, rule, combined);
+											// rm --cached also works before the repository's first commit.
+											await git(["--literal-pathspecs", "rm", "--cached", "--", candidate], combined, repository);
+											if (answer === "Add to .gitignore") await git(["add", "--", ".gitignore"], combined, repository);
 										}
 										return { content: [{ type: "text" as const, text: `${answer}: ${id}/${candidate}` }], details: {} };
 									} finally { resumeTimer(); progress("Reviewing changes…"); }
@@ -431,26 +458,33 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 					toolExecution: "sequential",
 					beforeToolCall: async ({ toolCall }) => {
 						if (failure) return { block: true, reason: failure, terminate: true };
+						if (mutationProblem) return { block: true, reason: `The previous mutation failed; inspect its result and correct the approach on your next turn.\n${mutationProblem}` };
 						if (submittedPlan) return { block: true, reason: "A plan was accepted; this repository pass is finished.", terminate: true };
 						if (resolvingConflict && (toolCall.name === "ask_ignore" || toolCall.name === "submit_commit_plan")) return { block: true, reason: "Resolve only the established publication conflicts in this step." };
 						return undefined;
 					},
-					finishTurn: () => failure || submittedPlan ? { action: "end" } : undefined,
+					finishTurn: () => failure || submittedPlan || repairToolsPending ? { action: "end" } : undefined,
 				});
 				unsubscribe = agent.subscribe((event) => {
+					if (event.type === "message_start" && event.message.role === "assistant") mutationProblem = undefined;
 					if (event.type === "tool_execution_start") {
 						progress(event.toolName === "bash" || event.toolName === "inspect" ? "Running Git/shell command…" : event.toolName === "read" ? "Reading repository instructions and changes…" : event.toolName === "submit_commit_plan" ? "Validating commit plan…" : "Preparing ignore-file decision…");
-						activeTools.set(event.toolCallId, { description: describeCommitTool(event.toolName, event.args), startedAt: Date.now(), terminal: event.toolName === "bash" });
+						activeTools.set(event.toolCallId, { description: describeCommitTool(event.toolName, event.args), startedAt: Date.now(), terminal: false });
 					}
 					if (event.type === "tool_execution_end") {
 						const active = activeTools.get(event.toolCallId);
 						activeTools.delete(event.toolCallId);
 						progress("Reviewing changes…");
 						if (event.isError && event.toolName === "submit_commit_plan" && !resolvingConflict && !failure) {
-							invalidPlanAttempts++;
 							lastPlanErrors = (event.result.content as (TextContent | ImageContent)[]).filter(part => part.type === "text").map(part => part.text).join("\n");
-							if (invalidPlanAttempts > PLAN_CORRECTIONS) {
-								failure = `Commit plan invalid after ${PLAN_CORRECTIONS} corrections:\n${lastPlanErrors}`;
+						}
+						if (event.isError && !active?.terminal && (event.toolName === "bash" || active?.mutating)) {
+							mutationProblem = `${active?.description ?? event.toolName}\n${(event.result.content as (TextContent | ImageContent)[]).filter(part => part.type === "text").map(part => part.text).join("\n")}`;
+							if (!resolvingConflict && !agent!.state.tools.some(tool => tool.name === "bash")) {
+								agent!.state.tools = [...agent!.state.tools, repairShell];
+								// Agent snapshots callable tools for a run. End this run so the
+								// next prompt can actually call the newly supplied repair tool.
+								repairToolsPending = true;
 							}
 						}
 						if (event.isError && active?.terminal && !failure) {
@@ -467,7 +501,8 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 				combined.throwIfAborted();
 				progress("Reviewing changes…");
 				const reviewer = agent;
-				const reviewRepository = async (task: string) => {
+				const promptReviewer = async (task: string) => {
+					repairToolsPending = false;
 					await reviewer.prompt(task);
 					const lastError = () => {
 						const last = reviewer.state.messages.at(-1);
@@ -514,45 +549,94 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 					const last = [...reviewer.state.messages].reverse().find((message) => message.role === "assistant");
 					if (!last || last.stopReason === "error" || last.stopReason === "aborted") throw new Error(last?.errorMessage || `${selectedModel?.id ?? "Model"} returned no response.`);
 				};
-				const acceptedPlan = (): CommitPlan | undefined => submittedPlan;
-				const reviewAndExecute = async (task: string) => {
-					submittedPlan = undefined;
-					invalidPlanAttempts = 0;
-					lastPlanErrors = "";
-					await reviewRepository(`${task}\n\nCurrent staged-review status:\n${formatStatus(await git(STATUS_ARGS, combined, currentRepository))}${preservedIndex.length ? `\n${preservedIndex.join("\n")}\nInspect the retained stash's index tree (^2) if relevant to review; it is not applied or dropped.` : ""}`);
-					const plan = acceptedPlan();
-					if (!plan) {
-						const status = await git(STATUS_ARGS, combined, currentRepository);
-						if (status || lastPlanErrors) throw new Error(`No valid submit_commit_plan received for ${repositoryId(root!, currentRepository)}; commit workflow incomplete.${lastPlanErrors ? `\n${lastPlanErrors}` : `\n${formatStatus(status)}`}`);
-						return;
+				const reviewRepository = async (task: string) => {
+					try { await promptReviewer(task); }
+					catch (error) {
+						// Provider/lifecycle failures are not local Git problems the agent can fix.
+						failure ??= error instanceof Error ? error.message : String(error);
+						throw error;
 					}
-					const excluded = exclusionsByRepository.get(currentRepository) ?? new Map<string, string>();
-					for (const entry of plan.exclusions) excluded.set(entry.path, entry.reason);
-					exclusionsByRepository.set(currentRepository, excluded);
-					progress("Executing reviewed commits…");
-					const result = await executeCommitPlan(pi.exec.bind(pi), currentRepository, combined, plan);
-					if (!result.ok) throw new Error(result.error ?? "Commit plan execution failed.");
 				};
 				const reviewTools = reviewer.state.tools;
+				const repairRepository = async (error: unknown) => {
+					combined.throwIfAborted();
+					if (failure) throw new Error(failure);
+					submittedPlan = undefined;
+					progress("Resolving commit problem…");
+					reviewer.state.tools = [...reviewTools.filter(tool => tool.name !== "submit_commit_plan" && tool.name !== "ask_ignore"), repairShell];
+					try { await reviewRepository(`The runner encountered a problem in the current repository:\n${error instanceof Error ? error.message : String(error)}\n\nInspect actual Git state and resolve the cause using bash if needed. Earlier operations may already have succeeded; preserve completed commits and unrelated work. Do not blindly repeat a failed mutation. Leave ordinary staging, commits, pull, and push to the runner; stage resolved conflicts only if necessary to clear an unmerged index. The runner will retry its normal workflow after your repair. When ready, finish this repair turn. If you cannot safely resolve it, call report_commit_blocker with the concrete obstacle.`); }
+					catch (repairError) { throw new Error(`${error instanceof Error ? error.message : String(error)}\nRepair failed: ${repairError instanceof Error ? repairError.message : String(repairError)}`); }
+					finally { reviewer.state.tools = reviewTools; }
+				};
+				const acceptedPlan = (): CommitPlan | undefined => submittedPlan;
+				const reviewAndExecute = async (initialTask: string) => {
+					let task = initialTask;
+					let problem: string | undefined;
+					try {
+						for (;;) {
+							combined.throwIfAborted();
+							submittedPlan = undefined;
+							lastPlanErrors = "";
+							try { await prepareRepository(currentRepository); }
+							catch (error) { await repairRepository(error); continue; }
+							await reviewRepository(`${task}\n\nCurrent staged-review status:\n${formatStatus(await git(STATUS_ARGS, combined, currentRepository))}\nExisting exclusions: ${JSON.stringify([...exclusionsByRepository.get(currentRepository) ?? []])}. Preserve their reasons and operator choices in the revised plan.${preservedIndex.length ? `\n${preservedIndex.join("\n")}\nInspect the retained stash's index tree (^2) if relevant to review; it is not applied or dropped.` : ""}`);
+							const plan = acceptedPlan();
+							if (!plan) {
+								const status = await git(STATUS_ARGS, combined, currentRepository);
+								if (!status && !lastPlanErrors) return;
+								task = `Review is incomplete. Submit a complete plan for the current status, correcting these errors if present:\n${lastPlanErrors}\nIf you cannot proceed, call report_commit_blocker rather than ending without a plan.`;
+								continue;
+							}
+							const excluded = exclusionsByRepository.get(currentRepository) ?? new Map<string, string>();
+							for (const group of plan.commits) for (const path of group.paths) excluded.delete(path);
+							for (const entry of plan.exclusions) excluded.set(entry.path, entry.reason);
+							exclusionsByRepository.set(currentRepository, excluded);
+							progress("Executing reviewed commits…");
+							const result = await executeCommitPlan(pi.exec.bind(pi), currentRepository, combined, plan);
+							if (result.ok) return;
+							combined.throwIfAborted();
+							progress("Resolving commit problem…");
+							// Refresh and review a new snapshot, not the old groups. This covers
+							// concurrent files, hook edits/failures, and partially completed plans.
+							problem = result.error;
+							task = `The previous plan did not finish:\n${JSON.stringify(result)}\nInspect the failure and actual state, repair clear local problems with bash if necessary, then submit a revised plan for the remaining work. Completed commits must not be repeated or undone. Do not bypass hooks or exclude eligible work just to hide a failure. Use report_commit_blocker only when you cannot safely resolve the cause.`;
+							reviewer.state.tools = [...reviewTools, repairShell];
+						}
+					} catch (error) {
+						throw new Error([problem, error instanceof Error ? error.message : String(error)].filter(Boolean).join("\n"));
+					} finally { reviewer.state.tools = reviewTools; }
+				};
 				for (const repository of [...repositories].sort((a, b) => b.length - a.length)) {
 					currentRepository = repository;
 					// Each repository gets its own conversation and relative-path tools.
 					// Keep retries/publication follow-ups within that repository's context.
 					reviewer.reset();
+					reviewer.state.tools = reviewTools;
 					read = createReadTool(repository);
 					shell = createBashTool(repository);
 					const repo = repositoryId(root, repository);
 					progress("Staging repository changes…");
-					await prepareRepository(repository);
 					await reviewAndExecute(buildCommitTask(push, root, inventory, repo));
 					const target = publicationBranches.get(repo);
 					if (push && target && await hasOutgoing(repository, target.branch)) {
 						progress("Publishing repository…");
-						let publication = await publishRepository(repo);
-						while (unresolvedPublicationConflict || publication.needsReview) {
-							const before = await head(combined, repository);
-							if (publication.needsReview) await reviewAndExecute(`${publication.content.map(part => part.text).join("\n")}\nReview the staged diff and submit_commit_plan for this repository only.`);
-							else {
+						for (;;) {
+							combined.throwIfAborted();
+							let publication: Awaited<ReturnType<typeof publishRepository>>;
+							try { publication = await publishRepository(repo); }
+							catch (error) {
+								// Never repeat a push whose remote outcome is still unknown.
+								if (unknownPushes.has(repo)) throw error;
+								await repairRepository(error);
+								await reviewAndExecute("Review any changes after publication repair and submit the remaining plan.");
+								continue;
+							}
+							if (publication.needsReview) {
+								await reviewAndExecute(`${publication.content.map(part => part.text).join("\n")}\nReview the staged diff and submit_commit_plan for this repository only.`);
+								continue;
+							}
+							if (unresolvedPublicationConflict) {
+								const before = await head(combined, repository);
 								submittedPlan = undefined;
 								resolvingConflict = true;
 								reviewer.state.tools = [...reviewTools.filter(tool => tool.name !== "submit_commit_plan" && tool.name !== "ask_ignore"), conflictShell];
@@ -562,12 +646,16 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 								const parents = (await git(["rev-list", "--parents", "-n", "1", "HEAD"], combined, repository)).split(" ");
 								if (conflicts || parents.length < 3 || parents[1] !== before) throw new Error(`Unresolved publication conflict in ${repo}; a completed merge commit is required.`);
 								const unfinished = await unfinishedPaths(repository, combined);
-								if (unfinished.length) throw new Error(`Uncommitted changes after conflict resolution in ${repo}:\n${unfinished.join("\n")}`);
+								if (unfinished.length) await reviewAndExecute(`Review remaining changes after conflict resolution in ${repo}:\n${unfinished.join("\n")}`);
+								continue;
 							}
-							if (await head(combined, repository) === before) throw new Error(`Publication made no commit progress in ${repo}.`);
-							publication = await publishRepository(repo);
+							if (publication.isError) {
+								await repairRepository(publication.content.map(part => part.text).join("\n"));
+								await reviewAndExecute("Review any changes after publication repair and submit the remaining plan.");
+								continue;
+							}
+							break;
 						}
-						if (publication.isError) throw new Error(publication.content.map(part => part.text).join("\n"));
 					}
 				}
 			} catch (error) {

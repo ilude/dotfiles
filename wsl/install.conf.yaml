@@ -46,6 +46,10 @@
 - link:
     ~/.config/herdr/config.toml: config/herdr/config.toml
 
+# Herdr desktop app (separate from the TUI)
+- link:
+    ~/.config/herdr-app: config/herdr-app
+
 # Neovim config
 - link:
     ~/.config/nvim/init.lua:

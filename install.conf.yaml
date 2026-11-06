@@ -41,6 +41,10 @@
       path: config/herdr/config.windows.toml
       if: '[ "$OSTYPE" = "msys" ] || [ "$OSTYPE" = "cygwin" ] || [ -n "$WINDIR" ]'
 
+# Herdr desktop app (separate from the TUI)
+- link:
+    ~/.config/herdr-app: config/herdr-app
+
 # Neovim config
 - link:
     ~/.config/nvim/init.lua:
