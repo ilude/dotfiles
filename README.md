@@ -97,6 +97,44 @@ reboot requirements. Exit codes are `0` for success, `1` for failures, `2` for f
 or cancelled elevation, and `3010` for reboot-required completion without other
 failures. Elevated runs propagate the child exit code. No automatic reboot occurs.
 
+### Forgejo CLI (`fj`)
+
+For the configured Forgejo URL, use this read-only BWS lookup from the dotfiles
+root rather than searching infrastructure source files:
+
+```sh
+uv run python modules/homelab-infra/scripts/bws-snapshot.py --settings modules/homelab-infra/settings.local.json lookup forgejo_root_url
+```
+
+It requires the existing BWS access environment, prints only that field, and
+starts no tooling container.
+
+Normal installation includes `fj` from the
+[`forgejo-cli` project](https://codeberg.org/forgejo-contrib/forgejo-cli):
+
+- macOS uses the `forgejo-cli` Homebrew formula in `Brewfile`.
+- Windows x86-64 and GNU/Linux x86-64/ARM64 use upstream release binaries,
+  installed into `~/.local/bin` by `scripts/install-forgejo-cli.py`.
+- WSL package setup uses the same Linux installer. Windows `-SkipPackages`
+  skips the download/update stage.
+
+There is currently no WinGet package for this CLI. The helper checks the latest
+stable upstream release, skips an equal or newer installed version, and verifies
+`fj version` before replacing its managed binary. It does not configure a host
+or authenticate. To install/update it independently on Windows/Linux:
+
+```sh
+python scripts/install-forgejo-cli.py
+fj version
+fj auth login --host https://forgejo.example.com
+```
+
+Use your actual Forgejo URL for interactive login; tokens and machine-specific
+host configuration stay outside the repository. Windows ARM64 has no upstream
+release binary in the researched release (v0.7.0). Its Linux x86-64 binary requires
+glibc 2.39 (as provided by Ubuntu 24.04); older distributions need a compatible
+distro package or source build rather than this release binary.
+
 ### T3 Code alongside Herdr
 
 Normal installation adds the T3 Code desktop app on Windows/macOS and its CLI on

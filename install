@@ -295,6 +295,22 @@ if [[ "$OSTYPE" == "darwin"* ]] && command -v brew &>/dev/null; then
 fi
 completed_steps+=("Homebrew packages")
 
+current_step="Forgejo CLI install"
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    # Homebrew owns forgejo-cli on macOS (see Brewfile).
+    if command -v fj &>/dev/null; then
+        completed_steps+=("Forgejo CLI install (Homebrew)")
+    else
+        skipped_steps+=("Forgejo CLI install (Homebrew unavailable or failed)")
+    fi
+elif "$PYTHON_BIN" "${BASEDIR}/scripts/install-forgejo-cli.py"; then
+    export PATH="${HOME}/.local/bin:${PATH}"
+    completed_steps+=("Forgejo CLI install")
+else
+    echo "Warning: Forgejo CLI installation failed; continuing" >&2
+    skipped_steps+=("Forgejo CLI install (failed)")
+fi
+
 current_step="Onclave private bootstrap"
 # Soft failure: a missing toolchain or an SSH identity that is not a recipient of
 # the encrypted private archive must not abort the install. Every later step

@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-11-06: Add direct homelab inventory lookups
+
+- Add a read-only `bws-snapshot.py lookup <field>` path in homelab-infra for one global inventory scalar, such as the configured Forgejo URL. Use the existing BWS locator and credentials, make one BWS request, and print only the requested value without rendering files or starting Docker.
+- Document the exact dotfiles-root invocation so simple configuration questions do not require rediscovering snapshot internals or searching architecture documents. Missing fields and non-scalar sections return errors rather than exposing broader inventory.
+
+## 2026-11-06: Install the Forgejo CLI across workstation platforms
+
+- Add `forgejo-cli` (`fj`) to the macOS Homebrew bundle and install upstream release binaries on Windows x86-64 and GNU/Linux x86-64/ARM64, including WSL package setup. WinGet currently has no matching package; Windows configuration-only runs keep skipping package updates.
+- Share one Python installer for latest-stable release selection, per-user `~/.local/bin` placement, repeatable version checks, and executable validation before replacement. Leave Forgejo host selection, authentication, credentials, and existing Git SSH configuration unchanged.
+
 ## 2026-11-06: Add T3 Code alongside Herdr
 
 - Install the T3 Code desktop app through Windows core WinGet/macOS Homebrew and add its official CLI installation path. Configure Pi after default-profile setup, including configuration-only Windows runs, without changing Herdr installation, configuration, saved machines or active sessions.

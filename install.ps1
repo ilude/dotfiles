@@ -1067,6 +1067,18 @@ function Install-PackageTooling {
     if (Install-Herdr) { Add-InstallResult Herdr UpdatedOrCurrent }
     else { Add-InstallResult Herdr Failed 'installation failed' }
 
+    # fj has no WinGet package; use the upstream Forgejo CLI release binary.
+    Write-Host "`n--- Forgejo CLI Setup ---" -ForegroundColor Cyan
+    $python = Get-Command python -ErrorAction SilentlyContinue
+    if ($python) {
+        $installed = Invoke-InstallCommand -Name 'Forgejo CLI' -FilePath $python.Source -ArgumentList @(
+            (Join-Path $PSScriptRoot 'scripts\install-forgejo-cli.py')
+        )
+        if ($installed) { Update-InstallPath }
+    } else {
+        Add-InstallResult 'Forgejo CLI' Failed 'Python is unavailable'
+    }
+
     # Git for Windows re-adds "Open Git GUI/Bash Here" context menu entries on
     # every (re)install. DSC can't pass /COMPONENTS overrides, so strip the
     # registry keys post-apply.

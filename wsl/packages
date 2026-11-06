@@ -119,6 +119,16 @@ for item in "${CLI_PACKAGES[@]}"; do
 done
 
 # ============================================================================
+# Forgejo CLI (upstream binaries also support Ubuntu releases without its apt package)
+# ============================================================================
+
+echo -e "\n${CYAN}Installing Forgejo CLI...${NC}"
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+if ! python3 "$REPO_DIR/scripts/install-forgejo-cli.py"; then
+    echo -e "${YELLOW}Warning: Forgejo CLI installation failed; continuing${NC}" >&2
+fi
+
+# ============================================================================
 # Dev/Testing tools
 # ============================================================================
 
