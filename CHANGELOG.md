@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-05: Restore fresh Pi registration with Onclave
+
+- Preserve RabbitMQ's existing container-owned data-directory permissions during normal infrastructure applies. The previous directory setup reset ownership to the host deploy user, preventing RabbitMQ from creating new agent queues while API health endpoints still returned success.
+- Repair the live directory ownership and restart RabbitMQ and core to recover failed queues without deleting queues, changing databases, or advancing the application image. Verify fresh signed registration, heartbeat, delivery polling, and a native default-profile Pi connection, then reapply configuration and confirm ownership is retained. Add a regression check for first-install initialization versus existing container-owned storage.
+
 ## 2026-11-05: Record the initial Hatchery runner direction
 
 - Accept TypeScript/Node with pinned Alchemy v2, our own narrow Proxmox provider, and SSH configuration facilities for initial work. Place the runner command on the existing onramp host, called over SSH by existing agents, with persistent local allocation state and BWS-backed configuration rather than new permanent infrastructure.
