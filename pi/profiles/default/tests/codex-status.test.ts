@@ -10,10 +10,14 @@ vi.mock("../lib/codex-usage.ts", async importOriginal => ({
 }));
 vi.mock("../lib/bedrock/billing.ts", () => ({ formatBillingUsage: vi.fn(async () => "Bedrock: fixture") }));
 
-it.each(["startup", "new", "reload", "resume"])("keeps %s quiet while preserving footer updates and explicit usage reports", async reason => {
+it.each([
+  ["startup", false, true], ["new", false, true], ["reload", false, false],
+  ["resume", true, false], ["startup", true, false],
+] as const)("handles %s with existing history %s and automatic report %s", async (reason, existing, automatic) => {
   const hooks = new Map<string, (event: unknown, ctx: ExtensionContext) => unknown>();
   const commands = new Map<string, { handler: (args: string, ctx: ExtensionContext) => Promise<void> }>();
-  const appendEntry = vi.fn();
+  const entries: Array<{ id: string; type: string; customType?: string; data?: unknown }> = existing ? [{ id: "message", type: "message" }] : [];
+  const appendEntry = vi.fn((customType: string, data: unknown) => entries.push({ id: String(entries.length), type: "custom", customType, data }));
   register({
     on: (name: string, handler: (event: unknown, ctx: ExtensionContext) => unknown) => hooks.set(name, handler),
     registerCommand: (name: string, command: { handler: (args: string, ctx: ExtensionContext) => Promise<void> }) => commands.set(name, command),
@@ -22,14 +26,15 @@ it.each(["startup", "new", "reload", "resume"])("keeps %s quiet while preserving
   } as unknown as ExtensionAPI);
   const setStatus = vi.fn();
   const notify = vi.fn();
-  const ctx = { hasUI: true, mode: "tui", modelRegistry: {}, ui: { setStatus, notify, theme: { fg: (_color: string, text: string) => text } } } as unknown as ExtensionContext;
+  const ctx = { hasUI: true, mode: "tui", modelRegistry: {}, sessionManager: { getEntries: () => entries, getSessionId: () => "fixture", getHeader: () => ({}) }, ui: { setStatus, notify, theme: { fg: (_color: string, text: string) => text } } } as unknown as ExtensionContext;
   try {
     await hooks.get("session_start")!({ reason }, ctx);
     await vi.waitFor(() => expect(setStatus).toHaveBeenCalledWith("codex", expect.stringContaining("4%")));
-    expect(appendEntry).not.toHaveBeenCalled();
+    if (automatic) await vi.waitFor(() => expect(appendEntry).toHaveBeenCalledWith("codex-usage-report", expect.objectContaining({ text: expect.stringContaining("Bedrock: fixture"), marker: "0" })));
+    else expect(appendEntry).not.toHaveBeenCalled();
     expect(notify).not.toHaveBeenCalled();
     await commands.get("usage")!.handler("", ctx);
-    expect(appendEntry).toHaveBeenCalledWith("codex-usage-report", { text: expect.stringContaining("Bedrock: fixture") });
+    expect(appendEntry).toHaveBeenCalledWith("codex-usage-report", { text: expect.stringContaining("Bedrock: fixture"), marker: undefined });
   } finally {
     await hooks.get("session_shutdown")!({}, ctx);
   }
