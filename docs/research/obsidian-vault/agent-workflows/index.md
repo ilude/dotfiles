@@ -15,6 +15,8 @@ This vault is a context pool, not a build mandate. Promote ideas only when they 
 
 ## Source captures
 
+- [Agent-stack integration synthesis](projects/agent-stack-integration.md) - recent vault changes, Jev/Pi Durable videos, Hermes comparison, current ownership, and a draft first-delivery plan.
+
 - [Onclave deployment ownership](projects/onclave-deployment-ownership.md) - implemented Forgejo/image boundary, infra-owned production Quadlets, daily core-only updates, and dated verification limits.
 
 - [Agent improvement implementations](projects/agent-improvement-implementations.md) - September 13, 2026 comparison of Claude Code, Cursor, Codex, Letta Code, LangMem, GEPA, and ACE; mechanisms versus effectiveness evidence.
@@ -70,6 +72,8 @@ This vault is a context pool, not a build mandate. Promote ideas only when they 
 - [patterns/openai-compatible-chat-providers](patterns/openai-compatible-chat-providers.md)
 
 ## Specs synthesis
+
+- [Herdr agent sidebar layout](workflow-ideas/herdr-agent-sidebar-layout.md) - desired Team Lead/overflow hierarchy, preserved behavior, Pi activity/cleanup requirements, and upstream grouping discussions and unmerged PR.
 
 - [Web research acquisition](workflow-ideas/web-research-acquisition.md) - candidate search, CAPTCHA, browser, and paywall-access experiments; not a build mandate.
 

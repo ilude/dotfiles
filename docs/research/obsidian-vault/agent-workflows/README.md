@@ -5,6 +5,8 @@ Topic folder inside the broader [Research Obsidian Vault](../index.md) for recen
 ## Start here
 
 - [index](index.md) - map of notes
+- [Agent-stack integration synthesis](projects/agent-stack-integration.md) - Pi Durable, Hermes, Onclave, Onboard, and the consolidated draft plan
+- [Herdr agent sidebar layout](workflow-ideas/herdr-agent-sidebar-layout.md) - desired layout, constraints, and upstream grouping discussions
 - [Agent improvement survey: September 2026](patterns/agent-improvement-survey-2026-09.md) - research and implementation evidence for selective verification, concise instructions, and feedback-driven improvement
 - [AGENTS](AGENTS.md) - vault purpose, KISS rules, promotion filter, and note template guidance
 - [_templates/research-note](_templates/research-note.md) - default shape for new research notes
