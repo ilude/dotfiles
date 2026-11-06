@@ -15,6 +15,8 @@ This vault is a context pool, not a build mandate. Promote ideas only when they 
 
 ## Source captures
 
+- [Onclave deployment ownership](projects/onclave-deployment-ownership.md) - implemented Forgejo/image boundary, infra-owned production Quadlets, daily core-only updates, and dated verification limits.
+
 - [Agent improvement implementations](projects/agent-improvement-implementations.md) - September 13, 2026 comparison of Claude Code, Cursor, Codex, Letta Code, LangMem, GEPA, and ACE; mechanisms versus effectiveness evidence.
 
 - [SearXNG search reliability](projects/searxng-search-reliability.md) - controlled engine/proxy/solver findings, managed rollout, and evidence limits.

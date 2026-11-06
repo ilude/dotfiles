@@ -7,6 +7,7 @@ import { CodexAuthError, CODEX_QUOTA_LOGIN_REQUEST, CODEX_QUOTA_PROVIDER, type C
 import { loginForCodexUsage } from "../lib/codex-login.ts";
 
 const REPORT = "codex-usage-report";
+const START = "codex-usage-start";
 const BEDROCK_DASHBOARD = "https://us-east-2.console.aws.amazon.com/cloudwatch/home?region=us-east-2#dashboards:name=ccb-bedrock-usage";
 
 function reportLinks(text: string): string {
@@ -73,7 +74,7 @@ export default function codexStatus(pi: ExtensionAPI): void {
     try { return formatCacheUsage(readCacheUsage()) + (cacheError ? `\n  Recording unavailable: ${cacheError}` : ""); }
     catch { return "OpenAI cache: unavailable (cannot read profile cache history)."; }
   }
-  async function refresh(ctx: ExtensionContext, report?: { force?: boolean }): Promise<void> {
+  async function refresh(ctx: ExtensionContext, report?: { marker?: string; force?: boolean }): Promise<void> {
     if (loginController) return;
     const epoch = generation;
     let content: string;
@@ -105,7 +106,7 @@ export default function codexStatus(pi: ExtensionAPI): void {
       if (codex >= 0) lines.splice(weekly >= 0 ? weekly + 1 : codex + 1, 0, cache);
       else lines.push("", cacheReport());
       const text = `${lines.join("\n")}\n\n${bedrock}\n\n${BEDROCK_DASHBOARD}`;
-      pi.appendEntry(REPORT, { text });
+      pi.appendEntry(REPORT, { text, marker: report.marker });
       if (ctx.mode !== "tui") ctx.ui.notify(text, "info");
     }
   }
@@ -116,14 +117,24 @@ export default function codexStatus(pi: ExtensionAPI): void {
     }, REFRESH_MS);
     timer.unref();
   }
-  pi.on("session_start", (_event, ctx) => {
+  pi.on("session_start", (event, ctx) => {
     alive = true;
     generation++;
     if (!ctx.hasUI) return;
     unsubscribeLogin?.();
     unsubscribeLogin = pi.events.on(CODEX_QUOTA_LOGIN_REQUEST, () => { void login(ctx); });
-    // Lifecycle refreshes update only the footer. Full reports are explicit /usage output.
-    void refresh(ctx);
+    const entries = ctx.sessionManager.getEntries();
+    const sessionId = ctx.sessionManager.getSessionId();
+    // Persist the pending report across an immediate /clear resource reload.
+    let marker = [...entries].reverse().find(entry => entry.type === "custom" && entry.customType === START && (entry.data as { sessionId?: string })?.sessionId === sessionId)?.id;
+    const complete = marker && entries.some(entry => entry.type === "custom" && entry.customType === REPORT && (entry.data as { marker?: string })?.marker === marker);
+    // A branch starts a new process with existing history, not a fresh conversation.
+    const existingConversation = !!ctx.sessionManager.getHeader()?.parentSession || entries.some(entry => entry.type === "message");
+    if ((event.reason === "startup" && !existingConversation) || event.reason === "new") {
+      pi.appendEntry(START, { sessionId });
+      marker = ctx.sessionManager.getEntries().at(-1)?.id;
+    } else if (event.reason !== "reload" || complete) marker = undefined;
+    void refresh(ctx, marker ? { marker } : undefined);
     poll(ctx);
   });
   pi.on("session_shutdown", () => {
