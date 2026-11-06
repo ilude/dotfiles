@@ -596,6 +596,29 @@ else
     fi
 fi
 
+current_step="T3 Code CLI install"
+# T3 Code's official CLI installer supports both Unix-like shells and PowerShell.
+# Keep the desktop app in the native package manifests; this provides its CLI on
+# systems where no desktop package manager is used.
+t3_tmp=$(mktemp -d)
+if is_windows; then
+    t3_ps=$(command -v pwsh || command -v powershell.exe || true)
+    if [[ -n "$t3_ps" ]] && curl -fsSL https://t3.codes/install.ps1 -o "${t3_tmp}/install.ps1"; then
+        "$t3_ps" -NoProfile -ExecutionPolicy Bypass -File "$(cygpath -w "${t3_tmp}/install.ps1")" ||
+            echo "Warning: T3 Code CLI installer failed"
+    else
+        echo "Warning: could not download the T3 Code CLI installer or find PowerShell"
+    fi
+else
+    if curl -fsSL https://t3.codes/install.sh -o "${t3_tmp}/install.sh"; then
+        sh "${t3_tmp}/install.sh" || echo "Warning: T3 Code CLI installer failed"
+    else
+        echo "Warning: could not download the T3 Code CLI installer"
+    fi
+fi
+rm -rf "$t3_tmp"
+completed_steps+=("T3 Code CLI install")
+
 current_step="Onclave adapter dependencies"
 # Soft failure: the Onclave adapter is optional tooling, and the pi extension
 # link, pi agent link, and Claude/OpenCode setup steps all follow this one. They
@@ -630,6 +653,19 @@ fi
 current_step="default Pi setup"
 bash "${BASEDIR}/scripts/pi-default-setup"
 completed_steps+=("default Pi setup")
+
+current_step="T3 Code Pi configuration"
+if command -v node >/dev/null 2>&1; then
+    if node "${BASEDIR}/scripts/t3-code-setup.mjs"; then
+        completed_steps+=("T3 Code Pi configuration")
+    else
+        echo "Warning: T3 Code Pi configuration failed; continuing" >&2
+        skipped_steps+=("T3 Code Pi configuration (failed)")
+    fi
+else
+    echo "Warning: Node unavailable; skipping T3 Code Pi configuration" >&2
+    skipped_steps+=("T3 Code Pi configuration (Node unavailable)")
+fi
 
 current_step="Onclave backfill scheduler"
 # Build and register the short-lived worker only after the default Node/Pi

@@ -1073,6 +1073,23 @@ function Install-PackageTooling {
     Write-Host "`n--- Git Context Menu Cleanup ---" -ForegroundColor Cyan
     Remove-GitShellExtensions
 
+    # T3 Code's desktop app comes from WinGet; install its official stable CLI
+    # alongside other per-user package tooling.
+    Write-Host "`n--- T3 Code CLI Setup ---" -ForegroundColor Cyan
+    $t3Installer = Join-Path ([System.IO.Path]::GetTempPath()) "t3-code-install-$PID.ps1"
+    try {
+        Invoke-WebRequest -Uri 'https://t3.codes/install.ps1' -OutFile $t3Installer
+        $powershell = Get-Command pwsh -ErrorAction SilentlyContinue
+        if (-not $powershell) { $powershell = Get-Command powershell.exe -ErrorAction SilentlyContinue }
+        if (-not $powershell) { throw 'PowerShell is unavailable' }
+        $installed = Invoke-InstallCommand -Name 'T3 Code CLI install' -FilePath $powershell.Source -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $t3Installer)
+        if ($installed) { Update-InstallPath }
+    } catch {
+        Add-InstallResult 'T3 Code CLI install' Failed $_.Exception.Message
+    } finally {
+        Remove-Item $t3Installer -Force -ErrorAction SilentlyContinue
+    }
+
     # WinGet Links setup (some packages don't auto-create symlinks)
     Write-Host "`n--- WinGet Links ---" -ForegroundColor Cyan
     $null = Ensure-WinGetLinksInPath
@@ -1879,6 +1896,14 @@ try {
         throw "Default Pi setup failed (exit $LASTEXITCODE)"
     }
     Add-InstallResult 'Default Pi setup' UpdatedOrCurrent 'Configuration ready; authentication unverified'
+
+    Write-Host "`nConfiguring T3 Code provider settings for the default Pi profile..." -ForegroundColor Cyan
+    $t3Setup = Join-Path $BASEDIR 'scripts\t3-code-setup.mjs'
+    if (Test-Path $t3Setup) {
+        $null = Invoke-InstallCommand -Name 'T3 Code Pi configuration' -FilePath node -ArgumentList @($t3Setup)
+    } else {
+        Add-InstallResult 'T3 Code Pi configuration' Failed 'setup helper is missing'
+    }
 
     # ========================================================================
     # Onclave local-first backfill scheduler

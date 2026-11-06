@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-11-06: Add T3 Code alongside Herdr
+
+- Install the T3 Code desktop app through Windows core WinGet/macOS Homebrew and add its official CLI installation path. Configure Pi after default-profile setup, including configuration-only Windows runs, without changing Herdr installation, configuration, saved machines or active sessions.
+- Merge T3's local provider settings to use the native Pi executable and the existing default profile, retaining credentials in place and preserving unrelated T3 settings. Use Pi's own model default when T3 has no stored default, and prevent T3 Pi processes from claiming an inherited Herdr pane context.
+- Document RPC UI limits, headless custom subagents versus T3-native delegation, native-launch versus shell-launch behavior, and remote Windows hosting differences. Do not enable network access, services, new accounts, or legacy-profile changes as part of setup.
+
 ## 2026-11-06: Make Bedrock usage readable
 
 - Replace internal billing-query and local-cutoff timestamps with one local date and minute-level update time. Hide cache statistics when no token data exists, label AWS-reported spend plainly, and flag missing request costs as an incomplete known-spend total rather than implying zero cost or pending pricing. Accounting and refresh behavior are unchanged.
