@@ -11,6 +11,7 @@ it needs more specific guidance.
 - [index](index.md) — vault map and topic list
 - [AGENTS](AGENTS.md) — vault-wide guidance for agents
 - [agent-workflows/index](agent-workflows/index.md) — agent workflow research and Pi/dotfiles ideas
+- [Onclave deployment ownership](agent-workflows/projects/onclave-deployment-ownership.md) - implemented repository boundaries, private images, and daily Podman updates
 - [prompt-router/index](prompt-router/index.md) — prompt-router curation, experiments, datasets, and routing policy research
 - [osint/index](osint/index.md) - OSINT directories, agent integrations, reading, and collection-accountability research
 - [homelab-os/index](homelab-os/index.md) - opinionated, agent-first Linux appliance, base OS research, and Proxmox development
