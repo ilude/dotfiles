@@ -97,6 +97,24 @@ reboot requirements. Exit codes are `0` for success, `1` for failures, `2` for f
 or cancelled elevation, and `3010` for reboot-required completion without other
 failures. Elevated runs propagate the child exit code. No automatic reboot occurs.
 
+### T3 Code alongside Herdr
+
+Normal installation adds the T3 Code desktop app on Windows/macOS and its CLI on
+supported platforms, then configures the existing default Pi profile as a T3
+provider. Herdr installation, configuration and running sessions remain unchanged.
+Windows `-SkipPackages` skips T3 downloads but still applies provider configuration.
+
+To configure an existing installation without running the full installer:
+
+```sh
+node scripts/t3-code-setup.mjs
+```
+
+Refresh Pi in T3's **Settings > Providers**, then start a new thread. Setup shares
+the existing Pi profile and credentials without copying them; it does not enable
+remote access or background services. See [T3 setup, workflow differences and
+remote limits](docs/t3-code.md).
+
 ### Optional Windows SSH server
 
 The normal installers do **not** enable inbound SSH. To enable it explicitly,

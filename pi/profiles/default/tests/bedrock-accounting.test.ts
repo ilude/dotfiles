@@ -162,7 +162,7 @@ describe("Bedrock accounting", () => {
 		const baseline = parseResults(JSON.stringify({ status: "Complete", results: row }), principal, capturedAt.toISOString()).baseline!; expect(await createBaseline(baseline)).toBe(true);
 		expect(baseline).toMatchObject({ scope: "user", accountId: "058264305403", userName: "mike.glenn", invocations: 4 });
 		const summary = await summarize(baseline.month); expect(summary.baseline).toBe(2.5); expect(summary.records.map(record => record.id)).toEqual([after.id]);
-		expect(formatUsage(summary)).toBe("Bedrock:     $2.50\n  baseline:  $2.50\n  Cache-read: 0.0%");
+		expect(formatUsage(summary)).toBe("Bedrock:        $2.50 this month\n  AWS reported: $2.50\n  Cache-read:    0.0%");
 	});
 	it("shows a weighted local cache-read rate without raw cache counts", () => {
 		const records = [
@@ -170,13 +170,16 @@ describe("Bedrock accounting", () => {
 			makeRecord({ provider: "amazon-bedrock", model: "anthropic.claude-haiku-4-5", usage: { input: 1000, output: 1000 } }),
 		];
 		const report = formatUsage({ month: records[0].month, records, cost: 1, baseline: 0, unpriced: 0 });
-		expect(report).toMatch(/^Bedrock: +\$1\.00\n/);
+		expect(report).toMatch(/^Bedrock: +\$1\.00 this month\n/);
 		expect(report.endsWith("  Cache-read: 40.0%")).toBe(true);
 		expect(report).not.toContain("Total:");
 		expect(report).toContain("Tokens:  100 in, 1.0K out");
 		expect(report).not.toContain("cache read");
 		expect(report).not.toContain("cache write");
-		expect(formatUsage({ month: records[0].month, records: [], cost: 0, baseline: 1, unpriced: 0 })).toContain("Cache-read: unavailable");
+		expect(formatUsage({ month: records[0].month, records: [], cost: 0, baseline: 1, unpriced: 0 })).not.toContain("Cache-read");
+		const incomplete = formatUsage({ month: records[0].month, records: [], cost: 0, baseline: 1, unpriced: 2 });
+		expect(incomplete).toContain("$1.00 known spend");
+		expect(incomplete).toContain("Incomplete: cost unavailable for 2 requests");
 		const consolidated = formatUsage({ month: records[0].month, records: [], cost: 0, baseline: 1, unpriced: 0 }, 2.25);
 		expect(consolidated).toMatch(/^Bedrock:\s+\$3\.25/m);
 		expect(consolidated).toMatch(/^  Claude:\s+\$2\.25/m);

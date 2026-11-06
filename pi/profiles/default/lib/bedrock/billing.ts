@@ -16,5 +16,6 @@ export async function summarizeBilling() {
 }
 export async function formatBillingUsage(): Promise<string> {
 	const { summary, claude, cur } = await summarizeBilling();
-	return [formatUsage(summary, claude), ...(cur ? [`  CUR query: ${cur.generated_at}`, `  Local delta since: ${cur.capturedAt ?? "next successful live query"}`] : [])].join("\n");
+	const updated = cur ? new Date(cur.generated_at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : undefined;
+	return [formatUsage(summary, claude), updated ? `  Billing updated ${updated}` : "  Local estimate only; AWS billing unavailable"].join("\n");
 }
