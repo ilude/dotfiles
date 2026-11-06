@@ -4,6 +4,16 @@
 
 - Replace internal billing-query and local-cutoff timestamps with one local date and minute-level update time. Hide cache statistics when no token data exists, label AWS-reported spend plainly, and flag missing request costs as an incomplete known-spend total rather than implying zero cost or pending pricing. Accounting and refresh behavior are unchanged.
 
+## 2026-11-05: Add a portable Hatchery resume checkpoint
+
+- Add cross-machine pickup instructions and a suggested planning prompt to Hatchery's existing handoff, linked from its README. Record the next recommended runner milestone, starting code, unresolved interface/allocation details, and the distinction between accepted direction and an implementation plan not yet written.
+- Resume from published repositories rather than copying temporary state or credentials. Preserve the narrow first workflow and long-term infrastructure replacement goal without authorizing live deployment or migration as part of this checkpoint.
+
+## 2026-11-05: Clarify Hatchery's long-term replacement goal
+
+- Record the operator's goal for Hatchery to replace homelab-infra once its ideas prove out. Keep disposable compute as the initial proving ground rather than a permanent product boundary; the current management split is transitional, with no immediate migration or expanded first-version scope.
+- Update Hatchery's PRD and related design documents, and require accepted product changes to be reflected in the PRD during the discussion rather than only in chat or supplementary records. Preserve current resource ownership until deliberate handover and keep private site configuration/secrets separate from reusable product code.
+
 ## 2026-11-05: Restore fresh Pi registration with Onclave
 
 - Add concise infrastructure contributor guidance for new persistent container directories: distinguish host-managed and container-owned paths, account for rootless UID/GID mapping, preserve established ownership during normal applies, and verify service writes after reapplying configuration.
