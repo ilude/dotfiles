@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-05: Add a portable Hatchery resume checkpoint
+
+- Add cross-machine pickup instructions and a suggested planning prompt to Hatchery's existing handoff, linked from its README. Record the next recommended runner milestone, starting code, unresolved interface/allocation details, and the distinction between accepted direction and an implementation plan not yet written.
+- Resume from published repositories rather than copying temporary state or credentials. Preserve the narrow first workflow and long-term infrastructure replacement goal without authorizing live deployment or migration as part of this checkpoint.
+
 ## 2026-11-05: Clarify Hatchery's long-term replacement goal
 
 - Record the operator's goal for Hatchery to replace homelab-infra once its ideas prove out. Keep disposable compute as the initial proving ground rather than a permanent product boundary; the current management split is transitional, with no immediate migration or expanded first-version scope.
