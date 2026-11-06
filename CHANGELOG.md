@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-11-06: Make Bedrock usage readable
+
+- Replace internal billing-query and local-cutoff timestamps with one local date and minute-level update time. Hide cache statistics when no token data exists, label AWS-reported spend plainly, and flag missing request costs as an incomplete known-spend total rather than implying zero cost or pending pricing. Accounting and refresh behavior are unchanged.
+
 ## 2026-11-05: Restore fresh Pi registration with Onclave
 
 - Add concise infrastructure contributor guidance for new persistent container directories: distinguish host-managed and container-owned paths, account for rootless UID/GID mapping, preserve established ownership during normal applies, and verify service writes after reapplying configuration.

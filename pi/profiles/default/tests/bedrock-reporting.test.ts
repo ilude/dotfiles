@@ -77,7 +77,11 @@ it("accounts and reprices local usage without an AWS baseline; manual reconcile 
 	queryPersonalCur.mockResolvedValueOnce(snapshot(2));
 	await commands.get("bedrock").handler("reconcile", { ...ctx });
 	expect(statuses.get("bedrock")).toBe("bedrock: $2.00");
-	expect(ctx.ui.notify.mock.calls.at(-1)[0]).toContain("CUR query:");
+	const report = ctx.ui.notify.mock.calls.at(-1)[0];
+	expect(report).toContain("Billing updated ");
+	expect(report).not.toContain("CUR query");
+	expect(report).not.toContain("Local delta");
+	expect(report).not.toMatch(/\d{2}:\d{2}:\d{2}|T\d{2}:/);
 });
 
 it("aborts pending query at shutdown without replacing the cache, and accounting-only children never query", async () => {
