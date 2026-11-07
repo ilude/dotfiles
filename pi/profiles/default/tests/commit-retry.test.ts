@@ -206,12 +206,24 @@ it("does not retry an aborted provider response", async () => {
 	await expect(start().run).rejects.toThrow("Request aborted"); expect(requests).toHaveLength(1);
 });
 
-it("shares the original active deadline across retries and backoff", async () => {
-	const setTimeout = globalThis.setTimeout;
-	const deadline = vi.spyOn(globalThis, "setTimeout").mockImplementation((...args) => { if (args[1] === 180_000) args[1] = 1100; return setTimeout(...args); });
-	responses.push({ message: failed() }, { message: failed() }, { message: done() });
-	await expect(start().run).rejects.toThrow("Timed out");
-	expect(requests).toHaveLength(2); expect(deadline.mock.calls.filter(([, ms]) => ms === 180_000)).toHaveLength(1);
+it("finishes review and publication after more than three minutes of progressing work", async () => {
+	vi.useFakeTimers();
+	try {
+		changed.set("unfinished.txt", "M ");
+		doubles.shell.mockImplementation(async () => {
+			await new Promise(resolve => setTimeout(resolve, 10_000));
+			return { content: [{ type: "text", text: "Inspection completed" }], details: {} };
+		});
+		for (let i = 0; i < 20; i++) responses.push({ message: message([inspect(`review ${i}`)], "toolUse") });
+		responses.push({ message: message([submit("reviewed commit")], "toolUse") });
+		const { run } = start(undefined, true);
+		await vi.runAllTimersAsync();
+		const result = await run;
+		expect(result.elapsedMs).toBeGreaterThanOrEqual(200_000);
+		expect(result.text).toContain("reviewed commit"); expect(result.text).toContain("Pushed.");
+		expect(git.mock.calls.filter(([, args]) => args[2] === "push")).toHaveLength(1);
+		expect(git.mock.calls.find(([, args]) => args[2] === "push")?.[2]?.signal?.aborted).toBe(false);
+	} finally { vi.useRealTimers(); }
 });
 
 it("retains captured push permission and annotations through recovery without a publication tool", async () => {

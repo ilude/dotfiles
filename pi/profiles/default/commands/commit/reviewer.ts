@@ -18,7 +18,6 @@ import { executeCommitPlan, parseCommitStatus, validateCommitPlan, type CommitPl
 const MODEL_FAMILY = "terra";
 const FALLBACK_PROVIDER = "anthropic";
 const FALLBACK_FAMILY = "haiku";
-const WORKFLOW_TIMEOUT_MS = 180_000;
 const GIT_TIMEOUT_MS = 15_000;
 const PUBLICATION_TIMEOUT_MS = 120_000;
 const RESPONSE_RETRIES = 3;
@@ -105,14 +104,11 @@ export interface CommitRunResult {
 export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext, push: boolean, signal?: AbortSignal, onProgress?: (text: string) => void): Promise<CommitRunResult> {
 
 			const account = helperResponseAccounting(ctx, pi);
-			const deadline = new AbortController();
-			const combined = signal ? AbortSignal.any([signal, deadline.signal]) : deadline.signal;
-			let remaining = WORKFLOW_TIMEOUT_MS;
-			let activeSince = Date.now();
-			let timer: ReturnType<typeof setTimeout>;
-			const resumeTimer = () => { activeSince = Date.now(); timer = setTimeout(() => deadline.abort(), Math.max(0, remaining)); };
-			const pauseTimer = () => { clearTimeout(timer); remaining -= Date.now() - activeSince; };
-			resumeTimer();
+			// A progressing multi-repository run must not cancel its final push just
+			// because earlier repositories consumed an overall wall-clock budget.
+			const combined = signal ?? new AbortController().signal;
+			const startedAt = Date.now();
+			let userWaitMs = 0;
 			let agent: Agent | undefined;
 			let selectedModel: Model<Api> | undefined;
 			let thinkingLevel: "low" | "medium" = "medium";
@@ -425,7 +421,7 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 									const rule = validateGitignorePattern(pattern);
 									if (active) active.terminal = true;
 									if (!ctx.hasUI) throw new Error(`User input required for ${candidate}: ${reason}. Run /commit interactively.`);
-									pauseTimer();
+									const waitingSince = Date.now();
 									progress("Waiting for ignore-file decision…");
 									try {
 										const answer = await ctx.ui.select(`Candidate: ${candidate}\nReason: ${reason}\nProposed rule: ${rule}`, ["Include in commit", "Add to .gitignore", "Leave untracked"], { signal: combined });
@@ -448,7 +444,7 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 											if (answer === "Add to .gitignore") await git(["add", "--", ".gitignore"], combined, repository);
 										}
 										return { content: [{ type: "text" as const, text: `${answer}: ${id}/${candidate}` }], details: {} };
-									} finally { resumeTimer(); progress("Reviewing changes…"); }
+									} finally { userWaitMs += Date.now() - waitingSince; progress("Reviewing changes…"); }
 								},
 							},
 						],
@@ -659,14 +655,14 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 					}
 				}
 			} catch (error) {
-				failure = signal?.aborted ? "Cancelled" : deadline.signal.aborted ? "Timed out" : error instanceof Error ? error.message : String(error);
+				failure = signal?.aborted ? "Cancelled" : error instanceof Error ? error.message : String(error);
 			} finally {
-				pauseTimer();
 				combined.removeEventListener("abort", abort);
 				agent?.abort();
 				if (agent) await agent.waitForIdle();
 				unsubscribe?.();
 			}
+			const elapsedMs = Date.now() - startedAt - userWaitMs;
 			// Report Git's actual state even after cancellation/failure: a commit may already
 			// have completed. These read-only queries do not reuse the cancelled signal.
 			progress("Collecting commit results…");
@@ -704,5 +700,5 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 			});
 			const report = [summary, ...preservedIndex, ...leftOut.map(line => `Left out: ${line}`), ...exclusions, publication].filter(Boolean).join("\n");
 			if (failure) throw new Error(`${failure}\n${report}\nStopped; existing commits and changes were not undone.`);
-			return { text: report, elapsedMs: WORKFLOW_TIMEOUT_MS - remaining, model: `${selectedModel?.provider}/${selectedModel?.id}:${thinkingLevel}`, usage };
+			return { text: report, elapsedMs, model: `${selectedModel?.provider}/${selectedModel?.id}:${thinkingLevel}`, usage };
 }

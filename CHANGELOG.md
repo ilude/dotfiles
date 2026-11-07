@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-06: Stop cancelling progressing commits after three minutes
+
+- Remove the overall `/commit` deadline, which could expire after successful module commits and pushes and cancel the final parent push. Keep explicit cancellation and existing per-operation Git, shell, and publication timeouts; do not replace the cap with another arbitrary workflow budget.
+- Continue verifying uncertain push outcomes instead of blindly retrying publication. Preserve active elapsed-time reporting without counting time waiting for operator decisions.
+
 ## 2026-11-06: Let the commit agent resolve routine workflow problems
 
 - Return incomplete execution, new files, hook changes, and ordinary Git/publication errors to the private reviewer for inspection, scoped repair, and a fresh plan instead of immediately failing the whole command. Preserve completed commits and require remaining contents to be reviewed rather than replaying the old snapshot.
