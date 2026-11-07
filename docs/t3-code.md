@@ -58,6 +58,107 @@ node scripts/t3-code-setup.mjs --base-dir /path/to/t3-home --pi-binary /path/to/
 `--base-dir` is the T3 home, not its `userdata` subdirectory. Point `--pi-binary`
 at an executable T3 can spawn on that OS.
 
+## Local source checkout and build
+
+[`modules/t3code`](../modules/t3code) is a Git submodule of
+[`ilude/t3code`](https://github.com/ilude/t3code), forked from
+[`pingdotgg/t3code`](https://github.com/pingdotgg/t3code), tracking the fork's
+`main` branch. Upstream scheduled nightlies build the default branch (`main`),
+not a separate nightly branch. The local checkout also has an `upstream` remote
+for the original repository; that remote is local Git configuration, not part of
+the submodule declaration.
+
+Follow the module's `AGENTS.md` and
+[development guide](../modules/t3code/docs/operations/development.md).
+With Vite+ installed, the release workflow's JS bundle build is:
+
+```sh
+cd modules/t3code
+vp install --frozen-lockfile --filter=t3... --filter=@t3tools/web... --filter=@t3tools/desktop... --filter=@t3tools/scripts...
+vp run build:desktop:bundle
+```
+
+On 2026-11-07, commit `e455200077ce60806a01c8f28435b58860dcfc74` passed
+all four bundle tasks in a local Linux x64 Docker container using
+`node:26.12.1-bookworm`, Vite+ `1.4.0`, and the pinned pnpm `12.14.0`.
+The build emitted large-chunk, optional `x11`, and CommonJS `import.meta`
+warnings. This verifies the web, server, and Electron JavaScript bundles, not a
+packaged installer, native desktop helpers, GUI startup, or the full test suite.
+The bundle-only build retains development branding/versioning rather than
+impersonating a published nightly.
+
+The stopped build container is `t3code-main-build-20261107`; its `/workspace`
+contains a source snapshot and installed dependencies, not a live bind mount.
+Ignored local outputs are under `.tmp/t3code-build/artifacts/{server,desktop}`,
+with the build log at `.tmp/t3code-build/build.log` and the build runner at
+`.tmp/t3code-build/run-build.sh`. These are workstation-local artifacts, not
+files delivered by cloning this repository.
+
+The module and build do not replace the installed T3 app, change installer
+channels, or access its live data. Use an isolated T3 home for any later runtime
+checks, never the live `~/.t3/userdata` directory.
+
+### Windows x64 installer from Linux Docker
+
+[`scripts/t3-code-windows-build`](../scripts/t3-code-windows-build) follows
+upstream's Linux cross-build path: Rust `1.99.1`, `cargo-xwin` `0.23.1`, and
+Electron Builder produce an unsigned NSIS installer and standalone Windows CLI.
+It also builds the matching Linux CLI archive bundled for WSL. No Windows
+container, Wine, host Visual Studio changes, signing credentials, or live T3
+configuration are needed. The image pins the Node/Vite+ versions above; update
+those pins when building a source revision that requires different versions.
+
+From the dotfiles root in PowerShell, use a fresh build container for each source
+snapshot. The Git bundle includes committed `main` only, not working-tree edits
+or ignored files. A shallow checkout also needs its shallow-boundary marker:
+
+```powershell
+$run = 't3code-windows-' + (Get-Date -Format 'yyyyMMdd-HHmmss')
+$build = Join-Path $PWD ".tmp/t3code-windows-build/$run"
+New-Item -ItemType Directory -Force "$build/input" | Out-Null
+git -C modules/t3code bundle create "$build/input/source.bundle" main
+$shallow = git -C modules/t3code rev-parse --git-path shallow
+if (Test-Path $shallow) { Copy-Item $shallow "$build/input/shallow" }
+docker build -t ilude/t3code-windows-builder:local scripts/t3-code-windows-build
+docker create --name $run ilude/t3code-windows-builder:local
+docker cp "$build/input" "${run}:/input"
+docker start --attach $run
+docker inspect $run --format '{{.State.ExitCode}}'
+# After a successful build (exit code 0):
+docker cp "${run}:/out" "$build/artifacts"
+```
+
+The default version is the source's server version plus
+`-preview.<UTC date>.1`; pass an explicit preview version after the image name
+in `docker create` to distinguish additional builds. The container retains its
+source and dependencies for inspection. Outputs include `installer/`,
+`cli-windows/`, `cli-linux/`, `win-unpacked/`, dependency-free `verify/` scripts,
+`build.log`, `source-commit.txt`, and `version.txt`.
+
+On 2026-11-07, source `e455200077ce60806a01c8f28435b58860dcfc74` built as
+`0.1.7-preview.20261107.1` in `t3code-windows-build-20261107`. The installer is
+`.tmp/t3code-windows-build/artifacts/installer/T3-Code-0.1.7-preview.20261107.1-x64.exe`
+(322,999,322 bytes). Upstream's Linux CLI smoke check, Windows payload validation
+(66 files, 24 sidecar natives), Windows desktop native-load/bundle checks, and
+Windows CLI smoke check all passed. The CLI served HTTP successfully with
+isolated temporary state. Windows check logs are beside `build.log` in that
+artifacts directory. ShellCheck and shfmt pass for the build runner.
+
+To repeat the Windows checks against exported artifacts (adjust `$artifacts`):
+
+```powershell
+$artifacts = (Resolve-Path '.tmp/t3code-windows-build/artifacts').Path
+$env:T3CODE_HOME = Join-Path $artifacts 'verification-home'
+$env:T3CODE_TELEMETRY_ENABLED = 'false'
+node "$artifacts/verify/verify-windows-desktop-artifact.mjs" --app-dir "$artifacts/win-unpacked" --arch x64 --build-version 0.1.7-preview.20261107.1
+node "$artifacts/verify/smoke-cli-archive.mjs" --archive "$artifacts/cli-windows/t3-0.1.7-preview.20261107.1-win32-x64.zip" --expect-version 0.1.7-preview.20261107.1
+```
+
+These checks do not install the app or prove GUI/provider operation or WSL guest
+execution. The installer remains unsigned and uses the normal Beta app identity,
+so installing it can replace the existing app; it is not a side-by-side install.
+No installer was run, and no existing T3 process or live data was changed.
+
 ## First use
 
 1. Open **T3 Code** on Windows/macOS, or run `t3` for the local web interface.

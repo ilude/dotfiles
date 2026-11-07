@@ -1,7 +1,7 @@
 ---
 status: exploratory
 created: 2026-11-05
-updated: 2026-11-05
+updated: 2026-11-06
 source_session: 01a1ac73-995d-7744-bf9a-a41b5b344072
 ---
 
@@ -104,6 +104,22 @@ The desired combination is:
 
 NixOS's immutable/reproducible ideas were attractive, but NixOS was not accepted
 as the base. Hadron plus Kairos and Flatcar emerged as candidates.
+
+## Cloud-services exploration preference
+
+A later discussion considered [Floci](https://github.com/floci-io/floci) as an
+AWS-compatible application-services layer for disposable environments or an
+optional homelab workload, separate from the host OS and virtualization backend.
+The operator prefers a Go or Rust reimplementation over adopting Floci's Java
+runtime, because they prefer avoiding Java and Oracle-associated technology.
+Floci can be an API-behavior and implementation reference without a runtime
+dependency.
+
+This records a technology preference, not selection of a language, approval to
+clone all of Floci, or authorization to build a cloud-services platform. The
+relationship to Hatchery remains open, and its existing TypeScript/Node/Alchemy
+runner direction is unchanged. Hatchery's related preference is recorded in its
+[PRD](../../../../modules/hatchery/docs/PRD.md#cloud-services-exploration-preference).
 
 ## Working candidates, not decisions
 

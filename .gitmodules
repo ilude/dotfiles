@@ -14,3 +14,7 @@
 	path = modules/hatchery
 	url = git@forgejo:mike/hatchery.git
 	branch = main
+[submodule "t3code"]
+	path = modules/t3code
+	url = https://github.com/ilude/t3code.git
+	branch = main

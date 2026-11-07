@@ -1,5 +1,63 @@
 # Changelog
 
+## 2026-11-07: Add T3 desktop validation helpers and a Pi reload command
+
+- Add Windows helpers for exact tool-linked thread navigation and visible-window PNG capture, using T3's registered protocol handler without typing into the composer. Remove inherited Electron Node mode only from the navigation child; preserve the running app, user drafts and unrelated sessions. Keep ambiguous/minimized/off-desktop targets and screen occlusion explicit rather than claiming hidden-window capture or automatic view restoration.
+- Add default-profile `/reload-runtime` through Pi's command-context API, with metadata-only lifecycle/generation markers and a plain completion notice. Verify an isolated T3 thread loads an edit after a same-PID/same-session reload, responds to a subsequent model probe, and can be navigated to, captured and visually inspected. Focused tests and profile typecheck pass; old processes still need one fresh Pi runtime to acquire the command.
+- Record a remaining installed-runtime caveat: after the successful reload and model probe, T3 reported provider-stream closure and the isolated Pi process exited. The cause remains unestablished; do not call long-lived stability clean or hide the warning with a notification workaround. No T3 source/bundle/database patch, desktop restart or change to the original colored timing notice is included.
+
+## 2026-11-07: Build unsigned Windows T3 Code artifacts in Linux Docker
+
+- Add a reusable pinned Linux builder using upstream's `cargo-xwin` and Electron Builder path, including Windows x64 native payloads, an unsigned NSIS installer, standalone Windows CLI and the matching Linux CLI archive for WSL. Import committed source through a Git bundle with shallow boundaries, without host credentials, ignored working files, live T3 state or Windows toolchain installation.
+- Build `e455200077ce60806a01c8f28435b58860dcfc74` as local preview `0.1.7-preview.20261107.1`. Pass upstream Linux CLI smoke, Windows payload validation, Windows native-load/bundle verification and Windows CLI startup/HTTP smoke checks. Keep generated binaries/logs ignored and document rebuild/export commands; do not install or publish the preview, replace running T3, claim GUI/WSL guest acceptance, or change existing release channels. The unsigned installer retains the normal Beta app identity and is not a side-by-side installation.
+
+## 2026-11-07: Add the T3 Code source fork and verify its main-branch build
+
+- Fork `pingdotgg/t3code` to `ilude/t3code` and add it at `modules/t3code`, tracking the fork's `main` branch. Upstream scheduled nightlies build `main`; there is no separate nightly branch. Keep T3 source ownership in its module and leave existing modules unchanged.
+- Verify commit `e455200077ce60806a01c8f28435b58860dcfc74` with the upstream release JS bundle command in an isolated Linux x64 Docker environment using pinned Node 26.12.1, pnpm 12.14.0 and Vite+ 1.4.0. All four bundle tasks pass with warnings; retain ignored local outputs and document the build path. This is not packaged-installer, native-helper, GUI or full-suite acceptance, and does not replace the installed app or touch live T3 data.
+
+## 2026-11-07: Add dated upstream issue research guidance
+
+- Add the default-profile `issue-research` skill and route issue/PR/discussion lookups from `web-tools` to it. Report creation/update dates, comment totals, relevant closure/merge dates, and evidence-based activity summaries rather than treating a recent timestamp or large comment count as ongoing progress.
+- Distinguish substantive discussion and development from automated updates or isolated “any progress?” bumps after long quiet periods. Disclose unavailable metadata and partial history; keep retrieval bounded and installed-version availability separate from upstream status. This is on-demand guidance, not automated monitoring.
+
+## 2026-11-07: Add a T3 Code operating skill
+
+- Add default-profile `t3code` guidance for Pi-in-T3 diagnosis, explicit model selection, app-owned thread control, and requested desktop visual checks, with official upstream documentation and contributor-guide links. Keep host adaptation owned by the Pi extension skill rather than introducing another profile or runtime framework.
+- Record successful capture and visual inspection of the actual Windows T3 window, plus delegated Pi launch and a persisted live message/response probe. Document screen-occlusion limits, CLI-version mismatch, and the missing built-in T3/Pi RPC reload route; an already loaded reload-command bridge still needs separate implementation and live validation.
+- Keep saved configuration, message acceptance, completed responses, and actual extension reload as separate evidence. No runtime notification change, reload bridge, desktop restart, or claim of a complete autonomous visual-iteration loop is included.
+
+## 2026-11-07: Establish incremental Pi host-adapter direction
+
+- Guide extension work toward shared host resolution and narrow injected adapters for T3 Code, Herdr desktop, Herdr TUI, and ordinary terminals, reusing existing verified Herdr detection. Separate the immediate RPC client from an enclosing terminal and keep presentation and host operations outside feature logic.
+- Grow adapters only for requested feature changes, without a new profile, generic framework, or broad migration. This is skill guidance only: existing runtime behavior, unsupported integrations, and the T3 timing notification remain unchanged.
+
+## 2026-11-07: Integrate experimental Hatchery compute and configuration facilities
+
+- Combine general VM hardware/startup, owned template preparation/cloning, discovery, explicit guest SSH/setup, read-only BWS references and common systemd refresh behind a separate experimental entry. Keep runtime credentials outside serialized declarations, raw secret values out of state/results/logs, and refresh driven by explicit deployment/revision rather than a watcher.
+- Preserve legacy VM props/state/fingerprint and the VM-only immutable runner. Reuse protected same-directory SSH uploads and optionally bind uniquely owned cloud-config artifacts to existing snippet storage without configuring hosts/storage. Combined Node 26 offline checks pass; the bounded disposable live slices below are not production deployment claims.
+
+- Correct live-exposed Proxmox cloud-init SSH-key encoding, repeated command-array fields and numeric guest-agent completion readback. Poll side-effect-free readiness before submitting each command once; retain scalar form encoding and avoid automatically repeating an ambiguously failed command. Focused offline checks pass. A subsequent fresh cleanup check found no candidate guests, disks or snippets, with the pre/post-cleanup guest set unchanged; the broader live matrix remains incomplete.
+- Pass the separate native VM/template/clone slice, including caller startup/preparation, clone identity isolation, memory/power convergence, rebuild refusal and no-change/drift behavior without API writes. Fix lost preparation files by flushing guest writes before template hard stop; same-ID recreation passed. Native destruction and independent guest/storage/snippet checks preserved the original guest set. Provider typecheck and 53 tests pass. Guest-configuration acceptance is a separate slice below; no production rollout occurred.
+- Pass separate VM SSH transfers/setup, protected systemd delivery and native Action plan/no-op/explicit-revision behavior, including no restart for unchanged delivered bytes and service retention when the Action is removed. Verify synthetic values stay out of serialized state/logs. Real BWS adapter lookup remains operator-only for the existing authorized configuration family; only synthetic values reach the guest. Native destruction and independent cleanup preserve the original guest set. No source fixes or redundant offline reruns were needed. Container-specific service behavior, reboot persistence and application health remain untested.
+
+## 2026-11-07: Complete isolated Hatchery LXC and DNS acceptance
+
+- Pass bounded primary-target native Alchemy acceptance for LXC lifecycle, memory/rootfs updates and IPv4 readiness, plus disposable Technitium records, adoption, adapter bindings, drift repair and shared-configuration retention. Verify removal of the test guest, owned disk and private test artifacts, and preservation of existing guests. AAAA queries passed, but the guest had no IPv6 connectivity.
+- Preserve fixes established by Proxmox 8.4.21 and Technitium 15.6.2: accept the single appended LXC description newline, confirm zone absence before treating record-read errors as missing, and write/verify FWD TTL zero. Optional host-status audit denial did not require privilege expansion. Production DNS/services remain unchanged; later compute/SSH/secrets/systemd additions need their own acceptance.
+
+## 2026-11-07: Isolate further Hatchery provider development from live acceptance
+
+- Authorize disposable primary-target provider acceptance and develop the next compute/startup/template/SSH additions in separate worktrees while that testing continues. Keep the tester's checkout and state independent, preserve its fixes, and integrate only after the existing acceptance run finishes before validating the additions.
+- Permit task-scoped local commits and publication when useful, without including unrelated work or inferring production deployment, infrastructure takeover, or changes to the VM-only immutable runner. New provider additions remain in development, not live-validated claims.
+- Accept read-only BWS secret abstraction, explicit refresh/redeployment rather than background synchronization, and common Linux systemd service operations with separate application recipes. Keep BWS access credentials off guests and raw values out of persisted declarations/state/logs; stored-secret writes and Docker/Kubernetes management are not part of these additions.
+
+## 2026-11-07: Add local Hatchery LXC and Technitium providers
+
+- Add a Proxmox LXC resource for new unprivileged containers with configurable dual-stack networking, DNS and compute, supported-field readback/updates, rootfs growth, ownership-checked lifecycle, bounded network/address readiness, and idempotent destruction. Retain immutable allocation/template/storage/bootstrap-key identity and preserve the VM-only runner and legacy VM state behavior. Accepted Proxmox configuration may remain pending until restart; address readiness is not SSH/application readiness.
+- Add native Technitium A/AAAA/CNAME/TXT, multivalue and binding-aware alias resources plus the Alchemy DNS adapter, including Outputs, zone inference and retained verification records. Preserve native explicit adoption, instance comments and targeted owned-value deletion. Forwarder/FWD/catalog and supported server settings have actual readback/drift-aware convergence while remaining retained on destroy; omitted catalog/optional settings stay unmanaged.
+- Complete the broader local provider continuation rather than stopping at the first LXC/A-CNAME slice. Node 26 package checks pass. The subsequent isolated acceptance above establishes bounded live behavior, not production deployment. Preserve deployed split DNS, current resource ownership and the BWS/private configuration boundary; no resource migration is authorized.
+
 ## 2026-11-06: Stop cancelling progressing commits after three minutes
 
 - Remove the overall `/commit` deadline, which could expire after successful module commits and pushes and cancel the final parent push. Keep explicit cancellation and existing per-operation Git, shell, and publication timeouts; do not replace the cap with another arbitrary workflow budget.
@@ -24,12 +82,12 @@
 
 ## 2026-11-06: Add the dedicated Hatchery command runner
 
-- Implement the approved non-onramp workflow: homelab-infra provisions a dedicated controller LXC and delivers explicit BWS-backed primary/secondary Proxmox bindings; Hatchery manages only newly allocated workload VMs. Existing guests, infrastructure ownership, networking, and production services remain unchanged.
+- Implement the approved non-onramp workflow: homelab-infra provisions a dedicated controller LXC and delivers explicit BWS-backed primary/secondary Proxmox bindings; Hatchery manages only newly allocated workload VMs. Existing guests, their infrastructure ownership, and unrelated production networking/services remain unchanged.
 - Add the SSH-invoked `hatchery` command for plan/create, status/readiness, exec, upload/download, and destroy. Preserve immutable allocation identity, per-allocation SSH trust and isolated persistent state; serialize controller commands without adding a daemon, API, queue, scheduler, or database. Missing target images fail before mutation, with no fallback.
 - Install checksum-verified source and Node 26, pinned pnpm and Alchemy dependencies, and an isolated Python bootstrap helper. Keep site tokens in root-only files and exclude them from resource state; do not deliver the BWS bootstrap credential to the controller.
-- Record the follow-up split-DNS requirement and initial shared Caddy ingress choice: centralize virtual-host routing, HTTPS termination, and certificate management for the current small deployment while preserving intentional work/personal tailnet separation. One instance is justified now, not a hard future rule. The approved rollout uses a new dedicated proxy LXC with LAN and personal-tailnet HTTPS, Technitium internal records, and Cloudflare DNS-only external records. No WAN forwarding, Funnel, or public Internet ingress is authorized.
+- Deploy the initial shared Caddy ingress in a new dedicated LXC for LAN and personal-tailnet HTTPS, using Technitium internal records, Cloudflare DNS-only external records, and DNS-01 certificate management. Verify both paths with real provider responses and an isolated Codex client, then retire the old trial Serve route while preserving its identity and credentials. One instance is justified now, not a hard future rule. Preserve intentional work/personal tailnet separation; no WAN forwarding, Funnel, or public Internet ingress is added.
 - Retire the superseded homelab experiment launcher and operational runbook, including its duplicated bootstrap and scratch-lifecycle logic. Keep reusable workload code and historical acceptance evidence in Hatchery; homelab-infra retains controller provisioning and private configuration delivery.
-- Provide a separate checksum-pinned CLIProxyAPI trial recipe with loopback binding, independent API/management keys, and stock session affinity. Keep human Codex OAuth and an actual model request distinct from service readiness; preserve existing Claude Code, Codex, Pi, and `ccyl` authentication.
+- Provide a separate checksum-pinned CLIProxyAPI trial recipe with loopback defaults and explicit private-LAN binding for shared ingress, independent API/management keys, and stock session affinity. Keep human Codex OAuth and an actual model request distinct from service readiness; preserve existing Claude Code, Codex, Pi, and `ccyl` authentication.
 
 ## 2026-11-06: Manage Herdr desktop configuration in dotfiles
 

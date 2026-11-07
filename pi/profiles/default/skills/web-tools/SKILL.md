@@ -7,6 +7,8 @@ description: Choose between native web search/fetch, Firecrawl extraction, Brows
 
 Choose by the requested output and required browser state, not by which provider was most recently configured. Honor an explicitly requested provider; explain any capability gap before substituting another. This guide routes work; provider skills own setup and execution.
 
+For upstream issue, PR, or feature-discussion research, also load [issue-research](../issue-research/SKILL.md) for dates, comment counts, and substantive activity assessment.
+
 ## Availability and delegation
 
 Route only to tools available to the current role. This skill grants no shell, browser, or provider authority. Ordinary subagents do not automatically discover skills; include the relevant skill and task facts when assigning authorized work. Roles without shell tools, such as researcher, can use their native search/fetch tools and return a specific extraction or browser need to the orchestrator. Do not broaden role permissions or ask a restricted role to invoke a shell helper.
