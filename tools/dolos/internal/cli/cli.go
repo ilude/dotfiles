@@ -5,8 +5,9 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
+
+	"filippo.io/age"
 
 	"dolos/internal/archive"
 	"dolos/internal/crypto"
@@ -61,9 +62,10 @@ func usage(w io.Writer) {
 Commands:
   init [--key PATH]              create .dolos metadata and import a public key
   status                         show archive state and next step
-  pack private [--verify-identity KEY]
-                                  encrypt private/ and optionally verify decryptability
-  unpack private --identity KEY  decrypt artifact into private/
+  pack private [--verify-identity KEY] [--if-plain-changed]
+                                  encrypt private/ and optionally verify before replacing
+  unpack private --identity KEY [--force]
+                                  restore private/; --force discards local changes
   verify private --identity KEY  decrypt to scratch and validate without changing private/
   recipients                     show recipient count and fingerprints
   doctor [--identity KEY]        check setup and optionally verify artifact decryptability
@@ -131,36 +133,22 @@ func initCmd(s gitstore.Store, args []string, out, er io.Writer) int {
 	return ExitOK
 }
 func statusCmd(s gitstore.Store, out, er io.Writer) int {
-	_, perr := os.Stat(s.PlainPath())
-	_, aerr := os.Stat(s.ArtifactPath())
-	idx, ierr := state.ReadIndex(s.IndexPath())
-	cur := ""
-	if perr == nil {
-		m, _ := state.TreeManifest(s.PlainPath())
-		cur = m.Digest
+	st, err := inspectArchive(s)
+	if err != nil {
+		fmt.Fprintln(er, err)
+		return ExitError
 	}
-	art := ""
-	if aerr == nil {
-		art, _ = state.FileDigest(s.ArtifactPath())
-	}
-	st := "no-index"
-	if ierr == nil {
-		if idx.PlainDigest == cur && idx.ArtifactDigest == art {
-			st = "clean"
-		} else {
-			st = "diverged"
-		}
-	} else if perr == nil || aerr == nil {
-		st = "untracked"
-	}
-	fmt.Fprintf(out, "archive=private status=%s plain=%t artifact=%t\n", st, perr == nil, aerr == nil)
-	fmt.Fprintf(out, "next: %s\n", nextStep(st, perr == nil, aerr == nil))
-	if st == "clean" {
+	fmt.Fprintf(out, "archive=private status=%s plain=%t artifact=%t\n", st.name, st.plain, st.artifact)
+	fmt.Fprintf(out, "next: %s\n", nextStep(st.name, st.plain, st.artifact))
+	if st.name == "clean" {
 		return ExitOK
 	}
 	return ExitState
 }
 func nextStep(st string, plain, artifact bool) string {
+	if !plain && artifact {
+		return "private/ is missing; run dolos unpack private --identity KEY to restore private/"
+	}
 	switch st {
 	case "clean":
 		return "archive is current; use dolos verify private --identity KEY for a safe decrypt check"
@@ -168,12 +156,13 @@ func nextStep(st string, plain, artifact bool) string {
 		if plain && !artifact {
 			return "run dolos pack private to create the encrypted artifact"
 		}
-		if artifact && !plain {
-			return "run dolos unpack private --identity KEY to restore private/"
-		}
 		return "run dolos pack private after confirming private/ should become the source of truth"
+	case "plain-changed":
+		return "private/ changed; run dolos pack private to update the encrypted artifact"
+	case "artifact-changed":
+		return "the encrypted artifact changed; run dolos unpack private --identity KEY to restore it"
 	case "diverged":
-		return "private/ and the encrypted artifact differ; inspect changes, then pack or unpack intentionally"
+		return "both private/ and the encrypted artifact changed; preserve and compare both before choosing pack or unpack --force"
 	default:
 		return "run dolos init, then pack or unpack private intentionally"
 	}
@@ -190,15 +179,10 @@ func scanCmd(args []string, out, er io.Writer) int {
 	}
 	bad := 0
 	for _, p := range ps {
-		ok := p == ".dolos/authorized_keys" || p == ".dolos/artifacts/private.tar.gz.age"
-		if p == "private" || len(p) > 8 && p[:8] == "private/" {
-			ok = false
-		}
-		if !ok && (len(p) >= 7 && p[:7] == ".dolos/") {
-			ok = false
-		}
-		if !ok && (p == "private" || len(p) > 8 && p[:8] == "private/" || len(p) >= 7 && p[:7] == ".dolos/") {
-			fmt.Fprintln(er, "unsafe staged path:", p)
+		allowedMetadata := p == ".dolos/authorized_keys" || p == ".dolos/artifacts/private.tar.gz.age"
+		privatePath := p == "private" || strings.HasPrefix(p, "private/") || p == "private.bak" || strings.HasPrefix(p, "private.bak/")
+		if privatePath || (!allowedMetadata && strings.HasPrefix(p, ".dolos/")) {
+			fmt.Fprintf(er, "unsafe staged path: %q\n", p)
 			bad++
 		}
 	}
@@ -316,135 +300,201 @@ func doctorCmd(s gitstore.Store, args []string, out, er io.Writer) int {
 	return ExitOK
 }
 
-func parsePackArgs(args []string, er io.Writer) ([]string, bool) {
-	if len(args) == 0 || !state.ValidateArchiveName(args[0]) {
-		fmt.Fprintln(er, "usage: dolos pack private [--verify-identity KEY]")
-		return nil, false
-	}
-	var ids []string
-	for i := 1; i < len(args); i++ {
-		if args[i] == "--verify-identity" && i+1 < len(args) {
-			ids = append(ids, args[i+1])
-			i++
-			continue
+type packOptions struct {
+	identities     []string
+	ifPlainChanged bool
+}
+
+func parsePackArgs(args []string, er io.Writer) (packOptions, bool) {
+	var opts packOptions
+	if len(args) > 0 && state.ValidateArchiveName(args[0]) {
+		for i := 1; i < len(args); i++ {
+			switch {
+			case args[i] == "--verify-identity" && i+1 < len(args):
+				opts.identities = append(opts.identities, args[i+1])
+				i++
+			case args[i] == "--if-plain-changed":
+				opts.ifPlainChanged = true
+			default:
+				fmt.Fprintln(er, "usage: dolos pack private [--verify-identity KEY] [--if-plain-changed]")
+				return opts, false
+			}
 		}
-		fmt.Fprintln(er, "usage: dolos pack private [--verify-identity KEY]")
-		return nil, false
+		return opts, true
 	}
-	return ids, true
+	fmt.Fprintln(er, "usage: dolos pack private [--verify-identity KEY] [--if-plain-changed]")
+	return opts, false
+}
+
+func writeEncryptedArchive(w io.Writer, root string, recipients []age.Recipient) (state.Manifest, error) {
+	aw, err := crypto.Encrypt(w, recipients)
+	if err != nil {
+		return state.Manifest{}, err
+	}
+	m, err := archive.WriteTarGz(aw, root)
+	if cerr := aw.Close(); err == nil {
+		err = cerr
+	}
+	return m, err
 }
 
 func packCmd(s gitstore.Store, args []string, out, er io.Writer) int {
-	verifyIDs, ok := parsePackArgs(args, er)
+	opts, ok := parsePackArgs(args, er)
 	if !ok {
 		return ExitUsage
 	}
+	packed := false
 	err := s.WithLock(func() error {
-		rs, err := crypto.RecipientsFromAuthorizedKeys(s.AuthorizedKeysPath())
+		previousArtifact, _, err := existingArtifactDigest(s.ArtifactPath())
 		if err != nil {
 			return err
 		}
-		if _, err := os.Stat(s.PlainPath()); err != nil {
+		if opts.ifPlainChanged {
+			st, err := inspectArchive(s)
+			if err != nil {
+				return err
+			}
+			if st.name == "clean" {
+				return nil
+			}
+			if st.name != "plain-changed" {
+				return fmt.Errorf("automatic packing refused: archive state is %s; inspect dolos status before choosing a sync direction", st.name)
+			}
+			if st.artifactDigest != previousArtifact {
+				return fmt.Errorf("encrypted artifact changed while checking automatic packing; retry dolos status")
+			}
+		}
+		rs, err := crypto.RecipientsFromAuthorizedKeys(s.AuthorizedKeysPath())
+		if err != nil {
 			return err
 		}
 		if err := os.MkdirAll(filepath.Dir(s.ArtifactPath()), 0755); err != nil {
 			return err
 		}
-		tmp := s.ArtifactPath() + ".tmp"
-		f, err := os.Create(tmp)
+		f, err := os.CreateTemp(filepath.Dir(s.ArtifactPath()), ".private-*.age.tmp")
 		if err != nil {
 			return err
 		}
-		aw, err := crypto.Encrypt(f, rs)
-		if err == nil {
-			_, err = archive.WriteTarGz(aw, s.PlainPath())
-		}
-		if cerr := aw.Close(); err == nil {
-			err = cerr
-		}
+		tmp := f.Name()
+		defer os.Remove(tmp)
+		m, err := writeEncryptedArchive(f, s.PlainPath(), rs)
 		if cerr := f.Close(); err == nil {
 			err = cerr
 		}
 		if err != nil {
-			os.Remove(tmp)
 			return err
+		}
+		if len(opts.identities) > 0 {
+			verified, err := verifyArchiveFile(s, tmp, opts.identities)
+			if err != nil {
+				return fmt.Errorf("candidate archive verification failed: %w", err)
+			}
+			if verified.Digest != m.Digest {
+				return fmt.Errorf("candidate archive does not match the packed manifest")
+			}
+		}
+		current, err := state.TreeManifest(s.PlainPath())
+		if err != nil {
+			return err
+		}
+		if current.Digest != m.Digest {
+			return fmt.Errorf("private/ changed while packing; existing archive was not replaced; retry when edits are complete")
+		}
+		ad, err := state.FileDigest(tmp)
+		if err != nil {
+			return err
+		}
+		latestArtifact, _, err := existingArtifactDigest(s.ArtifactPath())
+		if err != nil {
+			return err
+		}
+		if latestArtifact != previousArtifact {
+			return fmt.Errorf("encrypted artifact changed while packing; existing archive was not replaced")
 		}
 		if err := os.Rename(tmp, s.ArtifactPath()); err != nil {
 			return err
 		}
-		m, err := state.TreeManifest(s.PlainPath())
-		if err != nil {
+		if err := state.WriteJSONAtomic(s.IndexPath(), state.Index{Version: 1, Archive: state.ArchiveName, PlainDigest: m.Digest, ArtifactDigest: ad}); err != nil {
 			return err
 		}
-		ad, err := state.FileDigest(s.ArtifactPath())
-		if err != nil {
-			return err
-		}
-		if err := state.WriteJSONAtomic(s.IndexPath(), state.Index{Version: 1, Archive: "private", PlainDigest: m.Digest, ArtifactDigest: ad}); err != nil {
-			return err
-		}
-		if len(verifyIDs) > 0 {
-			return verifyArchiveUnlocked(s, verifyIDs)
-		}
+		packed = true
 		return nil
 	})
 	if err != nil {
 		fmt.Fprintln(er, err)
 		return ExitError
 	}
+	if !packed {
+		fmt.Fprintln(out, "private archive is already current")
+		return ExitOK
+	}
 	fmt.Fprintln(out, "packed private")
-	if len(verifyIDs) > 0 {
+	if len(opts.identities) > 0 {
 		fmt.Fprintln(out, "verified artifact decrypts with supplied identity")
 	}
 	return ExitOK
 }
-func parseArchiveIdentityArgs(args []string, command string, er io.Writer) (string, []string, bool) {
-	if len(args) == 0 || !state.ValidateArchiveName(args[0]) {
-		fmt.Fprintf(er, "usage: dolos %s private --identity KEY\n", command)
-		return "", nil, false
+
+type identityOptions struct {
+	identities []string
+	force      bool
+}
+
+func parseArchiveIdentityArgs(args []string, command string, er io.Writer) (identityOptions, bool) {
+	var opts identityOptions
+	usage := "usage: dolos " + command + " private --identity KEY"
+	if command == "unpack" {
+		usage += " [--force]"
 	}
-	var ids []string
-	for i := 1; i < len(args); i++ {
-		if args[i] == "--identity" && i+1 < len(args) {
-			ids = append(ids, args[i+1])
-			i++
-			continue
+	if len(args) > 0 && state.ValidateArchiveName(args[0]) {
+		for i := 1; i < len(args); i++ {
+			switch {
+			case args[i] == "--identity" && i+1 < len(args):
+				opts.identities = append(opts.identities, args[i+1])
+				i++
+			case args[i] == "--force" && command == "unpack":
+				opts.force = true
+			default:
+				fmt.Fprintln(er, usage)
+				return opts, false
+			}
 		}
-		fmt.Fprintf(er, "usage: dolos %s private --identity KEY\n", command)
-		return "", nil, false
+		if len(opts.identities) > 0 {
+			return opts, true
+		}
 	}
-	if len(ids) == 0 {
-		fmt.Fprintf(er, "usage: dolos %s private --identity KEY\n", command)
-		return "", nil, false
-	}
-	return args[0], ids, true
+	fmt.Fprintln(er, usage)
+	return opts, false
 }
 
 func verifyArchive(s gitstore.Store, ids []string) error {
 	return s.WithLock(func() error { return verifyArchiveUnlocked(s, ids) })
 }
 
-func verifyArchiveUnlocked(s gitstore.Store, ids []string) error {
+func verifyArchiveFile(s gitstore.Store, path string, ids []string) (state.Manifest, error) {
 	identities, err := crypto.IdentitiesFromFiles(ids)
 	if err != nil {
-		return err
+		return state.Manifest{}, err
 	}
-	f, err := os.Open(s.ArtifactPath())
+	f, err := os.Open(path)
 	if err != nil {
-		return err
+		return state.Manifest{}, err
 	}
 	defer f.Close()
 	r, err := crypto.Decrypt(f, identities)
 	if err != nil {
-		return err
+		return state.Manifest{}, err
 	}
-	scratch := filepath.Join(s.GitPath, "verify-scratch")
-	_ = os.RemoveAll(scratch)
-	if err := os.MkdirAll(scratch, 0700); err != nil {
-		return err
+	scratch, err := os.MkdirTemp(s.GitPath, "verify-")
+	if err != nil {
+		return state.Manifest{}, err
 	}
 	defer os.RemoveAll(scratch)
-	m, err := archive.ExtractTarGz(r, scratch)
+	return archive.ExtractTarGz(r, scratch)
+}
+
+func verifyArchiveUnlocked(s gitstore.Store, ids []string) error {
+	m, err := verifyArchiveFile(s, s.ArtifactPath(), ids)
 	if err != nil {
 		return err
 	}
@@ -456,11 +506,11 @@ func verifyArchiveUnlocked(s gitstore.Store, ids []string) error {
 }
 
 func verifyCmd(s gitstore.Store, args []string, out, er io.Writer) int {
-	_, ids, ok := parseArchiveIdentityArgs(args, "verify", er)
+	opts, ok := parseArchiveIdentityArgs(args, "verify", er)
 	if !ok {
 		return ExitUsage
 	}
-	err := verifyArchive(s, ids)
+	err := verifyArchive(s, opts.identities)
 	if err != nil {
 		fmt.Fprintln(er, err)
 		return ExitError
@@ -470,12 +520,25 @@ func verifyCmd(s gitstore.Store, args []string, out, er io.Writer) int {
 }
 
 func unpackCmd(s gitstore.Store, args []string, out, er io.Writer) int {
-	_, ids, ok := parseArchiveIdentityArgs(args, "unpack", er)
+	opts, ok := parseArchiveIdentityArgs(args, "unpack", er)
 	if !ok {
 		return ExitUsage
 	}
 	err := s.WithLock(func() error {
-		identities, err := crypto.IdentitiesFromFiles(ids)
+		if err := checkUnpackOverwrite(s, opts.force); err != nil {
+			return err
+		}
+		backup := s.PlainPath() + ".bak"
+		if _, err := os.Lstat(backup); err == nil {
+			return fmt.Errorf("private.bak already exists; inspect and move it before retrying unpack")
+		} else if !os.IsNotExist(err) {
+			return err
+		}
+		ad, _, err := existingArtifactDigest(s.ArtifactPath())
+		if err != nil {
+			return err
+		}
+		identities, err := crypto.IdentitiesFromFiles(opts.identities)
 		if err != nil {
 			return err
 		}
@@ -488,9 +551,8 @@ func unpackCmd(s gitstore.Store, args []string, out, er io.Writer) int {
 		if err != nil {
 			return err
 		}
-		scratch := s.ScratchPath()
-		_ = os.RemoveAll(scratch)
-		if err := os.MkdirAll(scratch, 0700); err != nil {
+		scratch, err := os.MkdirTemp(s.GitPath, "unpack-")
+		if err != nil {
 			return err
 		}
 		defer os.RemoveAll(scratch)
@@ -498,34 +560,47 @@ func unpackCmd(s gitstore.Store, args []string, out, er io.Writer) int {
 		if err != nil {
 			return err
 		}
-		backup := s.PlainPath() + ".bak"
-		_ = os.RemoveAll(backup)
-		if _, err := os.Stat(s.PlainPath()); err == nil {
-			if err := os.Rename(s.PlainPath(), backup); err != nil {
-				return err
-			}
-		}
-		if err := os.Rename(scratch, s.PlainPath()); err != nil {
-			if _, e := os.Stat(backup); e == nil {
-				_ = os.Rename(backup, s.PlainPath())
-			}
-			return err
-		}
-		_ = os.RemoveAll(backup)
-		ad, err := state.FileDigest(s.ArtifactPath())
+		latestArtifact, _, err := existingArtifactDigest(s.ArtifactPath())
 		if err != nil {
 			return err
 		}
-		return state.WriteJSONAtomic(s.IndexPath(), state.Index{Version: 1, Archive: "private", PlainDigest: m.Digest, ArtifactDigest: ad})
+		if latestArtifact != ad {
+			return fmt.Errorf("encrypted artifact changed while unpacking; private/ was not replaced")
+		}
+		if err := checkUnpackOverwrite(s, opts.force); err != nil {
+			return err
+		}
+		movedBackup := false
+		if _, err := os.Lstat(s.PlainPath()); err == nil {
+			if err := os.Rename(s.PlainPath(), backup); err != nil {
+				return err
+			}
+			movedBackup = true
+		} else if !os.IsNotExist(err) {
+			return err
+		}
+		if err := os.Rename(scratch, s.PlainPath()); err != nil {
+			if movedBackup {
+				if restoreErr := os.Rename(backup, s.PlainPath()); restoreErr != nil {
+					return fmt.Errorf("promote archive: %w; restore private.bak: %v", err, restoreErr)
+				}
+			}
+			return err
+		}
+		if err := state.WriteJSONAtomic(s.IndexPath(), state.Index{Version: 1, Archive: state.ArchiveName, PlainDigest: m.Digest, ArtifactDigest: ad}); err != nil {
+			return fmt.Errorf("private/ restored but the index could not be updated; any private.bak was retained: %w", err)
+		}
+		if movedBackup {
+			if err := os.RemoveAll(backup); err != nil {
+				return fmt.Errorf("private/ restored but private.bak could not be removed: %w", err)
+			}
+		}
+		return nil
 	})
 	if err != nil {
 		fmt.Fprintln(er, err)
 		return ExitError
 	}
-	if runtime.GOOS == "windows" {
-		fmt.Fprintln(out, "unpacked private")
-	} else {
-		fmt.Fprintln(out, "unpacked private")
-	}
+	fmt.Fprintln(out, "unpacked private")
 	return ExitOK
 }

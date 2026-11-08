@@ -50,3 +50,36 @@ func TestSafeArchivePathUsesTarSlashSemantics(t *testing.T) {
 		}
 	}
 }
+
+func TestTreeManifestRejectsLinksAndInvalidRoot(t *testing.T) {
+	target := filepath.Join(t.TempDir(), "file")
+	if err := os.WriteFile(target, []byte("fixture"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := TreeManifest(target); err == nil {
+		t.Fatal("file root accepted")
+	}
+	root := t.TempDir()
+	if err := os.Symlink(target, filepath.Join(root, "link")); err != nil {
+		t.Skipf("symlink unsupported: %v", err)
+	}
+	if _, err := TreeManifest(root); err == nil {
+		t.Fatal("link silently omitted")
+	}
+	if _, err := OpenRegularFile(filepath.Join(root, "link")); err == nil {
+		t.Fatal("link opened")
+	}
+}
+
+func TestSafeArchivePathCrossPlatform(t *testing.T) {
+	for _, name := range []string{"draft..md", "a..b/notes.txt", "résumé.txt", ".gitkeep"} {
+		if !SafeArchivePath(name) {
+			t.Errorf("valid path rejected: %q", name)
+		}
+	}
+	for _, name := range []string{".", "..", "a/..", "C:/file", "a:stream", "NUL", "aux.txt", "COM1.txt", "LPT9", "a.", "a ", "a?", "a\x01"} {
+		if SafeArchivePath(name) {
+			t.Errorf("unsafe path accepted: %q", name)
+		}
+	}
+}

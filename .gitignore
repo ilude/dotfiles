@@ -160,6 +160,7 @@ pi/operator/tasks/
 
 # Local private data (PII/secrets/logs; encrypt before sharing)
 private/
+private.bak/
 private.tar
 private.tar.gz
 private-merge.tar

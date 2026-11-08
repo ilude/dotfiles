@@ -24,12 +24,6 @@ properties:
         source: winget
     - resource: Microsoft.WinGet.DSC/WinGetPackage
       directives:
-        description: Install T3 Code
-      settings:
-        id: T3Tools.T3Code  # T3 Code
-        source: winget
-    - resource: Microsoft.WinGet.DSC/WinGetPackage
-      directives:
         description: Install Bun
       settings:
         id: Oven-sh.Bun  # Bun

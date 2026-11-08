@@ -15,12 +15,12 @@ OLD_LINES = (
 
 def hook_path() -> Path:
     proc = subprocess.run(
-        ["git", "rev-parse", "--git-path", "hooks/pre-commit"],
+        ["git", "rev-parse", "--path-format=absolute", "--git-path", "hooks/pre-commit"],
         check=True,
         text=True,
         capture_output=True,
     )
-    return Path(proc.stdout.strip())
+    return Path(proc.stdout.removesuffix("\n"))
 
 
 def main() -> int:
