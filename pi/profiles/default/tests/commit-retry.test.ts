@@ -97,7 +97,7 @@ beforeEach(() => {
 		else if (operation[0] === "stash") stdout = operation[1] === "create" ? "retained-index-oid" : "";
 		else if (operation[0] === "submodule" || operation[0] === "ls-files" || operation[0] === "for-each-ref") stdout = "";
 		else if (operation[0] === "branch") stdout = "main";
-		else if (operation[0] === "pull" || operation[0] === "push") stdout = "";
+		else if (operation[0] === "fetch" || operation[0] === "merge" || operation[0] === "push") stdout = "";
 		else throw new Error(`Unexpected Git operation: ${operation.join(" ")}`);
 		return { stdout, stderr: "", code: 0, killed: false, truncated: false };
 	});
@@ -330,11 +330,11 @@ it("lets the agent repair failed preparation before staging and reviewing again"
 	expect(commits).toEqual(["after repair"]); expect(result.text).toContain("after repair");
 });
 
-it("returns a non-conflict pull failure to the agent before retrying code-owned publication", async () => {
+it.each(["fetch", "merge"])("returns a non-conflict %s failure to the agent before retrying code-owned publication", async operation => {
 	const original = git.getMockImplementation()!;
 	let failed = false;
 	git.mockImplementation(async (command, args, options) => {
-		if (args[2] === "pull" && !failed) {
+		if (args[2] === operation && !failed) {
 			failed = true;
 			return { stdout: "", stderr: "temporary transport problem", code: 1, killed: false, truncated: false };
 		}
@@ -344,7 +344,7 @@ it("returns a non-conflict pull failure to the agent before retrying code-owned 
 	responses.push({ message: done() }, { message: message([inspect("diagnose publication transport")], "toolUse") }, { message: done() }, { message: done() });
 	const result = await start(undefined, true).run;
 	expect(JSON.stringify(requests[1])).toContain("temporary transport problem");
-	expect(git.mock.calls.filter(([, args]) => args[2] === "pull")).toHaveLength(2);
+	expect(git.mock.calls.filter(([, args]) => args[2] === operation)).toHaveLength(2);
 	expect(git.mock.calls.filter(([, args]) => args[2] === "push")).toHaveLength(1);
 	expect(result.text).toContain("Pushed.");
 });
@@ -352,8 +352,9 @@ it("returns a non-conflict pull failure to the agent before retrying code-owned 
 it("uses a longer timeout only for publication", async () => {
 	responses.push({ message: done() }); await start(undefined, true).run;
 	expect(git.mock.calls.find(([, args]) => args[2] === "push")?.[2]?.timeout).toBe(120_000);
-	expect(git.mock.calls.find(([, args]) => args[2] === "pull")?.[2]?.timeout).toBe(120_000);
-	expect(git.mock.calls.filter(([, args]) => args[2] !== "push" && args[2] !== "pull").every(([, , options]) => options?.timeout === 15_000)).toBe(true);
+	expect(git.mock.calls.find(([, args]) => args[2] === "fetch")?.[2]?.timeout).toBe(120_000);
+	expect(git.mock.calls.find(([, args]) => args[2] === "merge")?.[2]?.timeout).toBe(120_000);
+	expect(git.mock.calls.filter(([, args]) => !["fetch", "merge", "push"].includes(args[2] ?? "")).every(([, , options]) => options?.timeout === 15_000)).toBe(true);
 });
 
 it("confirms a timed-out push from the remote without retrying it", async () => {

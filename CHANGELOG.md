@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-11-09: Avoid shared FETCH_HEAD races during Pi publication
+
+- Replace the combined pull in `/commit push` with an explicit branch fetch and merge of the resolved commit ID. Background Git fetches, including T3 status refreshes, can overwrite the shared `FETCH_HEAD` file; publication no longer reads or writes that file.
+- Preserve fast-forward or merge integration without rebasing, child-before-parent publication, first publication to an empty remote branch, normal hooks, conflict resolution, and existing failure/cancellation handling. Fetch and merge failures identify the failing phase and still block pushes.
+- Add a real-Git regression that overwrites `FETCH_HEAD` between publication fetch and merge, and keep transport-repair and timeout coverage aligned with the separate operations. Existing Pi runtimes need a resource reload or restart to load the command change.
+
 ## 2026-11-09: Adapt default Pi presentation to T3 Code
 
 - Introduce a small shared presentation boundary for plain notices, statuses and native-renderer/widget capabilities. Resolve the immediate Pi client separately from an enclosing Herdr terminal; RPC alone does not identify T3, and inherited T3 markers do not make native children T3-owned. Reuse the boundary for TPS output without changing timing calculations or terminal styling.

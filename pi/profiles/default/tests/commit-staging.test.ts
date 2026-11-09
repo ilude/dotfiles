@@ -393,8 +393,41 @@ it("reports actual local-remote push results independently of completion wording
 		git(root, "init", "--quiet", "--bare", remote); git(root, "remote", "add", "origin", remote); completion = "Finished.\nDone";
 		expect((await run(true)).text).toContain("Pushed."); expect(git(remote, "rev-parse", "refs/heads/main").trim()).toBe(git(root, "rev-parse", "HEAD").trim());
 		git(root, "commit", "--quiet", "--allow-empty", "-m", "outgoing"); git(root, "remote", "set-url", "origin", `${remote}-missing`);
-		await expect(run(true)).rejects.toThrow(/Pull before publication failed without an established merge conflict/);
+		steps.push(empty(), blocked("Publication remote is unavailable"));
+		await expect(run(true)).rejects.toThrow(/Fetch before publication failed/);
 	} finally { rmSync(remote, { recursive: true, force: true }); }
+}, 30_000);
+
+it("publishes the fetched branch even when a background fetch overwrites FETCH_HEAD", async () => {
+	const remote = join(root, ".git", "race-remote.git"), seed = join(root, ".git", "race-seed");
+	git(root, "init", "--quiet", "--bare", remote); git(root, "remote", "add", "origin", remote); git(root, "push", "--quiet", "-u", "origin", "main");
+	git(root, "clone", "--quiet", remote, seed); git(seed, "config", "user.name", "Offline test"); git(seed, "config", "user.email", "offline@example.invalid");
+	writeFileSync(join(seed, "remote.txt"), "remote work\n"); git(seed, "add", "-A"); git(seed, "commit", "--quiet", "-m", "remote work"); git(seed, "push", "--quiet");
+	const remoteHead = git(seed, "rev-parse", "HEAD").trim();
+	git(seed, "checkout", "--quiet", "-b", "background"); writeFileSync(join(seed, "unrelated.txt"), "other branch\n");
+	git(seed, "add", "-A"); git(seed, "commit", "--quiet", "-m", "unrelated branch"); git(seed, "push", "--quiet", "origin", "background");
+	const backgroundHead = git(seed, "rev-parse", "HEAD").trim();
+	writeFileSync(join(root, "local.txt"), "local work\n"); git(root, "add", "-A"); git(root, "commit", "--quiet", "-m", "local work");
+	const localHead = git(root, "rev-parse", "HEAD").trim(), execute = pi.exec.bind(pi);
+	let overwroteFetchHead = false;
+	const spy = vi.spyOn(pi, "exec").mockImplementation(async (command, args, options) => {
+		const result = await execute(command, args, options);
+		if (args[2] === "fetch" && result.code === 0) {
+			git(root, "fetch", "--quiet", "origin", "background");
+			overwroteFetchHead = true;
+		}
+		return result;
+	});
+	try {
+		const report = await run(true);
+		expect(execs.some(args => args[2] === "pull")).toBe(false);
+		expect(overwroteFetchHead).toBe(true);
+		expect(readFileSync(join(root, ".git", "FETCH_HEAD"), "utf8")).toContain(backgroundHead);
+		expect(git(root, "log", "-1", "--format=%P").trim().split(" ")).toEqual([localHead, remoteHead]);
+		expect(git(root, "ls-tree", "--name-only", "HEAD")).not.toContain("unrelated.txt");
+		expect(git(remote, "rev-parse", "main")).toBe(git(root, "rev-parse", "HEAD"));
+		expect(report.text).toContain("Pushed.");
+	} finally { spy.mockRestore(); }
 }, 30_000);
 
 it("merges real Git divergence before publishing and resolves an established conflict through temporary bash", async () => {
@@ -504,7 +537,7 @@ it.each([false, true])("commits child before parent gitlink and publishes clean 
 		steps.push(empty(nativeToolId), empty()); await run(true);
 		expect(git(childRemote, "rev-parse", "refs/heads/work").trim()).toBe(git(child, "rev-parse", "HEAD").trim()); const publishedParent = git(parentRemote, "rev-parse", "refs/heads/main").trim();
 		git(child, "commit", "--quiet", "--allow-empty", "-m", "unpublished"); git(root, "add", childId); git(root, "commit", "--quiet", "-m", "unpublished pin");
-		git(child, "remote", "set-url", "origin", join(root, ".git", "missing")); steps.push(empty(childId)); await expect(run(true)).rejects.toThrow(/Stopped/);
+		git(child, "remote", "set-url", "origin", join(root, ".git", "missing")); steps.push(empty(childId), blocked("Child publication remote is unavailable")); await expect(run(true)).rejects.toThrow(/Stopped/);
 		expect(git(parentRemote, "rev-parse", "refs/heads/main").trim()).toBe(publishedParent);
 	} else expect(execs.some(args => args[2] === "branch")).toBe(false);
 }, 45_000);

@@ -36,7 +36,7 @@ it("supplies boundaries, stage-first ordering, and captured publication permissi
 it("retains deterministic attached and detached publication behavior", () => {
 	expect(formatPublicationEligibility(false, "main")).toBe("");
 	expect(formatPublicationEligibility(true, "main")).toContain('attached branch "main"');
-	expect(formatPublicationEligibility(true, "main")).toContain("integrates origin/main with git pull --no-rebase --ff");
+	expect(formatPublicationEligibility(true, "main")).toContain("fetches origin/main and merges its resolved commit without rebasing or relying on FETCH_HEAD");
 	expect(formatPublicationEligibility(true, "main")).toContain("publishes after a successful pass");
 	expect(formatPublicationEligibility(true, "")).toContain("do not re-check its branch, outgoing commits, upstream, remotes, or push");
 });

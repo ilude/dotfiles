@@ -78,7 +78,7 @@ export function describeCommitTool(name: string, args: unknown): string {
 export function formatPublicationEligibility(push: boolean, branch: string): string {
 	if (!push) return "";
 	return branch
-		? `Publication: code-owned; attached branch ${JSON.stringify(branch)}. The runner checks outgoing commits, integrates origin/${branch} with git pull --no-rebase --ff, and publishes after a successful pass.`
+		? `Publication: code-owned; attached branch ${JSON.stringify(branch)}. The runner checks outgoing commits, fetches origin/${branch} and merges its resolved commit without rebasing or relying on FETCH_HEAD, and publishes after a successful pass.`
 		: "Publication: ineligible; detached HEAD. Silently skip publication checks and actions for this repository; do not re-check its branch, outgoing commits, upstream, remotes, or push, and do not mention the skip.";
 }
 
@@ -236,19 +236,28 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 						return { content: [{ type: "text" as const, text: "This repository HEAD has already been published." }], details: {} };
 					if (unresolvedPublicationConflict && unresolvedPublicationConflict !== normalizeRepositoryId(repo)) throw new Error("Publication blocked until the unresolved pull conflict is resolved and its repository is retried.");
 					const ref = `refs/heads/${target.branch}`;
-					const integrated = await pi.exec("git", ["-C", target.path, "pull", "--no-rebase", "--ff", "origin", target.branch], { signal: combined, timeout: PUBLICATION_TIMEOUT_MS });
-					if (integrated.killed || integrated.code !== 0) {
+					const remoteRef = `refs/remotes/origin/${target.branch}`;
+					const fetched = await pi.exec("git", ["-C", target.path, "fetch", "--no-write-fetch-head", "origin", `+${ref}:${remoteRef}`], { signal: combined, timeout: PUBLICATION_TIMEOUT_MS });
+					if (fetched.killed || fetched.code !== 0) {
+						if (fetched.killed) return { content: [{ type: "text" as const, text: `Fetch before publication timed out or was cancelled for origin/${target.branch}. Do not push.` }], details: {}, isError: true };
 						let remoteBranch: string | undefined;
 						try { remoteBranch = await git(["ls-remote", "--heads", "origin", ref], combined, target.path, PUBLICATION_TIMEOUT_MS); }
 						catch { /* A failed verification must not authorize publication. */ }
-						if (integrated.killed) return { content: [{ type: "text" as const, text: `Pull before publication timed out or was cancelled for origin/${target.branch}. Do not push.` }], details: {}, isError: true };
-						const conflicts = await git(["diff", "--name-only", "--diff-filter=U"], combined, target.path);
-						if (conflicts) {
-							unresolvedPublicationConflict = normalizeRepositoryId(repo);
-							return { content: [{ type: "text" as const, text: `Pull from origin/${target.branch} established merge conflicts in: ${conflicts}. Do not publish this or any parent repository yet. Resolve only when intent is clear, stage and commit the merge with bash. The runner will verify the merge and retry publication; do not pull or push yourself.` }], details: {} };
-						}
-						if (remoteBranch === undefined || remoteBranch) return { content: [{ type: "text" as const, text: `Pull before publication failed without an established merge conflict: ${integrated.stderr.trim()}. Do not push.` }], details: {}, isError: true };
+						if (remoteBranch === undefined || remoteBranch) return { content: [{ type: "text" as const, text: `Fetch before publication failed: ${fetched.stderr.trim()}. Do not push.` }], details: {}, isError: true };
 						// An empty origin branch is a valid first publication.
+					} else {
+						// Background fetches share FETCH_HEAD and can change tracking refs.
+						const fetchedHead = await git(["rev-parse", "--verify", `${remoteRef}^{commit}`], combined, target.path);
+						const integrated = await pi.exec("git", ["-C", target.path, "merge", "--ff", "--no-edit", "-m", `Merge origin/${target.branch}`, fetchedHead], { signal: combined, timeout: PUBLICATION_TIMEOUT_MS });
+						if (integrated.killed) return { content: [{ type: "text" as const, text: `Merge before publication timed out or was cancelled for origin/${target.branch}. Do not push.` }], details: {}, isError: true };
+						if (integrated.code !== 0) {
+							const conflicts = await git(["diff", "--name-only", "--diff-filter=U"], combined, target.path);
+							if (conflicts) {
+								unresolvedPublicationConflict = normalizeRepositoryId(repo);
+								return { content: [{ type: "text" as const, text: `Merge from origin/${target.branch} established merge conflicts in: ${conflicts}. Do not publish this or any parent repository yet. Resolve only when intent is clear, stage and commit the merge with bash. The runner will verify the merge and retry publication; do not pull or push yourself.` }], details: {} };
+							}
+							return { content: [{ type: "text" as const, text: `Merge before publication failed without an established merge conflict: ${integrated.stderr.trim()}. Do not push.` }], details: {}, isError: true };
+						}
 					}
 					unresolvedPublicationConflict = undefined;
 					const integratedLinks = await stageParentGitlinks(target.path);
