@@ -20,6 +20,11 @@
 - Add the narrow output adapter and shared T3 integration-signal resolution without treating RPC mode alone as T3 or changing existing Herdr host distinctions. Keep one default Pi profile; other extensions are unchanged.
 - Pass focused host/output tests and profile typecheck. Existing Pi processes need a resource reload or restart to load the change; no live T3 visual check or restart was performed.
 
+## 2026-11-08: Wire Dolos private environment into T3 Pi
+
+- Load the five Bitwarden/Onclave provider variables from the existing Dolos-managed `private/secrets.env` during T3 setup. The earlier portable-preference sync excluded provider environment entries, so restarting T3 could not supply them on another machine.
+- Track only the setup wiring. Keep values in the existing encrypted private archive and local T3 runtime storage, mark imported entries sensitive, and never log their values. Preserve unrelated provider entries and existing values when the private source is absent or empty; do not create a second secret-sync mechanism or change running Pi processes.
+
 ## 2026-11-08: Sync portable T3 Code preferences through setup
 
 - Track the work machine's selected T3 model defaults/favorites/visibility, interface and browser-preview preferences, speech/snapshot settings, thread-title and Git preferences, and portable keybindings. Make the existing cross-platform setup helper apply this baseline during installation or a manual rerun, without linking mutable T3 state.

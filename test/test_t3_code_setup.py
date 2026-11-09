@@ -21,7 +21,7 @@ def t3_setup(tmp_path):
     binary = tmp_path / "Pi shim with spaces.cmd"
     binary.write_text("fixture, not executed")
 
-    def run():
+    def run(secrets_file=None):
         return subprocess.run(
             [
                 NODE,
@@ -30,6 +30,8 @@ def t3_setup(tmp_path):
                 str(home),
                 "--pi-binary",
                 str(binary),
+                "--secrets-file",
+                str(secrets_file or tmp_path / "missing secrets.env"),
             ],
             capture_output=True,
             text=True,
@@ -102,6 +104,86 @@ def test_preserves_user_settings_other_providers_and_secret_references(t3_setup)
     assert pi["config"]["launchArgs"] == "--thinking low"
     assert pi["environment"][0] == original["providerInstances"]["pi"]["environment"][2]
     assert len(pi["environment"]) == 3
+
+
+def test_wires_selected_dolos_private_values_without_logging_them(t3_setup, tmp_path):
+    settings, _, run = t3_setup
+    secrets_file = tmp_path / "private secrets.env"
+    names = (
+        "BITWARDEN_ACCESS_KEY",
+        "BITWARDEN_API_SERVER",
+        "BITWARDEN_IDENTITY_SERVER",
+        "BITWARDEN_ORG_ID",
+        "ONCLAVE_BWS_PROJECT_ID",
+    )
+    values = {
+        name: f"fixture-value-{index} with spaces $NOT_EXPANDED" for index, name in enumerate(names)
+    }
+    secrets_file.write_text(
+        "# Dolos-managed local source\n"
+        + "\n".join(f'export {name}="{value}"' for name, value in values.items())
+        + '\nexport UNRELATED_PRIVATE_VALUE="not-for-t3"\n'
+    )
+    settings.write_text(
+        json.dumps(
+            {
+                "providerInstances": {
+                    "pi": {
+                        "environment": [
+                            {
+                                "name": names[0],
+                                "value": "",
+                                "sensitive": True,
+                                "valueRedacted": True,
+                            },
+                            {
+                                "name": names[4],
+                                "value": "",
+                                "secret": {"provider": "old", "reference": "old"},
+                            },
+                            {"name": "KEEP_LOCAL", "value": "keep", "sensitive": False},
+                        ]
+                    }
+                }
+            }
+        )
+    )
+    result = run(secrets_file)
+    assert result.returncode == 0, result.stdout + result.stderr
+    entries = json.loads(settings.read_text())["providerInstances"]["pi"]["environment"]
+    for name, value in values.items():
+        assert [entry for entry in entries if entry["name"] == name] == [
+            {"name": name, "value": value, "sensitive": True}
+        ]
+        assert value not in result.stdout + result.stderr
+    assert any(entry["name"] == "KEEP_LOCAL" for entry in entries)
+    assert not any(entry["name"] == "UNRELATED_PRIVATE_VALUE" for entry in entries)
+    before = settings.read_bytes(), settings.stat().st_mtime_ns
+    assert run(secrets_file).returncode == 0
+    assert (settings.read_bytes(), settings.stat().st_mtime_ns) == before
+
+
+@pytest.mark.parametrize("source_exists", [False, True])
+def test_missing_or_empty_private_values_preserve_existing_entries(
+    t3_setup, tmp_path, source_exists
+):
+    settings, _, run = t3_setup
+    secrets_file = tmp_path / "optional secrets.env"
+    if source_exists:
+        secrets_file.write_text(
+            'export BITWARDEN_ACCESS_KEY=""\nexport ONCLAVE_BWS_PROJECT_ID=" "\n'
+        )
+    original = [
+        {"name": "BITWARDEN_ACCESS_KEY", "value": "", "sensitive": True, "valueRedacted": True},
+        {"name": "ONCLAVE_BWS_PROJECT_ID", "value": "local-project", "sensitive": False},
+    ]
+    settings.write_text(json.dumps({"providerInstances": {"pi": {"environment": original}}}))
+    result = run(secrets_file)
+    assert result.returncode == 0, result.stdout + result.stderr
+    entries = json.loads(settings.read_text())["providerInstances"]["pi"]["environment"]
+    assert entries[:2] == original
+    assert len(entries) == 4
+    assert "Existing entries are preserved" in result.stderr
 
 
 @pytest.mark.parametrize("wrapped_client", [False, True])

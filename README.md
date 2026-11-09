@@ -182,8 +182,10 @@ node scripts/t3-code-setup.mjs
 Restart T3 when idle to load desktop preferences, then refresh Pi in T3's
 **Settings > Providers** and start a new thread. The work-machine snapshot owns
 shared preference keys, including new-thread model defaults; unrelated local
-runtime settings stay local. Setup shares the existing Pi profile and credentials
-without copying them; it does not enable remote access or background services.
+runtime settings stay local. Setup shares the existing Pi profile and OAuth
+credentials, and wires selected Bitwarden/Onclave variables from Dolos-managed
+`private/secrets.env` into the local Pi provider without tracking their values.
+It does not enable remote access or background services.
 See [T3 setup, preference scope, workflow differences and remote limits](docs/t3-code.md).
 
 ### Optional Windows SSH server
