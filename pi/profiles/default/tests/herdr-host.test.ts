@@ -2,7 +2,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import type { BeforeAgentStartEvent, ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { buildSystemPrompt, normalizeBuildSystemPromptOptions } from "../node_modules/@earendil-works/pi-coding-agent/dist/core/system-prompt.js";
 import register from "../extensions/herdr-host.ts";
-import { detectHerdrHost, renderHerdrHost, type HerdrHost } from "../lib/herdr-host.ts";
+import { detectHerdrHost, renderHerdrHost, resolvePiHost, type HerdrHost } from "../lib/herdr-host.ts";
 
 const core = { HC_TERMINAL_ID: "t1", HC_TERMINAL_SOCKET: "fixture-socket" };
 const tui = { HERDR_ENV: "1", HERDR_SOCKET_PATH: "fixture", HERDR_PANE_ID: "w1:p1", HERDR_WORKSPACE_ID: "w1", HERDR_TAB_ID: "w1:t1" };
@@ -11,6 +11,12 @@ const response = (value: unknown) => ({ stdout: JSON.stringify(value), stderr: "
 const terminal = (labels: Record<string, unknown> = {}) => ({ address: "t1", labels });
 const desktopResponse = () => response(terminal({ "herdr.space": "sp1", "herdr.tab": "tb1" }));
 afterEach(() => vi.unstubAllEnvs());
+
+it("selects plain output only for the explicit T3 integration signal, after Herdr detection", () => {
+  expect(resolvePiHost({ kind: "terminal" }, { T3_PI_MCP_EXTENSION_PATH: "fixture" })).toEqual({ kind: "t3code" });
+  expect(resolvePiHost({ kind: "terminal" }, { T3_PI_RUNTIME_MODE: "rpc" })).toEqual({ kind: "terminal" });
+  expect(resolvePiHost({ kind: "herdr-core", terminal: "t1", membership: "none" }, { T3_PI_MCP_EXTENSION_PATH: "fixture" })).toEqual({ kind: "herdr-core", terminal: "t1", membership: "none" });
+});
 
 it("detects desktop through the caller's exact core terminal and labels", async () => {
 	const exec = vi.fn<ExtensionAPI["exec"]>().mockResolvedValue(desktopResponse());

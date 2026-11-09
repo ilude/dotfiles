@@ -29,6 +29,26 @@ it("records the exact invocation outside model context and yields before dispatc
 	await pending;
 });
 
+it("acknowledges RPC commands visibly before work without adding model messages", async () => {
+	const commands = new Map<string, { handler: (args: string, ctx: unknown) => Promise<void> }>();
+	const notify = vi.fn();
+	const appendEntry = vi.fn();
+	const sendMessage = vi.fn();
+	const handler = vi.fn(async () => {});
+	const pi = {
+		registerEntryRenderer: vi.fn(),
+		registerCommand: (name: string, definition: { handler: (args: string, ctx: unknown) => Promise<void> }) => commands.set(name, definition),
+		appendEntry, sendMessage,
+	};
+	registerProfileCommand(pi as unknown as ExtensionAPI, "example", { handler });
+	const pending = commands.get("example")!.handler("one two", { mode: "rpc", hasUI: true, ui: { notify } });
+	expect(notify).toHaveBeenCalledExactlyOnceWith("/example one two", "info");
+	expect(handler).not.toHaveBeenCalled();
+	await pending;
+	expect(appendEntry).toHaveBeenCalledWith("profile-command", "/example one two");
+	expect(sendMessage).not.toHaveBeenCalled();
+});
+
 it("wraps commands registered by an external adapter without changing other API methods", async () => {
 	const commands = new Map<string, { handler: (args: string, ctx: unknown) => Promise<void> }>();
 	const appendEntry = vi.fn();

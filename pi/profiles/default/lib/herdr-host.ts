@@ -1,10 +1,34 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
-export type HerdrHost =
+export type PiHost =
 	| { kind: "terminal" }
+	| { kind: "t3code" }
 	| { kind: "herdr-tui"; pane: string; workspace: string; tab?: string }
 	| { kind: "herdr-desktop"; terminal: string; space: string; tab: string }
 	| { kind: "herdr-core"; terminal: string; membership: "none" | "unavailable" };
+
+export type HerdrHost = Exclude<PiHost, { kind: "t3code" }>;
+export type PiClient = "tui" | "rpc" | "t3code" | "json" | "print";
+
+/** The immediate client is separate from a possibly inherited enclosing terminal host. */
+export function resolvePiClient(
+	mode: "tui" | "rpc" | "json" | "print",
+	env: NodeJS.ProcessEnv = process.env,
+): PiClient {
+	if (mode !== "rpc") return mode;
+	// Native children inherit parent markers but speak RPC to their own parent, not T3.
+	if (env.PI_SUBAGENT_AUTHORITY) return "rpc";
+	return resolvePiHost({ kind: "terminal" }, env).kind === "t3code" ? "t3code" : "rpc";
+}
+
+export function resolvePiHost(
+	herdr: HerdrHost,
+	env: NodeJS.ProcessEnv = process.env,
+): PiHost {
+	if (herdr.kind !== "terminal") return herdr;
+	if (env.T3_PI_MCP_EXTENSION_PATH) return { kind: "t3code" };
+	return herdr;
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);

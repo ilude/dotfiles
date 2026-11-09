@@ -4,6 +4,7 @@ import { CONTEXT_REPORT_MESSAGE_TYPE, type AnyEntry, type ContextUsage } from ".
 import { formatContextReport } from "../lib/context-report.ts";
 import { completePartialArgument } from "../lib/argument-completions.ts";
 import { registerProfileCommand } from "../lib/profile-command.ts";
+import { createHostPresentation } from "../lib/host-presentation.ts";
 // Preserve existing analysis exports for consumers of this extension.
 export { buildContextBuckets, buildContextFileDetailBuckets, buildSkillPromptDetailBuckets,
 	buildInjectedContextDetailBuckets, buildToolSchemaBuckets, type Bucket } from "../lib/context-analysis.ts";
@@ -41,9 +42,12 @@ export default function registerContextCommand(pi: ExtensionAPI) {
 		getArgumentCompletions: (prefix) => completePartialArgument(prefix, ["clear", "hide", "widget"]),
 		handler: async (args, ctx) => {
 			const trimmed = args.trim().toLowerCase();
+			const presentation = createHostPresentation(ctx);
 			if (trimmed === "clear" || trimmed === "hide") {
-				ctx.ui.setWidget("context", undefined);
-				ctx.ui.notify("Context widget hidden.", "info");
+				if (presentation.widgets) {
+					ctx.ui.setWidget("context", undefined);
+					presentation.notify("Context widget hidden.");
+				} else presentation.notify("Context widgets are unavailable in this client; there is no widget to hide.");
 				return;
 			}
 
@@ -51,15 +55,18 @@ export default function registerContextCommand(pi: ExtensionAPI) {
 			await ctx.waitForIdle();
 			const report = buildReport(pi, ctx);
 			if (trimmed === "widget") {
-				ctx.ui.setWidget("context", report, { placement: "aboveEditor" });
-				ctx.ui.notify("Context widget shown above the editor. It may truncate; run /context for the full report.", "info");
-				return;
+				if (presentation.widgets) {
+					ctx.ui.setWidget("context", report, { placement: "aboveEditor" });
+					presentation.notify("Context widget shown above the editor. It may truncate; run /context for the full report.");
+					return;
+				}
+				presentation.notify("Context widgets are unavailable in this client; showing the full report instead.");
 			}
 
-			ctx.ui.setWidget("context", undefined);
+			if (presentation.widgets) ctx.ui.setWidget("context", undefined);
 			const text = report.join("\n");
 			pi.appendEntry(CONTEXT_REPORT_MESSAGE_TYPE, { text });
-			if (ctx.mode !== "tui") ctx.ui.notify(text, "info");
+			if (!presentation.nativeTranscript) presentation.notify(text);
 		},
 	});
 }

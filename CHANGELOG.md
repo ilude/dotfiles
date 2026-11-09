@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-11-09: Adapt default Pi presentation to T3 Code
+
+- Introduce a small shared presentation boundary for plain notices, statuses and native-renderer/widget capabilities. Resolve the immediate Pi client separately from an enclosing Herdr terminal; RPC alone does not identify T3, and inherited T3 markers do not make native children T3-owned. Reuse the boundary for TPS output without changing timing calculations or terminal styling.
+- Make profile command acknowledgments, `/commit` results, `/effort` results, and prompt-template invocation/time summaries visible through RPC-safe notices. Preserve existing session entries, model messages, prompt expansion, cancellation and turn-triggering behavior; do not expose expanded template prompts in notices or start recovery turns for command failures.
+- Publish Pi version and reload-needed/check-failed state through plain status text outside the terminal, clearing it at shutdown. Keep the terminal footer intact and avoid its release polling and host probes when that footer is not rendered. Fall back to the full `/context` report for unsupported T3 widgets without claiming a widget was shown or hidden.
+- Explain that `/plans` and `/update` do not support T3-managed workflows instead of suggesting a terminal relaunch as a T3 repair. No session-launch, branch, plan-execution or provider-restart integration is added. Do not synthesize native subagent cards: T3 currently treats the launch tool's return as child completion, which would misrepresent background children; accurate cards need a separate T3-side lifecycle change.
+- Pass 159 focused tests across the affected paths and the default-profile typecheck. This is source/unit validation, not live T3 visual acceptance. Reload Pi resources or restart its runtime when idle to load the changes; no running conversation or desktop app was restarted.
+
+## 2026-11-09: Keep Pi timing notices readable in T3 Code
+
+- Send TPS completion timing and completion timestamps to T3 Code as plain text, avoiding terminal color escapes in its system notices. Preserve the visible notice, existing terminal styling, and timing calculations.
+- Add the narrow output adapter and shared T3 integration-signal resolution without treating RPC mode alone as T3 or changing existing Herdr host distinctions. Keep one default Pi profile; other extensions are unchanged.
+- Pass focused host/output tests and profile typecheck. Existing Pi processes need a resource reload or restart to load the change; no live T3 visual check or restart was performed.
+
 ## 2026-11-08: Sync portable T3 Code preferences through setup
 
 - Track the work machine's selected T3 model defaults/favorites/visibility, interface and browser-preview preferences, speech/snapshot settings, thread-title and Git preferences, and portable keybindings. Make the existing cross-platform setup helper apply this baseline during installation or a manual rerun, without linking mutable T3 state.
@@ -37,6 +51,12 @@
 
 - Add Herdr Desktop to the normal Windows package-tooling path using its official release-server installer, separate from the existing Herdr TUI GitHub release channel. Upstream selects the latest Windows x64 asset from `app/latest.json`, verifies its SHA-256 checksum, adds the per-user PATH and Start menu entry, and installs herdr-core if missing.
 - Preserve existing TUI installation, desktop configuration and running sessions. Rerunning setup updates the desktop binary without forcing a running app to restart; reopen it to load the update. `-SkipPackages` skips desktop installation, and other platforms' installation behavior is unchanged.
+
+## 2026-11-07: Keep commit discovery within declared submodule boundaries
+
+- Replace `/commit`'s global recursive Git submodule traversal with a repository-by-repository walk of top-level `.gitmodules` declarations that match indexed gitlinks and initialized checkouts. Vendored reference snapshots can contain orphan gitlinks without declaring them as managed submodules; T3's Alchemy reference triggered the previous missing-URL failure before commit review.
+- Preserve legitimate nested modules, child-before-parent commit/pin ordering, normal staging and publication behavior, existing changes, and the vendored files themselves. Do not add submodule URLs, initialize references, delete data, or suppress errors from malformed managed configuration.
+- Reproduce the original failure in a real temporary Git fixture, pass the focused regression and existing nested-ordering/basic commit checks plus reviewer tests and profile typecheck, and verify read-only discovery of the actual checkout. Existing Pi processes still need a resource reload or restart to use the changed command code.
 
 ## 2026-11-07: Add T3 desktop validation helpers and a Pi reload command
 

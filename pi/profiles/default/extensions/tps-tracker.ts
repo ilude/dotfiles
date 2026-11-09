@@ -1,6 +1,7 @@
 // Adapted from legacy tps-tracker.ts, originally davis7dotsh/my-pi-setup
 // (blob 5c198dc30baa96a64a6ee55a18a9a59a9b7ac7d0).
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { createHostPresentation } from "../lib/host-presentation.ts";
 
 export default function tpsTracker(pi: ExtensionAPI): void {
   let messageStart: number | undefined;
@@ -87,7 +88,9 @@ export default function tpsTracker(pi: ExtensionAPI): void {
     const text = `${interrupted ? "stopped: " : ""}${rate} | first ${first} avg | ${output} tok / ${seconds.toFixed(1)}s streaming`;
     if (ctx.hasUI) {
       ctx.ui.setStatus("tps", undefined);
-      ctx.ui.notify(ctx.ui.theme.fg("thinkingText", `${text}\ncompleted ${new Date().toLocaleString()}`), "info");
+      const presentation = createHostPresentation(ctx);
+      const completed = `${text}\ncompleted ${new Date().toLocaleString()}`;
+      presentation.notify(presentation.nativeTranscript ? ctx.ui.theme.fg("thinkingText", completed) : completed);
     }
   });
 }

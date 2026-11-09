@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const reviewer = vi.hoisted(() => ({ run: vi.fn() }));
 vi.mock("../commands/commit/reviewer.ts", () => ({ runCommitReviewer: reviewer.run }));
@@ -14,7 +14,7 @@ function deferred() {
 	return { promise, resolve };
 }
 
-function fixture() {
+function fixture(mode: "tui" | "rpc" = "tui") {
 	const hooks = new Map<string, Hook[]>();
 	const commands = new Map<string, { handler: (args: string, ctx: any) => Promise<void> }>();
 	const shortcuts = new Map<string, { description?: string; handler: (ctx: any) => Promise<void> | void }>();
@@ -26,7 +26,7 @@ function fixture() {
 	let activeTools = ["read", "unrelated_tool"];
 	let idle = true;
 	const ctx = {
-		hasUI: true, mode: "tui", isIdle: () => idle,
+		hasUI: true, mode, isIdle: () => idle,
 		ui: { notify: vi.fn(), setStatus: vi.fn(), setWidget: vi.fn((key: string, factory?: (tui: any, theme: any) => any) => {
 			if (factory) widgets.set(key, factory({ requestRender: vi.fn() }, { fg: (_color: string, text: string) => text }));
 			else widgets.delete(key);
@@ -59,6 +59,7 @@ function fixture() {
 		setIdle: (value: boolean) => { idle = value; }, input: (data: string) => [...terminal].map(handler => handler(data)) };
 }
 
+afterEach(() => vi.unstubAllEnvs());
 beforeEach(() => {
 	vi.clearAllMocks();
 	reviewer.run.mockReset().mockResolvedValue({ text: "abc123 committed", elapsedMs: 12, model: "offline", usage: {} });
@@ -79,6 +80,19 @@ describe("profile command lifecycle", () => {
 		expect(f.terminal.size).toBe(0);
 		expect(f.sent).toEqual([{ message: { customType: "profile-commit-result", content: "abc123 committed", display: false, details: { error: false } }, options: { triggerTurn: false } }]);
 		expect(f.widgets.size).toBe(0);
+	});
+
+	it.each([false, true])("notifies T3 of commit output (failure=%s) without a recovery turn", async failure => {
+		vi.stubEnv("T3_PI_MCP_EXTENSION_PATH", "fixture");
+		vi.stubEnv("PI_SUBAGENT_AUTHORITY", "");
+		const f = fixture("rpc");
+		if (failure) reviewer.run.mockRejectedValueOnce(new Error("Git failed"));
+		await f.commands.get("commit")!.handler("", f.ctx);
+		expect(f.ctx.ui.notify.mock.calls).toEqual([
+			["/commit", "info"],
+			[failure ? "/commit failed: Git failed" : "abc123 committed", failure ? "error" : "info"],
+		]);
+		expect(f.sent[0]?.options).toEqual({ triggerTurn: false });
 	});
 
 	it("persists full slash failure diagnostics for the next model turn without triggering recovery", async () => {

@@ -79,6 +79,14 @@ The final capture also exposed a red **provider event stream closed unexpectedly
 
 This is not a clean long-lived-session pass. The cause was not established by the bounded trace/activity investigation, and neither causation by reload nor harmless idle cleanup should be inferred. The native same-process reload and subsequent model response are proven; continuing provider-session stability remains unresolved. No installed T3 bundle, module source, live database, or process-recovery mechanism was patched to hide the warning. Further diagnosis needs the provider termination cause and, if it is T3-side, a separately validated owning-repository fix rather than a Pi-notification workaround.
 
+### Single follow-up reproduction: not reproduced
+
+A second bounded cycle on 2026-11-07 resumed the same isolated native session in Pi PID `82184`, then successfully reloaded it in place: generation `c4419dd9-2a29-4e8f-9211-3e830c3f9c42` changed to `67c1105f-fde7-48ed-a6be-3371cfe9b439` with the same PID/session. The post-reload model probe returned **T3-RELOAD-REPRO-2** and completed at approximately `18:52:21Z`. An immediate screenshot of the exact test thread showed the response without a red provider warning.
+
+The one scheduled idle check at `18:55:03Z` still found T3 provider state `ready` with `lastError: null`. At `18:55:06Z`, PID `82184` remained alive with its original OS start time (`18:51:19.860Z`), about 2 minutes 45 seconds after the model response. The previous failure had occurred about 47 seconds after its response. The app had since been switched to an unrelated view, so the late capture was discarded and was not used as test-thread visual evidence. No additional reload, model probe, code change, or retry cycle followed.
+
+The exit did not reproduce in this follow-up window. This does not explain or erase the original provider-stream failure or establish indefinite session stability.
+
 ## Sources and checks
 
 Official `t3.codes`, the linked GitHub repository, root `AGENTS.md`, `README.md`, and user docs for outside agents and appearance were retrieved with native fetch after native search was rate-limited. No official portable T3 operating skill was established by that bounded lookup. These references do not replace the installed command help or local live evidence.

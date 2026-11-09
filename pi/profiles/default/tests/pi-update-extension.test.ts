@@ -40,14 +40,14 @@ afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
-function fixture() {
+function fixture(mode: "tui" | "rpc" = "tui") {
   const root = mkdtempSync(join(tmpdir(), "pi-update-extension-")); roots.push(root);
   const file = join(root, "session.jsonl"); writeFileSync(file, '{}\n');
   const handlers = new Map<string, Handler>();
   let command: Parameters<ExtensionAPI["registerCommand"]>[1] | undefined;
   const state = { idle: true, pending: false, editor: "", file: file as string | undefined, session: "exact-session" };
   const ctx = {
-    mode: "tui", cwd: root, isIdle: () => state.idle, hasPendingMessages: () => state.pending,
+    mode, cwd: root, isIdle: () => state.idle, hasPendingMessages: () => state.pending,
     sessionManager: { getSessionFile: () => state.file, getSessionId: () => state.session, getLeafId: () => "selected-leaf" },
     ui: { getEditorText: () => state.editor, notify: vi.fn(), setStatus: vi.fn() }, shutdown: vi.fn(),
   };
@@ -118,6 +118,17 @@ it("does not mutate the installation for an unsupervised native launch", async (
   const f = fixture(); await f.command();
   expect(mocks.install).not.toHaveBeenCalled(); expect(mocks.restart).not.toHaveBeenCalled();
   expect(f.ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("Outside Herdr"), "warning");
+});
+
+it("explains the unsupported T3 update path without terminal relaunch advice", async () => {
+  vi.stubEnv("T3_PI_MCP_EXTENSION_PATH", "fixture");
+  const f = fixture("rpc"); await f.started; await f.command();
+  expect(f.ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("does not support T3-managed Pi"), "warning");
+  expect(f.ctx.ui.notify.mock.calls.flat().join(" ")).not.toContain("Relaunch through bare pi");
+  expect(mocks.install).not.toHaveBeenCalled();
+  expect(mocks.restart).not.toHaveBeenCalled();
+  expect(mocks.compatibility).not.toHaveBeenCalled();
+  expect(f.ctx.shutdown).not.toHaveBeenCalled();
 });
 
 it("loads migration support in an existing Herdr process without a supervisor", async () => {

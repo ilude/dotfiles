@@ -202,6 +202,17 @@ it.each(["rpc", "json", "print"])("rejects %s mode without opening terminal UI",
   expect(custom).not.toHaveBeenCalled();
 });
 
+it("explains the unsupported T3 selector without launching a plan", async () => {
+  vi.stubEnv("T3_PI_MCP_EXTENSION_PATH", "fixture");
+  vi.stubEnv("PI_SUBAGENT_AUTHORITY", "");
+  const custom = vi.fn();
+  const sendUserMessage = vi.fn();
+  await expect(executePlans({ mode: "rpc", ui: { custom } } as any, { sendUserMessage })).rejects.toThrow("/plans is unavailable in T3 Code");
+  expect(custom).not.toHaveBeenCalled();
+  expect(sendUserMessage).not.toHaveBeenCalled();
+  expect(launchPreparedHerdrPlan).not.toHaveBeenCalled();
+});
+
 it("renders an empty closable state", () => {
   const done = vi.fn(); const theme = testTheme();
   const component = planSelector([], 0, done)({ requestRender() {} }, theme);

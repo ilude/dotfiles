@@ -360,6 +360,24 @@ describe("Codex usage", () => {
 });
 
 describe("context report", () => {
+  it("falls back to a full report for T3 widgets without claiming widget support", async () => {
+    vi.stubEnv("T3_PI_MCP_EXTENSION_PATH", "fixture");
+    vi.stubEnv("PI_SUBAGENT_AUTHORITY", "");
+    const r = runtime(context);
+    r.ctx.mode = "rpc";
+    const before = r.sm.buildSessionContext().messages;
+    await r.commands.get("context").handler("widget", r.ctx);
+    expect(r.ctx.ui.setWidget).not.toHaveBeenCalled();
+    expect(r.ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("showing the full report instead"), "info");
+    expect(r.ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("Tool schema detail"), "info");
+    expect(r.sm.buildSessionContext().messages).toEqual(before);
+    for (const arg of ["hide", "clear"]) {
+      await r.commands.get("context").handler(arg, r.ctx);
+      expect(r.ctx.ui.notify).toHaveBeenLastCalledWith(expect.stringContaining("no widget to hide"), "info");
+    }
+    expect(r.ctx.ui.setWidget).not.toHaveBeenCalled();
+  });
+
   it("uses native compacted context, gives detail, and never adds reports to model messages", async () => {
     const r = runtime(context);
     r.sm.appendMessage({ role: "user", content: "x".repeat(4000), timestamp: Date.now() });

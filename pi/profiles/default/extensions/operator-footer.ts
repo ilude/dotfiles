@@ -1,9 +1,10 @@
 import * as childProcess from "node:child_process";
 import * as os from "node:os";
 import * as path from "node:path";
-import { VERSION } from "@earendil-works/pi-coding-agent";
+import { VERSION, type ExtensionContext as PiExtensionContext } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth, type TuiMouseEvent, type TuiMouseEventResult } from "@earendil-works/pi-tui";
 import { CODEX_QUOTA_LOGIN_REQUEST } from "../lib/codex-auth.ts";
+import { createHostPresentation } from "../lib/host-presentation.ts";
 import { cachedReleases, checkReleases, releaseLag, releaseUrl, RELEASE_CHECK_INTERVAL } from "../lib/release-indicators.ts";
 import { RELOAD_CHANGED, requestReloadState, type ReloadState } from "../lib/profile-reload-events.ts";
 
@@ -34,13 +35,15 @@ interface ExtensionAPI {
 }
 
 interface ExtensionContext {
+	mode: "tui" | "rpc" | "json" | "print";
+	hasUI: boolean;
 	cwd: string;
 	isProjectTrusted: () => boolean;
 	model?: { id?: string; name?: string; provider?: string };
 	ui: {
 		setFooter?: (factory: (tui: { requestRender: () => void }, theme: unknown, footerData: ReadonlyFooterDataProvider) => FooterComponent) => void;
 		getAllThemes: () => { path?: string }[];
-		notify: (message: string, type: "warning") => void;
+		notify: PiExtensionContext["ui"]["notify"];
 		setStatus: (key: string, value: string | undefined) => void;
 	};
 	sessionManager: { getEntries: () => unknown[] };
@@ -403,6 +406,7 @@ export default function operatorFooter(pi: ExtensionAPI): void {
 	let releaseTimer: ReturnType<typeof setInterval> | undefined;
 	let releaseState: { pi?: number; piLatest?: string; herdr?: number } = {};
 	let reloadState: ReloadState = { needed: false };
+	let clearPlainStatus: (() => void) | undefined;
 	pi.on("session_start", async (_event: { reason?: string }, ctx: ExtensionContext) => {
 		unsubscribeReload?.();
 		releaseController?.abort();
@@ -410,7 +414,15 @@ export default function operatorFooter(pi: ExtensionAPI): void {
 		releaseController = new AbortController();
 		releaseState = {};
 		const signal = releaseController.signal;
-		void cachedReleases().then(({ cache, fresh }) => {
+		const presentation = createHostPresentation(ctx);
+		clearPlainStatus = presentation.nativeTranscript ? undefined : () => presentation.status("pi", undefined);
+		const herdrVersion = presentation.nativeTranscript ? connectedHerdrVersion() : undefined;
+		const updatePlainStatus = () => {
+			if (presentation.nativeTranscript) return;
+			const reload = reloadState.error ? "reload check failed" : reloadState.needed ? "reload needed" : undefined;
+			presentation.status("pi", [`π v${VERSION}`, reload].filter(Boolean).join(" | "));
+		};
+		if (presentation.nativeTranscript) void cachedReleases().then(({ cache, fresh }) => {
 			if (signal.aborted) return;
 			if (cache) releaseState = { pi: releaseLag(VERSION, cache.latest.pi), piLatest: cache.latest.pi?.at(-1), herdr: herdrVersion ? releaseLag(herdrVersion, cache.latest.herdr) : undefined };
 			requestFooterRender?.();
@@ -420,7 +432,7 @@ export default function operatorFooter(pi: ExtensionAPI): void {
 				requestFooterRender?.();
 			}).catch(() => {});
 		}).catch(() => {});
-		releaseTimer = setInterval(() => {
+		if (presentation.nativeTranscript) releaseTimer = setInterval(() => {
 			if (signal.aborted) return;
 			void checkReleases(signal).then(latest => {
 				if (signal.aborted) return;
@@ -431,11 +443,14 @@ export default function operatorFooter(pi: ExtensionAPI): void {
 		unsubscribeReload = pi.events.on(RELOAD_CHANGED, data => {
 			reloadState = data as ReloadState;
 			requestFooterRender?.();
+			updatePlainStatus();
 		});
 		reloadState = requestReloadState(pi) ?? { needed: false };
+		updatePlainStatus();
 		initializeUsage(ctx);
-		const herdrVersion = connectedHerdrVersion();
-		if (!installFooter(ctx, pi, () => reloadState, () => releaseState, herdrVersion)) ctx.ui.setStatus("pi", `π v${VERSION}`);
+		if (presentation.nativeTranscript && !installFooter(ctx, pi, () => reloadState, () => releaseState, herdrVersion)) {
+			presentation.status("pi", `π v${VERSION}`);
+		}
 		refreshStatuses(ctx);
 	});
 
@@ -447,6 +462,8 @@ export default function operatorFooter(pi: ExtensionAPI): void {
 		if (releaseTimer) clearInterval(releaseTimer);
 		releaseTimer = undefined;
 		requestFooterRender = undefined;
+		clearPlainStatus?.();
+		clearPlainStatus = undefined;
 	});
 
 	pi.on("message_end", async (event: { message: { role?: string; provider?: string } }, ctx: ExtensionContext) => {

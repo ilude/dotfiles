@@ -7,6 +7,7 @@ import { completePartialArgument } from "../lib/argument-completions.ts";
 import { commands } from "../commands/index.ts";
 import { runCommitReviewer } from "../commands/commit/reviewer.ts";
 import { registerProfileCommand } from "../lib/profile-command.ts";
+import { createHostPresentation } from "../lib/host-presentation.ts";
 
 const RESULT_ENTRY = "profile-commit-result";
 const STATUS_KEY = "profile-commit";
@@ -28,11 +29,13 @@ export default function profileCommands(pi: ExtensionAPI): void {
 	}
 
 	function presentCommit(text: string, error: boolean, ctx: ExtensionContext): void {
+		const presentation = createHostPresentation(ctx);
 		pi.appendEntry(RESULT_ENTRY, { text, error });
 		// Keep the existing UI entry, but also persist the outcome in model context.
 		// Visibility on the next user turn must not start an automatic recovery turn.
 		pi.sendMessage({ customType: RESULT_ENTRY, content: text, display: false, details: { error } }, { triggerTurn: false });
-		if (ctx.hasUI && error) ctx.ui.notify("/commit failed; see result above", "error");
+		if (!presentation.nativeTranscript) presentation.notify(text, error ? "error" : "info");
+		else if (ctx.hasUI && error) presentation.notify("/commit failed; see result above", "error");
 	}
 
 	async function waitForMainIdle(ctx: ExtensionContext, signal: AbortSignal): Promise<void> {

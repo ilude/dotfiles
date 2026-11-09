@@ -3,6 +3,7 @@ import { basename, join } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { activateTools } from "./tool-activation.ts";
+import { createHostPresentation } from "./host-presentation.ts";
 
 export const PROMPT_TEMPLATE_COMMAND_TYPE = "prompt-template-command";
 
@@ -77,18 +78,21 @@ export function registerPromptTemplateCommands(
 		const { description, body } = parseTemplate(raw);
 		pi.registerCommand(name, {
 			description: description || body.split("\n").find((line) => line.trim()) || name,
-			handler: async (rawArgs) => {
+			handler: async (rawArgs, ctx) => {
 				const args = rawArgs.trim();
 				const invocation = args ? `/${name} ${args}` : `/${name}`;
+				const startedAt = Date.now();
 				// Prepare schemas before submission, including when steering a busy agent.
 				// Leave these existing tools active for asynchronous callback turns.
 				const tools = commandTools[name];
 				if (tools?.length) activateTools(pi, tools);
+				const presentation = createHostPresentation(ctx);
+				if (!presentation.nativeTranscript) presentation.notify(formatPromptTemplateCommand({ invocation, startedAt }));
 				pi.sendMessage({
 					customType: PROMPT_TEMPLATE_COMMAND_TYPE,
 					content: substitutePromptArguments(body, parseCommandArgs(args)),
 					display: true,
-					details: { invocation, startedAt: Date.now() } satisfies PromptTemplateCommandDetails,
+					details: { invocation, startedAt } satisfies PromptTemplateCommandDetails,
 				}, { triggerTurn: true });
 			},
 		});

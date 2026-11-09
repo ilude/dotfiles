@@ -1,6 +1,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Box, Text } from "@earendil-works/pi-tui";
 import { yieldForUi } from "./ui-yield.ts";
+import { createHostPresentation } from "./host-presentation.ts";
 
 const ENTRY_TYPE = "profile-command";
 const initialized = new WeakSet<ExtensionAPI>();
@@ -24,14 +25,18 @@ export function registerProfileCommand(pi: ExtensionAPI, name: string, definitio
 		...definition,
 		handler: async (args, ctx) => {
 			const invocation = args ? `/${name} ${args}` : `/${name}`;
+			const presentation = createHostPresentation(ctx);
 			try {
-				if (typeof pi.appendEntry !== "function") ctx.ui.notify(invocation, "info");
-				else pi.appendEntry(ENTRY_TYPE, invocation);
+				if (typeof pi.appendEntry !== "function") presentation.notify(invocation);
+				else {
+					pi.appendEntry(ENTRY_TYPE, invocation);
+					if (!presentation.nativeTranscript) presentation.notify(invocation);
+				}
 			} catch (error) {
 				// Lightweight extension test loaders can expose registration without
 				// initializing action methods. Real command runtimes use appendEntry.
 				if (!(error instanceof Error) || !error.message.includes("Extension runtime not initialized")) throw error;
-				ctx.ui.notify(invocation, "info");
+				presentation.notify(invocation);
 			}
 			await yieldForUi();
 			await definition.handler(args, ctx);

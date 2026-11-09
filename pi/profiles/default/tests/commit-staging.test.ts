@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { createAssistantMessageEventStream, type AssistantMessage, type Model, type ToolCall } from "@earendil-works/pi-ai";
 import { createBashTool, type ExtensionAPI, type ExtensionContext, type ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { runCommitReviewer } from "../commands/commit/reviewer.ts";
+import { discoverCommitRepositories } from "../commands/commit/repositories.ts";
 import { commitShellCommand } from "../commands/commit/tools.ts";
 
 // Real Agent, native inspection/read tools, and real temporary Git indexes. Only
@@ -147,6 +148,31 @@ it("isolates child and parent conversations, candidate inventories, and relative
 	expect(JSON.stringify(results.map(result => result.content))).toContain("parent file contents");
 	expect(git(child, "show", "HEAD:base.txt")).toBe("child review sentinel\n");
 	expect(git(root, "status", "--porcelain")).toBe(""); expect(report.text).toContain("parent edit and pin");
+}, 45_000);
+
+it("walks declared nested submodules without treating vendored gitlinks as repositories", async () => {
+	const { child } = submoduleFixture();
+	const source = join(root, ".git", "grandchild-source"); mkdirSync(source); init(source);
+	const nestedPath = "deps/nested child";
+	git(child, "-c", "protocol.file.allow=always", "submodule", "add", "--quiet", source, nestedPath);
+	const nested = join(child, nestedPath);
+	git(nested, "config", "user.name", "Offline test"); git(nested, "config", "user.email", "offline@example.invalid");
+	const vendor = ".repos/alchemy-effect";
+	const orphan = `${vendor}/submodules/distilled`;
+	mkdirSync(join(child, orphan), { recursive: true });
+	const vendorConfig = '[submodule "distilled"]\n\tpath = submodules/distilled\n\turl = https://unused.invalid/distilled.git\n';
+	writeFileSync(join(child, vendor, ".gitmodules"), vendorConfig);
+	git(child, "add", "-A");
+	git(child, "update-index", "--add", "--cacheinfo", `160000,${git(nested, "rev-parse", "HEAD").trim()},${orphan}`);
+	git(child, "commit", "--quiet", "-m", "nested module and vendored reference");
+	git(root, "add", "modules/child"); git(root, "commit", "--quiet", "-m", "nested baseline");
+	const vendorIndex = git(child, "ls-files", "--stage", "--", orphan);
+	const before = git(root, "status", "--porcelain", "--ignore-submodules=all");
+	const repositories = await discoverCommitRepositories(pi, root);
+	expect(repositories).toEqual([root, child, realpathSync(nested)]);
+	expect(git(root, "status", "--porcelain", "--ignore-submodules=all")).toBe(before);
+	expect(git(child, "ls-files", "--stage", "--", orphan)).toBe(vendorIndex);
+	expect(readFileSync(join(child, vendor, ".gitmodules"), "utf8")).toBe(vendorConfig);
 }, 45_000);
 
 it("recovers a root-file ignore request during a clean child pass without a dialog", async () => {

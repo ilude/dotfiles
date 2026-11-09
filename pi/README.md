@@ -62,6 +62,22 @@ Default customization uses native `getAgentDir()` for active-profile paths and `
 
 `extensions/profile-reload.ts` owns reload polling independently of the footer. It publishes state and answers snapshot requests over Pi's shared event bus; the footer and `/clear` never rely on shared imported singleton identity. Each extension gets a separate loader. The monitor baseline belongs to the evaluated owner factory: same-cwd session replacements that reuse cached factories retain it, while actual resource reload reevaluates source and establishes a new baseline. Timers and subscriptions are session-owned and cleaned up on shutdown. `lib/model-runtime.ts` shares profile-local runtime creation configuration for web screening and commit review, but each feature retains its own runtime lifetime, cancellation and permissions. These modules belong to the default profile, not a cross-profile framework.
 
+## Default profile host presentation
+
+Default keeps one profile across terminal clients and T3. `lib/host-presentation.ts`
+provides UI-only notices, statuses, and the small capability decisions used by
+command output, context reports, TPS, and the operator footer. It does not append
+model messages, trigger turns, or own host session operations. Immediate-client
+resolution in `lib/herdr-host.ts` is separate from enclosing Herdr membership;
+inherited integration markers do not establish ownership of a native child's UI.
+
+T3 receives plain command results and version/reload status, not terminal footers
+or generic widgets. `/context widget` falls back to the full report. Native
+subagent cards and T3 launch/branch/plan/update lifecycle integration remain
+separate work; do not map a background launch receipt to child completion.
+Use `/reload-runtime` when idle with no active or retained native subagents to
+load presentation changes without replacing the conversation.
+
 ## Default profile native tool discovery and composition
 
 The [archived implementation plan](../.specs/archive/pi-native-tool-composition/plan.md) records settled decisions, dated checks, and verification limits.

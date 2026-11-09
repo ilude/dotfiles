@@ -8,6 +8,7 @@ import { launchPreparedHerdrPlan, HerdrPiTabLaunchError, renameHerdrPiTab } from
 import { PLAN_EVENT_TYPE, PlanEventRecorder, eventPlan, formatPlanEvent, notifyLoggingFailure, type PlanActionEvent, type PlanEventAction } from "../lib/plan-events.ts";
 import { claimHerdrTabTitle } from "../lib/herdr-tab-title-events.ts";
 import { registerProfileCommand } from "../lib/profile-command.ts";
+import { resolvePiClient } from "../lib/herdr-host.ts";
 
 const planActions = [
 	{ key: "o", action: "open", label: "Open in VS Code", hint: "VS Code" },
@@ -216,7 +217,9 @@ export function archivePlan(plan: PlanRecord, root: string): string {
 }
 
 export async function executePlans(ctx: ExtensionCommandContext, pi: Pick<ExtensionAPI, "sendUserMessage"> & Partial<Pick<ExtensionAPI, "appendEntry" | "events">>): Promise<void> {
-	if (ctx.mode !== "tui") throw new Error("/plans requires interactive Pi terminal mode.");
+	if (ctx.mode !== "tui") throw new Error(resolvePiClient(ctx.mode) === "t3code"
+		? "/plans is unavailable in T3 Code: its selector requires interactive Pi terminal mode. No plan was launched."
+		: "/plans requires interactive Pi terminal mode.");
 	const root = path.resolve(ctx.cwd ?? process.cwd());
 	const recorder = new PlanEventRecorder(pi as Pick<ExtensionAPI, "appendEntry">, ctx, { onLoggingFailure: error => notifyLoggingFailure(ctx, error) });
 	const invocationAttemptId = recorder.request("plans");

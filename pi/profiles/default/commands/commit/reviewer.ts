@@ -14,6 +14,7 @@ import { normalizeRepositoryId, repositoryId, samePlatformPath } from "../../lib
 import { Type } from "typebox";
 import { commitShellCommand, formatStatus } from "./tools.ts";
 import { executeCommitPlan, parseCommitStatus, validateCommitPlan, type CommitPlan } from "./plan.ts";
+import { discoverCommitRepositories } from "./repositories.ts";
 
 const MODEL_FAMILY = "terra";
 const FALLBACK_PROVIDER = "anthropic";
@@ -153,9 +154,7 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 			try {
 				combined.throwIfAborted();
 				root = realpathSync(await git(["rev-parse", "--show-toplevel"], combined));
-				const discovered = await git(["submodule", "foreach", "--recursive", "--quiet", "printf '%s\\0' \"$toplevel/$sm_path\""], combined);
-				const repositories = [root, ...discovered.split("\0").filter(Boolean).map((path) => realpathSync(path))]
-					.filter((path, index, all) => all.indexOf(path) === index);
+				const repositories = await discoverCommitRepositories(pi, root, combined, GIT_TIMEOUT_MS);
 				const inventory: string[] = [];
 				const repositoriesById = new Map<string, string>();
 				for (const repository of repositories) {

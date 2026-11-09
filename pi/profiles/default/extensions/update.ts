@@ -3,6 +3,7 @@ import { Text } from "@earendil-works/pi-tui";
 import { access } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { registerProfileCommand } from "../lib/profile-command.ts";
+import { resolvePiClient } from "../lib/herdr-host.ts";
 import { getSubagentRuntime } from "../lib/subagents/runtime.ts";
 import { createHerdrCli } from "../lib/herdr-cli.ts";
 import { createCompatibilityEndpoint } from "../lib/pi-update-compat.ts";
@@ -113,6 +114,9 @@ export default function update(pi: ExtensionAPI) {
     handler: async (args, ctx) => {
       if (args.trim()) { ctx.ui.notify("Usage: /update", "warning"); return; }
       if (commandRunning) { ctx.ui.notify("An update pass is already running.", "warning"); return; }
+      if (resolvePiClient(ctx.mode) === "t3code") {
+        ctx.ui.notify("/update does not support T3-managed Pi processes. Use the normal Pi installation/update procedure outside this thread; no installation or session was changed.", "warning"); return;
+      }
       const descriptor = activeEndpoint;
       if (!descriptor) {
         ctx.ui.notify("Outside Herdr, this session needs the update-capable launcher. Relaunch through bare pi first. Existing Herdr sessions can load migration support with /reload.", "warning"); return;

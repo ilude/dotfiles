@@ -22,6 +22,7 @@ import registerFooter from "../extensions/operator-footer.ts";
 import { visibleWidth, type Component, type TuiMouseEvent } from "@earendil-works/pi-tui";
 import { CODEX_QUOTA_LOGIN_REQUEST } from "../lib/codex-auth.ts";
 import { formatQuota } from "../lib/codex-usage.ts";
+import { RELOAD_CHANGED, RELOAD_REQUEST } from "../lib/profile-reload-events.ts";
 
 afterEach(() => { vi.unstubAllEnvs(); vi.useRealTimers(); spawnSyncMock.mockReset(); spawnSyncMock.mockReturnValue({ status: 0, stdout: "0.85.0" }); });
 
@@ -41,7 +42,7 @@ it.each([
   const pi = { events: createEventBus(), on: (name: string, hook: (...args: any[]) => any) => hooks.set(name, hook), getCommands: () => [], getAllTools: () => [] };
   registerFooter(pi);
   await hooks.get("session_start")!({}, {
-    cwd, model: { id: "test-model", provider: "openai" }, sessionManager: { getEntries: () => [] },
+    mode: "tui", hasUI: true, cwd, model: { id: "test-model", provider: "openai" }, sessionManager: { getEntries: () => [] },
     getContextUsage: () => ({ tokens: 0, contextWindow: 272000, percent: 0 }),
     ui: { setStatus: vi.fn(), setFooter: (factory: any) => { footer = factory({ requestRender: vi.fn() }, {}, { getGitBranch: () => branch, getExtensionStatuses: () => statuses }); } },
   });
@@ -71,7 +72,7 @@ it.each(["1", "0"])("shows the connected Herdr server version only inside Herdr 
   let footer: { render(width: number): string[] };
   registerFooter({ events: createEventBus(), on: (name, hook) => { hooks.set(name, hook); }, getCommands: () => [], getAllTools: () => [] });
   await hooks.get("session_start")!({}, {
-    cwd: "/footer-herdr", sessionManager: { getEntries: () => [] },
+    mode: "tui", hasUI: true, cwd: "/footer-herdr", sessionManager: { getEntries: () => [] },
     ui: { setStatus: vi.fn(), setFooter: (factory: any) => {
       footer = factory({ requestRender: vi.fn() }, {}, { getGitBranch: () => null, getExtensionStatuses: () => new Map() });
     } },
@@ -96,7 +97,7 @@ it("makes only the visible login label clickable and removes the action when quo
   let footer: Component;
   registerFooter({ events, on: (name, hook) => { hooks.set(name, hook); }, getCommands: () => [], getAllTools: () => [] });
   await hooks.get("session_start")!({}, {
-    cwd: "/footer-login-状态", sessionManager: { getEntries: () => [] },
+    mode: "tui", hasUI: true, cwd: "/footer-login-状态", sessionManager: { getEntries: () => [] },
     ui: { setStatus: vi.fn(), setFooter: (factory: any) => {
       footer = factory({ requestRender: vi.fn() }, {}, { getGitBranch: () => "状态", getExtensionStatuses: () => statuses });
     } },
@@ -126,6 +127,38 @@ it("makes only the visible login label clickable and removes the action when quo
   await hooks.get("session_shutdown")!({}, {});
 });
 
+it("publishes T3 version/reload status without installing a terminal footer or polling releases", async () => {
+  vi.useFakeTimers();
+  vi.stubEnv("T3_PI_MCP_EXTENSION_PATH", "fixture");
+  vi.stubEnv("PI_SUBAGENT_AUTHORITY", "");
+  spawnSyncMock.mockClear();
+  const hooks = new Map<string, (...args: any[]) => any>();
+  const events = createEventBus();
+  events.on(RELOAD_REQUEST, reply => (reply as Function)({ needed: true }));
+  const setStatus = vi.fn();
+  const ctx = {
+    mode: "rpc", hasUI: true, cwd: process.cwd(), isProjectTrusted: () => false,
+    sessionManager: { getEntries: () => [] },
+    ui: { setStatus, notify: vi.fn(), setFooter: vi.fn(), getAllThemes: () => [] },
+  };
+  registerFooter({ events, on: (name, hook) => { hooks.set(name, hook); }, getCommands: () => [], getAllTools: () => [] });
+  await hooks.get("session_start")!({}, ctx);
+  expect(setStatus).toHaveBeenCalledWith("pi", expect.stringMatching(/^π v.+ \| reload needed$/));
+  expect(ctx.ui.setFooter).not.toHaveBeenCalled();
+  expect(spawnSyncMock).not.toHaveBeenCalled();
+  expect(vi.getTimerCount()).toBe(0);
+  events.emit(RELOAD_CHANGED, { needed: false, error: "cannot inspect resources" });
+  expect(setStatus).toHaveBeenLastCalledWith("pi", expect.stringContaining("reload check failed"));
+  events.emit(RELOAD_CHANGED, { needed: false });
+  expect(setStatus).toHaveBeenLastCalledWith("pi", expect.stringMatching(/^π v[^|]+$/));
+  expect(ctx.ui.notify).not.toHaveBeenCalled();
+  await hooks.get("session_shutdown")!({}, ctx);
+  expect(setStatus).toHaveBeenLastCalledWith("pi", undefined);
+  setStatus.mockClear();
+  events.emit(RELOAD_CHANGED, { needed: true });
+  expect(setStatus).not.toHaveBeenCalled();
+});
+
 it("renders the scheduler status in the actual footer alongside provider usage and clears it", async () => {
   vi.useFakeTimers();
   spawnSyncMock.mockClear();
@@ -138,7 +171,7 @@ it("renders the scheduler status in the actual footer alongside provider usage a
     getCommands: () => [], getAllTools: () => [],
   };
   const ctx = {
-    cwd: process.cwd(), isProjectTrusted: () => false,
+    mode: "tui", hasUI: true, cwd: process.cwd(), isProjectTrusted: () => false,
     sessionManager: { getEntries: () => [] },
     ui: {
       getAllThemes: () => [], notify: vi.fn(),
