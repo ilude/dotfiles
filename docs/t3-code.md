@@ -26,8 +26,8 @@ node scripts/t3-code-setup.mjs
 ```
 
 PowerShell `-SkipPackages` skips T3 downloads and updates but still applies its
-Pi configuration, just like the other configuration stages. No Dotbot link is
-created for T3's mutable settings or databases.
+portable preferences and Pi configuration, just like the other configuration
+stages. No Dotbot link is created for T3's mutable settings or databases.
 
 The helper merges `~/.t3/userdata/settings.json` (or the home selected by
 `T3CODE_HOME`). It:
@@ -40,12 +40,13 @@ The helper merges `~/.t3/userdata/settings.json` (or the home selected by
   extensions, skills, tools, and native session storage. It copies no credentials.
 - Sets `HERDR_ENV=0` only in the T3 Pi instance, so a T3 process launched from a
   Herdr shell does not manage the originating shell's panes.
-- Selects **Pi default** for new threads only when no T3 default model selection
-  has been stored. Pi then selects the model and thinking level from its own
-  profile rather than a second hardcoded model configuration.
-- Preserves other providers, existing model/permission choices, Pi launch
-  arguments, unrelated environment entries, secret references, and other T3
-  settings. Invalid or conflicting settings are reported without overwriting them.
+- Applies the tracked portable preferences described below, including the
+  work-machine default model and thinking option for new threads. If the tracked
+  snapshot has no default model, it preserves an existing selection or falls back
+  to **Pi default** so Pi chooses from its own profile.
+- Preserves provider definitions, permission choices, Pi launch arguments,
+  unrelated environment entries, secret references, and untracked T3 settings.
+  Invalid or conflicting local settings are reported without overwriting them.
 
 Rerun the helper after moving the checkout or changing Pi's executable location.
 Pi upgrades at the same package-manager shim path require no rewrite. For an
@@ -57,6 +58,60 @@ node scripts/t3-code-setup.mjs --base-dir /path/to/t3-home --pi-binary /path/to/
 
 `--base-dir` is the T3 home, not its `userdata` subdirectory. Point `--pi-binary`
 at an executable T3 can spawn on that OS.
+
+## Portable preferences
+
+[`config/t3-code/`](../config/t3-code/) contains a selected snapshot from
+`dev-wks-mglenn`, captured from T3 `0.1.8-nightly.20261108.4380`:
+
+- `settings.json`: model favorites and hidden-model/order preferences, the explicit
+  Pi model/thinking default, automatic-pull preference, idle compaction, project
+  settings folding, thread-title instructions, agent-credit removal and PR merge
+  method.
+- `client-settings.json`: interface/chat/sidebar/diff presentation, fonts and
+  sizes, notifications, confirmation behavior, composer/tool visibility, general
+  browser preview/search/recording defaults, and speech/snapshot preferences.
+- `keybindings.json`: the work machine's saved bindings, using T3's portable `mod`
+  modifier rather than hardcoded OS-specific modifier keys.
+
+Run the same helper from the repository root after pulling on another machine:
+
+```sh
+node scripts/t3-code-setup.mjs
+```
+
+Normal installation runs it too. Tracked top-level preference keys replace the
+local values for those keys, including model favorites, hidden models and the
+new-thread default. Other local keys remain unchanged. Keybindings merge by
+`key` plus `when` context: tracked bindings replace matching slots; unrelated
+local bindings survive. Repeated application does not rewrite unchanged files.
+Existing threads and their running provider processes are not reconfigured.
+
+The snapshot deliberately excludes credentials/tokens and secret references,
+provider definitions/enabled states/launch configuration (including custom
+`ccyl` binary paths), workspace/project overrides, environment identity and
+linked-environment controls, browser profiles/connections and profile IDs,
+onboarding state, microphone device IDs, window bounds, update/network settings,
+and all databases, sessions, caches and account state. These remain local; the
+helper still resolves the default Pi binary/profile on each target machine.
+The client file's obsolete model-preference migration fields are omitted; the
+environment settings contain the active model preferences.
+
+The work machine has no custom theme files. Theme selection is browser-local
+storage, not one of these JSON settings, and is not captured or changed. General
+appearance preferences such as contrast, fonts, opacity and animation are captured.
+Do not copy Electron/browser storage or link the entire T3 userdata directory.
+
+To change the shared baseline later, edit the selected files under
+`config/t3-code/` and review their diff. Setup applies them in one direction; it
+does not export live state or copy later local edits back into Git. Keep new
+fields portable rather than copying a complete runtime settings file.
+
+After applying, restart T3 when the app and its threads are idle to load desktop
+client preferences. Refresh Pi in **Settings > Providers**, then start a new
+thread for the configured launch/model defaults. Setup itself does not restart
+T3 or Pi, reload a conversation, authenticate providers, or verify loaded UI
+behavior. General browser preferences do not enable remote access.
 
 ## Local source checkout and build
 
@@ -166,8 +221,8 @@ No installer was run, and no existing T3 process or live data was changed.
    `~/.local/bin`; open a fresh shell if it is not found after installation.
 2. In **Settings > Providers**, refresh Pi. If the app was already running,
    start a new thread after refresh so an existing Pi process is not reused.
-3. Open the project directory and choose **Pi default**, or a specific model
-   discovered from Pi. Existing threads and explicit T3 defaults are not reset.
+3. Open the project directory and use the synced model default, **Pi default**,
+   or a specific model discovered from Pi. Existing threads are not reset.
 4. If authentication is needed, run normal `pi` in that project and use `/login`.
    If project resources are untrusted, use Pi's `/trust` interactively for that
    directory or parent, then start a new T3 thread. Setup does not grant trust.
@@ -221,7 +276,8 @@ Configuration keys and behavior were checked against T3 Code **v0.1.7**, includi
 - [Remote access](https://github.com/pingdotgg/t3code/blob/v0.1.7/docs/user/remote-access.md)
 
 Focused setup tests run with `uv run pytest test/test_t3_code_setup.py`.
-They cover settings preservation, repeatable configuration, and refusal to replace
+They cover portable preference application, local runtime settings preservation,
+keybinding merge precedence, repeatable configuration, and refusal to replace
 malformed settings, not interactive T3 operation or provider authentication.
 
 On 2026-11-06, the Windows workstation's existing T3 Code 0.1.7 desktop server

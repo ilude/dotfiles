@@ -156,8 +156,9 @@ its configuration and workflows remain unchanged.
 
 Normal installation adds the T3 Code desktop app on Windows/macOS and its CLI on
 supported platforms, then configures the existing default Pi profile as a T3
-provider. Herdr installation, configuration and running sessions remain unchanged.
-Windows `-SkipPackages` skips T3 downloads but still applies provider configuration.
+provider and applies the portable preferences tracked in `config/t3-code/`.
+Herdr installation, configuration and running sessions remain unchanged.
+Windows `-SkipPackages` skips T3 downloads but still applies T3 configuration.
 
 To configure an existing installation without running the full installer:
 
@@ -165,10 +166,12 @@ To configure an existing installation without running the full installer:
 node scripts/t3-code-setup.mjs
 ```
 
-Refresh Pi in T3's **Settings > Providers**, then start a new thread. Setup shares
-the existing Pi profile and credentials without copying them; it does not enable
-remote access or background services. See [T3 setup, workflow differences and
-remote limits](docs/t3-code.md).
+Restart T3 when idle to load desktop preferences, then refresh Pi in T3's
+**Settings > Providers** and start a new thread. The work-machine snapshot owns
+shared preference keys, including new-thread model defaults; unrelated local
+runtime settings stay local. Setup shares the existing Pi profile and credentials
+without copying them; it does not enable remote access or background services.
+See [T3 setup, preference scope, workflow differences and remote limits](docs/t3-code.md).
 
 ### Optional Windows SSH server
 

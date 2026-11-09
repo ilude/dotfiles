@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// T3 Code v0.1.7 provider-instance settings. Merge user state, never link it.
+// Merge portable preferences and the default Pi integration, never link runtime state.
 import { accessSync, constants, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { delimiter, dirname, isAbsolute, join, resolve } from "node:path";
@@ -26,17 +26,51 @@ function findPiBinary() {
   throw new Error("Pi executable is unavailable on PATH; install default Pi first");
 }
 
+function readJson(path, fallback) {
+  try { return JSON.parse(readFileSync(path, "utf8")); }
+  catch (error) {
+    if (error.code === "ENOENT" && fallback !== undefined) return fallback;
+    throw new Error(`Cannot read T3 configuration, left unchanged: ${path}`);
+  }
+}
+
+function writeJson(path, value) {
+  const serialized = `${JSON.stringify(value, null, 2)}\n`;
+  let current;
+  try { current = readFileSync(path, "utf8"); }
+  catch (error) { if (error.code !== "ENOENT") throw error; }
+  if (current !== serialized) {
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, serialized, { mode: 0o600 });
+  }
+}
+
+const validBindings = value => Array.isArray(value) && value.every(binding =>
+  object(binding) && typeof binding.key === "string" && typeof binding.command === "string" &&
+  (binding.when === undefined || typeof binding.when === "string"));
+const bindingSlot = binding => JSON.stringify([binding.key, binding.when ?? ""]);
+
 export function configureT3({ baseDir = process.env.T3CODE_HOME || join(homedir(), ".t3"), piBinary } = {}) {
   const profile = join(root, "pi", "profiles", "default");
   if (!statSync(profile).isDirectory()) throw new Error(`Default Pi profile is unavailable: ${profile}`);
   const binary = piBinary ? resolve(piBinary) : findPiBinary();
   if (!isAbsolute(binary) || !statSync(binary).isFile()) throw new Error("Pi binary must be an existing file");
+  const preferencesDir = join(root, "config", "t3-code");
   const settingsPath = resolve(baseDir, "userdata", "settings.json");
-  let settings;
-  try { settings = JSON.parse(readFileSync(settingsPath, "utf8")); }
-  catch (error) {
-    if (error.code !== "ENOENT") throw new Error(`Cannot read T3 settings, left unchanged: ${error.message}`);
-    settings = {};
+  const clientPath = resolve(baseDir, "userdata", "client-settings.json");
+  const bindingsPath = resolve(baseDir, "userdata", "keybindings.json");
+  const settings = readJson(settingsPath, {});
+  const clientDocument = readJson(clientPath, {});
+  // T3 also accepts the older { settings: ... } desktop document shape.
+  const client = object(clientDocument) && Object.hasOwn(clientDocument, "settings")
+    ? clientDocument.settings : clientDocument;
+  const bindings = readJson(bindingsPath, []);
+  const preferences = readJson(join(preferencesDir, "settings.json"));
+  const clientPreferences = readJson(join(preferencesDir, "client-settings.json"));
+  const portableBindings = readJson(join(preferencesDir, "keybindings.json"));
+  if (!object(client) || !object(preferences) || !object(clientPreferences) ||
+      !validBindings(bindings) || !validBindings(portableBindings)) {
+    throw new Error("Invalid T3 preferences or keybindings, left unchanged");
   }
   if (!object(settings) || (settings.providerInstances !== undefined && !object(settings.providerInstances))) {
     throw new Error("Invalid T3 settings object, left unchanged");
@@ -67,21 +101,24 @@ export function configureT3({ baseDir = process.env.T3CODE_HOME || join(homedir(
       config: { ...previous.config, binaryPath: binary },
     },
   };
-  // Let Pi choose its own current model and thinking default. Preserve an explicit T3 choice.
+  // Tracked preference keys are authoritative; all other local keys stay local.
+  Object.assign(settings, preferences);
+  Object.assign(client, clientPreferences);
+  const managedSlots = new Set(portableBindings.map(bindingSlot));
+  const mergedBindings = [
+    ...bindings.filter(binding => !managedSlots.has(bindingSlot(binding))),
+    ...portableBindings,
+  ];
+  // Keep the native Pi fallback if the snapshot does not specify a model.
   if (settings.defaultModelSelection === undefined) {
     settings.defaultModelSelection = { instanceId: "pi", model: "default" };
   }
-  const serialized = `${JSON.stringify(settings, null, 2)}\n`;
-  let current;
-  try { current = readFileSync(settingsPath, "utf8"); }
-  catch (error) { if (error.code !== "ENOENT") throw error; }
-  if (current !== serialized) {
-    mkdirSync(dirname(settingsPath), { recursive: true });
-    writeFileSync(settingsPath, serialized, { mode: 0o600 });
-  }
-  console.log(`T3 Code Pi configured: ${settingsPath}`);
+  writeJson(settingsPath, settings);
+  writeJson(clientPath, clientDocument);
+  writeJson(bindingsPath, mergedBindings);
+  console.log(`T3 Code preferences and Pi configured: ${settingsPath}`);
   console.log(`Pi binary: ${binary}\nPi profile: ${profile}`);
-  console.log("Refresh Pi in T3 Settings > Providers, then start a new thread. Authentication is not verified by setup.");
+  console.log("Restart T3 when idle to load client preferences. Refresh Pi in Settings > Providers, then start a new thread. Authentication is not verified by setup.");
   return settingsPath;
 }
 

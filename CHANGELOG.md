@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-11-08: Sync portable T3 Code preferences through setup
+
+- Track the work machine's selected T3 model defaults/favorites/visibility, interface and browser-preview preferences, speech/snapshot settings, thread-title and Git preferences, and portable keybindings. Make the existing cross-platform setup helper apply this baseline during installation or a manual rerun, without linking mutable T3 state.
+- Treat tracked preference keys as authoritative and merge keybindings by key/context while preserving unrelated local settings and bindings. Keep credentials, provider launch configuration, machine/workspace/device identifiers, connections, databases, sessions and browser-local theme selection out of the snapshot. Preserve the existing locally resolved default Pi integration and running conversations.
+- Extend the focused setup tests for preference application, local-state preservation, binding precedence, idempotence and malformed client files. Applying saved JSON does not prove loaded UI behavior; restart T3 when idle to load client preferences, then refresh Pi and use a new thread. Setup does not restart or reload anything itself.
+
 ## 2026-11-07: Add T3 desktop validation helpers and a Pi reload command
 
 - Add Windows helpers for exact tool-linked thread navigation and visible-window PNG capture, using T3's registered protocol handler without typing into the composer. Remove inherited Electron Node mode only from the navigation child; preserve the running app, user drafts and unrelated sessions. Keep ambiguous/minimized/off-desktop targets and screen occlusion explicit rather than claiming hidden-window capture or automatic view restoration.
