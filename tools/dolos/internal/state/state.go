@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"path"
@@ -36,7 +37,14 @@ func ValidateArchiveName(name string) bool { return name == ArchiveName }
 
 func TreeManifest(root string) (Manifest, error) {
 	m := Manifest{Version: 1, Archive: ArchiveName}
-	err := filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
+	rootInfo, err := os.Lstat(root)
+	if err != nil {
+		return m, err
+	}
+	if !rootInfo.IsDir() || rootInfo.Mode()&os.ModeSymlink != 0 {
+		return m, fmt.Errorf("root must be a regular directory: %s", root)
+	}
+	err = filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -48,26 +56,26 @@ func TreeManifest(root string) (Manifest, error) {
 			return err
 		}
 		rel = filepath.ToSlash(rel)
+		if !SafeArchivePath(rel) {
+			return fmt.Errorf("unsafe path %q", rel)
+		}
 		if d.IsDir() {
 			return nil
 		}
-		info, err := d.Info()
+		f, err := OpenRegularFile(p)
 		if err != nil {
 			return err
 		}
-		if !info.Mode().IsRegular() {
-			return nil
-		}
-		f, err := os.Open(p)
-		if err != nil {
-			return err
-		}
-		defer f.Close()
 		h := sha256.New()
-		if _, err := io.Copy(h, f); err != nil {
+		n, err := io.Copy(h, f)
+		cerr := f.Close()
+		if err != nil {
 			return err
 		}
-		m.Entries = append(m.Entries, ManifestEntry{Path: rel, Size: info.Size(), SHA256: hex.EncodeToString(h.Sum(nil))})
+		if cerr != nil {
+			return cerr
+		}
+		m.Entries = append(m.Entries, ManifestEntry{Path: rel, Size: n, SHA256: hex.EncodeToString(h.Sum(nil))})
 		return nil
 	})
 	if err != nil {
@@ -123,5 +131,56 @@ func ReadIndex(path string) (Index, error) {
 	return idx, err
 }
 func SafeArchivePath(p string) bool {
-	return p != "" && !strings.HasPrefix(p, "/") && !strings.Contains(p, "\\") && !strings.Contains(p, "..") && path.Clean(p) == p
+	if p == "" || p == "." || strings.HasPrefix(p, "/") || strings.ContainsAny(p, "\\\\:<>\"|?*\x00") || path.Clean(p) != p {
+		return false
+	}
+	for _, part := range strings.Split(p, "/") {
+		if part == ".." || strings.HasSuffix(part, ".") || strings.HasSuffix(part, " ") {
+			return false
+		}
+		for _, c := range part {
+			if c < 32 {
+				return false
+			}
+		}
+		base := strings.ToUpper(strings.SplitN(part, ".", 2)[0])
+		if base == "CON" || base == "PRN" || base == "AUX" || base == "NUL" {
+			return false
+		}
+		if strings.HasPrefix(base, "COM") || strings.HasPrefix(base, "LPT") {
+			suffix := base[3:]
+			if len(suffix) == 1 && suffix[0] >= '1' && suffix[0] <= '9' || suffix == "¹" || suffix == "²" || suffix == "³" {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// OpenRegularFile rejects links and special entries and checks that opening the
+// path did not resolve to a different file from the one inspected with Lstat.
+func OpenRegularFile(p string) (*os.File, error) {
+	info, err := os.Lstat(p)
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("unsupported non-regular entry %q", p)
+	}
+	f, err := os.Open(p)
+	if err != nil {
+		return nil, err
+	}
+	opened, err := f.Stat()
+	if err != nil || !opened.Mode().IsRegular() || !os.SameFile(info, opened) {
+		cerr := f.Close()
+		if err != nil {
+			return nil, err
+		}
+		if cerr != nil {
+			return nil, cerr
+		}
+		return nil, fmt.Errorf("file changed while opening %q", p)
+	}
+	return f, nil
 }

@@ -22,7 +22,7 @@ BWS_PROJECT_ID_PATTERN = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
     re.IGNORECASE,
 )
-MINIMUM_GO_VERSION = (1, 23)
+MINIMUM_GO_VERSION = (1, 26)
 
 
 class BootstrapError(RuntimeError):
@@ -150,7 +150,7 @@ def build_dolos(repo_root: Path, target: Path) -> None:
         )
         return
 
-    raise BootstrapError("cannot build Dolos: install Go 1.23 or newer or provide Docker")
+    raise BootstrapError("cannot build Dolos: install Go 1.26 or newer or provide Docker")
 
 
 def run_unpack(dolos: Path, repo_root: Path, identity: Path) -> None:

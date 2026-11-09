@@ -2,13 +2,11 @@ package gitstore
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"time"
 )
 
 type Store struct{ Root, GitPath string }
@@ -16,26 +14,36 @@ type Store struct{ Root, GitPath string }
 func Discover() (Store, error) {
 	root, err := git("rev-parse", "--show-toplevel")
 	if err != nil {
-		return Store{}, errors.New("not a git repository")
+		return Store{}, fmt.Errorf("cannot discover Git repository: %w", err)
 	}
 	gp, err := git("rev-parse", "--git-path", "dolos")
 	if err != nil {
-		return Store{}, err
+		return Store{}, fmt.Errorf("cannot locate Dolos Git state: %w", err)
 	}
 	if !filepath.IsAbs(gp) {
-		gp = filepath.Join(root, gp)
+		gp, err = filepath.Abs(gp)
+		if err != nil {
+			return Store{}, fmt.Errorf("cannot resolve Dolos Git state: %w", err)
+		}
 	}
 	return Store{Root: root, GitPath: gp}, nil
 }
 func git(args ...string) (string, error) {
+	out, err := gitRaw(args...)
+	return strings.TrimSuffix(out, "\n"), err
+}
+func gitRaw(args ...string) (string, error) {
 	cmd := exec.Command("git", args...)
 	var out, er bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &er
 	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("git %v: %w: %s", args, err, er.String())
+		if stderr := strings.TrimSpace(er.String()); stderr != "" {
+			return "", fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, stderr)
+		}
+		return "", fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
 	}
-	return strings.TrimSpace(out.String()), nil
+	return out.String(), nil
 }
 func (s Store) ArtifactPath() string {
 	return filepath.Join(s.Root, ".dolos", "artifacts", "private.tar.gz.age")
@@ -50,25 +58,36 @@ func (s Store) WithLock(fn func() error) error {
 		return err
 	}
 	lock := s.LockPath()
-	if b, err := os.ReadFile(lock); err == nil {
-		if info, stat := os.Stat(lock); stat == nil && time.Since(info.ModTime()) < time.Hour {
-			return fmt.Errorf("dolos lock exists: %s", strings.TrimSpace(string(b)))
+	f, err := os.OpenFile(lock, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	if err != nil {
+		if os.IsExist(err) {
+			return fmt.Errorf("dolos lock exists at %s; another Dolos operation may be running. If it is stale, confirm no Dolos operation is running, then remove this lock manually", lock)
 		}
-		_ = os.Remove(lock)
-	}
-	if err := os.WriteFile(lock, []byte(fmt.Sprintf("pid=%d\n", os.Getpid())), 0600); err != nil {
 		return err
 	}
-	defer os.Remove(lock)
+	owned, err := f.Stat()
+	if err != nil {
+		_ = f.Close()
+		return err
+	}
+	defer func() {
+		_ = f.Close()
+		if current, err := os.Lstat(lock); err == nil && os.SameFile(owned, current) {
+			_ = os.Remove(lock)
+		}
+	}()
+	if _, err := fmt.Fprintf(f, "pid=%d\n", os.Getpid()); err != nil {
+		return err
+	}
 	return fn()
 }
 func StagedPaths() ([]string, error) {
-	out, err := git("diff", "--cached", "--name-only", "--diff-filter=ACMR")
+	out, err := gitRaw("diff", "--cached", "--name-only", "-z", "--diff-filter=ACMR")
 	if err != nil {
 		return nil, err
 	}
 	if out == "" {
 		return nil, nil
 	}
-	return strings.Split(out, "\n"), nil
+	return strings.Split(strings.TrimSuffix(out, "\x00"), "\x00"), nil
 }

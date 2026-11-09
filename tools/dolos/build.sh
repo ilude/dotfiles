@@ -4,6 +4,28 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
+usage() {
+  printf 'Usage: %s [windows-amd64|windows-arm64|linux-amd64|linux-arm64|darwin-amd64|darwin-arm64]\n' "${0##*/}"
+  printf 'Build the selected Dolos binary (or the host target when omitted) from the full platform matrix.\n'
+}
+
+if [[ $# -gt 1 ]]; then
+  printf 'Error: expected at most one target, got %s arguments.\n' "$#" >&2
+  usage >&2
+  exit 2
+fi
+
+if [[ $# -eq 1 ]]; then
+  case "$1" in
+    -h|--help) usage; exit 0 ;;
+    windows-amd64|windows-arm64|linux-amd64|linux-arm64|darwin-amd64|darwin-arm64)
+      GOOS="${1%-*}"
+      GOARCH="${1##*-}"
+      ;;
+    *) printf 'Error: unsupported Dolos target: %s\n' "$1" >&2; usage >&2; exit 2 ;;
+  esac
+fi
+
 if [[ -z "${GOOS:-}" ]]; then
   case "$(uname -s)" in
     MINGW*|MSYS*|CYGWIN*) GOOS=windows ;;

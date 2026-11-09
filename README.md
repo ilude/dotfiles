@@ -143,6 +143,15 @@ distro package or source build rather than this release binary.
 
 ### Herdr desktop configuration
 
+On Windows, normal package installation runs the [official desktop installer](https://releases.herdr.dev/app/install.ps1).
+It selects the latest Windows x64 release from `https://releases.herdr.dev/app/latest.json`,
+verifies the download checksum, installs into `%LOCALAPPDATA%\Programs\herdr-app`,
+and adds `herdr-app` to the user PATH and Herdr to the Start menu. It also installs
+`herdr-core` if missing. Rerunning setup updates the app without closing an open
+window; quit and reopen it to use the new binary. The app also supports automatic
+updates. Windows `-SkipPackages` skips this download. Desktop installation on other
+platforms is not added by this Windows setup change.
+
 `~/.config/herdr-app/` links to [`config/herdr-app/`](config/herdr-app/) on
 Windows, macOS, Linux and WSL. Settings, keybindings, themes and personal layouts
 and mods belong there. Herdr's generated support files, shipped layouts/mods and
@@ -158,6 +167,10 @@ Normal installation adds the T3 Code desktop app on Windows/macOS and its CLI on
 supported platforms, then configures the existing default Pi profile as a T3
 provider and applies the portable preferences tracked in `config/t3-code/`.
 Herdr installation, configuration and running sessions remain unchanged.
+On Windows, the desktop app comes from the latest published GitHub nightly release
+in `pingdotgg/t3code`, not WinGet stable. The separate CLI keeps its official stable
+installer; macOS/Linux behavior is unchanged. Existing stable desktop installations
+are not uninstalled automatically.
 Windows `-SkipPackages` skips T3 downloads but still applies T3 configuration.
 
 To configure an existing installation without running the full installer:

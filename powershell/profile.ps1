@@ -23,17 +23,17 @@ if (-not $env:PI_SKIP_VERSION_CHECK) {
 $script:RequiredModules = @(
   'PSReadLine',
   'CompletionPredictor',
-  'Terminal-Icons',
-  'DockerCompletion',
-  'posh-git',
-  'PSFzf'
+  'posh-git'
 )
 
 # Single-pass module availability check (cached for session)
 if (-not $script:AvailableModules) {
   $script:AvailableModules = @{}
   foreach ($mod in $script:RequiredModules) {
-    $script:AvailableModules[$mod] = [bool](Get-Module -ListAvailable $mod)
+    $script:AvailableModules[$mod] = $false
+  }
+  foreach ($mod in Get-Module -ListAvailable -Name $script:RequiredModules) {
+    $script:AvailableModules[$mod.Name] = $true
   }
 }
 
@@ -290,29 +290,9 @@ if ($script:AvailableModules['PSReadLine']) {
 
 #endregion
 
-#region Modules (deferred loading for heavy modules)
+#region Git completions (deferred loading)
 
-# Terminal-Icons - defer until first ls/Get-ChildItem (heavy: ~650ms)
-$script:TerminalIconsLoaded = $false
-function Import-TerminalIconsOnce {
-  if (-not $script:TerminalIconsLoaded -and $script:AvailableModules['Terminal-Icons']) {
-    Import-Module Terminal-Icons
-    $script:TerminalIconsLoaded = $true
-  }
-}
-
-# PSFzf (fuzzy finder - Ctrl+R for history, Ctrl+T for files)
-if ($script:AvailableModules['PSFzf'] -and (Get-Command fzf -ErrorAction SilentlyContinue)) {
-  Import-Module PSFzf
-  Set-PsFzfOption -PSReadlineChordProvider 'Ctrl+t' -PSReadlineChordReverseHistory 'Ctrl+r'
-  Set-PsFzfOption -EnableAliasFuzzyEdit
-  Set-PsFzfOption -EnableAliasFuzzyHistory
-  Set-PsFzfOption -EnableAliasFuzzyKillProcess
-  Set-PsFzfOption -EnableAliasFuzzySetLocation
-  Set-PsFzfOption -EnableAliasFuzzyGitStatus
-}
-
-# Git/Docker completions - load on first use via argument completers
+# Git completions - load on first use via an argument completer
 # posh-git provides git tab completion when loaded
 if ($script:AvailableModules['posh-git']) {
   Register-ArgumentCompleter -Native -CommandName git -ScriptBlock {
@@ -322,16 +302,6 @@ if ($script:AvailableModules['posh-git']) {
       Import-Module posh-git
     }
     # Let posh-git handle it after loading
-    $null
-  }
-}
-
-if ($script:AvailableModules['DockerCompletion']) {
-  Register-ArgumentCompleter -Native -CommandName docker -ScriptBlock {
-    param($wordToComplete, $commandAst, $cursorPosition)
-    if (-not (Get-Module DockerCompletion)) {
-      Import-Module DockerCompletion
-    }
     $null
   }
 }
@@ -526,8 +496,6 @@ function l {
     [Parameter(Mandatory=$false)]
     [string]$Path = '.'
   )
-
-  Import-TerminalIconsOnce
 
   try {
     $items = Get-ChildItem -Force -Path $Path -ErrorAction Stop |

@@ -85,10 +85,7 @@ $itAdminModules = @(
 
 # PowerShell user modules (always installed, CurrentUser scope)
 $userModules = @(
-    'PSFzf',
-    'Terminal-Icons',
     'CompletionPredictor',
-    'DockerCompletion',
     'posh-git',
     'Pester'
 )
@@ -1007,6 +1004,70 @@ function Install-Herdr {
     }
 }
 
+function Install-HerdrDesktop {
+    # Desktop releases are published through app/latest.json, not the original
+    # herdr TUI's GitHub releases. The official installer selects the latest
+    # Windows x64 asset, verifies its checksum and installs core if missing.
+    $installer = Join-Path ([System.IO.Path]::GetTempPath()) "herdr-app-install-$PID.ps1"
+    try {
+        Write-Host '  Herdr Desktop: installing latest release...' -ForegroundColor Cyan
+        Invoke-WebRequest -UseBasicParsing -Uri 'https://releases.herdr.dev/app/install.ps1' -OutFile $installer
+        & $installer | Out-Host
+        Update-InstallPath
+
+        $appPath = Join-Path $env:LOCALAPPDATA 'Programs\herdr-app\herdr-app.exe'
+        if (-not (Test-Path $appPath)) {
+            throw "Herdr Desktop installer did not create $appPath"
+        }
+        $versionText = (& $appPath --version 2>$null | Select-Object -First 1)
+        if ($LASTEXITCODE -ne 0 -or $versionText -notmatch '^herdr-app \d+\.\d+\.\d+$') {
+            throw "Herdr Desktop version check failed (reported: $versionText)"
+        }
+        Write-Host "  Herdr Desktop: $versionText installed at $appPath" -ForegroundColor Green
+        return $true
+    } catch {
+        Write-Host "  Herdr Desktop: installation failed: $($_.Exception.Message)" -ForegroundColor Red
+        return $false
+    } finally {
+        Remove-Item $installer -Force -ErrorAction SilentlyContinue
+    }
+}
+
+function Install-T3CodeNightly {
+    $installer = Join-Path ([System.IO.Path]::GetTempPath()) "t3-code-nightly-$PID.exe"
+    try {
+        $rawArch = if ($env:PROCESSOR_ARCHITEW6432) { $env:PROCESSOR_ARCHITEW6432 } else { $env:PROCESSOR_ARCHITECTURE }
+        $arch = switch ($rawArch) {
+            'AMD64' { 'x64' }
+            'ARM64' { 'arm64' }
+            default { throw "Unsupported T3 Code desktop architecture: $rawArch" }
+        }
+        # GitHub's /latest endpoint excludes prereleases. Select the most
+        # recently published nightly rather than a stable or preview release.
+        $releases = Invoke-RestMethod -Uri 'https://api.github.com/repos/pingdotgg/t3code/releases?per_page=100' -ErrorAction Stop
+        $release = $releases | Where-Object { -not $_.draft -and $_.tag_name -match '^v\d+\.\d+\.\d+-nightly\.\d+\.\d+$' } |
+            Sort-Object { [datetime]$_.published_at } -Descending | Select-Object -First 1
+        if (-not $release) { throw 'No published T3 Code nightly release found' }
+        $version = $release.tag_name -replace '^v', ''
+        $asset = $release.assets | Where-Object { $_.name -eq "T3-Code-$version-$arch.exe" } | Select-Object -First 1
+        if (-not $asset) { throw "T3 Code $version has no Windows $arch desktop installer" }
+
+        Write-Host "  T3 Code: installing nightly $version..." -ForegroundColor Cyan
+        Invoke-WebRequest -UseBasicParsing -Uri $asset.browser_download_url -OutFile $installer -ErrorAction Stop
+        if ($asset.digest -match '^sha256:([a-fA-F0-9]{64})$') {
+            if ((Get-FileHash -Path $installer -Algorithm SHA256).Hash -ne $Matches[1]) {
+                throw 'T3 Code nightly installer SHA-256 mismatch'
+            }
+        }
+        return (Invoke-InstallCommand -Name 'T3 Code Nightly desktop' -FilePath $installer -ArgumentList @('/S'))
+    } catch {
+        Add-InstallResult 'T3 Code Nightly desktop' Failed $_.Exception.Message
+        return $false
+    } finally {
+        Remove-Item $installer -Force -ErrorAction SilentlyContinue
+    }
+}
+
 function Install-Packages {
     param([switch]$Work, [switch]$Dev, [switch]$ITAdmin)
 
@@ -1067,6 +1128,11 @@ function Install-PackageTooling {
     if (Install-Herdr) { Add-InstallResult Herdr UpdatedOrCurrent }
     else { Add-InstallResult Herdr Failed 'installation failed' }
 
+    # The desktop app and herdr-core are separate from the original Herdr TUI.
+    Write-Host "`n--- Herdr Desktop Setup ---" -ForegroundColor Cyan
+    if (Install-HerdrDesktop) { Add-InstallResult 'Herdr Desktop' UpdatedOrCurrent }
+    else { Add-InstallResult 'Herdr Desktop' Failed 'installation failed' }
+
     # fj has no WinGet package; use the upstream Forgejo CLI release binary.
     Write-Host "`n--- Forgejo CLI Setup ---" -ForegroundColor Cyan
     $python = Get-Command python -ErrorAction SilentlyContinue
@@ -1085,8 +1151,11 @@ function Install-PackageTooling {
     Write-Host "`n--- Git Context Menu Cleanup ---" -ForegroundColor Cyan
     Remove-GitShellExtensions
 
-    # T3 Code's desktop app comes from WinGet; install its official stable CLI
-    # alongside other per-user package tooling.
+    # Desktop nightlies are GitHub prereleases, not the stable WinGet package.
+    Write-Host "`n--- T3 Code Nightly Desktop Setup ---" -ForegroundColor Cyan
+    $null = Install-T3CodeNightly
+
+    # Keep the separate official stable CLI alongside per-user package tooling.
     Write-Host "`n--- T3 Code CLI Setup ---" -ForegroundColor Cyan
     $t3Installer = Join-Path ([System.IO.Path]::GetTempPath()) "t3-code-install-$PID.ps1"
     try {

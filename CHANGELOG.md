@@ -6,6 +6,38 @@
 - Treat tracked preference keys as authoritative and merge keybindings by key/context while preserving unrelated local settings and bindings. Keep credentials, provider launch configuration, machine/workspace/device identifiers, connections, databases, sessions and browser-local theme selection out of the snapshot. Preserve the existing locally resolved default Pi integration and running conversations.
 - Extend the focused setup tests for preference application, local-state preservation, binding precedence, idempotence and malformed client files. Applying saved JSON does not prove loaded UI behavior; restart T3 when idle to load client preferences, then refresh Pi and use a new thread. Setup does not restart or reload anything itself.
 
+## 2026-11-07: Fix Dolos archive integrity and sync-direction handling
+
+- Distinguish plaintext-only, artifact-only and combined changes. The optional pre-commit hook only auto-packs known plaintext-only changes and rechecks under the exclusive lock. Allow Git's normal full-index lockfile for `git commit -a` and `git commit -i PATH`, while continuing to refuse automatic packing from other alternate indexes such as `--only`. Explicit manual packing remains a deliberate source-of-truth choice; the hook is not enabled automatically.
+- Recommend unpacking without `--force` when the local plaintext directory is missing and an encrypted artifact exists, rather than suggesting a pack that cannot read its source. Preserve the existing sync-state classification and exit codes.
+- Read staged paths losslessly so Unicode and special-character names cannot bypass plaintext protection. Protect the existing `private.bak` path from staging, resolve Git state from nested directories correctly, and keep worktree locks/indexes independent.
+- Validate pack candidates against the same path, manifest and resource rules used for restoration. Preserve valid double-dot filenames, reject unsafe or reserved names and symlinks/junctions, detect source changes during packing, and propagate stream-finalization failures. Optional decryption verification runs before artifact promotion, and the index describes the bytes actually archived.
+- Refuse unpack over changed plaintext or plaintext without a trusted index unless explicitly requested with `--force`. Keep scratch-first restoration and preserve an existing backup rather than silently deleting it. No real private vault was repacked or restored as part of this change.
+- Update age to 1.3.2, edwards25519 to 1.2.0, x/crypto to 0.58.0 and x/sys to 0.49.0, including the SSH key-parsing vulnerability fix. Raise the build/bootstrap minimum to Go 1.26, use the Go 1.27.3 Docker builder, and make documented build target/help arguments work without changing the supported platform matrix.
+
+## 2026-11-07: Preserve Git failure details in Dolos
+
+- Report the failing Git command, underlying execution error and Git stderr when Dolos cannot discover its repository or state directory. Missing or unresolvable Git executables, including malformed `PATH` failures, no longer appear as a generic `not a git repository` error; genuine non-repository failures retain Git's explanation.
+- Preserve existing exit codes and archive behavior.
+
+## 2026-11-07: Install T3 Code desktop nightlies on Windows
+
+- Replace the core WinGet stable package with the latest published nightly desktop installer from `pingdotgg/t3code` GitHub releases. Select the Windows x64 or ARM64 asset, check its SHA-256 when provided by GitHub, and run the silent installer through existing install-result reporting.
+- Keep the separate stable CLI installer, default Pi provider setup, `-SkipPackages` behavior and other platforms unchanged. Do not automatically uninstall existing stable desktop installations.
+
+## 2026-11-07: Batch PowerShell module availability checks
+
+- Discover the remaining profile modules with one `Get-Module -ListAvailable` call instead of separate calls for each module. Preserve per-module availability flags, missing-module installation prompts and existing loading behavior.
+
+## 2026-11-07: Remove unused PowerShell modules to reduce startup work
+
+- Stop checking, auto-installing and loading Terminal-Icons, DockerCompletion and PSFzf in the PowerShell profile, and remove them from the Windows installer's user-module list. Remove Docker module completion registration and PSFzf's fuzzy-search bindings/helpers; preserve PSReadLine, CompletionPredictor, deferred Git completions and the existing colored `l`/`ll` directory listing. Existing installed module copies and the standalone `fzf` command are left on disk.
+
+## 2026-11-07: Install the latest Herdr Desktop release on Windows
+
+- Add Herdr Desktop to the normal Windows package-tooling path using its official release-server installer, separate from the existing Herdr TUI GitHub release channel. Upstream selects the latest Windows x64 asset from `app/latest.json`, verifies its SHA-256 checksum, adds the per-user PATH and Start menu entry, and installs herdr-core if missing.
+- Preserve existing TUI installation, desktop configuration and running sessions. Rerunning setup updates the desktop binary without forcing a running app to restart; reopen it to load the update. `-SkipPackages` skips desktop installation, and other platforms' installation behavior is unchanged.
+
 ## 2026-11-07: Add T3 desktop validation helpers and a Pi reload command
 
 - Add Windows helpers for exact tool-linked thread navigation and visible-window PNG capture, using T3's registered protocol handler without typing into the composer. Remove inherited Electron Node mode only from the navigation child; preserve the running app, user drafts and unrelated sessions. Keep ambiguous/minimized/off-desktop targets and screen occlusion explicit rather than claiming hidden-window capture or automatic view restoration.

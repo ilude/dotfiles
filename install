@@ -43,7 +43,7 @@ has_supported_go() {
     command -v go >/dev/null 2>&1 || return 1
     version="$(go version 2>/dev/null)"
     if [[ "$version" =~ go([0-9]+)\.([0-9]+) ]]; then
-        ((BASH_REMATCH[1] > 1 || (BASH_REMATCH[1] == 1 && BASH_REMATCH[2] >= 23)))
+        ((BASH_REMATCH[1] > 1 || (BASH_REMATCH[1] == 1 && BASH_REMATCH[2] >= 26)))
         return
     fi
     return 1
@@ -328,22 +328,22 @@ if [[ ! -x "${BASEDIR}/bin/dolos" && ! -x "${BASEDIR}/bin/dolos.exe" ]] &&
             apt_runner=(sudo -n --preserve-env=DEBIAN_FRONTEND)
         fi
         if "${apt_runner[@]}" apt-get update &&
-            apt-cache show golang-1.23-go >/dev/null 2>&1 &&
-            "${apt_runner[@]}" apt-get install -y golang-1.23-go; then
-            export PATH="/usr/lib/go-1.23/bin:$PATH"
+            apt-cache show golang-1.26-go >/dev/null 2>&1 &&
+            "${apt_runner[@]}" apt-get install -y golang-1.26-go; then
+            export PATH="/usr/lib/go-1.26/bin:$PATH"
             if ! has_supported_go; then
-                echo "Warning: Go 1.23 installation did not produce a usable compiler" >&2
+                echo "Warning: Go 1.26 installation did not produce a usable compiler" >&2
                 onclave_bootstrap_ready=
             fi
         elif [[ "$EUID" -ne 0 ]] && ! sudo -n true; then
             echo "Warning: Go bootstrap requires passwordless sudo or a root shell; skipping private configuration restore" >&2
             onclave_bootstrap_ready=
         else
-            echo "Warning: this apt repository does not provide Go 1.23; install Go 1.23 or Docker" >&2
+            echo "Warning: this apt repository does not provide Go 1.26; install Go 1.26 or Docker" >&2
             onclave_bootstrap_ready=
         fi
     else
-        echo "Warning: Go 1.23 or Docker is required to restore the Onclave private configuration" >&2
+        echo "Warning: Go 1.26 or Docker is required to restore the Onclave private configuration" >&2
         onclave_bootstrap_ready=
     fi
 fi

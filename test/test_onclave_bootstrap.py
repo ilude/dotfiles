@@ -29,8 +29,8 @@ def test_parse_exported_env_supports_shell_exports(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     ("output", "expected"),
     [
-        ("go version go1.23.12 linux/amd64\n", (1, 23)),
-        ("go version go1.24.1 darwin/arm64\n", (1, 24)),
+        ("go version go1.26.0 linux/amd64\n", (1, 26)),
+        ("go version go1.27.3 darwin/arm64\n", (1, 27)),
         ("unexpected output\n", None),
     ],
 )
@@ -94,7 +94,7 @@ def test_build_dolos_uses_darwin_docker_target_for_old_go(tmp_path: Path, monkey
     calls: list[tuple[list[str], dict[str, object]]] = []
 
     monkeypatch.setattr(MODULE, "find_go", lambda: "/usr/bin/go")
-    monkeypatch.setattr(MODULE, "go_version", lambda _go: (1, 22))
+    monkeypatch.setattr(MODULE, "go_version", lambda _go: (1, 25))
     monkeypatch.setattr(
         MODULE.shutil,
         "which",
@@ -119,10 +119,10 @@ def test_build_dolos_uses_darwin_docker_target_for_old_go(tmp_path: Path, monkey
 
 def test_build_dolos_rejects_old_go_without_docker(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(MODULE, "find_go", lambda: "/usr/bin/go")
-    monkeypatch.setattr(MODULE, "go_version", lambda _go: (1, 22))
+    monkeypatch.setattr(MODULE, "go_version", lambda _go: (1, 25))
     monkeypatch.setattr(MODULE.shutil, "which", lambda _command: None)
 
-    with pytest.raises(MODULE.BootstrapError, match="Go 1.23 or newer"):
+    with pytest.raises(MODULE.BootstrapError, match="Go 1.26 or newer"):
         MODULE.build_dolos(tmp_path, tmp_path / "bin" / "dolos")
 
 

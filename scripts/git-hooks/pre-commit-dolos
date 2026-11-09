@@ -27,17 +27,41 @@ fi
 
 status_output=$("$dolos" status 2>&1) || status_code=$?
 status_code=${status_code:-0}
+if [ "$status_code" -ne 0 ] && [ "$status_code" -ne 4 ]; then
+  printf '%s\n' "$status_output" >&2
+  exit "$status_code"
+fi
+
 case "$status_output" in
-  *"status=diverged"*)
-    printf '%s\n' "Dolos: private/ diverged from encrypted archive; packing private/." >&2
-    "$dolos" pack private
+  *"status=clean "*)
+    [ "$status_code" -eq 0 ] || exit "$status_code"
+    ;;
+  *"status=plain-changed "*)
+    # Full-index commits use index, or index.lock for -a/--include.
+    # Compare resolved paths; --only and other alternate indexes stay refused.
+    current_index=$(git rev-parse --path-format=absolute --git-path index)
+    default_index=$(unset GIT_INDEX_FILE; git rev-parse --path-format=absolute --git-path index)
+    resolve_index() {
+      (cd "$(dirname "$1")" && printf '%s/%s\n' "$(pwd -P)" "$(basename "$1")")
+    }
+    current_index=$(resolve_index "$current_index")
+    default_index=$(resolve_index "$default_index")
+    if [ "$current_index" != "$default_index" ] && [ "$current_index" != "$default_index.lock" ]; then
+      printf '%s\n' "Dolos: private/ changed, but this commit uses an alternate index (for example --only). Run dolos pack private, stage the artifact, then make a full-index commit." >&2
+      exit 1
+    fi
+    printf '%s\n' "Dolos: only private/ changed; packing private/." >&2
+    "$dolos" pack private --if-plain-changed
     git add -- .dolos/artifacts/private.tar.gz.age
     "$dolos" scan --staged
     ;;
+  *"status=artifact-changed "*|*"status=diverged "*|*"status=untracked "*|*"status=no-index "*)
+    printf '%s\n' "$status_output" >&2
+    printf '%s\n' "Dolos: refusing automatic packing. Inspect private/ and the artifact; run dolos unpack private --identity KEY to use the artifact, or explicitly run dolos pack private only if plaintext should replace it. Then stage the intended artifact and retry." >&2
+    exit 4
+    ;;
   *)
-    if [ "$status_code" -ne 0 ]; then
-      printf '%s\n' "$status_output" >&2
-      exit "$status_code"
-    fi
+    printf '%s\n' "$status_output" "Dolos: unrecognized status; refusing automatic packing." >&2
+    exit 1
     ;;
 esac

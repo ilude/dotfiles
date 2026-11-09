@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"dolos/internal/gitstore"
 )
 
 func inTempRepo(t *testing.T) string {
@@ -128,8 +130,21 @@ func TestUnknownArchive(t *testing.T) {
 }
 func TestMissingGitRepo(t *testing.T) {
 	withCwd(t, t.TempDir())
-	if c, _, _ := runCLI("status"); c != ExitUsage {
-		t.Fatal(c)
+	t.Setenv("LC_ALL", "C")
+	c, _, e := runCLI("status")
+	if c != ExitUsage || !strings.Contains(e, "cannot discover Git repository: git rev-parse --show-toplevel:") || !strings.Contains(e, "not a git repository") {
+		t.Fatalf("missing repository: code=%d err=%q", c, e)
+	}
+}
+func TestMissingGitExecutable(t *testing.T) {
+	withCwd(t, t.TempDir())
+	t.Setenv("PATH", t.TempDir())
+	c, _, e := runCLI("status")
+	if c != ExitUsage || !strings.Contains(e, "cannot discover Git repository: git rev-parse --show-toplevel:") || !strings.Contains(e, exec.ErrNotFound.Error()) {
+		t.Fatalf("missing git executable: code=%d err=%q", c, e)
+	}
+	if strings.Contains(e, "not a git repository") {
+		t.Fatalf("missing git misreported as missing repository: %q", e)
 	}
 }
 func TestLocking(t *testing.T) {
@@ -180,10 +195,46 @@ func TestEndToEndTempRepoSSHKeys(t *testing.T) {
 }
 func TestWorktreeStateIsolation(t *testing.T) {
 	dir := inTempRepo(t)
-	cmd := exec.Command("git", "worktree", "add", filepath.Join(t.TempDir(), "wt"))
-	cmd.Dir = dir
-	b, err := cmd.CombinedOutput()
-	if err != nil && !strings.Contains(string(b), "is a missing but already registered worktree") {
-		t.Skipf("worktree unavailable: %v %s", err, b)
+	withCwd(t, dir)
+	writeFixture(t, filepath.Join(dir, "README"), []byte("fixture repository"))
+	for _, args := range [][]string{{"add", "README"}, {"commit", "-m", "fixture"}} {
+		if b, err := exec.Command("git", args...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v %s", args, err, b)
+		}
+	}
+	root, err := gitstore.Discover()
+	if err != nil {
+		t.Fatal(err)
+	}
+	worktree := filepath.Join(t.TempDir(), "wt")
+	if b, err := exec.Command("git", "worktree", "add", "-b", "isolation", worktree).CombinedOutput(); err != nil {
+		t.Fatalf("worktree add: %v %s", err, b)
+	}
+	nested := filepath.Join(dir, "nested", "directory")
+	if err := os.MkdirAll(nested, 0700); err != nil {
+		t.Fatal(err)
+	}
+	withCwd(t, nested)
+	fromNested, err := gitstore.Discover()
+	if err != nil || fromNested.IndexPath() != root.IndexPath() {
+		t.Fatalf("nested state differs: %+v %v", fromNested, err)
+	}
+	withCwd(t, worktree)
+	linked, err := gitstore.Discover()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if linked.IndexPath() == root.IndexPath() || linked.LockPath() == root.LockPath() {
+		t.Fatal("linked worktree shares the root's index or lock")
+	}
+	if err := root.WithLock(func() error {
+		return linked.WithLock(func() error { return nil })
+	}); err != nil {
+		t.Fatalf("independent worktree locks: %v", err)
+	}
+	writeFixture(t, root.IndexPath(), []byte("root index"))
+	writeFixture(t, linked.IndexPath(), []byte("worktree index"))
+	if string(readFixture(t, root.IndexPath())) != "root index" || string(readFixture(t, linked.IndexPath())) != "worktree index" {
+		t.Fatal("worktree index files were not isolated")
 	}
 }
