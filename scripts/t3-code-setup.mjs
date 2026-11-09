@@ -4,6 +4,7 @@ import { accessSync, constants, mkdirSync, readFileSync, statSync, writeFileSync
 import { homedir } from "node:os";
 import { delimiter, dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { parseEnv } from "node:util";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const object = value => value !== null && typeof value === "object" && !Array.isArray(value);
@@ -49,8 +50,31 @@ const validBindings = value => Array.isArray(value) && value.every(binding =>
   object(binding) && typeof binding.key === "string" && typeof binding.command === "string" &&
   (binding.when === undefined || typeof binding.when === "string"));
 const bindingSlot = binding => JSON.stringify([binding.key, binding.when ?? ""]);
+const privateEnvironmentNames = [
+  "BITWARDEN_ACCESS_KEY",
+  "BITWARDEN_API_SERVER",
+  "BITWARDEN_IDENTITY_SERVER",
+  "BITWARDEN_ORG_ID",
+  "ONCLAVE_BWS_PROJECT_ID",
+];
 
-export function configureT3({ baseDir = process.env.T3CODE_HOME || join(homedir(), ".t3"), piBinary } = {}) {
+function readPrivateEnvironment(path) {
+  let content;
+  try { content = readFileSync(path, "utf8"); }
+  catch (error) {
+    if (error.code !== "ENOENT") throw new Error("Cannot read T3 Pi private environment, left unchanged");
+    console.warn("T3 Pi private environment unavailable; restore private/secrets.env with Dolos and rerun setup. Existing entries are preserved.");
+    return {};
+  }
+  try { return parseEnv(content); }
+  catch { throw new Error("Cannot parse T3 Pi private environment, left unchanged"); }
+}
+
+export function configureT3({
+  baseDir = process.env.T3CODE_HOME || join(homedir(), ".t3"),
+  piBinary,
+  secretsFile = join(root, "private", "secrets.env"),
+} = {}) {
   const profile = join(root, "pi", "profiles", "default");
   if (!statSync(profile).isDirectory()) throw new Error(`Default Pi profile is unavailable: ${profile}`);
   const binary = piBinary ? resolve(piBinary) : findPiBinary();
@@ -88,8 +112,17 @@ export function configureT3({ baseDir = process.env.T3CODE_HOME || join(homedir(
     // Launching T3 from a Herdr shell must not claim that shell's panes.
     ["HERDR_ENV", "0"],
   ]);
-  const environment = (previous.environment ?? []).filter(variable => !managedEnvironment.has(variable.name));
+  const privateEnvironment = readPrivateEnvironment(secretsFile);
+  const privateEntries = privateEnvironmentNames
+    .filter(name => typeof privateEnvironment[name] === "string" && privateEnvironment[name].trim() !== "")
+    .map(name => ({ name, value: privateEnvironment[name], sensitive: true }));
+  const privateNames = new Set(privateEntries.map(variable => variable.name));
+  const missingNames = privateEnvironmentNames.filter(name => !privateNames.has(name));
+  if (missingNames.length > 0) console.warn(`T3 Pi private environment not supplied for: ${missingNames.join(", ")}. Existing entries are preserved.`);
+  const environment = (previous.environment ?? []).filter(variable =>
+    !managedEnvironment.has(variable.name) && !privateNames.has(variable.name));
   for (const [name, value] of managedEnvironment) environment.push({ name, value, sensitive: false });
+  environment.push(...privateEntries);
   settings.providerInstances = {
     ...instances,
     pi: {
@@ -118,6 +151,7 @@ export function configureT3({ baseDir = process.env.T3CODE_HOME || join(homedir(
   writeJson(bindingsPath, mergedBindings);
   console.log(`T3 Code preferences and Pi configured: ${settingsPath}`);
   console.log(`Pi binary: ${binary}\nPi profile: ${profile}`);
+  console.log(`Pi private environment: ${privateEntries.length} entries applied from the local secrets file; values are not logged.`);
   console.log("Restart T3 when idle to load client preferences. Refresh Pi in Settings > Providers, then start a new thread. Authentication is not verified by setup.");
   return settingsPath;
 }
@@ -127,8 +161,9 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const args = process.argv.slice(2);
   try {
     for (let index = 0; index < args.length; index += 2) {
-      const key = args[index] === "--base-dir" ? "baseDir" : args[index] === "--pi-binary" ? "piBinary" : undefined;
-      if (!key || !args[index + 1]) throw new Error("Usage: node scripts/t3-code-setup.mjs [--base-dir <T3 home>] [--pi-binary <executable>]");
+      const key = args[index] === "--base-dir" ? "baseDir" : args[index] === "--pi-binary" ? "piBinary"
+        : args[index] === "--secrets-file" ? "secretsFile" : undefined;
+      if (!key || !args[index + 1]) throw new Error("Usage: node scripts/t3-code-setup.mjs [--base-dir <T3 home>] [--pi-binary <executable>] [--secrets-file <local env file>]");
       options[key] = args[index + 1];
     }
     configureT3(options);

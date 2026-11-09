@@ -40,6 +40,9 @@ The helper merges `~/.t3/userdata/settings.json` (or the home selected by
   extensions, skills, tools, and native session storage. It copies no credentials.
 - Sets `HERDR_ENV=0` only in the T3 Pi instance, so a T3 process launched from a
   Herdr shell does not manage the originating shell's panes.
+- Reads the five Bitwarden/Onclave variables listed below from Dolos-managed
+  `private/secrets.env` into the local Pi provider, marking their values sensitive.
+  Only the wiring is tracked in the public repository.
 - Applies the tracked portable preferences described below, including the
   work-machine default model and thinking option for new threads. If the tracked
   snapshot has no default model, it preserves an existing selection or falls back
@@ -57,7 +60,35 @@ node scripts/t3-code-setup.mjs --base-dir /path/to/t3-home --pi-binary /path/to/
 ```
 
 `--base-dir` is the T3 home, not its `userdata` subdirectory. Point `--pi-binary`
-at an executable T3 can spawn on that OS.
+at an executable T3 can spawn on that OS. `--secrets-file /path/to/local.env`
+overrides the default private source when needed.
+
+### Pi private environment through Dolos
+
+The setup helper reads only these entries from this checkout's
+`private/secrets.env`:
+
+- `BITWARDEN_ACCESS_KEY`
+- `BITWARDEN_API_SERVER`
+- `BITWARDEN_IDENTITY_SERVER`
+- `BITWARDEN_ORG_ID`
+- `ONCLAVE_BWS_PROJECT_ID`
+
+Dolos owns their encrypted transport in `.dolos/artifacts/private.tar.gz.age`;
+`private/secrets.env` stays Git-ignored. Normal installation restores that private
+configuration before T3 setup. For an existing checkout, use the existing Dolos
+private restore workflow if needed, then rerun `node scripts/t3-code-setup.mjs`.
+There is no separate T3 credential export or new encrypted archive.
+
+Nonempty source values replace same-named local Pi environment entries and are
+marked `sensitive: true`. The helper parses dotenv assignments without executing
+shell code, does not import other private variables, and never logs their values.
+If the file or individual values are missing, setup warns and preserves existing
+entries instead of installing empty placeholders. Local T3 settings receive the
+values; the installed T3 server moves inline sensitive values into its native
+local secret storage when loading settings. Do not commit or copy that runtime
+storage. Refresh/restart T3 when idle and use a new Pi runtime to load these
+variables; existing Pi processes keep their inherited environment.
 
 ## Portable preferences
 
@@ -93,7 +124,8 @@ provider definitions/enabled states/launch configuration (including custom
 linked-environment controls, browser profiles/connections and profile IDs,
 onboarding state, microphone device IDs, window bounds, update/network settings,
 and all databases, sessions, caches and account state. These remain local; the
-helper still resolves the default Pi binary/profile on each target machine.
+helper still resolves the default Pi binary/profile on each target machine and
+wires the selected Pi private variables from Dolos as described above.
 The client file's obsolete model-preference migration fields are omitted; the
 environment settings contain the active model preferences.
 
