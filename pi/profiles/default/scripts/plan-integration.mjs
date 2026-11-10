@@ -18,19 +18,30 @@ if (process.argv.length !== 3 || !["closeout", "integrate", "cleanup"].includes(
   fail("Usage: node <canonical plan-integration.mjs> <closeout|integrate|cleanup>");
 } else {
   try {
-    const authority = JSON.parse(process.env.PI_SUBAGENT_AUTHORITY ?? "null");
-    const handoff = authority?.closeout;
-    const provenance = handoff?.provenance;
-    if (authority?.agent !== "integrator" || authority.parentId !== undefined || !Array.isArray(authority.delegates) || authority.delegates.length !== 0
-      || provenance?.source !== "subagent-runtime" || provenance.version !== 1 || provenance.agent !== "integrator"
-      || provenance.childId !== authority.id || provenance.targetCheckout !== handoff?.manifest?.targetCheckout
-      || !provenance.parentSessionId || !process.env.PI_SUBAGENT_ENDPOINT) {
+    const authority = JSON.parse(process.env.PI_SUBAGENT_AUTHORITY || "null");
+    let handoff = authority?.closeout;
+    let authorizedCwd = authority?.cwd;
+    if (!authority && process.env.PI_T3_CLOSEOUT_ENDPOINT) {
+      const endpoint = JSON.parse(process.env.PI_T3_CLOSEOUT_ENDPOINT);
+      if (!endpoint || !Number.isInteger(endpoint.port) || endpoint.port < 1 || endpoint.port > 65535
+        || ![endpoint.child, endpoint.run, endpoint.origin, endpoint.token].every(value => typeof value === "string" && value)) throw new Error("Invalid T3 closeout endpoint");
+      const { requestParent } = await loader.import("../lib/subagents/transport.ts");
+      handoff = await requestParent(endpoint, { type: "t3-closeout-authority" });
+      const p = handoff?.provenance;
+      if (p?.source !== "t3-role-runtime" || p.version !== 1 || p.agent !== "integrator"
+        || p.launchId !== endpoint.child || p.threadId !== endpoint.origin || !p.parentThreadId || !p.parentSessionId
+        || p.targetCheckout !== handoff?.manifest?.targetCheckout) throw new Error("Authenticated T3 Integrator closeout authority is unavailable");
+      authorizedCwd = p.targetCheckout;
+    } else if (authority?.agent !== "integrator" || authority.parentId !== undefined || !Array.isArray(authority.delegates) || authority.delegates.length !== 0
+      || handoff?.provenance?.source !== "subagent-runtime" || handoff.provenance.version !== 1 || handoff.provenance.agent !== "integrator"
+      || handoff.provenance.childId !== authority.id || handoff.provenance.targetCheckout !== handoff?.manifest?.targetCheckout
+      || !handoff.provenance.parentSessionId || !process.env.PI_SUBAGENT_ENDPOINT) {
       throw new Error("Authenticated Integrator closeout authority is unavailable");
     }
     const { closeout, validateCloseoutManifest } = await loader.import("../lib/plan-integration/closeout.ts");
     validateCloseoutManifest(handoff.manifest);
     if (handoff.manifest.noMerge || resolve(process.cwd()) !== resolve(handoff.manifest.targetCheckout)
-      || resolve(authority.cwd) !== resolve(handoff.manifest.targetCheckout)) {
+      || resolve(authorizedCwd) !== resolve(handoff.manifest.targetCheckout)) {
       throw new Error("Closeout target does not match the authorized manifest");
     }
     process.stdout.write(`${JSON.stringify(closeout(handoff.manifest, { operation }), null, 2)}\n`);

@@ -58,7 +58,7 @@ export default function(pi) {
 `;
   writeFileSync(fixture, source);
   const env = { ...process.env };
-  for (const key of Object.keys(env)) if (key.startsWith("PI_SUBAGENT_") || key.startsWith("HERDR_")) delete env[key];
+  for (const key of Object.keys(env)) if (key.startsWith("PI_SUBAGENT_") || key.startsWith("HERDR_") || ["T3_MCP_URL", "T3_MCP_BEARER_TOKEN", "T3_PI_MCP_EXTENSION_PATH", "T3_PI_RUNTIME_MODE"].includes(key)) delete env[key];
   Object.assign(env, { PI_CODING_AGENT_DIR: profile, PI_SUBAGENT_BIN: process.execPath,
     PI_SUBAGENT_BIN_ARGS: JSON.stringify([join(profile, "tests/fixtures/fake-subagent-rpc.mjs")]) });
   const child = spawn(process.execPath, [cli, "--mode", "rpc", "--offline", "--no-extensions", "--no-skills", "--no-context-files", "--session", join(scratch, "origin.jsonl"), "--model", "subagent-fixture/inert", "-e", fixture],

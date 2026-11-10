@@ -8,6 +8,9 @@ import { GoalRuntime, GOAL_RUNTIME_ENTRY, type GoalRuntimeData } from "../lib/go
 import { captureGoalBudgetBaseline, evaluateGoalBudget, type GoalBudgetBaseline } from "../lib/goal/budget.ts";
 import { readGoalUsage } from "../lib/goal/usage.ts";
 import { getSubagentRuntime, type GoalBinding } from "../lib/subagents/runtime.ts";
+import { selectedSubagentBackend } from "../lib/subagents/authority.ts";
+import { createT3GoalBackend } from "../lib/subagents/t3/goal.ts";
+import type { SubagentGoalOperations } from "../lib/subagents/t3/contracts.ts";
 
 const CONTEXT_TYPE = "goal-authority";
 const CONTROL_GUIDANCE = "Record current progress and explicit outcomes with goal_control: checkpoint with concrete progress and next work, complete with acceptance evidence, question with the exact required user decision, blocker with the concrete obstacle, or pause. Healthy ordinary stops re-enter the same durable goal; a missing checkpoint does not require user intervention. Complete explicitly when acceptance is met. Do not checkpoint unchanged work, poll for user answers, or continue past a required question. Set restoringBuildability only for a bounded step restoring a broken build, never optional work. Choose workload and concurrency early against observed budget headroom and pace. Configured counters cover only their named provider; an omitted counter does not impose a provider restriction.";
@@ -55,7 +58,10 @@ export default function goalExtension(pi: ExtensionAPI): void {
   let goalTurn = false;
   let goalBinding: GoalBinding | undefined;
   let goalOrigin: string | undefined;
-  let subagents = getSubagentRuntime();
+  const t3 = selectedSubagentBackend() === "t3" ? createT3GoalBackend(pi) : undefined;
+  let t3Ready = !t3;
+  const roleChild = () => !!t3 && (!t3Ready || t3.isChild());
+  let subagents: SubagentGoalOperations = t3 ?? getSubagentRuntime();
   const accounted = new Set<string>();
   const accounting = async (value: unknown): Promise<void> => {
     const state = runtime.state, data = runtime.data;
@@ -73,7 +79,7 @@ export default function goalExtension(pi: ExtensionAPI): void {
     if (accounted.has(event.recordId)) return;
     accounted.add(event.recordId);
   };
-  const bind = () => {
+  const bind = async () => {
     if (goalBinding && goalOrigin) subagents.unbindGoal(goalOrigin, goalBinding);
     goalBinding = undefined; goalOrigin = undefined;
     const state = runtime.state;
@@ -82,7 +88,7 @@ export default function goalExtension(pi: ExtensionAPI): void {
       admit: () => runtime.state?.runId === state.runId ? runtime.admit() : Promise.resolve({ allowed: false, reason: "Owning goal is no longer active" }),
       enroll: session => runtime.enroll(session), close: session => runtime.closeSession(session), accounting };
     goalOrigin = state.sessionId;
-    subagents.bindGoal(goalOrigin, goalBinding);
+    await subagents.bindGoal(goalOrigin, goalBinding);
   };
   const status = () => {
     if (!current) return;
@@ -110,42 +116,52 @@ export default function goalExtension(pi: ExtensionAPI): void {
     },
     stopDescendants: runId => subagents.stopGoal(runtime.state!.sessionId, runId),
   });
-  const restore = (ctx: ExtensionContext) => {
+  const restore = async (ctx: ExtensionContext) => {
     if (goalBinding && goalOrigin) subagents.unbindGoal(goalOrigin, goalBinding);
-    subagents = getSubagentRuntime();
-    current = ctx; runtime.restore(ctx.sessionManager.getBranch(), ctx.sessionManager.getSessionId());
-    guidance = undefined; goalTurn = false; accounted.clear(); bind(); status();
+    if (t3) {
+      t3Ready = false;
+      try { await t3.restore(ctx); t3Ready = true; }
+      catch (error) { ctx.ui.notify(`Goal policy unavailable: ${error instanceof Error ? error.message : String(error)}`, "warning"); return; }
+      if (roleChild()) { current = undefined; goalTurn = false; return; }
+    } else subagents = getSubagentRuntime();
+    current = ctx; runtime.restore(ctx.sessionManager.getBranch(), ctx.sessionManager.getSessionId(), { stopDescendants: !t3 });
+    guidance = undefined; goalTurn = false; accounted.clear(); await bind(); status();
   };
   const subscriptions = [
     pi.events.on("goal-run-id", value => {
       if (!value || typeof value !== "object") return;
       const request = value as Record<string, unknown>;
+      if (roleChild()) return;
       const state = runtime.state;
       if (state && runtime.data?.sessions.some(s => s.session === request.session) && typeof request.respond === "function") request.respond(state.runId);
     }),
     pi.events.on("goal-accounting", value => {
       if (!value || typeof value !== "object") return;
       const event = value as Record<string, unknown>;
+      if (roleChild()) return;
       if (Array.isArray(event.pending)) event.pending.push(accounting(event));
     }),
   ];
   pi.on("session_start", (_event, ctx) => restore(ctx));
   pi.on("session_tree", async (_event, ctx) => {
-    if (runtime.state) await subagents.stopGoal(runtime.state.sessionId, runtime.state.runId);
-    restore(ctx);
+    if (!roleChild() && runtime.state) await subagents.stopGoal(runtime.state.sessionId, runtime.state.runId);
+    await restore(ctx);
   });
-  pi.on("session_shutdown", event => {
+  pi.on("session_shutdown", async event => {
     if (goalOrigin && goalBinding) subagents.unbindGoal(goalOrigin, goalBinding);
-    if (event.reason === "quit" || event.reason === "reload") for (const unsubscribe of subscriptions) unsubscribe();
+    if (t3 || event.reason === "quit" || event.reason === "reload") for (const unsubscribe of subscriptions) unsubscribe();
     current?.ui.setStatus("goal", undefined); current = undefined; goalTurn = false;
+    await t3?.close();
   });
   pi.on("input", async event => {
+    if (roleChild()) return;
     if (event.source !== "extension" && !event.text.startsWith("/")) {
       await runtime.waitForStops();
       runtime.userInstruction(event.text);
     }
   });
   pi.on("before_agent_start", (event, ctx) => {
+    if (roleChild()) return;
     if (!runtime.state || runtime.state.outcome === "complete") { delete event.systemPromptOptions.sections.goal; return; }
     goalTurn = runtime.state.outcome === "running";
     if (goalTurn) {
@@ -157,6 +173,7 @@ export default function goalExtension(pi: ExtensionAPI): void {
     event.systemPromptOptions.sections.goal = `${renderGoalPrompt(runtime.state)}\n${CONTROL_GUIDANCE}${goalTurn ? "" : "\nThis goal is paused. Ordinary unrelated user requests may proceed; do not resume goal work without /goal resume."}`;
   });
   pi.on("context", event => {
+    if (roleChild()) return;
     if (!runtime.state || runtime.state.outcome === "complete") return;
     return { messages: [
       ...event.messages.filter(m => !(m.role === "custom" && m.customType === CONTEXT_TYPE)),
@@ -164,23 +181,26 @@ export default function goalExtension(pi: ExtensionAPI): void {
     ] };
   });
   pi.on("turn_start", async (_event, ctx) => {
+    if (roleChild()) { if (!t3Ready) ctx.abort(); return; }
     current = ctx;
     if (!goalTurn || !runtime.state || runtime.state.outcome === "complete") return;
     if (!(await runtime.admit()).allowed) ctx.abort();
   });
   pi.on("tool_call", async (event, ctx) => {
+    if (roleChild()) return;
     if (!goalTurn || !runtime.state || runtime.state.outcome === "complete") return;
     if (runtime.state.outcome !== "running") return { block: true, reason: runtime.data?.reason ?? `Goal is ${runtime.state.outcome}` };
-    if (event.toolName === "subagent_control" && typeof event.input.id === "string" && typeof event.input.action === "string") {
-      try { subagents.assertGoalControl(event.input.id, runtime.state.sessionId, event.input.action); }
+    if ((event.toolName === "subagent_control" || event.toolName === "t3_role_control") && typeof event.input.id === "string" && typeof event.input.action === "string") {
+      try { await subagents.assertGoalControl(event.input.id, runtime.state.sessionId, event.input.action); }
       catch (error) { return { block: true, reason: error instanceof Error ? error.message : String(error) }; }
     }
-    if (event.toolName !== "subagent") return;
+    if (event.toolName !== "subagent" && event.toolName !== "t3_delegate_role") return;
     current = ctx;
     const decision = await runtime.admit();
     if (!decision.allowed) return { block: true, reason: decision.reason ?? "Goal budget paused delegation" };
   });
   pi.on("agent_before_settle", async (event, ctx) => {
+    if (roleChild()) return;
     current = ctx;
     const messages = event.context.llmMessages;
     // A healthy final assistant is not continuable until this boundary supplies
@@ -192,7 +212,7 @@ export default function goalExtension(pi: ExtensionAPI): void {
     };
   });
   pi.on("agent_settled", (event) => {
-    if (event.aborted && runtime.state?.outcome === "running") runtime.pause("interrupted", "Agent interrupted. Use /goal resume to continue.");
+    if (!roleChild() && event.aborted && runtime.state?.outcome === "running") runtime.pause("interrupted", "Agent interrupted. Use /goal resume to continue.");
   });
   const ControlSchema = Type.Object({
     action: Type.Union([Type.Literal("checkpoint"), Type.Literal("complete"), Type.Literal("question"), Type.Literal("blocker"), Type.Literal("pause")]),
@@ -205,8 +225,9 @@ export default function goalExtension(pi: ExtensionAPI): void {
     name: "goal_control", exposure: "model-only", label: "Goal checkpoint", description: CONTROL_GUIDANCE,
     parameters: ControlSchema, outputSchema: ResultSchema, executionMode: "sequential",
     async execute(_id, input) {
+      if (roleChild()) throw new Error("Role children cannot control the owning goal");
       if (!goalTurn) throw new Error("No active goal turn. Use /goal resume to continue this goal.");
-      if (input.action === "complete" && runtime.state && subagents.goalActive(runtime.state.sessionId, runtime.state.runId)) throw new Error("Goal descendants are still active or cleaning up. Wait for their outcomes before completion.");
+      if (input.action === "complete" && runtime.state && await subagents.goalActive(runtime.state.sessionId, runtime.state.runId)) throw new Error("Goal descendants are still active or cleaning up. Wait for their outcomes before completion.");
       runtime.control(input);
       const result = { outcome: runtime.state!.outcome, summary: input.summary };
       return { content: [{ type: "text", text: input.summary }], details: result, structuredContent: result, terminate: true };
@@ -220,6 +241,7 @@ export default function goalExtension(pi: ExtensionAPI): void {
   registerProfileCommand(pi, "goal", {
     description: "Start, resume, inspect, or pause a same-session goal with optional Bedrock dollar and Codex weekly ceilings",
     handler: async (args, ctx) => {
+      if (roleChild()) { ctx.ui.notify("Role children cannot start or resume an owning goal", "warning"); return; }
       current = ctx;
       try {
         const command = parseGoalCommand(args);
@@ -241,7 +263,7 @@ export default function goalExtension(pi: ExtensionAPI): void {
         goalTurn = true;
         const session = ctx.sessionManager.getSessionFile();
         if (session) runtime.enroll(session);
-        bind();
+        await bind();
         const decision = await runtime.admit();
         if (!decision.allowed) { ctx.ui.notify(decision.reason ?? "Goal paused", "warning"); return; }
         pi.sendMessage({ customType: "goal-start", content: command.action === "start" ? "Begin the user-authorized /goal in this session. Use the authoritative goal context and goal_control protocol." : "Resume the same /goal. Apply the recorded user instructions without expanding scope.", display: false }, { triggerTurn: true, deliverAs: "followUp" });

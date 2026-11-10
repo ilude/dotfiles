@@ -1,5 +1,65 @@
 # Subagents
 
+## Select the host backend
+
+The default profile uses the existing native backend in standalone Pi and Herdr, and an app-owned T3 backend when Pi is launched by T3 Code. Plain RPC or inherited T3 environment markers on a native child do not select T3 ownership. The shared Markdown roles, trusted project overrides, model/effort defaults, skill selection, and frozen tool/delegate policy stay Pi-owned.
+
+| Operation | Standalone Pi / Herdr | Pi in T3 Code |
+| --- | --- | --- |
+| Named role launch | `subagent` | `t3_delegate_role` |
+| Owned child control | `subagent_control` | `t3_role_control` |
+| Child question / unfinished report | `subagent_parent` | `t3_role_parent` |
+| Lifecycle and delivery | Native profile runtime | Existing T3 tasks, threads, runs, questions and results |
+
+### Named Pi roles in T3
+
+`t3_delegate_role` launches a Pi-enforced named role, not a generic category in T3's `delegate_task`. The orchestrator still has the unchanged raw T3 tools for genuinely generic operations. Named-role operations must use the profile wrappers, even for the same provider, worktrees, or background execution. An unsupported role launch is an error, never permission to bypass it with raw delegation, a different model, a CLI, or a hidden native child.
+
+The launch fields are `agent`, `instructions`, optional `model`, `effort`, `skills`, `background`, `blockingReason`, `isolation`, `title`, and `timeoutMs`. Explicit settings override role defaults subject to existing constraints. Pi resolves models to provider-qualified references; the parent's current Pi instance must offer that model. Advertised T3 `thinking` options are passed explicitly. Custom/fallback catalogs can omit those descriptors, in which case no unknown T3 option is sent. Pi bootstrap always applies and verifies the exact frozen effort before the first request. It does not inherit the parent's model/effort as a substitute. Selected skill sources remain frozen; project-relative resources rebind to the actual child checkout and still require that checkout's project trust.
+
+Foreground is the default. Strategist is always foreground, including when `background: true` is passed. Every other foreground launch requires `blockingReason`: why no useful independent work remains and why automatic delivery after returning control is unsuitable. A downstream dependency alone is insufficient. Use `background: true` for automatic T3 results while doing independent work or returning control. `timeoutMs` bounds a foreground wait, not the child's assignment. Interrupted or expired waits leave work live. Follow T3's returned `next` instructions without status polling, sleeps, watchers, or scheduled wakes.
+
+```text
+t3_delegate_role({agent: "strategist", instructions: "Recommend bounded assignments for the authorized task."})
+t3_delegate_role({agent: "developer", instructions: "Implement the assigned bounded change.", background: true, isolation: "shared"})
+```
+
+A returned `launchId` identifies the frozen role conversation. `threadId` identifies its T3 child thread; `taskId` identifies the current assignment; `runId` identifies a T3 execution. A retained-thread assignment can have a new task ID. `piSessionId` is supplied only when actually known, never inferred from a T3 identity. Readable titles start with the role and brief, and append `[pi-role:<launchId>]` so ownership can be resolved from public parent activity while a blocking launch is still waiting. Mention returned child links verbatim rather than synthesizing links or using bare IDs as navigation.
+
+`t3_role_control` takes `id` (returned launch ID, child thread ID, or owned task ID) and an action:
+
+- `inspect` reads the saved task result; `read` reads the child thread. These retrieve evidence, not a monitoring loop.
+- `wait` is one event-driven terminal rejoin, not a question wake, with required `blockingReason` and optional `timeoutMs`. It does not cancel on interruption.
+- `message` sends `message` with `mode: auto|queue|steer|restart` (default `auto`). It steers/continues the retained role and reports a new task ID when one is created. Optional `freshContext: true` replaces Pi context without replacing the frozen role. Dispatch acceptance is not completed work. New review/re-check assignments require a fresh `t3_delegate_role`, not a message; council rebuttal can reopen its existing members.
+- `questions` lists pending user questions, or reads one with `requestId`. `answer` takes `requestId` and an `answers` object in the pending request's format. Neither operation grants permission approval.
+- `cancel` stops the current owned assignment, queued turns, and descendants through T3. Old results remain readable. T3 can refuse when a user has raised a child's permission/interaction modes beyond the caller's ceiling.
+
+`t3_role_parent` is available only when the role permits its canonical parent tool. `action: "question"` with `message` uses blocking Pi `ctx.ui.input`, mapped to T3 user input. Only the questioning child pauses; the parent and other children continue. T3 notifies the parent, which may answer from known instructions through `t3_role_control`, ask the user, or let the user answer in the existing UI. This is not native yield-and-discuss: there is no `cancel-question` or permission-answer action. A process-lost dialog may need re-presentation with a new request ID.
+
+Use a normal final reply for successful work. `action: "report"`, `message`, and `outcome: completed|partial|blocked|failed|cancelled` preserve a substantive role outcome without terminating execution or changing T3's status. Genuinely partial/blocked work should also say so in its normal result text. Wrapper results distinguish `t3Status` from `roleOutcome`; an ended execution is not proof of successful work. T3 owns result delivery, child settlement and UI. There is no second result/status ledger, duplicate native completion message, custom role badge, or custom T3 terminal status.
+
+### T3 authority, workspaces, goals and closeout
+
+The private `/t3-role-bootstrap` command consumes profile-owned handoff metadata and authenticates the actual child's thread/lineage before dispatching its stored assignment. Its opaque launch reference is not a credential. Tool/delegate policy is checked at dispatch as well as in the prompt, including discovered tools, codemode, and raw qualified T3 operations. Internal wrapper calls get an exact, single-operation grant, not unrestricted raw-tool access. Full access does not disable Pi authority or Damage Control. Explorer remains inspection-bound. These restrictions are not an OS sandbox.
+
+T3 loads its normal configured Pi profile; it does not provide native per-task extension-isolation CLI flags. Role composition preserves the actual project's loaded context and trust, replaces caller routing with the selected role and permitted catalog, and supplies only selected skill bodies rather than unrelated discovery catalogs. Shared role definitions and native automatic discovery remain unchanged. The installed generated bridge is not patched: its generic routing is scoped to root generic operations, and removed from role requests after its prompt hook. Role snapshots and thread bindings restore frozen authority after reload/resume or fresh Pi context; copied history does not establish ownership in an unrelated thread.
+
+`isolation: "shared"` (default) uses the commissioning thread's checkout. `isolation: "worktree"` asks T3 for a **new** checkout from the parent's HEAD. There is no arbitrary `cwd`, existing-worktree selector, unrelated local project, or remote role-handoff parameter. A shell `cd` or shell-created worktree does not bind a T3 thread. Missing workspace/resource/settings support is an explicit error, not silent substitution.
+
+Integrator accepts only the existing runtime-issued, validated closeout manifest. Its commissioning T3 thread must already be bound to the manifest's **exact target checkout**, and it uses shared isolation; bootstrap validates the target again. The existing manifest validator also requires the task worktree under `repositoryRoot/.worktrees`. Other task-worktree locations remain unsupported, rather than being widened for T3. `--no-merge` never authorizes mutating closeout. T3 Integrator returns normal typed outcomes to its parent, which retains questions and final reporting. Herdr's same-tab successor, exact-origin retirement and pane cleanup are not available in T3; no top-level thread or native fallback is created to work around a mismatch.
+
+Goal inheritance reuses the canonical goal admission, membership, baseline and finalized-usage accounting, including nested descendants and the inherited original scope. An unavailable owning goal/admission endpoint blocks work rather than dropping the budget. Explicit goal pause/stop and `/clear` cancel only owned T3 work through T3 cancellation; root resource reload/reconnect preserves descendants and does not masquerade as cancellation. No native process manager, duplicate budget calculation from T3 UI totals, or second status/result ledger is introduced. See [goal policy](goal.md) for the canonical budget semantics; integrated T3 acceptance remains separate from these source-level contracts.
+
+### Loading and verification
+
+These are default-profile resource changes, not a T3 build, installation, generated-bridge edit, or replacement. Reload resources or restart **idle affected Pi sessions** to load them, including retained children that would otherwise run old code. Reloading a root does not hot-upgrade another running child process. Do not restart the current working thread or desktop app as a validation shortcut. Existing native Pi/Herdr paths and their settled-only reload rules are unchanged.
+
+Focused composition checks are `pnpm test t3-role-guidance.test.ts subagent-guidance.test.ts` from the default profile. They cover full source-coupled caller/coordinator/leaf sections, inclusion/exclusion, deterministic ordering and static byte comparison. Static size is not measured cache performance. The installed-T3 integration smoke has **not yet passed** at this documentation update; these checks do not establish live lifecycle, rendered UI, question delivery, or acceptance.
+
+## Native Pi / Herdr backend
+
+The remaining lifecycle, surface, native question protocol, layout and command sections describe the unchanged **native** backend unless explicitly stated otherwise. Shared definitions and role-routing policy apply to both hosts; native-only arguments and Herdr controls do not become T3 capabilities.
+
 `subagent` launches a bounded specialist assignment. Omit `surface` for normal delegation: children are visible inside Herdr by default and headless elsewhere; coordinator children inherit their coordinator's surface. Inside Herdr, select `surface: "headless"` only when the user requests it, not merely because work is parallel, unattended, or in a worktree. This is tool guidance, not a runtime authorization check. Visible launch never falls back to headless.
 
 ## Agreed UX changes (implemented with bounded validation)

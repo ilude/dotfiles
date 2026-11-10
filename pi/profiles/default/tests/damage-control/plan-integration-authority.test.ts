@@ -32,7 +32,7 @@ async function authorizedFixture(reviewRequired = false, operation = "closeout")
     activeSpecStub: "task", noMerge: false, completedDate: "2026-09-26", integrationEvidence: "tests",
   };
   const authority = {
-    id: "integrator-child", agent: "integrator", tools: ["bash"], delegates: [], cwd: target,
+    id: "integrator-child", agent: "integrator", tools: ["bash"], skills: [], delegates: [], cwd: target,
     closeout: { manifest, provenance: { source: "subagent-runtime", version: 1, childId: "integrator-child", agent: "integrator", parentSessionId: "parent-session", targetCheckout: target } },
   };
   process.env.PI_SUBAGENT_AUTHORITY = JSON.stringify(authority);

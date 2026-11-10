@@ -62,13 +62,21 @@ export class GoalRuntime {
   private stopping?: { runId: string; promise: Promise<void> };
   private readonly options: GoalRuntimeOptions;
   constructor(options: GoalRuntimeOptions) { this.options = options; }
-  restore(branch: readonly unknown[], sessionId: string): void {
+  restore(branch: readonly unknown[], sessionId: string, options: { stopDescendants?: boolean } = {}): void {
     this.state = restoreGoalState(branch, sessionId);
     this.data = this.state ? restoreGoalRuntime(branch, this.state) : undefined;
     if (!this.state) return;
     // Never auto-launch on reload, /resume, tree navigation, or a copied branch.
     if (!this.data) this.data = { version: 1, runId: this.state.runId, sessionId, sessions: [], attributionComplete: false, restoringBuildability: false };
-    if (this.state.outcome === "running") this.pause("interrupted", "Session restored. Use /goal resume to continue.");
+    if (this.state.outcome === "running") {
+      if (options.stopDescendants !== false) this.pause("interrupted", "Session restored. Use /goal resume to continue.");
+      else {
+        this.state = withGoalOutcome(this.state, "interrupted");
+        this.data.reason = "Session restored. Use /goal resume to continue.";
+        this.closeEnrollments(true);
+        this.save();
+      }
+    }
   }
   start(sessionId: string, session: string, authority: GoalAuthority, budget: GoalBudgetConfig, baseline?: unknown, now = new Date().toISOString()): void {
     if (this.state?.outcome === "running") throw new Error("A goal is already running. Pause it before starting another.");

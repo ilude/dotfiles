@@ -7,6 +7,7 @@ export interface DelegationContextOptions {
   audience: DelegationAudience;
   definitions: ReadonlyMap<string, AgentDefinition>;
   permitted?: readonly string[];
+  backend?: "native" | "t3";
 }
 
 export const SUBAGENT_LAUNCH_DESCRIPTION = "Launch one defined subagent. Ordinary assignments close their process and pane on completion; use subagent_control message for a later follow-up in the saved conversation. Background results return automatically: continue independent work or return control without polling. Strategist launches are foreground. Other foreground launches require blockingReason explaining why no useful independent work remains and why automatic delivery after returning control is unsuitable; a downstream dependency alone is insufficient. Interrupting a foreground wait does not cancel the child.";
@@ -83,7 +84,8 @@ export function delegationContext(options: DelegationContextOptions): string {
         : options.audience === "council"
           ? COUNCIL_GUIDANCE
           : CALLER_GUIDANCE;
-  return `${guidance}\n\n${catalog}\n${entries || "- none"}`;
+  const text = `${guidance}\n\n${catalog}\n${entries || "- none"}`;
+  return options.backend === "t3" ? t3ToolReferences(text) : text;
 }
 
 /** Full role replacement for admitted closeout successors, not an ordinary leaf exception. */
@@ -114,10 +116,18 @@ ${JSON.stringify(coordinates)}
 For this selected plan, use the prepared task checkout/branch directly. Do not create a second worktree or infer the target from task cwd. The origin checkout/branch above is the recorded integration target. Preserve the plan's scope, module ownership and separate publication/deployment authorization. After the task commit, use closeout_successor launch with the closeout manifest only when merge is authorized; inspect readiness, finish explicitly authorized orchestrator-only obligations, then release the exact origin for graceful retirement. The successor owns operator questions, cleanup after observed retirement, and final reporting; do not duplicate its report or mutate its target concurrently. With --no-merge, do not launch mutating closeout or release/retire this orchestrator; retain the committed task worktree intentionally. Direct/run-here execution without this runtime context uses ordinary preparation and parent-owned closeout.`;
 }
 
+/** Translate tool references in composed prose, never the shared role authority/catalog. */
+function t3ToolReferences(text: string): string {
+  return text.replace(/\bsubagent_control\b/g, "t3_role_control")
+    .replace(/\bsubagent_parent\b/g, "t3_role_parent")
+    .replace(/`subagent`/g, "`t3_delegate_role`");
+}
+
 export function composedAgentPrompt(
   definition: AgentDefinition,
   definitions: ReadonlyMap<string, AgentDefinition>,
   parentDelegates?: readonly string[],
+  backend: "native" | "t3" = "native",
 ): string {
   let context = "";
   if (definition.name === "strategist") {
@@ -129,5 +139,16 @@ export function composedAgentPrompt(
   } else if (definition.delegates.length > 0) {
     context = delegationContext({ audience: "coordinator", definitions, permitted: definition.delegates });
   }
-  return context ? `${definition.prompt}\n\n${context}` : definition.prompt;
+  const prompt = context ? `${definition.prompt}\n\n${context}` : definition.prompt;
+  if (backend !== "t3") return prompt;
+  const host = ["## T3 role execution", "A normal final reply completes this assignment. T3 owns child threads, completion delivery, and execution status; a partial or blocked result is not success. Work only within your frozen tools and delegates, including when tools are discovered late. These restrictions are not an OS sandbox."];
+  if (definition.tools.includes("subagent_parent")) host.push("Use t3_role_parent action question for a consequential question to your commissioning parent. It blocks only this child through T3 user input; the parent and siblings can continue. There is no yield/cancel-question protocol or permission-answer action. For genuinely unfinished work, action report with outcome partial or blocked records the outcome without ending execution; include it in your final reply. Successful work normally needs only a final reply.");
+  if (definition.tools.includes("subagent")) host.push(T3_ROLE_OPERATIONS_GUIDANCE);
+  return `${t3ToolReferences(prompt)}\n\n${host.join("\n\n")}`;
 }
+
+export const T3_ROLE_OPERATIONS_GUIDANCE = `Use t3_delegate_role for named Pi roles, never raw delegate_task or native subagent. Explicit model/effort/skills override role defaults without widening authority; unavailable settings are an error, not permission to substitute. Strategist is always foreground. Other launches default foreground and require blockingReason explaining why no useful independent work remains and why automatic delivery after returning control is unsuitable; a dependency alone is insufficient. Use background:true for automatic T3 results and continue independent work or return control. An interrupted wait leaves the child live. Follow T3's next instruction without polling, timers, or watchers.
+
+Use t3_role_control with the returned launchId, child threadId, or owned taskId. message steers existing work or continues its retained thread; a later assignment has a new current taskId. A new review/re-check needs a fresh t3_delegate_role, not a retained-thread message; council rebuttal may reopen its existing members. questions/answer resolve user questions, never permissions. cancel stops owned work and descendants subject to T3 mode ceilings. inspect/read retrieve evidence, not a polling loop; wait is an explicitly justified event-driven rejoin. Report child links verbatim and do not infer a native Pi session ID.
+
+Only isolation shared or a newly created T3 worktree is supported. No arbitrary cwd, pre-existing-worktree selector, shell checkout substitution, remote role handoff, or hidden native fallback is available. Integrator requires the commissioning T3 thread already at the manifest's exact target with shared isolation; no-merge remains no mutating closeout. T3 has no Herdr pane controls or same-tab successor retirement.`;

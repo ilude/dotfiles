@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-11-10: Compose Pi named-role guidance for unchanged T3
+
+- Select backend-specific role prompts while preserving shared Markdown definitions, trusted overrides, settings/allowlists, Strategist-first routing, post-implementation Steward triage, writer ownership and explicit-user councils. Named T3 work uses `t3_delegate_role`, `t3_role_control`, and `t3_role_parent`, not native launch or an unrestricted raw delegation fallback.
+- Scope the installed bridge's generic routing to root generic operations and remove it from bound-role requests after prompt hooks, without editing that generated file. Keep actual project context/trust and selected skill bodies, remove unrelated caller/skill catalogs, and keep native Pi/Herdr composition unchanged. Add source-coupled full-composition checks and static byte comparisons; these do not measure cache performance.
+- Document real T3 question blocking, automatic results and distinct role outcomes/IDs, retained assignments, shared/new-worktree limits, inherited canonical goal accounting, and exact-checkout Integrator requirements. Preserve the manifest validator's `repositoryRoot/.worktrees` restriction and no-merge behavior; do not promise arbitrary checkout selection, Herdr successor retirement, new T3 UI, or a second lifecycle ledger.
+- Load through default-profile resource reload or restart of idle affected Pi sessions, including old retained children. Root reload preserves T3 descendants; explicit pause/stop/clear cancels owned work. No T3 build/install/replacement or restart of the current working thread is required. The main installed-T3 smoke has not yet passed; focused offline tests are not integrated acceptance.
+
 ## 2026-11-09: Avoid shared FETCH_HEAD races during Pi publication
 
 - Replace the combined pull in `/commit push` with an explicit branch fetch and merge of the resolved commit ID. Background Git fetches, including T3 status refreshes, can overwrite the shared `FETCH_HEAD` file; publication no longer reads or writes that file.

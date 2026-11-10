@@ -73,8 +73,9 @@ inherited integration markers do not establish ownership of a native child's UI.
 
 T3 receives plain command results and version/reload status, not terminal footers
 or generic widgets. `/context widget` falls back to the full report. Native
-subagent cards and T3 launch/branch/plan/update lifecycle integration remain
-separate work; do not map a background launch receipt to child completion.
+subagent cards and T3 branch/plan/update lifecycle integration remain separate
+surfaces. Named-role launch now uses the T3 backend below; do not map a background
+launch receipt to child completion.
 Use `/reload-runtime` when idle with no active or retained native subagents to
 load presentation changes without replacing the conversation.
 
@@ -91,6 +92,37 @@ Only the orchestrator and Team Lead receive codemode. Team Lead scripts can call
 Nested tool calls retain permission and Damage Control hooks. Scoped instructions discovered by a nested operation reach the outer persisted result without removing structured data. Native script store, restoration, branching, cancellation, and side-effect semantics apply: store writes from failed scripts are discarded, but completed external side effects are not rolled back. Do not infer success from an inner error value or a submitted receipt. The bounded offline runtime check is `node scripts/native-composition-smoke.mjs` from `profiles/default/`; it runs installed Pi's actual native search and QuickJS executor with nested-tool fixtures, without a provider or live service.
 
 ## Default profile subagents
+
+The default profile selects a backend by immediate host. Standalone Pi/Herdr keep
+native `subagent`, `subagent_control`, and `subagent_parent`. Pi in T3 Code uses
+`t3_delegate_role`, `t3_role_control`, and `t3_role_parent` over existing app-owned
+T3 children, without creating a native child manager. Raw T3 tools stay generic
+for the orchestrator; named roles must use the profile wrappers with frozen Pi
+role/tools/delegates/settings. No generated bridge or T3 product change is
+required. Role requests preserve project context/trust and selected skills while
+excluding root routing and unrelated catalogs. Strategist-first, implemented
+reviewer/validator Steward triage, writer ownership and explicit-user councils
+remain common policy.
+
+T3 owns tasks/results/notifications and blocking child questions: only the asking
+child pauses, while parent and siblings continue. Role outcomes such as partial
+or blocked are separate from T3 execution status. Foreground is default with
+required `blockingReason` except always-foreground Strategist; `background: true`
+returns automatic results without polling. T3 supports shared or a new worktree,
+not arbitrary cwd or an existing-worktree selector. Integrator requires the
+commissioning thread already at the manifest's exact target and shared isolation;
+the existing `.worktrees` task-checkout validation and no-merge restriction remain.
+There is no Herdr same-tab retirement or native fallback in T3.
+
+Reload resources or restart idle affected default-profile Pi sessions to load
+these changes, including retained children using old resources. A root reload
+preserves T3 descendants, not upgrades their processes; explicit pause/stop/clear
+cancels owned work. Do not restart the current working thread or rebuild/install
+T3 as a shortcut. The installed-T3 smoke has not yet passed at this update;
+focused composition tests and static byte comparisons are not live acceptance or
+cache-performance evidence. See [host capabilities and role APIs](profiles/default/docs/subagents.md).
+
+The following layout description is **native Pi/Herdr only**.
 
 Default-profile delegation uses stable human display names while UUIDs remain canonical ownership and transport identities. Tool rows and automatic outcomes expose bounded assignment, resolved execution metadata, activity, timing, result, and error details. Inside Herdr, visible descendants use a single row of at most two panes above the original caller, which retains the lower half. Capacity uses 50 columns and 14 rows per pane; narrow or short windows route children to named overflow tabs earlier instead of adding unreadable splits. Overflow uses the same two-pane maximum, with unsplit singletons when even a full tab cannot meet the minimum. Overflow and dedicated Team Lead tabs share a separate, lazily created `<origin title> · agents` Herdr workspace per orchestrator, keeping the caller and user-created work tabs in their existing workspace. Inline placement rules are unchanged; no Git worktree is created. Empty owned workspaces are removed, while user-added tabs are preserved. Team Leads keep exclusive grouping, migrate with their descendants to dedicated team tabs when the origin row cannot fit them, and use team overflow tabs for larger groups. Clean layouts reconcile at lifecycle boundaries without polling or recreating processes. Manual geometry edits freeze the affected tab against further splitting or migration; whole-window size changes instead trigger capacity reassessment. Focus, ownership, cleanup, and manual tab names remain preserved. Focused unit and isolated Herdr 0.9.5 checks cover readable geometry, stable caller height, overflow, exact process identity, team migration/return, manual dividers, and cleanup; attached-client UX remains unverified. Use `/reload` only with no active or retained subagents, or restart Pi, to load the changes. See [subagent behavior and validation](profiles/default/docs/subagents.md).
 
@@ -116,7 +148,7 @@ Default `/plans` action `d` prepares or verifies the selected plan's task worktr
 
 ## Default profile goals
 
-`/goal` runs a stated goal through bounded native continuations in the same session, independently of planning and `/do-it`, with optional Bedrock dollar and absolute Codex weekly-usage thresholds. Goal authority stays separate from findings and summaries; optional discoveries do not expand acceptance. See [commands, budget policy, and current implementation limits](profiles/default/docs/goal.md). Descendant accounting and stop hooks are still being wired; this is not a claim of live whole-run coverage. Start a fresh default-profile process or reload only with no active or retained subagents, then explicitly resume any restored goal.
+`/goal` runs a stated goal through bounded native continuations in the same session, independently of planning and `/do-it`, with optional Bedrock dollar and absolute Codex weekly-usage thresholds. Goal authority stays separate from findings and summaries; optional discoveries do not expand acceptance. See [commands, budget policy, and current implementation limits](profiles/default/docs/goal.md). T3 role goal integration reuses canonical admission, enrollment and finalized accounting with inherited original scope, blocks when its owner/admission is unavailable, and cancels only owned work on explicit pause/stop/clear. Reload does not cancel T3 descendants or start a native process manager. Integrated T3 whole-run acceptance is not yet established. Start a fresh default-profile process or reload only with no active or retained subagents, then explicitly resume any restored goal.
 
 ## Default profile safety port
 
@@ -228,9 +260,9 @@ The default profile provides deferred `image_properties` and `image_transform` t
 
 Default Pi loads the shared Onclave adapter for orchestrator-to-orchestrator communication between independent Pi instances. `onclave_instances` discovers peers, `onclave_message` sends asks, asynchronous requests, or inert informs, and `/onclave` reports status. Registration/reconnect is automatic; trusted-network requests start when idle or queue as follow-ups when busy, without host confirmation prompts. The existing server-held message poll also renews presence and returns the live-peer count used by the footer, so the adapter does not run a separate heartbeat interval. Unexpectedly quick empty responses are briefly paced without changing normal 25-second long polling or reconnect behavior. Subagents do not participate. See [setup, behavior, and offline checks](profiles/default/docs/onclave.md). The legacy loader shares the same adapter changes; `/yt` and `/yt-local` remain separate vault workflows.
 
-## Default profile subagents
+## Native subagent lifecycle details
 
-The default profile provides Markdown-defined `subagent` delegation with frozen tool and delegation authority, saved-session follow-ups, origin-scoped results, Team Lead roles, and explicitly requested councils. Permitted coordinators may launch leaves in any valid existing working directory while origin and delegate checks remain enforced. Ordinary completed children close their process and pane automatically. A `subagent_control message` reopens the same saved conversation within its owning runtime, preserves its original role and permissions, and closes again on completion. The launch tools no longer offer `retain`; working/waiting children, explicit user intervention, and the surviving Integrator handoff keep their distinct lifetimes. Children use native Herdr panes by default inside Herdr and RPC elsewhere; visible registration requires exact pane membership, session identity, and lifecycle state, while headless helpers remain excluded. Explicit user intervention has explicit handback. Ordinary visible-child input stays native and parent-coordinated without taking ownership, while direct operator `!` shell input uses Pi's native path without adding a model-callable shell tool. Parent and child exchanges use native queued steering by default, with explicit immediate redirection and question-answer correlation; a successful question leaves a clear waiting state instead of a polling tool. Out-of-role model tool calls are blocked recoverably, Damage Control and tool ceilings remain in force, automatic outcomes arrive without acknowledgement chatter, and genuine terminating tool errors retain their actual provenance. Operators do not run `/reload` while subagents are active; the existing settled-only reload ends settled ownership without active-child migration or recovery. The bounded 2026-09-13 visible/headless run passed its new registration assertions but later hit a pre-existing unrelated `userOwned` assertion, reproduced on unmodified main; it is not an entire live-suite pass or proof from unit tests. See [definitions, tools, lifecycle, and limitations](profiles/default/docs/subagents.md).
+Outside T3, the default profile provides Markdown-defined `subagent` delegation with frozen tool and delegation authority, saved-session follow-ups, origin-scoped results, Team Lead roles, and explicitly requested councils. Permitted coordinators may launch leaves in any valid existing working directory while origin and delegate checks remain enforced. Ordinary completed children close their process and pane automatically. A `subagent_control message` reopens the same saved conversation within its owning runtime, preserves its original role and permissions, and closes again on completion. The launch tools no longer offer `retain`; working/waiting children, explicit user intervention, and the surviving Integrator handoff keep their distinct lifetimes. Children use native Herdr panes by default inside Herdr and RPC elsewhere; visible registration requires exact pane membership, session identity, and lifecycle state, while headless helpers remain excluded. Explicit user intervention has explicit handback. Ordinary visible-child input stays native and parent-coordinated without taking ownership, while direct operator `!` shell input uses Pi's native path without adding a model-callable shell tool. Parent and child exchanges use native queued steering by default, with explicit immediate redirection and question-answer correlation; a successful question leaves a clear waiting state instead of a polling tool. Out-of-role model tool calls are blocked recoverably, Damage Control and tool ceilings remain in force, automatic outcomes arrive without acknowledgement chatter, and genuine terminating tool errors retain their actual provenance. Operators do not run `/reload` while subagents are active; the existing settled-only reload ends settled ownership without active-child migration or recovery. The bounded 2026-09-13 visible/headless run passed its new registration assertions but later hit a pre-existing unrelated `userOwned` assertion, reproduced on unmodified main; it is not an entire live-suite pass or proof from unit tests. See [definitions, tools, lifecycle, and limitations](profiles/default/docs/subagents.md).
 
 ## Default profile code review
 

@@ -3,6 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import goalExtension, { parseGoalCommand } from "../extensions/goal.ts";
 import { GOAL_ENTRY_TYPE } from "../lib/goal/contract.ts";
 import { getSubagentRuntime, resetSubagentRuntime } from "../lib/subagents/runtime.ts";
+import * as selection from "../lib/subagents/authority.ts";
+import * as t3Goals from "../lib/subagents/t3/goal.ts";
+import * as nativeRuntime from "../lib/subagents/runtime.ts";
 
 vi.mock("../lib/profile-command.ts", () => ({ registerProfileCommand: (api: ExtensionAPI, name: string, definition: Parameters<ExtensionAPI["registerCommand"]>[1]) => api.registerCommand(name, definition) }));
 const readUsage = vi.hoisted(() => vi.fn());
@@ -58,6 +61,24 @@ describe("goal command syntax", () => {
   });
 });
 describe("goal extension lifecycle", () => {
+  it("does not create a native manager or run root goal side effects in a T3 role child", async () => {
+    vi.spyOn(selection, "selectedSubagentBackend").mockReturnValue("t3");
+    const native = vi.spyOn(nativeRuntime, "getSubagentRuntime");
+    const backend: t3Goals.T3GoalBackend = { restore: vi.fn(async () => {}), isChild: () => true, admit: vi.fn(async () => ({ allowed: true })), close: vi.fn(async () => {}), bindGoal: vi.fn(), unbindGoal: vi.fn(), stopGoal: vi.fn(async () => {}), goalActive: vi.fn(() => false), assertGoalControl: vi.fn() };
+    vi.spyOn(t3Goals, "createT3GoalBackend").mockReturnValue(backend);
+    const h = harness();
+    await h.emit("session_start");
+    await h.command("Fix compiler");
+    await h.emit("before_agent_start", { systemPromptOptions: { sections: {} } });
+    await h.emit("agent_before_settle", { outcome: "completed", context: { canContinue: true } });
+    await h.emit("agent_settled", { aborted: true });
+    expect(h.state()).toBeUndefined();
+    expect(h.send).not.toHaveBeenCalled();
+    expect(native).not.toHaveBeenCalled();
+    expect(backend.bindGoal).not.toHaveBeenCalled();
+    expect(backend.stopGoal).not.toHaveBeenCalled();
+    await expect(h.control({ action: "complete", summary: "Done" })).rejects.toThrow("Role children");
+  });
   it("starts same-session work without a usage call when no budget is configured", async () => {
     const h = harness();
     await h.command("Fix compiler");
