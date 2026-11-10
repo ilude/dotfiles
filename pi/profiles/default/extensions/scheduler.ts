@@ -3,12 +3,16 @@ import { StringEnum } from "@earendil-works/pi-ai";
 import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { formatScheduleFooterStatus, getProcessScheduler } from "../lib/process-scheduler.ts";
+import { T3HostToolError, t3HostToolNames } from "../lib/t3-host-tools.ts";
+import { runT3Schedule, type ScheduleSuccess } from "../lib/t3-scheduler.ts";
+import { resolvePiClient } from "../lib/herdr-host.ts";
 
 const scheduledPromptSchema = Type.Object({ id: Type.String(), runAt: Type.String({ format: "date-time" }), prompt: Type.String(), error: Type.Optional(Type.String()) }, { additionalProperties: false });
 export const scheduleOutputSchema = Type.Union([
   Type.Object({ action: Type.Literal("create_at"), job: scheduledPromptSchema }, { additionalProperties: false }),
-  Type.Object({ action: Type.Literal("list"), jobs: Type.Array(scheduledPromptSchema), limit: Type.Integer() }, { additionalProperties: false }),
+  Type.Object({ action: Type.Literal("list"), jobs: Type.Array(scheduledPromptSchema), limit: Type.Integer(), truncated: Type.Optional(Type.Boolean()) }, { additionalProperties: false }),
   Type.Object({ action: Type.Literal("cancel"), cancelled: scheduledPromptSchema }, { additionalProperties: false }),
+  Type.Object({ action: Type.Literal("error"), message: Type.String() }, { additionalProperties: false }),
 ]);
 
 function localDateTime(date: Date): string {
@@ -22,12 +26,14 @@ export default function schedulerExtension(pi: ExtensionAPI): void {
   let delivery: ((prompt: string) => void) | undefined;
 
   pi.on("session_start", (_event, ctx) => {
+    if (resolvePiClient(ctx.mode) === "t3code") return;
     const scheduler = getProcessScheduler();
     delivery = prompt => pi.sendUserMessage(prompt, { deliverAs: "followUp" });
     scheduler.bind(delivery, () => ctx.ui.setStatus("schedule", formatScheduleFooterStatus(scheduler.list())));
   });
 
   pi.on("session_shutdown", (event, ctx) => {
+    if (resolvePiClient(ctx.mode) === "t3code") return;
     const scheduler = getProcessScheduler();
     if (delivery) scheduler.unbind(delivery);
     delivery = undefined;
@@ -38,15 +44,16 @@ export default function schedulerExtension(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "schedule",
     label: "Schedule",
-    description: "Create, list, or cancel one-shot process-local prompts for reminders and external wall-clock waits, including CI/CD pipeline and deployment monitoring. Not for deferring work that can continue now. No recurrence or persistence. List shows up to 64 job IDs and local run times.",
+    description: "Create, list, or cancel one-shot reminders for external wall-clock waits, including CI/CD pipeline and deployment monitoring. Outside T3, jobs are process-local and list shows up to 64 jobs. In T3, reminders are owned by the current thread and persist through Pi process replacement.",
+    reachesTools: () => t3HostToolNames(pi, ["schedule_task", "list_scheduled_tasks", "delete_scheduled_task", "orchestrator_capabilities"]),
     promptSnippet: "Schedule a one-shot prompt for a reminder or external wall-clock wait",
     promptGuidelines: [
       "Use schedule when the user requests a future reminder or work must wait for an external event. GitLab/GitHub pipeline completion, deployment rollouts, and cloud operations are intended uses; schedule the next reasonable check even when the event's exact completion time is unknown.",
       "Do not use schedule to postpone implementation, planning, retries, or other work that can continue now. External CI/CD and deployment monitoring is not ordinary continuation: schedule follow-up checks instead of delegating the wait to subagents.",
       "For genuine external waits or user-requested monitoring, do not occupy bash or PowerShell with sleep commands longer than 15 seconds; use schedule instead. Short waits of 15 seconds or less may remain inline.",
       "Before creating a schedule, list existing jobs and do not create a duplicate or overlapping reminder. Ask when required timing is missing or ambiguous.",
-      "Schedules follow the active conversation only within the same Pi process, including /new, /resume, /fork, and /reload. /branch opens a separate process with no inherited timers. Do not recreate the parent's monitoring or reminders unless the user asks to continue them in the child; an empty child schedule list is expected. Scheduling remains available for the child's own work.",
-      "Include enough context to identify the external event. Scheduled prompts run as follow-ups, never steering, and disappear when their Pi process exits.",
+      "Outside T3, schedules follow the active conversation only within the same Pi process. In T3, schedules are bound to the current thread and survive Pi process replacement. Never recreate another thread's schedules unless the user asks to continue them.",
+      "Include enough context to identify the external event. Scheduled prompts run as follow-ups, never steering. T3 reminders are owned and delivered by T3; non-T3 reminders disappear when their Pi process exits.",
       "Do available work before scheduling when practical. If wrapping up, make schedule your last tool call. Cancel unneeded schedules; to change one, cancel and reschedule.",
     ],
     outputSchema: scheduleOutputSchema,
@@ -75,11 +82,31 @@ export default function schedulerExtension(pi: ExtensionAPI): void {
         return theme.fg("toolOutput", line);
       }).join("\n"), 0, 0);
     },
-    async execute(_id, params, signal) {
+    async execute(_id, params, signal, _onUpdate, ctx) {
       signal?.throwIfAborted();
-      const scheduler = getProcessScheduler();
       let text: string;
-      let structuredContent: { action: "create_at"; job: { id: string; runAt: string; prompt: string } } | { action: "list"; jobs: { id: string; runAt: string; prompt: string; error?: string }[]; limit: number } | { action: "cancel"; cancelled: { id: string; runAt: string; prompt: string; error?: string } };
+      let structuredContent: ScheduleSuccess;
+      if (resolvePiClient(ctx?.mode ?? "tui") === "t3code") {
+        try {
+          if (params.action !== "create_at" && params.action !== "list" && params.action !== "cancel") throw new Error(`Unknown schedule action: ${params.action}`);
+          const data = await runT3Schedule(pi, ctx, { action: params.action, when: params.when, prompt: params.prompt, id: params.id }, { signal, onUpdate: _onUpdate }, _id);
+          if (data.action === "create_at") {
+            const { job } = data;
+            text = `Schedule create [${job.id}] ${localDateTime(new Date(job.runAt))} ${Math.max(1, Math.ceil((Date.parse(job.runAt) - Date.now()) / 60_000))}m\n   ${job.prompt.replace(/\s+/g, " ").slice(0, 80)}\n\ncreated in T3`;
+          } else if (data.action === "list") {
+            text = data.jobs.map(job => `${localDateTime(new Date(job.runAt))} [${job.id}]`).join("\n") || "No scheduled reminders.";
+            if (data.truncated) text += "\nShowing the first 64 thread reminders.";
+          } else text = `Cancelled: [${data.cancelled.id}]`;
+          return { content: [{ type: "text", text }], details: data, structuredContent: data };
+        } catch (error) {
+          if (error instanceof T3HostToolError && error.toolResult) {
+            const message = error.toolResult.content.filter(part => part.type === "text").map(part => part.text).join("\n") || error.message;
+            return { ...error.toolResult, isError: true, structuredContent: { action: "error", message } };
+          }
+          throw error;
+        }
+      }
+      const scheduler = getProcessScheduler();
       if (params.action === "create_at") {
         if (!params.when || !params.prompt) throw new Error("create_at requires when and prompt");
         const job = scheduler.create(params.when, params.prompt);

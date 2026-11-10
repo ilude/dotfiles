@@ -9,6 +9,9 @@ import { Text } from "@earendil-works/pi-tui";
 import { activeProfileName } from "../lib/profile.ts";
 import { preparePlanRun, type PreparedPlanRun } from "../lib/plan-run.ts";
 import { registerProfileCommand } from "../lib/profile-command.ts";
+import { resolvePiClient } from "../lib/herdr-host.ts";
+import { launchT3Thread, t3CommandHandoff, t3SessionActionAvailable, T3_SESSION_LAUNCH_OPERATIONS } from "../lib/session-launch-t3.ts";
+import { t3HostToolNames } from "../lib/t3-host-tools.ts";
 
 interface LaunchPlan {
 	executable?: string;
@@ -19,6 +22,8 @@ interface LaunchPlan {
 const BRANCH_EVIDENCE_TYPE = "session-branch";
 export const sessionLaunchOutputSchema = Type.Object({
 	launched: Type.Optional(Type.Boolean()),
+	threadId: Type.Optional(Type.String()),
+	link: Type.Optional(Type.String()),
 	session: Type.Optional(Type.String()),
 	cwd: Type.Optional(Type.String()),
 	title: Type.Optional(Type.String()),
@@ -42,6 +47,7 @@ interface BranchEvidence {
 
 interface CommandContext {
 	cwd?: string;
+	mode?: ExtensionCommandContext["mode"];
 	ui: ExtensionCommandContext["ui"];
 	sessionManager?: ExtensionCommandContext["sessionManager"] & {
 		createBranchedSession?: (leafId: string) => string | undefined;
@@ -533,7 +539,8 @@ export default function sessionLaunchCommands(pi: ExtensionAPI): void {
 	pi.registerTool({
 		name: "session_launch",
 		label: "Launch Pi session",
-		description: "Open a fresh Pi instance or resume an existing active-profile session UUID in a new tab. Resumed sessions use their saved cwd.",
+		description: "In T3, create an idle top-level thread in the current T3 workspace and return its actual link. Elsewhere, open a fresh Pi instance or resume an active-profile session UUID in a new tab.",
+		reachesTools: () => t3HostToolNames(pi, T3_SESSION_LAUNCH_OPERATIONS),
 		outputSchema: sessionLaunchOutputSchema,
 		parameters: Type.Object({
 			session: Type.Optional(Type.String({ description: "Existing session UUID; omit for a fresh instance" })),
@@ -553,8 +560,22 @@ export default function sessionLaunchCommands(pi: ExtensionAPI): void {
 			return new Text(theme.fg("toolOutput", `${receipt?.session ? "resumed" : "launched"}${label ? ` · ${label}` : ""} · ${state}`), 0, 0);
 		},
 		async execute(_id, params, signal, _onUpdate, ctx) {
-			const receipt = await launchNewInstance({ cwd: ctx.cwd, session: params.session, title: params.title?.trim() || undefined, signal });
+			const title = params.title?.trim() || undefined;
+			let receipt: Record<string, unknown>;
+			if (resolvePiClient(ctx.mode) === "t3code") {
+				if (params.session) throw new Error("Resuming a native Pi session UUID is unsupported in T3. Use the T3 thread selector instead.");
+				const result = await launchT3Thread(pi, ctx, { title: title || defaultTitle(ctx.cwd), clientRequestId: _id }, { signal, onUpdate: _onUpdate });
+				receipt = {
+					launched: true, threadId: result.threadId, title: title || defaultTitle(ctx.cwd), cwd: ctx.cwd,
+					...(typeof result.link === "string" ? { link: result.link } : {}),
+					...(typeof result.status === "string" ? { state: result.status } : {}),
+				};
+			} else {
+				receipt = await launchNewInstance({ cwd: ctx.cwd, session: params.session, title, signal });
+			}
 			const structuredContent = {
+				...(typeof receipt.threadId === "string" ? { threadId: receipt.threadId } : {}),
+				...(typeof receipt.link === "string" ? { link: receipt.link } : {}),
 				...(typeof receipt.session === "string" ? { session: receipt.session } : {}),
 				...(typeof receipt.cwd === "string" ? { cwd: receipt.cwd } : {}),
 				...(typeof receipt.title === "string" ? { title: receipt.title } : {}),
@@ -569,16 +590,40 @@ export default function sessionLaunchCommands(pi: ExtensionAPI): void {
 	});
 	pi.registerCommand("branch", {
 		description: "Open a branched copy of this Pi session in a new terminal tab",
-		handler: async (args, ctx) => executeBranch(args, ctx, pi),
+		handler: async (args, ctx) => {
+			if (resolvePiClient(ctx.mode) === "t3code") {
+				if (!t3SessionActionAvailable(pi, "t3_thread_transfer")) throw new Error("T3 thread fork is unavailable; no terminal fallback was attempted.");
+				t3CommandHandoff(pi, "fork", args.trim() || undefined);
+				return;
+			}
+			await executeBranch(args, ctx, pi);
+		},
 	});
 	pi.registerCommand("new-instance", {
 		description: "Open a new Pi instance in this cwd in a new terminal tab",
-		handler: async (args, ctx) => executeNewInstance(args, ctx),
+		handler: async (args, ctx) => {
+			if (resolvePiClient(ctx.mode) === "t3code") {
+				const parsed = parseNewInstanceArgs(args);
+				if (parsed.session) throw new Error("Resuming a native Pi session UUID is unsupported in T3. Use the T3 thread selector instead.");
+				if (!t3SessionActionAvailable(pi, "t3_thread_launch")) throw new Error("T3 thread launch is unavailable; no terminal fallback was attempted.");
+				t3CommandHandoff(pi, "launch", parsed.title);
+				return;
+			}
+			await executeNewInstance(args, ctx);
+		},
 	});
 	pi.registerCommand("pi", {
 		description: "Open a new Pi instance in this cwd in a new terminal tab, or restart this session in a new tab",
 		getArgumentCompletions: (prefix) => "--restart".startsWith(prefix) ? [{ value: "--restart", label: "--restart" }] : null,
 		handler: async (args, ctx) => {
+			if (resolvePiClient(ctx.mode) === "t3code") {
+				if (args.trim() === "--restart") throw new Error("Restarting the current Pi process is unsupported inside T3; no shutdown or terminal launch was attempted.");
+				const parsed = parseNewInstanceArgs(args);
+				if (parsed.session) throw new Error("Resuming a native Pi session UUID is unsupported in T3. Use the T3 thread selector instead.");
+				if (!t3SessionActionAvailable(pi, "t3_thread_launch")) throw new Error("T3 thread launch is unavailable; no terminal fallback was attempted.");
+				t3CommandHandoff(pi, "launch", parsed.title);
+				return;
+			}
 			if (args.trim() === "--restart") {
 				const { restartCurrentPiSession } = await import("../lib/pi-update-compat.ts");
 				const result = await restartCurrentPiSession();
@@ -590,7 +635,14 @@ export default function sessionLaunchCommands(pi: ExtensionAPI): void {
 	});
 	pi.registerShortcut("f7", {
 		description: "Open a new Pi instance",
-		handler: async (ctx) => executeNewInstance("", ctx),
+		handler: async (ctx) => {
+			if (resolvePiClient(ctx.mode) === "t3code") {
+				if (!t3SessionActionAvailable(pi, "t3_thread_launch")) throw new Error("T3 thread launch is unavailable; no terminal fallback was attempted.");
+				t3CommandHandoff(pi, "launch");
+				return;
+			}
+			await executeNewInstance("", ctx);
+		},
 	});
 	pi.registerShortcut("f8", {
 		description: "Show git status --short",

@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-11-10: Add host-aware Pi workflows and optional central analytics
+
+- Keep one default profile across standalone Pi, Herdr and T3. Route supported T3 launches/forks, plan selection and thread-bound reminders through installed app-owned interfaces, preserving current/root workspace intent and native permissions. Commands issue explicit follow-up requests, not fabricated tool contexts or launch receipts. Refuse native UUID resume and restart inside T3 without a native fallback; preserve standalone behavior.
+- Keep Codex reporting plain in RPC and avoid unused T3 footer polling without changing explicit usage, authentication, providers or accounting. T3 reminders survive Pi process replacement; native timers remain process-local. No T3 source, bridge, binary or configuration patch is needed.
+- Implement Onclave-owned default-profile archive projections, checkpointed streaming indexer, bounded private ClickHouse adapter, authenticated structured query API and deferred `onclave_analytics` tool. Preserve exact raw references, unresolved lineage, unknown activity identity, source-candidate coverage and explicit remote outages. Replayed occurrences are deduplicated; repeated snapshots and billing are not falsely treated as unique activity. Raw uploads, pending inputs, local persistence and local analytics remain independent.
+- Package the optional API reader and separate listener-free worker/readiness commands without imposing lockstep adoption or changing existing production `latest`/daily-update policy. Document state domains, permissions, exact tested versions and finite memory/growth evidence in `modules/onclave/docs/pi-analytics.md`. Hatchery still owns the separately authorized first destination deployment; no live bindings, new private repository, publication or deployment are created here.
+- Pass default-profile typecheck and 148 targeted host tests; pass Onclave typecheck and the 20-file affected selection (274 passed, one existing opt-in skip, with stale registration expectations corrected in the affected file). Disposable fixtures validate ClickHouse 26.8.36.3, the Node 22.23.4 application image, exact references/replay/indexing, older-data pruning, worker outage/readiness/SIGTERM, and bounded streaming. No rendered T3 UI or production backfill claim. Reload/restart idle affected Pi runtimes to load on-disk changes.
+
 ## 2026-11-09: Schedule daily Project Zomboid restarts
 
 - Add an opt-in, Ansible-managed systemd timer for the existing game deployment and configure it for 4:30 AM America/New_York daily, including daylight-saving changes. Restart only Zomboid with its normal save/quit grace period; keep the admin UI, log viewer, relay and shared proxy running.

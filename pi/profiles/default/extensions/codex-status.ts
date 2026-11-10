@@ -5,6 +5,7 @@ import { formatBillingUsage } from "../lib/bedrock/billing.ts";
 import { registerProfileCommand } from "../lib/profile-command.ts";
 import { CodexAuthError, CODEX_QUOTA_LOGIN_REQUEST, CODEX_QUOTA_PROVIDER, type CodexAuthRegistry } from "../lib/codex-auth.ts";
 import { loginForCodexUsage } from "../lib/codex-login.ts";
+import { createHostPresentation } from "../lib/host-presentation.ts";
 
 const REPORT = "codex-usage-report";
 const START = "codex-usage-start";
@@ -78,18 +79,19 @@ export default function codexStatus(pi: ExtensionAPI): void {
     if (loginController) return;
     const epoch = generation;
     let content: string;
-    if (!cached) ctx.ui.setStatus("codex", "codex: loading");
+    const presentation = createHostPresentation(ctx);
+    if (!cached) presentation.status("codex", "codex: loading");
     try {
       const usage = await getUsage(ctx.modelRegistry, report?.force);
       if (!alive || epoch !== generation || loginController) return;
-      ctx.ui.setStatus("codex", formatQuota(usage, (color, text) => ctx.ui.theme.fg(color, text)));
+      presentation.status("codex", formatQuota(usage, presentation.nativeTranscript ? (color, text) => ctx.ui.theme.fg(color, text) : undefined));
       content = formatUsage(usage);
     } catch (error) {
       if (!alive || epoch !== generation || loginController) return;
       const status = error instanceof CodexAuthError ? error.status
         : controller?.signal.aborted ? "request timed out"
         : error instanceof TypeError ? "network error" : "API error";
-      ctx.ui.setStatus("codex", cached ? `${formatQuota(cached)} stale (${status})` : `codex: ${status}`);
+      presentation.status("codex", cached ? `${formatQuota(cached)} stale (${status})` : `codex: ${status}`);
       content = `Codex usage ${status}: ${error instanceof Error ? error.message : "request failed"}\n${USAGE_PAGE}`;
     }
     if (report) {
@@ -135,7 +137,7 @@ export default function codexStatus(pi: ExtensionAPI): void {
       marker = ctx.sessionManager.getEntries().at(-1)?.id;
     } else if (event.reason !== "reload" || complete) marker = undefined;
     void refresh(ctx, marker ? { marker } : undefined);
-    poll(ctx);
+    if (createHostPresentation(ctx).client !== "t3code") poll(ctx);
   });
   pi.on("session_shutdown", () => {
     alive = false;

@@ -24,7 +24,7 @@ export function result(data: unknown): AgentToolResult<unknown> {
   return { content: [{ type: "text", text: JSON.stringify(data) }], details: data };
 }
 /** Resolve registered names, with known bridge names retained for deferred discovery. */
-export function t3ToolNames(pi: ExtensionAPI, operations: readonly string[], bridge = process.env.T3_PI_MCP_EXTENSION_PATH): string[] {
+export function t3ToolNames(pi: Pick<ExtensionAPI, "getAllTools">, operations: readonly string[], bridge = process.env.T3_PI_MCP_EXTENSION_PATH): string[] {
   const names = pi.getAllTools().filter(tool => bridge && samePlatformPath(tool.sourceInfo.path, bridge) && operations.some(op => tool.name === op || tool.name.endsWith(`__${op}`))).map(tool => tool.name);
   return names.length ? names : operations.flatMap(op => [op, `mcp__t3-code__${op}`, `mcp__t3_code__${op}`]);
 }

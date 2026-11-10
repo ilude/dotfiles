@@ -117,9 +117,9 @@ describe("schedule tool", () => {
     expect(guidance).toContain("deployment rollouts");
     expect(guidance).toContain("exact completion time is unknown");
     expect(guidance).toContain("instead of delegating the wait to subagents");
-    expect(guidance).toContain("/branch opens a separate process with no inherited timers");
-    expect(guidance).toContain("unless the user asks to continue them in the child");
-    expect(guidance).toContain("Scheduling remains available for the child's own work");
+    expect(guidance).toContain("Outside T3, schedules follow the active conversation only within the same Pi process");
+    expect(guidance).toContain("In T3, schedules are bound to the current thread and survive Pi process replacement");
+    expect(guidance).toContain("Never recreate another thread's schedules");
   });
 
   it.each(["new", "resume", "reload", "fork"])("survives %s with follow-up delivery into the active session", async reason => {

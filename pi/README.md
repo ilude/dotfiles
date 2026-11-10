@@ -79,6 +79,29 @@ launch receipt to child completion.
 Use `/reload-runtime` when idle with no active or retained native subagents to
 load presentation changes without replacing the conversation.
 
+### Client-owned workflow adapters
+
+In T3, `session_launch` creates an app-owned thread or forks the supported latest
+stable point. Native Pi UUID resume and `--restart` clearly refuse there, without
+a terminal fallback or stopping the working thread. Commands issue explicit
+follow-up requests because command contexts cannot execute tools. `/plans` uses
+supported selection/confirmation, run-here requests, and explicit new-thread
+requests preserving the chosen current/root workspace. A request is not a
+confirmed launch. Standalone Pi/Herdr behavior remains unchanged.
+
+T3 `schedule` uses current-thread-bound T3 jobs and real IDs, surviving Pi process
+replacement. Native timers remain process-local. Codex quota/status output is
+plain in RPC; T3 skips unused footer polling while explicit `/usage`, providers,
+authentication, accounting and non-T3 behavior remain unchanged.
+
+The deferred `onclave_analytics` tool provides explicit authenticated remote
+analytics, separate from local `log_analytics`. The application and
+[service contract](../modules/onclave/docs/pi-analytics.md) belong to Onclave;
+the default-profile extension remains a thin loader. Remote failure never
+silently substitutes local-only results. These changes are on disk; reload or
+restart affected default-profile Pi runtimes when idle to load them. No running
+thread or installed T3 was restarted or patched.
+
 ## Default profile native tool discovery and composition
 
 The [archived implementation plan](../.specs/archive/pi-native-tool-composition/plan.md) records settled decisions, dated checks, and verification limits.

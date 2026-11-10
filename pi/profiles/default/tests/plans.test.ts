@@ -17,7 +17,11 @@ vi.mock("@earendil-works/pi-coding-agent", async importOriginal => ({
   ...await importOriginal<Record<string, unknown>>(), copyToClipboard: vi.fn(),
 }));
 const roots: string[] = [];
-beforeEach(() => { vi.stubEnv("PI_CODING_AGENT_DIR", root()); });
+beforeEach(() => {
+  vi.stubEnv("PI_CODING_AGENT_DIR", root());
+  vi.stubEnv("T3_PI_MCP_EXTENSION_PATH", "");
+  vi.stubEnv("PI_SUBAGENT_AUTHORITY", "");
+});
 afterEach(() => { vi.unstubAllEnvs(); vi.resetAllMocks(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 function root() { const value = mkdtempSync(join(tmpdir(), "plans ")); roots.push(value); return value; }
 function add(base: string, stub: string, body: string) { const dir = join(base, ".specs", stub); mkdirSync(dir, { recursive: true }); const file = join(dir, "plan.md"); writeFileSync(file, body); return file; }
@@ -202,14 +206,31 @@ it.each(["rpc", "json", "print"])("rejects %s mode without opening terminal UI",
   expect(custom).not.toHaveBeenCalled();
 });
 
-it("explains the unsupported T3 selector without launching a plan", async () => {
+it("uses supported selection and current-workspace follow-up in T3", async () => {
   vi.stubEnv("T3_PI_MCP_EXTENSION_PATH", "fixture");
   vi.stubEnv("PI_SUBAGENT_AUTHORITY", "");
-  const custom = vi.fn();
-  const sendUserMessage = vi.fn();
-  await expect(executePlans({ mode: "rpc", ui: { custom } } as any, { sendUserMessage })).rejects.toThrow("/plans is unavailable in T3 Code");
+  const base = root(); add(base, "selected", complete);
+  const select = vi.fn().mockResolvedValueOnce("selected · completed · 2/2 tasks · Zebra").mockResolvedValueOnce("Run here");
+  const sendUserMessage = vi.fn(); const custom = vi.fn();
+  await executePlans({ mode: "rpc", cwd: base, ui: { select, notify: vi.fn() } } as any, { sendUserMessage });
+  expect(select).toHaveBeenCalledTimes(2);
   expect(custom).not.toHaveBeenCalled();
-  expect(sendUserMessage).not.toHaveBeenCalled();
+  expect(sendUserMessage).toHaveBeenCalledExactlyOnceWith("/do-it .specs/selected/plan.md", { expandPromptTemplates: true, deliverAs: "followUp" });
+  expect(launchPreparedHerdrPlan).not.toHaveBeenCalled();
+});
+
+it.each(["Current T3 workspace", "T3 root workspace"])("requests a new T3 thread in %s without claiming a launch", async workspace => {
+  vi.stubEnv("T3_PI_MCP_EXTENSION_PATH", "fixture");
+  const base = root(); add(base, "selected", complete);
+  const select = vi.fn().mockResolvedValueOnce("selected · completed · 2/2 tasks · Zebra").mockResolvedValueOnce("Run in new T3 thread").mockResolvedValueOnce(workspace);
+  const sendUserMessage = vi.fn(); const custom = vi.fn(); const notify = vi.fn();
+  await executePlans({ mode: "rpc", cwd: base, ui: { select, custom, notify } } as any, { sendUserMessage });
+  expect(custom).not.toHaveBeenCalled();
+  expect(sendUserMessage).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('".specs/selected/plan.md"'), { deliverAs: "followUp" });
+  const message = sendUserMessage.mock.calls[0]![0];
+  expect(message).toContain(workspace === "T3 root workspace" ? "root workspace" : "current T3 workspace");
+  expect(message).toContain("do not derive the workspace from shell cwd or create a new worktree");
+  expect(notify).toHaveBeenCalledWith(expect.stringContaining("not been confirmed as launched"), "info");
   expect(launchPreparedHerdrPlan).not.toHaveBeenCalled();
 });
 

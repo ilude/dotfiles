@@ -217,9 +217,8 @@ export function archivePlan(plan: PlanRecord, root: string): string {
 }
 
 export async function executePlans(ctx: ExtensionCommandContext, pi: Pick<ExtensionAPI, "sendUserMessage"> & Partial<Pick<ExtensionAPI, "appendEntry" | "events">>): Promise<void> {
-	if (ctx.mode !== "tui") throw new Error(resolvePiClient(ctx.mode) === "t3code"
-		? "/plans is unavailable in T3 Code: its selector requires interactive Pi terminal mode. No plan was launched."
-		: "/plans requires interactive Pi terminal mode.");
+	if (resolvePiClient(ctx.mode) === "t3code") return executeT3Plans(ctx, pi);
+	if (ctx.mode !== "tui") throw new Error("/plans requires interactive Pi terminal mode.");
 	const root = path.resolve(ctx.cwd ?? process.cwd());
 	const recorder = new PlanEventRecorder(pi as Pick<ExtensionAPI, "appendEntry">, ctx, { onLoggingFailure: error => notifyLoggingFailure(ctx, error) });
 	const invocationAttemptId = recorder.request("plans");
@@ -314,6 +313,56 @@ export async function executePlans(ctx: ExtensionCommandContext, pi: Pick<Extens
 			ctx.ui.notify(error instanceof Error ? error.message : String(error), "error");
 		}
 		if (result.action === "do-it") automaticallyDismissed = true;
+	}
+}
+
+async function executeT3Plans(ctx: ExtensionCommandContext, pi: Pick<ExtensionAPI, "sendUserMessage"> & Partial<Pick<ExtensionAPI, "appendEntry" | "events">>): Promise<void> {
+	const root = path.resolve(ctx.cwd ?? process.cwd());
+	const recorder = new PlanEventRecorder(pi as Pick<ExtensionAPI, "appendEntry">, ctx, { onLoggingFailure: error => notifyLoggingFailure(ctx, error) });
+	const invocation = recorder.request("plans");
+	const discovery = discoverPlans(root);
+	if (discovery.errors.length) for (const error of discovery.errors) ctx.ui.notify(error, "warning");
+	if (discovery.errors.length) recorder.outcome(invocation, "plans", "failed", { phase: "outcome", error: { stage: "discovery", message: discovery.errors.join("; ") } });
+	if (!discovery.plans.length) { ctx.ui.notify("No open plans found under .specs/.", "info"); return; }
+	const labels = discovery.plans.map(plan => `${plan.stub} · ${clean(plan.status ?? "unknown")} · ${progress(plan)} tasks · ${clean(plan.title)}`);
+	const selected = await ctx.ui.select("Select a plan:", labels);
+	if (selected === undefined) { recorder.outcome(recorder.request("close"), "close", "cancelled"); return; }
+	const index = labels.indexOf(selected);
+	const plan = discovery.plans[index];
+	if (!plan) return;
+	ctx.ui.notify(`${plan.title} · ${plan.relativePath} · ${clean(plan.description)} · ${progress(plan)} tasks${plan.firstUnchecked ? ` · Next: ${plan.firstUnchecked}` : ""}${plan.handoff ? ` · Handoff: ${plan.handoff}` : ""}${plan.warnings.length ? ` · Warning: ${plan.warnings.join("; ")}` : ""}`, "info");
+	const action = await ctx.ui.select(`Plan: ${plan.stub}`, ["Open in VS Code", "Copy command", "Run here", "Run in new T3 thread", "Archive"]);
+	if (!action) { recorder.outcome(recorder.request("close", eventPlan(plan)), "close", "cancelled", { plan: eventPlan(plan) }); return; }
+	const names = { "Open in VS Code": "open", "Copy command": "copy", "Run here": "run-here", "Run in new T3 thread": "run-new-tab", Archive: "archive" } as const;
+	const eventAction = names[action as keyof typeof names];
+	if (!eventAction) return;
+	const attempt = recorder.request(eventAction, eventPlan(plan));
+	try {
+		if (action === "Open in VS Code") { openPlanInCode(plan, root); recorder.outcome(attempt, "open", "success", { plan: eventPlan(plan) }); }
+		else if (action === "Copy command") { await copyToClipboard(`/do-it ${plan.relativePath}`); ctx.ui.notify(`Copied /do-it command for ${plan.stub}.`, "info"); recorder.outcome(attempt, "copy", "success", { plan: eventPlan(plan) }); }
+		else if (action === "Run here") {
+			recorder.outcome(attempt, "run-here", "requested", { plan: eventPlan(plan), phase: "submission" });
+			pi.sendUserMessage(`/do-it ${plan.relativePath}`, { expandPromptTemplates: true, deliverAs: "followUp" });
+			recorder.outcome(attempt, "run-here", "requested", { plan: eventPlan(plan) });
+		} else if (action === "Run in new T3 thread") {
+			const strategy = await ctx.ui.select("New thread workspace:", ["Current T3 workspace", "T3 root workspace"]);
+			if (!strategy) { recorder.outcome(attempt, "run-new-tab", "cancelled", { plan: eventPlan(plan) }); return; }
+			const workspace = strategy === "T3 root workspace" ? "root workspace" : "current T3 workspace";
+			const message = `Start work on the plan at ${JSON.stringify(plan.relativePath)}. Use the plan itself as the task specification. This is an explicit request for a new T3 thread in the ${workspace}. Use supported T3 workspace metadata when preserving the current workspace; do not derive the workspace from shell cwd or create a new worktree. Include the plan request in the new thread\'s initial message.`;
+			recorder.outcome(attempt, "run-new-tab", "requested", { plan: eventPlan(plan), phase: "submission" });
+			pi.sendUserMessage(message, { deliverAs: "followUp" });
+			ctx.ui.notify("Requested a new T3 thread for this plan. The thread has not been confirmed as launched.", "info");
+			recorder.outcome(attempt, "run-new-tab", "requested", { plan: eventPlan(plan) });
+		} else if (action === "Archive") {
+			const destination = path.join(root, ".specs", "archive", plan.stub);
+			const confirmed = await ctx.ui.confirm("Archive completed plan?", `${plan.relativePath} → ${path.relative(root, destination).replace(/\\/g, "/")}`);
+			if (!confirmed) recorder.outcome(attempt, "archive", "cancelled", { plan: eventPlan(plan) });
+			else { archivePlan(plan, root); ctx.ui.notify(`Archived ${plan.stub}.`, "info"); recorder.outcome(attempt, "archive", "success", { plan: eventPlan(plan) }); }
+		}
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		recorder.outcome(attempt, eventAction, "failed", { plan: eventPlan(plan), error: { stage: eventAction, message } });
+		ctx.ui.notify(message, "error");
 	}
 }
 
