@@ -1,119 +1,138 @@
-# T3/Pi subagent research
+# Evidence for Pi-backed subagents on unchanged T3
 
-Checked 2026-11-09. This is implementation evidence for [plan.md](plan.md), not authorization to execute it.
+Checked 2026-11-09. Supports [plan.md](plan.md). Source inspection and read-only runtime discovery are not a completed child-lifecycle test.
 
-## Repositories and runtime
+## Scope of the corrected design
 
-- Dotfiles: `C:/Users/mglenn/.dotfiles`, `main`, `d128af12d161a3abe230c8a9c33838fc701d2210`; origin `git@github.com:ilude/dotfiles.git`.
-- Owning T3 checkout: `modules/t3code`, `main`, `e455200077ce60806a01c8f28435b58860dcfc74`; origin `https://github.com/ilude/t3code.git`. Its worktree was clean at the final planning status check.
-- Installed T3 CLI reported `0.1.8-nightly.20261108.4380`. That is not evidence that local source changes are installed.
-- Verified planning profile: `C:/Users/mglenn/.dotfiles/pi/profiles/default`. Pi runtime links point to installed Pi `1.5.0`.
-- This conversation's T3 configuration read reported the `pi` instance, `openai-codex/gpt-6.1-sol`, `thinking=xhigh`, full-access/default modes. These are observations, not proposed child defaults.
-- `scripts/t3-code-setup.mjs` selects the default Pi profile and sets `HERDR_ENV=0` for T3. It does not install a source fork, grant project trust, move sessions, or prove child execution.
-- No legacy-profile files or `.repos` reference checkout were inspected for this plan. No provider, desktop, live database, installed binary, or running conversation was changed.
+T3 is an integration dependency, not an implementation target. The earlier inference that Pi role data must be added to T3 contracts/persistence was not established by the evidence. A missing native role field does not prevent Pi extensions from binding and enforcing a role before their model turn.
 
-## What T3 already owns
+No T3 source, generated extension, installed binary, live settings/database, or running conversation was modified. The module remains a read-only reference. No legacy-profile files or `.repos` reference checkout were inspected.
 
-Principal sources:
+## Verified checkout and runtime
 
-- `apps/server/src/mcp/OrchestratorMcpService.ts`, especially `delegateTask`, task reads/cancellation, and thread sending.
-- `apps/server/src/mcp/toolkits/orchestrator/tools.ts`.
-- `packages/contracts/src/orchestratorMcp.ts`.
-- `docs/orchestration-v2/orchestrator-mcp-server.md` and `docs/user/outside-agents.md`.
-- `apps/server/src/orchestration-v2/{Orchestrator,ThreadManagementService,RunExecutionService}.ts`.
+- Dotfiles: `C:/Users/mglenn/.dotfiles`, `main`, HEAD `723e4ef979b41180c43106f21983e3907c7b26e9` at this revision's check. Earlier research used `d128af12d161a3abe230c8a9c33838fc701d2210`; do not confuse those baselines.
+- T3 reference: `modules/t3code`, `main`, `e455200077ce60806a01c8f28435b58860dcfc74`, clean. It is not the code revision of the installed Nightly.
+- Actual planning Pi profile: `C:/Users/mglenn/.dotfiles/pi/profiles/default`, installed Pi `1.5.0`.
+- The current Pi process reports `T3_PI_MCP_EXTENSION_PATH=C:/Users/mglenn/.t3/caches/pi-t3-mcp-extension.ts`. Its generated source was inspected read-only; it registers both qualified T3 tool-name variants and owns its HTTP credentials.
+- Bare PowerShell `t3` resolves to `C:/Users/mglenn/.local/bin/t3.cmd`, version **0.1.7**.
+- The desktop launcher uses `C:/Users/mglenn/.t3/bin/t3.cmd` through `T3CODE_CLI_PATH`, version **0.1.8-nightly.20261108.4380**. Both `serve --help` outputs support `--base-dir`, `--host`, `--port`, and `--no-browser`. Use the desktop-selected version for affected-runtime verification, not the older bare command.
+- The current tool registry exposes delegation, status, thread-send, and pending-request tools. A read-only `orchestrator_capabilities` call confirms app-owned subagents, cancellation, thread management, and an enabled `pi` instance. Pi's model options include `thinking`; the active parent uses full-access/default modes. This proves discovery, not successful named-role execution.
 
-The paths above are relative to `modules/t3code`.
+## Existing T3 APIs and behavior
 
-App-owned delegation already creates durable child threads/tasks, supports provider/model/options selection, checks runtime/interaction-mode ceilings, supports shared or isolated workspaces, deduplicates `clientRequestId`, delivers results, wakes the owner, and controls task cancellation. Sending to a finished child starts a new delegated task in its saved thread. The thread and each assignment's task therefore must not be represented by one interchangeable ID.
+Paths in this section are relative to `modules/t3code`.
 
-`task_cancel` stops running/queued work and descendant delegates, including later runs in that child thread; an already terminal task retains its result. A parent-run end is not necessarily overall completion when delegated work remains. Existing `DelegatedCompletionDelivery.test.ts`, `SubagentProjection.test.ts`, `ThreadManagementService.test.ts`, and replay/restart testkits are the useful behavioral extension points.
+### Delegation
 
-Existing `t3_pending_request` handles user questions, not permission approval. Do not repurpose it to approve a child permission request. A native Pi parent question has additional semantics: it yields, remains pending during ordinary discussion, supports explicit cancellation, and is answered by the commissioning parent. A blocking Pi `ctx.ui.input` alone does not implement that contract.
+`packages/contracts/src/orchestratorMcp.ts:OrchestratorMcpDelegateTaskInput` accepts task text, provider/model/options, title, generic role category, shared/worktree isolation, wait/async mode, timeout, request identity, and permission/interaction modes. It does not accept arbitrary child environment variables, a Pi role snapshot, cwd, or an existing-worktree strategy.
 
-The installed host CLI's `thread` commands are `list`, `start`, `send`, and `show`. Do not invent CLI equivalents for the complete MCP lifecycle.
+`apps/server/src/mcp/OrchestratorMcpService.ts:delegateTask`:
 
-## The verified named-role gap
+- Requires an active caller-owned parent run.
+- Resolves the target and mode ceilings.
+- Rejects a different local project through `target.projectId`.
+- Maps worktree isolation to a new checkout based on the parent's HEAD.
+- Creates app-owned task/thread/run state and dispatches the task text.
+- Uses different completion-wake policies for async and blocking calls; an incomplete wait upgrades delivery to a later automatic wake.
 
-The orchestration documentation describes optional role instructions, and the public `delegate_task.role` classifies generic work such as review or research. Its implementation in `apps/server/src/mcp/delegatedTaskModes.ts:taskPrompt` prefixes task text with `Act as the ... sub-agent`.
+`apps/server/src/mcp/delegatedTaskModes.ts:taskPrompt` preserves `task` exactly when generic `role` is absent or `general`. Other categories prepend `Act as the ... sub-agent`, which would prevent a leading private Pi slash command from being dispatched. Therefore the proposed wrapper must omit that field or use `general`, putting the named role in its title and Pi-owned metadata instead.
 
-That is not the default profile's named-role contract:
+The unchanged APIs already provide IDs, ownership, results, notifications, workspace creation, and cancellation. No new T3 lifecycle database or UI protocol is needed for those capabilities.
 
-1. `packages/contracts/src/orchestrationV2.ts` defines `delegated_task.request` with task/title/model selection/modes/workspace inputs, but no frozen Pi execution profile.
-2. `Orchestrator.ts` makes the app-owned child thread and dispatches the assignment as child message text. There is no demonstrated role-authority transfer there.
-3. `OrchestrationV2AppThread` has identity, model, modes, workspace, lineage, and history fields, but no observed named-role snapshot.
-4. `ProjectionStore.ts` handles `thread.created`, reconstructs thread projections, and writes `orchestration_v2_projection_threads`. `WireProjection.ts` is the boundary for public thread data. Durable role data must survive both event replay and projection reads, not just exist in a tool result.
-5. `ProviderSessionManager.ts`, around line 2205, passes thread/session IDs, model selection, runtime policy, and resume identifiers into `adapter.openSession`. No execution-profile input is present.
-6. `packages/provider-core/src/server/ProviderAdapter.ts` defines the corresponding open/ensure/turn interfaces. A role-aware launch needs explicit typed propagation through these interfaces and restarts.
-7. `packages/provider-pi/src/server/adapter.ts` starts/resumes Pi RPC processes. `mcpInjection.ts` constructs arguments/environment and the generated `mcpExtensionSource.ts` registers MCP tools and blocks disallowed T3-runtime tool calls. None of those inspected paths supplies the workstation's named Pi role authority today.
+### Questions
 
-A prompt-only wrapper around `delegate_task` would therefore retain a broad profile's tools/extensions and lose the native role's enforcement. It would not meet the request.
+- `packages/provider-pi/src/server/adapter.ts:handleExtensionUiRequest` maps Pi `ctx.ui.input/select/editor` to a T3 `user_input` request; `confirm` is a permission request instead.
+- `apps/server/src/orchestration-v2/DelegatedTaskQuestionReactor.ts` already notifies the commissioning parent about pending child questions. Blocking delegate waits return the question themselves; the reactor handles asynchronous/catch-up notification.
+- `apps/server/src/mcp/toolkits/thread/tools.ts:PendingRequestTool` provides `list`, `read`, and `respond` through `t3_pending_request`. It cannot approve permissions and has no question-cancellation action.
+- Task results expose `hasPendingQuestion`, `pendingApproval`, and whether child work continues.
 
-## Reusable Pi role policy
+Use this existing blocking question model. The native Pi helper's yield-and-discuss/cancel-question behavior is not an existing T3 guarantee. Do not invent new server request kinds or claim that a blocking dialog implements the native protocol unchanged.
 
-Sources relative to dotfiles:
+Pending Pi UI requests use a live provider-session response capability. After process loss, a persisted question intent may need to be re-presented with a new runtime request ID. Do not promise that the old JavaScript promise/request remains answerable after restart.
 
-- `pi/profiles/default/agents/*.md`.
-- `pi/profiles/default/lib/subagents/{definitions,options,guidance,launch,runtime,rpc}.ts`.
-- `pi/profiles/default/extensions/{subagents,subagent-child,goal}.ts`.
-- `pi/profiles/default/lib/damage-control/{enforcement,plan-integration-authority}.ts` and `extensions/damage-control/index.js`.
+### Follow-ups, cancellation, and UI
 
-Verified behavior:
+`t3_thread_send` supports auto/queue/steer/restart, and sending to a completed owned child can create a fresh task in its saved thread. Return the new task ID rather than reusing an old terminal task as the current assignment.
 
-- Definitions contain name, description, allowed tools/delegates, model, effort, skills, prompt, and source/file identity. Trusted project overrides replace profile definitions. Invalid project overrides tombstone a matching profile name rather than falling back to its broader profile definition.
-- Explicit model/effort requests override role defaults. Effort otherwise falls back to `low`; Luna-specific Strategist/Steward restrictions are already implemented. Aliases resolve through Pi's actual model registry.
-- Requested skills add to role defaults. Trusted project skills can override profile skills. Invalid/missing skills fail; paths are not arbitrary model-supplied extension paths.
-- Native children isolate discovery using `--no-extensions`, role-dependent skill flags, `--no-prompt-templates`, and `--no-themes`, then load selected resources explicitly. Team Lead receives its existing codemode/skill treatment. Bedrock children load provider/accounting support without operator commands.
-- Native `subagent-child.ts` freezes tool/delegate authority, applies `setActiveTools`, and independently blocks unauthorized `tool_call` events. Catalog visibility is not dispatch authority.
-- `subagent_parent` distinguishes `question`, `cancel-question`, `partial`, and `blocked`. Successful completion is a normal final reply. A question returns an ID and terminates/yields that turn rather than waiting in a polling loop.
-- Native Integrator launches require a validated closeout manifest and runtime provenance. Damage Control's scoped integration authorization independently checks that provenance and checkout identity.
-- Explorer's nonmutating inspection policy currently detects the role from `PI_SUBAGENT_AUTHORITY`, including an early check in `extensions/damage-control/index.js`. A new T3 authority representation must preserve those checks rather than merely copying the role prompt.
-- `goal.ts` directly binds to `getSubagentRuntime`/`GoalBinding`; native children relay admission/accounting through the native parent endpoint. App-owned children would otherwise escape goal descendant accounting and stop propagation.
+`OrchestratorMcpService.ts:cancelTask` checks child/descendant mode ceilings, stops the child thread and delegated descendants, disposes completion delivery, and removes the relevant queued turns. Preserve its refusal behavior when a user has raised a child's modes.
 
-Current role defaults, for orientation only; execution must read the role files rather than duplicate this table in code:
+`packages/provider-pi/src/server/adapter.ts`, around lines 1254-1276, specifically infers provider-native child cards when a tool is named **`subagent`**. A distinctly named profile wrapper avoids that heuristic. The actual nested `delegate_task` call creates the canonical app-owned card through existing orchestration.
 
-| Role | Model alias | Effort | Delegation |
-| --- | --- | --- | --- |
-| developer | luna | medium | none |
-| explorer, researcher, validator | luna | low | none |
-| steward | luna | high | none |
-| integrator | luna | high | none; manifest required |
-| reviewer, advisor, strategist, writer | sol | low | none |
-| teamlead | astra | low | its declared leaf-role allowlist |
-| council | astra | low | its declared non-writing allowlist; explicit user request only |
+Role labels can use existing titles; resolved model, worktree, activity, waiting state, results, and child links already have T3-owned representations. There is no basis to promise new role badges, custom outcome enums, or new controls without changing T3. A T3 task finishing is distinct from the role reporting that its substantive work is blocked or partial.
 
-No claim is made that these tool restrictions constitute an operating-system sandbox. Preserve the actual native tool policy and shell checks, including Explorer's special inspection behavior.
+## Supported Pi extension seams
 
-## Host and launch traps
+Evidence is from the installed Pi `1.5.0` package, not a proposed SDK API.
 
-- `lib/herdr-host.ts:resolvePiClient` intentionally treats `PI_SUBAGENT_AUTHORITY` children as generic RPC even if they inherit T3 markers. Reusing that marker unchanged would misclassify a real T3-owned role child. Use distinct transport identity and shared normalized authority policy.
-- `extensions/subagents.ts` currently initializes/binds the native runtime on `session_start`, delivers custom-message results, and shuts down native children on native lifecycle transitions. Selecting a T3 backend must happen before those side effects, not only inside the launch tool.
-- `mcpInjection.ts:buildPiRpcLaunch` currently couples `disableExtensions` with omission of the injected T3 extension. Setting that existing flag for a role child would also remove T3's own bridge. Role resource isolation must retain the trusted T3 bridge while excluding unrelated profile extensions.
-- Native launch arguments include native-process/session/approval details. Share resource/role policy, not the native subprocess argv wholesale; T3 owns session paths and permission mapping.
-- `adapter.ts` routes extension UI events differently with and without an active turn. Private role-control replies must be handled at session scope, before turn filtering or wake buffering.
-- Installed Pi `1.5.0` source confirms extension commands execute before normal streaming/compaction/model prompt handling. RPC `prompt` acknowledges a handled command through preflight. A private registered command can service a bounded control request without starting an LLM turn, even while an ordinary tool call waits on T3. First check `get_commands`: an unknown slash command can otherwise fall through into a model prompt.
-- Correlate a private response with request ID and protocol version. Never treat absence of a widget/status as completion, and never put full policy or credentials into visible chat.
+### Composed calls
 
-## UI and upstream patches
+`docs/extensions.md`, “Calling Other Tools,” around line 2772:
 
-Existing app-owned threads already feed shared `packages/client-runtime/src/state/subagentRuntime.ts`, `subagentDisplay.ts`, and web lineage/lifecycle/relationship components. Reuse that lifecycle. Extend only missing role/outcome/question metadata and existing controls; do not maintain a parallel card store.
+- A registered tool's execution context exposes `ctx.executeTool(name, args, { signal, onUpdate })` and `ctx.tools`.
+- Nested calls undergo normal validation, `tool_call` and `tool_result` hooks, and execution events carrying `parentToolCallId`.
+- Failures return `isError: true`; they do not necessarily reject the promise.
+- `reachesTools` and `prepareLoadout` support orchestrating tools and hiding internal declarations without pretending tools are unavailable.
 
-Public upstream evidence checked earlier in this planning conversation on 2026-11-09:
+The repository already uses this API in `pi/profiles/default/lib/subagents/successor-surface.ts:109-115`.
 
-| Item | Status when checked | Relevance and limitation |
-| --- | --- | --- |
-| [#17363](https://github.com/pingdotgg/t3code/issues/17363) | issue | Exact asynchronous Pi-card symptom. |
-| [#32079](https://github.com/pingdotgg/t3code/pull/32079), head `9544d42c0f58e6ddb9d2bdc6c201f9b18fc549d5` | open, unmerged | Widget snapshots for community `pi-subagents`; can infer completion from disappearance, has null-result/hierarchy limitations. Not this role backend. |
-| [#23786](https://github.com/pingdotgg/t3code/pull/23786), head `87b5fa6ec0d9fb67bfc6e38ca8cdddac078e9fb9` | open, unmerged | Useful session-owned late-event/result ingestion and continuing-child-turn ideas. Still assumes community async IDs/messages. Not a drop-in patch. |
-| [#32458](https://github.com/pingdotgg/t3code/pull/32458) | open, unmerged | Rendering `display:true` custom messages could duplicate existing command fallbacks or expose expanded prompts. Do not make this a dependency. |
+Therefore model-requested launch/control tools should compose the actual callable injected T3 tools. A second general-purpose MCP client for delegation is unnecessary. Resolve the callable name/source from the current runtime; do not hardcode a model-facing alias or call an unregistered replacement.
 
-Claude's `apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts` consumes actual task-start/progress/notification events keyed by task ID. It is a useful lifecycle reference, not authority to fabricate Pi task events from launch-tool completion.
+### Role binding before the model request
 
-No PR branch was installed, merged, or live-tested. Recheck current upstream status only if implementation intends to reuse code; it is not an implementation prerequisite.
+Installed `dist/core/agent-session.js:prompt` checks registered extension commands before the input hook, skill/template expansion, authentication checks, or starting a model run. `_tryExecuteExtensionCommand` handles the command and does not fall through to a model prompt if its registered handler fails. An unknown command can fall through, so matching profile installation/resource loading is a real assumption, not an automatic guarantee.
 
-## Evidence limits and validation route
+A profile command such as `/t3-role-bootstrap <launch-id>` can:
 
-- The preceding presentation work passed 159 tests across 13 focused files plus default-profile typecheck. Those results do not validate the proposed backend.
-- Planning inspected the installed Pi RPC command implementation and current T3 source/configuration. It did not launch a T3 role child, exercise questions/cancellation/restarts, or perform live visual acceptance.
-- Existing native `tests/fixtures/plan-closeout-provider.ts` provides a deterministic real-Pi provider pattern. Prefer that pattern and existing T3 provider/service testkits over a new test framework or paid-model-only acceptance.
-- T3's module instructions require focused behavior tests, event/effect synchronization rather than polling, changed-file checks, relevant MCP evals when model-facing instructions change, and one integrated client pass for visible changes. Use `.agents/skills/test-t3-app/SKILL.md` and isolated ignored `.t3` state. Never run a source server against live `~/.t3/userdata`.
-- `docs/t3-code.md` documents source builds and separate CLI/desktop artifacts. A bundle build is not installation, a packaged artifact is not GUI acceptance, and refreshing a provider does not update an already loaded Pi process.
+1. Resolve independently validated Pi-owned handoff metadata.
+2. Bind the role to the actual T3 thread and Pi session.
+3. Persist the snapshot with `pi.appendEntry()` and establish extension-owned state.
+4. Start the actual assignment with `pi.sendUserMessage(actualAssignment)`.
+
+The command itself does not receive `before_agent_start` prompt options. The ensuing run does. `docs/extensions.md:before_agent_start` documents mutable `systemPromptOptions`, including selected tools, custom sections, skills, cwd/context files, and prompt guidelines. `pi.setActiveTools()` there also changes executable provider tools. Apply the saved role before that request, and independently block unauthorized tool calls.
+
+`sendUserMessage()` defaults to no command/template expansion. A brief beginning with a slash is therefore not accidentally executed as another command. Streaming calls require an explicit steer/followUp mode; the first role bootstrap is intended for a fresh app-owned child, while retained-child messages use normal T3 send semantics.
+
+`appendEntry()` is durable extension-local session data and is not model context. Restore from the current session branch, not a global variable or unrelated historical branch. Profile-local thread-to-role bindings can additionally prevent a T3 fresh-context reset from silently becoming an unrestricted Pi session.
+
+### Identity outside a tool call
+
+`executeTool` belongs to a tool execution context, not the ordinary command/session-start context. Role restoration/command validation may need current T3 identity before any model-issued tool exists.
+
+The generated T3 extension demonstrates the standard HTTP MCP initialize/session/version-header exchange using `T3_MCP_URL` and `T3_MCP_BEARER_TOKEN`. A small profile-owned metadata reader can use that existing authenticated public endpoint for capabilities/current thread/lineage. It must not modify the generated extension, scrape databases, print credentials, or persist them. Model-requested mutations still use composed tools and their normal hooks. Existing goal stop callbacks may use a narrowly scoped owned-task cancellation operation outside a model tool call.
+
+Despite its name, `orchestrator_capabilities.parentThreadId` identifies the calling thread as a potential delegation parent; it is not that thread's lineage parent. Read `t3_thread_read.thread.parentThreadId` for the latter. Confusing them would break bootstrap ownership validation.
+
+This is a limited transport need, not permission to build a second delegation framework.
+
+## Existing policy to preserve
+
+Dotfiles sources:
+
+- `pi/profiles/default/agents/*.md` and `lib/subagents/{definitions,options,guidance,launch}.ts`.
+- `extensions/{subagents,subagent-child,goal}.ts`.
+- `lib/damage-control/{enforcement,plan-integration-authority}.ts` and `extensions/damage-control/index.js`.
+- `lib/subagents/transport.ts`, `lib/goal/{runtime,state,usage,budget}.ts`.
+
+Verified policy:
+
+- Trusted project roles override profile roles; invalid overrides tombstone the matching role.
+- Models resolve through Pi's actual registry; explicit settings override role defaults. Existing Strategist/Steward effort constraints apply.
+- Skills retain role defaults, requested additions, trust, and project-source precedence.
+- Role tool/delegate authority is frozen and independently checked at dispatch, including deferred/nested calls. This is not an OS sandbox.
+- Team Lead/council dispatch policy, writer/reviewer/steward guidance, and native foreground/background rules already exist.
+- Native process isolation flags are owned by native launch. Unchanged T3 cannot be assumed to accept per-task copies of those flags. T3 role enforcement must be done through supported profile hooks without claiming identical extension-discovery isolation.
+- Explorer inspection and Integrator authority currently inspect native environment authority. They need a shared normalized Pi-side authority accessor, not a forged native marker for T3 children.
+- `goal.ts` directly initializes the native runtime and binds existing admission/enrollment/accounting callbacks to it. Factor a backend boundary; do not lose goals or start a native process manager in T3. Existing authenticated `ChildTransport` can carry those policy callbacks without owning T3 task lifecycle. Keep budget state and usage ledgers with the existing goal implementation.
+- Native Integrator requires a validated manifest/exact checkout. With unchanged delegation APIs, a T3 Integrator can inherit that checkout only when its commissioning T3 thread is already bound there. Shell `cd` is not a T3 workspace switch.
+
+The proposed metadata directory `pi/profiles/default/sessions/.t3-roles/` is already ignored by the profile's `/sessions/` rule, verified with `git check-ignore`. Store authority/identity bindings there, not a duplicate task-status/result database. Session JSONL remains the role snapshot/history source; T3 remains the execution/lifecycle source.
+
+## Upstream research retained as context
+
+Earlier on 2026-11-09, #17363 described asynchronous Pi card problems; PRs [#32079](https://github.com/pingdotgg/t3code/pull/32079), [#23786](https://github.com/pingdotgg/t3code/pull/23786), and [#32458](https://github.com/pingdotgg/t3code/pull/32458) were checked open/unmerged. Their widget/custom-message protocols were not drop-in matches for this profile. No branch was installed or live-tested. None is a dependency of the unchanged-T3 design; no new upstream-status claim is made here.
+
+## What remains untested
+
+No revised backend code was implemented during planning. No new child/model run, private bootstrap, question/answer round trip, goal callback, cancellation, restart, fresh-context restoration, or rendered UI acceptance was performed. The former presentation patch's 159 focused tests/typecheck are not evidence for this design.
+
+The source supports the selected mechanisms. Their integration must be demonstrated by the plan's finite Pi/default-profile tests and one isolated smoke using the **existing desktop-selected Nightly**, with a deterministic provider where possible. No T3 build, module test suite, custom installer, or production replacement is required.
