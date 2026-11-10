@@ -15,6 +15,8 @@ This vault is a context pool, not a build mandate. Promote ideas only when they 
 
 ## Source captures
 
+- [ClickHouse for Pi session analytics](projects/clickhouse-pi-session-analytics.md) - Theo's cited usage, archive-backed analytics, counting/identity constraints, local-first behavior, and Hatchery deployment ownership.
+
 - [Agent-stack integration synthesis](projects/agent-stack-integration.md) - recent vault changes, Jev/Pi Durable videos, Hermes comparison, current ownership, and a draft first-delivery plan.
 
 - [Onclave deployment ownership](projects/onclave-deployment-ownership.md) - implemented Forgejo/image boundary, infra-owned production Quadlets, daily core-only updates, and dated verification limits.
