@@ -258,7 +258,7 @@ it("executes registered tools against an inert RPC child and renders their live 
       const component = tools.subagent.renderResult(update, { isPartial: true }, theme, context);
       for (const width of [36, 120]) views.push(plain(component, width));
     }, ctx);
-    await vi.waitFor(() => expect(views.length).toBeGreaterThan(0));
+    await vi.waitFor(() => expect(views.some(view => view.includes("bash"))).toBe(true));
     const name = runtime.list("presentation-origin")[0].displayName!;
     expect(plain(call, 120)).toContain(`Subagent ${name}  probe  openai-codex/test[low]`);
     expect(messages).not.toHaveBeenCalled();

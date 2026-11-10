@@ -4,8 +4,9 @@ import type { Analysis, ToolRequest } from "./types.ts";
 import { validateCloseoutManifest } from "../plan-integration/closeout.ts";
 import type { CloseoutManifest } from "../plan-integration/contracts.ts";
 import { samePlatformPath } from "../path-identity.ts";
+import { validateT3CloseoutTarget, type T3CloseoutAuthority } from "../subagents/t3/closeout.ts";
 
-const HELPER_SHA256 = "5e80a54de179b9ab5357d23145be351bd79fc3320c478949bc91e5807f4a2067";
+const HELPER_SHA256 = "3383109411d219e66a0e04c2ee3f0cf45edbdbca7326766cf165c9c38e0bff4d";
 
 function authority(): Record<string, unknown> | undefined {
   try {
@@ -15,13 +16,16 @@ function authority(): Record<string, unknown> | undefined {
   } catch { return undefined; }
 }
 
-export function authorizedPlanIntegration(request: ToolRequest, analysis: Analysis, profile: string): boolean {
+export function authorizedPlanIntegration(request: ToolRequest, analysis: Analysis, profile: string, t3?: T3CloseoutAuthority): boolean {
   if (request.tool !== "bash" || analysis.health.status !== "ready" || analysis.uncertainties.length || analysis.matches.length) return false;
-  const handoff = authority();
+  if (t3) {
+    try { validateT3CloseoutTarget(t3.manifest, request.cwd); } catch { return false; }
+  }
+  const handoff = t3 ? { id: t3.provenance.launchId, agent: "integrator", delegates: [], cwd: t3.manifest.targetCheckout, closeout: t3 } : authority();
   const closeout = handoff?.closeout;
   if (!handoff || handoff.agent !== "integrator" || handoff.parentId !== undefined
     || !Array.isArray(handoff.delegates) || handoff.delegates.length !== 0
-    || !process.env.PI_SUBAGENT_ENDPOINT || !closeout || typeof closeout !== "object") return false;
+    || (!t3 && !process.env.PI_SUBAGENT_ENDPOINT) || !closeout || typeof closeout !== "object") return false;
   const value = closeout as Record<string, unknown>;
   const provenance = value.provenance;
   const manifestValue = value.manifest;
@@ -44,7 +48,7 @@ export function authorizedPlanIntegration(request: ToolRequest, analysis: Analys
     integrationEvidence: typeof m.integrationEvidence === "string" ? m.integrationEvidence : "",
   };
   try { validateCloseoutManifest(manifest); } catch { return false; }
-  if (p.source !== "subagent-runtime" || p.version !== 1 || p.agent !== "integrator" || p.childId !== handoff.id
+  if ((!t3 && (p.source !== "subagent-runtime" || p.childId !== handoff.id)) || (t3 && (p.source !== "t3-role-runtime" || p.launchId !== handoff.id)) || p.version !== 1 || p.agent !== "integrator"
     || typeof p.parentSessionId !== "string" || !p.parentSessionId
     || typeof p.targetCheckout !== "string" || typeof m.targetCheckout !== "string" || m.noMerge !== false
     || !samePlatformPath(resolve(request.cwd), resolve(m.targetCheckout))

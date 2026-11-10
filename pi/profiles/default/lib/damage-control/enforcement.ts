@@ -1,4 +1,5 @@
 import { realpath } from "node:fs/promises";
+import { getSubagentAuthority, subagentInspectionPolicy } from "../subagents/authority.ts";
 import { homedir } from "node:os";
 import { isAbsolute } from "node:path";
 import type { ExtensionAPI, ExtensionContext, ToolCallEvent } from "@earendil-works/pi-coding-agent";
@@ -35,12 +36,7 @@ const WATCHDOG_STATE = "damage-control-watchdog";
 const JUDGE_REVIEW_LOG = "damage-control-judge-review-v1";
 const blocked = (reason: string, terminate = false) => ({ block: true as const, reason: reason.slice(0, 4000), ...(terminate ? { terminate: true as const } : {}) });
 
-function explorerAuthority(): boolean {
-  try { return JSON.parse(process.env.PI_SUBAGENT_AUTHORITY ?? "null")?.agent === "explorer"; }
-  catch { return false; }
-}
-
-export async function initialize(pi: ExtensionAPI, profile: string, repo: string, inspection = explorerAuthority()): Promise<Gate> {
+export async function initialize(pi: ExtensionAPI, profile: string, repo: string, inspection: boolean | (() => boolean) = subagentInspectionPolicy(pi.events)): Promise<Gate> {
   const loaded = await loadPolicy(profile);
   const { review } = await import("./judge.ts");
   const { ScriptReviewCoordinator } = await import("./script-review.ts");
@@ -61,7 +57,7 @@ export async function initialize(pi: ExtensionAPI, profile: string, repo: string
   }, inspection);
 }
 
-export function registerGate(pi: ExtensionAPI, profile: string, repo: string, dependencies: GateDependencies, inspection = explorerAuthority()): Gate {
+export function registerGate(pi: ExtensionAPI, profile: string, repo: string, dependencies: GateDependencies, inspection: boolean | (() => boolean) = subagentInspectionPolicy(pi.events)): Gate {
   const context = new Context();
   const sequence = new DamageControlSessionState();
   const breaker = new Breaker();
@@ -187,6 +183,7 @@ export function registerGate(pi: ExtensionAPI, profile: string, repo: string, de
     // Executor authorization reuses the native read analysis/decision/prompt path,
     // but creates no tool-result, watchdog, bypass or successful-read evidence.
     async handle(event: ToolCallEvent, ctx: ExtensionContext, policyOnly = false) {
+      const inspectionBound = typeof inspection === "function" ? inspection() : inspection;
       // Browser execution owns its session/target validation. Its functionality-first
       // actions do not enter Damage Control adapters, approval review, or the watchdog.
       if (event.toolName === "browser_session" || event.toolName === "browser_page") return;
@@ -205,7 +202,7 @@ export function registerGate(pi: ExtensionAPI, profile: string, repo: string, de
       if (normalized.status === "unsupported") return blocked(normalized.reason);
       const request = normalized.request;
       if (mode === "noshell" && (request.tool === "bash" || request.tool === "powershell")) return blocked("Shell tools are disabled by damage-control noshell mode");
-      if (inspection && (request.tool === "edit" || request.tool === "write")) return blocked("Explorer inspection blocks intentional mutation: native edit/write is not inspection");
+      if (inspectionBound && (request.tool === "edit" || request.tool === "write")) return blocked("Explorer inspection blocks intentional mutation: native edit/write is not inspection");
       if (ctx.signal?.aborted) return blocked("Pending call cancelled; action not executed");
       if (!policyOnly && ctx.signal && !abortListeners.has(ctx.signal)) {
         abortListeners.set(ctx.signal, invalidate);
@@ -226,7 +223,7 @@ export function registerGate(pi: ExtensionAPI, profile: string, repo: string, de
           wasCreated: (target: string) => context.wasCreated(target),
           wasDockerCreated: (daemonId: string, containerId: string) => context.wasDockerCreated(daemonId, containerId),
         };
-        const inspectionEvidence = inspection ? await classifyInspection(request, facts, creationFacts, dependencies) : undefined;
+        const inspectionEvidence = inspectionBound ? await classifyInspection(request, facts, creationFacts, dependencies) : undefined;
         if (!fresh()) return blocked("Pending call cancelled or changed; action not executed");
         if (inspectionEvidence?.route === "mutation") return blocked(`Explorer inspection blocks intentional mutation: ${inspectionEvidence.reason}`);
         if (inspectionEvidence?.route === "review") {
@@ -243,7 +240,7 @@ export function registerGate(pi: ExtensionAPI, profile: string, repo: string, de
         if (!fresh()) return blocked("Pending call cancelled or changed; action not executed");
         const sequenceDecision = sequence.check(request.tool, request.text, analysis.effects);
         if (sequenceDecision) analysis.matches.push({ ruleId: sequenceDecision.name, action: sequenceDecision.action === "review" ? "review" : "block", applicability: "confirmed", reason: sequenceDecision.reason, effects: analysis.effects.map(effect => effect.id) });
-        if (!inspection && !sequenceDecision && authorizedPlanIntegration(request, analysis, profile)) {
+        if (!inspectionBound && !sequenceDecision && authorizedPlanIntegration(request, analysis, profile, getSubagentAuthority(pi.events)?.closeout)) {
           sequence.record(request.tool, request.text);
           completed.set(call.callId, { request, effects: analysis.effects, created, generation: context.generation });
           while (completed.size > 50) completed.delete(completed.keys().next().value!);
@@ -273,11 +270,11 @@ export function registerGate(pi: ExtensionAPI, profile: string, repo: string, de
           decision = decide(analysis, evidence, result);
         }
         if (decision.outcome === "block") return blocked(decision.reason);
-        const localBypass = !inspection && !policyOnly && bypassed && bypassEligibility(request, analysis, decision, facts).eligible;
+        const localBypass = !inspectionBound && !policyOnly && bypassed && bypassEligibility(request, analysis, decision, facts).eligible;
         let reviewFuture = false;
         const reviewableScript = analysis.internal?.scripts?.length === 1 ? analysis.internal.scripts[0] : undefined;
         if (decision.outcome === "user" && !localBypass) {
-          const answer = await promptDecision(decision, request, analysis, { ...ctx, signal, allowReview: !inspection && !!dependencies.scriptReview && !!reviewableScript });
+          const answer = await promptDecision(decision, request, analysis, { ...ctx, signal, allowReview: !inspectionBound && !!dependencies.scriptReview && !!reviewableScript });
           if (answer.status !== "approved") return blocked(answer.reason);
           if (!fresh()) return blocked("Approval context expired; action not executed");
           reviewFuture = answer.review === true;

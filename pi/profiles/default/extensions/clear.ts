@@ -3,6 +3,8 @@ import { requestReloadState } from "../lib/profile-reload-events.ts";
 import { RELOAD_REFRESH_REQUEST } from "../lib/profile-reload.ts";
 import { requestSubagentRuntimeReset } from "../lib/subagents/runtime.ts";
 import { registerProfileCommand } from "../lib/profile-command.ts";
+import { selectedSubagentBackend } from "../lib/subagents/authority.ts";
+import { clearT3RoleWork } from "../lib/subagents/t3/goal.ts";
 
 export default function clearCommand(pi: ExtensionAPI): void {
 	registerProfileCommand(pi, "clear", {
@@ -19,7 +21,8 @@ export default function clearCommand(pi: ExtensionAPI): void {
 			const reloadNeeded = Boolean(state?.needed && !state.error);
 			let resetComplete = true;
 			try {
-				await requestSubagentRuntimeReset(pi);
+				if (selectedSubagentBackend() === "t3") await clearT3RoleWork(pi, ctx);
+				else await requestSubagentRuntimeReset(pi);
 			} catch (error) {
 				resetComplete = false;
 				ctx.ui.notify(`Subagent cleanup remains unresolved; clearing the session without reloading: ${error instanceof Error ? error.message : String(error)}`, "warning");

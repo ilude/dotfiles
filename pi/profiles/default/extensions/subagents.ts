@@ -1,4 +1,5 @@
 import { resolveSkills } from "../lib/subagents/options.ts";
+import { selectedSubagentBackend } from "../lib/subagents/authority.ts";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { getAgentDir, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -44,7 +45,7 @@ function updates(onUpdate:((value:any)=>void)|undefined){
  return {push,stop};
 }
 export default function subagents(pi:ExtensionAPI){
- if(process.env.PI_SUBAGENT_AUTHORITY)return;
+ if(process.env.PI_SUBAGENT_AUTHORITY||selectedSubagentBackend()==="t3")return;
  let runtime:ReturnType<typeof getSubagentRuntime>|undefined;
  const active=()=>runtime??=(getSubagentRuntime());
  const profile=resolve(getAgentDir()),childExt=join(dirname(fileURLToPath(import.meta.url)),"subagent-child.ts");

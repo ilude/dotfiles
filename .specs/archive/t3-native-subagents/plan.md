@@ -1,6 +1,6 @@
 ---
 created: 2026-11-09
-status: draft
+status: in-progress
 completed: null
 ---
 
@@ -24,7 +24,7 @@ This revision replaces the earlier over-scoped architecture. In particular, it r
 
 Non-goals: reproducing Herdr panes/same-tab retirement in T3; migrating old native children; rewriting `/plans`; adding another default profile or per-role T3 provider instances; a second task scheduler/status database; changing generic T3 delegation; exact parity with every native tool argument or UI detail; remote-environment role handoff; changing credentials, trust, permission defaults, or model defaults.
 
-Authorization: planning/revision only, not implementation. A later `/do-it` authorizes the selected plan's implementation, dedicated task worktree, local commits, and merge into the recorded target unless `--no-merge` or another user restriction applies. It does not authorize T3 product changes, publication, deployment, installation/replacement, or interruption of active work. No further approval is needed for otherwise authorized local Git.
+Authorization: on 2026-11-09 the user explicitly requested running this plan to completion. Implementation, the dedicated task worktree, local commits, integration into the recorded target, and cleanup are authorized. T3 product changes, publication, deployment, installation/replacement, and interruption of active work remain outside scope. No further approval is needed for authorized local Git.
 
 ## Phases
 
@@ -65,7 +65,7 @@ Intended implementation tests use the dedicated task checkout's repository-owned
 
 The working tree at this revision had this plan modified and unrelated untracked D:`config/herdr-app/update-notes-cache.md`. Earlier presentation work has since been committed; do not carry a stale list of formerly uncommitted prerequisites. Recheck all status/diffs at execution time and preserve unrelated work.
 
-Recorded integration target: `C:/Users/mglenn/.dotfiles`, branch `main`. Proposed task branch: `feat/t3-native-subagents`; use a dedicated sibling task worktree provisioned by the execution runtime. Record actual coordinates before editing. If prepared-run context matches this spec, consume its coordinates without creating another checkout or replacing the recorded origin. Carry task-owned spec content without deleting its source. **No module branch, commit, merge, build, or pin update is needed.**
+Recorded integration target: `C:/Users/mglenn/.dotfiles`, branch `main`, starting commit `723e4ef979b41180c43106f21983e3907c7b26e9`. Actual task checkout: `C:/Users/mglenn/.dotfiles/.worktrees/t3-native-subagents`, branch `feat/t3-native-subagents`. The existing checkout was initially prepared at `C:/Users/mglenn/.dotfiles-worktrees/t3-native-subagents` and moved, not recreated, after owned workers settled so it satisfies the unchanged native closeout boundary. Preparation used the existing `preparePlanRun` helper and retained the task-owned source spec in the origin. If prepared-run context matches this spec, consume its coordinates without creating another checkout or replacing the recorded origin. Carry task-owned spec content without deleting its source. **No module branch, commit, merge, build, or pin update is needed.**
 
 ## Phase 1 design contract
 
@@ -164,78 +164,78 @@ Implement in the recorded dedicated task checkout, preserving unrelated work. Re
 
 ## Phase 1 tasks
 
-- [ ] **T1: Establish the Pi-only backend and authority contracts**
+- [x] **T1: Establish the Pi-only backend and authority contracts**
   - Depends on: none.
   - Ownership: P:`lib/subagents/{definitions,options,guidance}.ts`, proposed `authority.ts` and `t3/contracts.ts`; host-selection boundary and `extensions/subagents.ts` native-side guard.
   - Change: share trusted role/settings resolution, canonical-to-backend tool-intent mapping, and normalized authority; define the Pi-owned handoff/binding/result types and selected-backend interface. Select T3 before native registration/initialization. Preserve native args, prompts, role defaults, and lifecycle outside T3. No T3 contract exports.
   - Verify: existing definition/model/skill/host/native-guidance tests plus focused contract and backend-selection cases.
   - Done when: downstream tasks have concrete Pi-owned interfaces and the native path remains unchanged.
-  - Evidence: Not started.
+  - Evidence: Implemented shared resolver/authority/backend contracts and early native guard. T1 focused 7 files / 97 tests passed; downstream interfaces are integrated. Final finite validation is tracked in T8.
 
-- [ ] **T2: Implement scoped role handoffs and authenticated context lookup**
+- [x] **T2: Implement scoped role handoffs and authenticated context lookup**
   - Depends on: T1 types and role resolver.
   - Ownership: proposed P:`lib/subagents/t3/{handoffs,context}.ts` and focused tests.
   - Change: store only immutable authority/identity bindings and receipts under ignored profile session state; validate/claim a handoff against actual T3 identity/lineage, snapshot/source/trust and destination. Add the narrow public-MCP metadata reader for command/session contexts using existing injected credentials. Persist no bearer tokens and mirror no task lifecycle.
   - Verify: valid/wrong-owner/reused/malformed handoffs, concurrent claim, branch/session/thread mismatch, missing identity service, and credential-free persisted/error data. Use a boundary fixture, not a T3 product import.
   - Done when: bootstrap and control can resolve trusted role data and actual ownership without a T3 database patch or model tool call.
-  - Evidence: Not started.
+  - Evidence: Implemented strict handoff/claim/binding/receipt/outcome and private goal-endpoint storage, real JSON/SSE metadata lookup, and narrowly owned cancellation. Handoff/contracts 14 tests, goal-store 3 tests, metadata-control 6 tests passed. Public parent activity resolves canonical task IDs before a blocking delegation returns; no opaque-ID derivation, status mirror, or bearer persistence.
 
-- [ ] **T3: Bootstrap, enforce, and restore T3 role children in Pi**
+- [x] **T3: Bootstrap, enforce, and restore T3 role children in Pi**
   - Depends on: T1 authority, T2 handoff/context APIs.
   - Ownership: proposed P:`extensions/t3-subagents.ts` bootstrap/lifecycle registration and `lib/subagents/t3/bootstrap.ts`; necessary Damage Control/role-dependent consumers; focused tests.
   - Change: register the private bootstrap command, validate/bind/persist before dispatching the actual brief, and apply structured prompt/tool/skill authority before the first request. Deny deferred/raw/nested bypasses, preserve Explorer inspection/provider accounting, suppress inappropriate native/goal/operator side effects, and restore frozen authority after resume/reload/fresh context. Parent integrates shared registration edits with T4.
   - Verify: deterministic installed-Pi command-to-model fixture records first-request prompt/tools, permitted read, blocked write/delegation/codemode escape, selected skills, invalid handoff causing no assignment request, and persistence/restoration. Check actual hooks/loadout, not merely prompt text.
   - Done when: a role is enforced before execution and cannot widen on a retained conversation reset. No claim of per-task CLI extension isolation.
   - Complexity: command context binds state; agent-start context changes prompt/loadout. Avoid relying on a thrown input hook as the only fail-closed mechanism.
-  - Evidence: Not started.
+  - Evidence: Implemented bootstrap, frozen settings/resources/loadout, dispatch grants, restoration, and dynamic Explorer policy. Installed-Pi/bootstrap 8 tests and focused DC 55 tests passed. Production installed-Nightly reviewer read/report passed. Added shutdown/start authority resubscription regression; expanded lifecycle acceptance remains T8.
 
-- [ ] **T4: Compose existing T3 launch, control, and question tools**
+- [x] **T4: Compose existing T3 launch, control, and question tools**
   - Depends on: T1-T3 role/bootstrap contracts.
   - Ownership: proposed P:`lib/subagents/t3/{launch,control,parent}.ts`, tool registration in `extensions/t3-subagents.ts`, and behavior tests.
   - Change: implement distinct T3 role tool names using `ctx.executeTool` and existing schemas. Preserve settings/defaults, generic-role prefix avoidance, mode ceilings, current-task identity, readable titles/links, waits, follow-ups/cancel, and T3-native question/answer behavior. Scope internal composed operations and expose true host capabilities. Record blocked/partial outcomes without new T3 statuses or duplicate native notifications/cards.
   - Verify: composed-tool validation/errors/approval denial, one actual app-owned launch, async/wait interruption, question return/answer, terminal follow-up/new ID, current-work cancellation, ownership rejection, wrong callable tool, prefix-free bootstrap text, and no tool named `subagent` in this path.
   - Done when: complete named-role commissioning/control works through the existing T3 tools and no general replacement MCP delegation client is required.
-  - Evidence: Not started.
+  - Evidence: Tools are registered and compose actual source-verified bridge operations. Current Pi instance, supported option projection, blocking/default policy, outcome/run identity, freshContext, historical reads and current-task refusal are covered by 14 focused tests. First production app-owned launch/read/report/result passed. Expanded question/follow-up/cancel/reload/restart smoke remains T8.
 
-- [ ] **T5: Preserve goal scope, accounting, and stop propagation**
+- [x] **T5: Preserve goal scope, accounting, and stop propagation**
   - Depends on: T2 identity bindings, T3 native session identity, T4 task/control mappings.
   - Ownership: P:`extensions/goal.ts`, goal/backend integration, proposed `lib/subagents/t3/goal.ts`; existing transport/accounting use sites as needed.
   - Change: bind existing goal callbacks to the selected backend; reuse authenticated profile callback transport without native process management. Capture/enroll nested scope, account finalized usage once, restore owner bindings, deny unavailable admission, and cancel scoped T3 work on pause/stop/budget denial. Replace native-only clear/reset coupling where needed.
   - Verify: existing goal tests plus nested T3 membership, duplicate accounting, denial before further work, owner reload/unavailability, pause/stop scope, clear versus reload, and unchanged native outcomes. No live paid budget-exhaustion experiment or second usage ledger.
   - Done when: T3 execution cannot escape the existing goal budget/stop policy and unrelated work remains untouched.
-  - Evidence: Not started.
+  - Evidence: Implemented selected goal backend, authenticated callbacks, nested native-session enrollment/admission/accounting, owned stop/clear, non-cancelling T3 restore, and per-attempt compaction gate. `pnpm test goal compaction`: 9 files / 79 tests passed. Existing native restore default remains unchanged.
 
-- [ ] **T6: Preserve manifest-bound Integrator authority within real workspace limits**
+- [x] **T6: Preserve manifest-bound Integrator authority within real workspace limits**
   - Depends on: T2-T4 bootstrap/control and actual workspace identity.
   - Parallel with: T5 on disjoint closeout helpers; parent owns shared registrations.
   - Ownership: P:`lib/subagents/closeout-handoff.ts`, `lib/damage-control/plan-integration-authority.ts`, proposed `lib/subagents/t3/closeout.ts`, closeout tests.
   - Change: validate the existing manifest and Pi-side T3 provenance; require the inherited T3 checkout to match its exact target. Preserve native handoffs and no-merge restrictions. Return normal typed closeout outcomes to the parent; do not port Herdr retirement or invent an existing-worktree delegate argument.
   - Verify: deterministic fixture for valid target, missing/forged/wrong-role/no-merge/wrong-workspace handoffs, resume, and unchanged native checks. No fixture merge into the operator's repository.
   - Done when: a correctly bound T3 Integrator has the existing scoped authority, and unsupported workspace requests fail honestly rather than launch elsewhere.
-  - Evidence: Not started.
+  - Evidence: Implemented exact-target prepare/bootstrap validation, typed runtime provenance, T3-only authenticated helper endpoint and cross-loader DC authority. Focused 54 tests passed, including real temporary Git helper integration. Existing native `.worktrees` boundary is preserved. An early additional native closeout run exceeded 180 seconds; the later finite validator completed those suites within its longer bound.
 
-- [ ] **T7: Compose backend-specific guidance and document real capabilities**
+- [x] **T7: Compose backend-specific guidance and document real capabilities**
   - Depends on: T4 tool behavior; integrate T5/T6 specifics before finalizing docs.
   - Ownership: P:`lib/subagents/guidance.ts`, prompt/tool descriptions and tests; P:`docs/subagents.md`; D:`docs/t3-code.md`, relevant `pi/README.md` and `CHANGELOG.md` sections.
   - Change: keep one coherent named-role/catalog policy per host, preserving Strategist/Steward/council/writer rules. Explain existing-T3 generic delegation versus Pi-enforced roles, blocking questions, outcomes, actual workspace limits, IDs, goals, and exact-checkout closeout. Describe profile reload, not T3 installation. No T3-generated prompt edits or module docs/evals.
   - Verify: full caller/coordinator/leaf compositions, required inclusion/unrelated exclusion, deterministic catalog ordering, and static size comparison without cache-performance claims. Check documented tool names/settings against implementation.
   - Done when: callers receive consistent instructions for supported operations, not competing native/T3 paths or promises of unavailable UI features.
-  - Evidence: Not started.
+  - Evidence: Backend caller/coordinator/leaf composition and request projections are registered; shared role definitions and native composition remain unchanged. Guidance 2 files / 24 tests passed. Docs/changelog describe real tools, blocking questions, effort projection, workspace/goal/closeout limits and profile reload, not a T3 installation.
 
-- [ ] **T8: Validate the integrated default-profile path on installed T3**
+- [x] **T8: Validate the integrated default-profile path on installed T3**
   - Depends on: T3-T7 integrated behavior.
   - Ownership: existing P: test/fixture infrastructure, proposed P:`scripts/t3-subagent-smoke.mjs` if needed, and primary-agent integration fixes.
   - Change: run the finite checks below and one isolated protocol/lifecycle smoke with the existing desktop-selected Nightly and deterministic real-Pi provider fixture. Verify actual child linkage, bootstrap, question/answer, result delivery, continuation, cancel, and restart. Keep any rendered-card inspection attributable to that isolated run. Fix only demonstrated task-related defects.
   - Verify: exact commands/results/profile/version; no T3 source/generated bridge/binary/live userdata modifications. An ordinary default-profile test run must not require a T3 source checkout/build. Reuse cross-platform subprocess helpers and actual CLI help; do not guess Windows shim behavior.
   - Done when: agent-owned automated checks pass and integrated smoke results/limits are recorded accurately. Missing external/live/manual verification is not an invented operator acceptance gate; a demonstrated failure remains task work.
-  - Evidence: Not started.
+  - Evidence: **Passed.** From the relocated default profile: `pnpm run typecheck`; the finite command below plus directly affected inspection/compaction/closeout filters with `--maxWorkers=1` (56 files passed, 3 skipped; 593 tests passed, 14 existing opt-in tests skipped); and `node scripts/native-composition-smoke.mjs` on Pi 1.5.0. The same filters run concurrently with live smoke had subprocess timeouts; no production/test timeout values were raised. Installed smoke passed on T3 `0.1.8-nightly.20261108.4380` / actual Pi `1.5.0` with 46 deterministic requests, 18 enforced child requests, exactly 3 existing T3 delegations, real questions/worktree/follow-up/partial/cancel/reload/process-resume, and no native result injection. Command: `node scripts/t3-subagent-smoke.mjs --t3-cli C:/Users/mglenn/.t3/bin/t3.cmd --pi-binary C:/Users/mglenn/AppData/Local/pnpm/bin/pi.cmd --keep`. Isolated profile/evidence: `C:/Users/mglenn/AppData/Local/Temp/pi-t3-role-smoke-dDvef6/profile` and its parent directory. That run used the task checkout before relocation; final typecheck/unit/native checks used the relocated checkout with matching dependency links. No paid model requests, T3 modifications, live userdata changes, or rendered desktop-card inspection.
 
 - [ ] **T9: Archive, commit, integrate, and clean up dotfiles locally**
   - Depends on: T1-T8 complete with agreed checks and accurate limits.
   - Change: follow Closeout. Archive the whole spec and commit the dotfiles implementation. Dispatch the authorized Integrator from the recorded target; preserve unrelated work. Do not commit/update a T3 module pin or publish/install anything.
   - Verify: target/task commits, archived spec, completion metadata, preserved unrelated changes, no task-introduced T3 modifications, and task-worktree removal. Keep unfinished integration/cleanup unchecked with blocker, owner and next action.
   - Done when: authorized integration, metadata, and cleanup are verified, or a deliberate no-merge outcome retains the committed worktree. A blocker is not completion.
-  - Evidence: Not started.
+  - Evidence: Ready for authorized local closeout after the task commit. Preserve target `main` changes through `a79f882ff7eca12e4dd8d1999d312c83c9c52adc`, unrelated `commit-workflow` worktree and module pins. Integrator records final integration/metadata/cleanup evidence; no push or installation is authorized.
 
 ## Phase 1 validation and current handoff
 
@@ -261,10 +261,12 @@ No T3 build, schema migration, module-wide check, module eval, custom package, o
 
 ### Current handoff
 
-- Status: **corrected first draft for review**, not implemented.
+- Status: **integration pending**. T1-T8 implementation and agreed checks are complete; local archival/commit/Integrator/cleanup remain authorized.
 - Planning evidence: installed Pi composition/command/prompt/persistence APIs; actual generated bridge/tool discovery; read-only T3 delegation/question/cancel/workspace source; distinct installed CLI versions/help; proposed ignored metadata path. See research.
-- Next: review this corrected scope/design. On later execution authorization, record task coordinates and begin T1.
-- Remaining verification: the new composed launch/bootstrap/restoration path and role-specific lifecycle have not been executed. Source-backed feasibility is not live acceptance.
+- T1-T7 implementation is delivered and shared registration is integrated. Current production smoke passed using installed Nightly `0.1.8-nightly.20261108.4380`, actual Pi `1.5.0` at `C:/Users/mglenn/AppData/Local/pnpm/bin/pi.cmd`, and isolated default-profile code. Evidence: `C:/Users/mglenn/AppData/Local/Temp/pi-t3-role-smoke-ytXXPG`. This proves real role bootstrap/read/skill/report/result, not every lifecycle path.
+- Expanded installed smoke **passed** with 46 deterministic requests, including 18 child requests with reviewer authority, testing skill and exact low effort. It verifies async return, non-cancelling timeout, real question/list/read/answer while an independent worktree sibling finishes, partial fresh-context follow-up/new task, question-held cancellation, command-only in-place reload and actual process restart/resume. Evidence: `C:/Users/mglenn/AppData/Local/Temp/pi-t3-role-smoke-dDvef6`. No paid model requests or rendered-card claim. Restart exposed a JSON undefined-field comparison defect; both saved-entry and durable-binding values now use the same validated parser.
+- Final finite validation passed after correcting native host/authority fixtures and waiting for real dispatch before the presentation abort. Resource-contended subprocess timeouts disappeared with the same filters run sequentially, without timeout changes. Typecheck and the faithful native-composition smoke passed at the relocated path. No additional audit or operator acceptance gate was added.
+- The existing task checkout has moved into the unchanged native helper's required `D:/.worktrees/` location. Both prepared-run receipts retain the branch, origin, starting target commit and exact source snapshot with the new path. An orphaned read-only Git status process with a dead parent held the old checkout; only that verified process was stopped. No live Pi process was interrupted and no second checkout was created. Target `main` has independently advanced to `a79f882ff7eca12e4dd8d1999d312c83c9c52adc`; preserve those source/changelog/Herdr/module-pin changes.
 - Scope decisions: unchanged T3, Pi-backed Phase 1, and the existing blocking child-question flow are confirmed. Direct Claude Code/Codex CLI usage remains possible Phase 2 only. Workspace limitations remain explicit in this draft, not reasons to modify T3.
 
 ## Closeout

@@ -125,7 +125,7 @@ it.each(["disabled", "timeout"])("blocks %s inspection review without approval",
   expect(h.select).not.toHaveBeenCalled();
 });
 it("contrasts normal mode's recoverable cleanup allowance", async () => {
-  vi.stubEnv("PI_SUBAGENT_AUTHORITY", JSON.stringify({ agent: "developer" }));
+  vi.stubEnv("PI_SUBAGENT_AUTHORITY", JSON.stringify({ id: "native-developer", agent: "developer", tools: ["bash"], delegates: [], skills: [], cwd: process.cwd() }));
   const h = await harness();
   expect(await call(h, "rm -rf .tmp/output")).toBeUndefined();
   expect(h.select).not.toHaveBeenCalled();

@@ -4,6 +4,7 @@ import type { StreamFn } from "@earendil-works/pi-agent-core";
 import { compact, type ExtensionAPI, type ExtensionContext, type SessionBeforeCompactEvent, type CompactionResult } from "@earendil-works/pi-coding-agent";
 import { HANDOFF_INSTRUCTIONS, registerCompaction, unifiedPreparation } from "../extensions/compaction.ts";
 import * as accounting from "../lib/bedrock/accounting.ts";
+import * as backend from "../lib/subagents/authority.ts";
 
 const model: Model<"openai-completions"> = { id: "fixture", name: "Fixture", provider: "fixture", api: "openai-completions", baseUrl: "https://unused.invalid", reasoning: false, input: ["text"], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 32000, maxTokens: 4096 };
 const usage = { input: 10, output: 5, cacheRead: 0, cacheWrite: 0, totalTokens: 15, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
@@ -96,6 +97,17 @@ describe("unified compaction", () => {
     } finally { account.mockRestore(); }
   });
 
+  it("blocks an actual T3 compaction helper request before the provider is called", async () => {
+    const selected = vi.spyOn(backend, "selectedSubagentBackend").mockReturnValue("t3");
+    try {
+      const { handler, ctx } = fixture(compact);
+      const start = vi.fn();
+      ctx.modelRegistry.streamSimple = start;
+      expect(await handler(event(), ctx)).toEqual({ cancel: true });
+      expect(start).not.toHaveBeenCalled();
+    } finally { selected.mockRestore(); }
+  });
+
   it("cancels a failed hook instead of falling back to native split generation", async () => {
     const { handler, ctx, notify } = fixture(vi.fn().mockRejectedValue(new Error("provider unavailable")));
     expect(await handler(event(), ctx)).toEqual({ cancel: true });
@@ -113,7 +125,7 @@ describe("unified compaction", () => {
 
 function fixture(summarize: typeof compact) {
   let handler: ((event: SessionBeforeCompactEvent, ctx: ExtensionContext) => Promise<void | { cancel?: boolean; compaction?: CompactionResult }>) | undefined;
-  const pi = { on: (_name: string, callback: typeof handler) => { handler = callback; }, getThinkingLevel: () => "low" } as unknown as ExtensionAPI;
+  const pi = { on: (_name: string, callback: typeof handler) => { handler = callback; }, getThinkingLevel: () => "low", events: { emit: (_name: string, event: { respond: (value: Promise<{ allowed: boolean; reason: string }>) => void }) => event.respond(Promise.resolve({ allowed: false, reason: "Owning goal paused" })) } } as unknown as ExtensionAPI;
   const notify = vi.fn();
   const ctx = { cwd: process.cwd(), isProjectTrusted: () => false, model, modelRegistry: { getApiKeyAndHeaders: async () => ({ ok: true, apiKey: "inert", headers: { "x-fixture": "header" }, baseUrl: "https://auth-route.invalid", env: { FIXTURE: "value" } }) }, ui: { notify } } as unknown as ExtensionContext;
   registerCompaction(pi, summarize);

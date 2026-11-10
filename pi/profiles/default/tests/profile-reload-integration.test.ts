@@ -40,7 +40,7 @@ async function load(order = ["profile-reload", "operator-footer", "clear"], reas
   let footer: { render(width: number): string[] } | undefined;
   const requestRender = vi.fn();
   const ctx = {
-    cwd: dir, isProjectTrusted: () => false, sessionManager: { getEntries: () => [] },
+    cwd: dir, mode: "tui" as const, hasUI: true, isProjectTrusted: () => false, sessionManager: { getEntries: () => [] },
     ui: { notify: vi.fn(), getAllThemes: () => [], setStatus: vi.fn(),
       setFooter: (factory: any) => { footer = factory({ requestRender }, {}, { getGitBranch: () => null, getExtensionStatuses: () => new Map() }); } },
   };
@@ -91,10 +91,10 @@ it("preserves pending changes with cached factories, and clears after source ree
   await vi.advanceTimersByTimeAsync(2000); await r.refresh();
   for (const reason of ["new", "resume", "fork"]) {
     await r.stop(); r = await load(undefined, reason);
-    expect(r.text()).toContain("[reload]"); expect(vi.getTimerCount()).toBe(1);
+    expect(r.text()).toContain("[reload]"); expect(vi.getTimerCount()).toBe(2);
   }
   await r.stop(); await clearExtensionCache(); r = await load(undefined, "reload");
-  expect(r.text()).not.toContain("[reload]"); expect(vi.getTimerCount()).toBe(1);
+  expect(r.text()).not.toContain("[reload]"); expect(vi.getTimerCount()).toBe(2);
 });
 it("reports monitor errors and absent-owner clear promptly", async () => {
   writeFileSync(join(dir, "settings.json"), "invalid");

@@ -6,6 +6,8 @@ import {
   type SessionBeforeCompactEvent,
 } from "@earendil-works/pi-coding-agent";
 import { accountHelperStream, helperResponseAccounting } from "../lib/bedrock/helper-accounting.ts";
+import { selectedSubagentBackend } from "../lib/subagents/authority.ts";
+import { gateT3GoalStream } from "../lib/subagents/t3/goal.ts";
 
 export const HANDOFF_INSTRUCTIONS = `Produce one current checkpoint from the previous summary and the chronological messages, including any partial turn. Reconcile them rather than appending conflicting summaries.
 Preserve the requested outcome, current scope and authorization, settled decisions, completion evidence, and canonical plan path when present. Distinguish user-approved requirements from proposals and unresolved hypotheses. Replace superseded intent with the latest explicit correction; do not preserve an obsolete restriction or approval as current.
@@ -62,8 +64,10 @@ export function registerCompaction(pi: ExtensionAPI, summarize: typeof compact =
       // the provider stream and requires an API key for OpenAI-compatible APIs.
       // Route through ModelRegistry instead so request-time auth can mint Bedrock
       // Mantle tokens from the selected profile's AWS credential chain.
-      const stream = (requestModel: typeof model, context: Parameters<typeof ctx.modelRegistry.streamSimple>[1], options: Parameters<typeof ctx.modelRegistry.streamSimple>[2]) =>
-        accountHelperStream(ctx.modelRegistry.streamSimple(requestModel, context, options), account);
+      const stream = (requestModel: typeof model, context: Parameters<typeof ctx.modelRegistry.streamSimple>[1], options: Parameters<typeof ctx.modelRegistry.streamSimple>[2]) => {
+        const start = () => ctx.modelRegistry.streamSimple(requestModel, context, options);
+        return accountHelperStream(selectedSubagentBackend() === "t3" ? gateT3GoalStream(pi, ctx, start) : start(), account);
+      };
       const result = await summarize(
         unifiedPreparation(event), model, auth.apiKey, headers, instructions,
         event.signal, pi.getThinkingLevel(), stream, auth.env, settings.getRetrySettings(),

@@ -3,16 +3,16 @@ import { resolve } from "node:path";
 import { createRequire } from "node:module";
 import { realpathSync } from "node:fs";
 import { registerProfileCommand } from "../../lib/profile-command.ts";
+import { subagentInspectionPolicy } from "../../lib/subagents/authority.ts";
 
 export default async function (pi) {
-  // Capture role authority before loading dependencies. This handler remains
-  // registered if the loader, policy, or grammar initialization throws.
-  let inspection = false;
-  try { inspection = JSON.parse(process.env.PI_SUBAGENT_AUTHORITY ?? "null")?.agent === "explorer"; } catch { /* child authority validates malformed payloads */ }
+  // Read role authority at dispatch, including a T3 role bound after factories load.
+  // This handler remains registered if policy/grammar initialization throws.
+  const inspection = subagentInspectionPolicy(pi.events);
   let gate;
   pi.on("tool_call", (event, ctx) => {
     if (gate) return gate.handle(event, ctx);
-    if (inspection && ["bash", "powershell", "write", "edit", "read", "grep", "find", "ls"].includes(event.toolName)) {
+    if (inspection() && ["bash", "powershell", "write", "edit", "read", "grep", "find", "ls"].includes(event.toolName)) {
       return { block: true, reason: "Explorer inspection enforcement unavailable: Damage Control initialization did not complete; action not executed" };
     }
   });
