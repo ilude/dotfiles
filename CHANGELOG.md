@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-09: Schedule daily Project Zomboid restarts
+
+- Add an opt-in, Ansible-managed systemd timer for the existing game deployment and configure it for 4:30 AM America/New_York daily, including daylight-saving changes. Restart only Zomboid with its normal save/quit grace period; keep the admin UI, log viewer, relay and shared proxy running.
+- Use the existing enabled update-on-start setting to check Steam for game-file updates at each restart. Preserve Docker image digest pins and do not catch up missed restarts when the host returns online.
+
 ## 2026-11-09: Avoid shared FETCH_HEAD races during Pi publication
 
 - Replace the combined pull in `/commit push` with an explicit branch fetch and merge of the resolved commit ID. Background Git fetches, including T3 status refreshes, can overwrite the shared `FETCH_HEAD` file; publication no longer reads or writes that file.
