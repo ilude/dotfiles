@@ -1,7 +1,7 @@
 ---
 created: 2026-11-09
-status: in-progress
-completed: null
+status: completed
+completed: 2026-11-10
 ---
 
 # Pi-backed named-role subagents using unchanged T3
@@ -280,3 +280,7 @@ The Integrator verifies target/archive/preservation, records actual completion d
 ### Execution final response
 
 Start with one explicit overall outcome: 🟢 **COMPLETED**, 🔴 **NOT COMPLETE: MERGE BLOCKED**, 🔴 **NOT COMPLETE: USER INPUT REQUIRED**, 🔵 **IMPLEMENTED: MERGE SKIPPED AS REQUESTED**, or 🟡 **CLEANUP PENDING**. Completion requires checks, integration, metadata, and verified cleanup. For blocked/cleanup outcomes, immediately give **Reason** and **Action needed**, naming owner and exact next action, before successes. Then report concise checks, archive, commits, merge/cleanup state, retained paths, actual profile/T3 version, and verification limits. Never describe profile-code delivery as a T3 build, installation, or already reloaded operator process.
+
+## Integration evidence
+
+Typecheck passed; finite selection56 files passed/3 skipped,593 tests passed/14 existing opt-in skipped with one worker; Pi1.5 native composition and installed unchanged T3 Nightly0.1.8-nightly.20261108.4380 full lifecycle smoke passed46 deterministic requests/18 enforced child requests, including real questions, independent worktree, follow-up/partial/cancel/reload/process restart. No paid smoke model requests, T3 changes, installation or publication.
