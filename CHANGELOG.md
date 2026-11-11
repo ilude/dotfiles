@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-11-10: Add a private story workshop
+
+- Add `modules/story-workshop` as a private Forgejo submodule on `main`, keeping creative content separate from public workstation configuration.
+- Start with a loose idea inbox, per-project premise/character/plot/discussion notes, and optional shared-universe notes. Starter folders are placeholders, unrelated book ideas remain independent, and brainstorming is not canon unless adopted.
+- Document the additional private repository access needed for recursive clones; use the existing machine-local `forgejo` SSH alias without tracking service addresses or credentials.
+- Add an attributed, project-local adaptation of haowjy's `story-planning` skill with conditional character, worldbuilding, timeline, and outline references. Preserve exploratory notes and existing folders without importing its agent framework or knowledge-base layout; document future drafting/review/series options and Pi's project-scoped discovery.
+
 ## 2026-11-10: Add host-aware Pi workflows and optional central analytics
 
 - Keep one default profile across standalone Pi, Herdr and T3. Route supported T3 launches/forks, plan selection and thread-bound reminders through installed app-owned interfaces, preserving current/root workspace intent and native permissions. Commands issue explicit follow-up requests, not fabricated tool contexts or launch receipts. Refuse native UUID resume and restart inside T3 without a native fallback; preserve standalone behavior.

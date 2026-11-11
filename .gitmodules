@@ -18,3 +18,7 @@
 	path = modules/t3code
 	url = https://github.com/ilude/t3code.git
 	branch = main
+[submodule "story-workshop"]
+	path = modules/story-workshop
+	url = git@forgejo:mike/story-workshop.git
+	branch = main

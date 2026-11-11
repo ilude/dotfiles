@@ -24,7 +24,7 @@ For contributor and coding-agent onboarding, start with `AGENTS.md`.
 
 ## Installation
 
-Recursive cloning requires access to the private Forgejo submodules `git@forgejo:mike/homelab-infra.git`, `git@forgejo:mike/onclave.git`, and `git@forgejo:mike/hatchery.git`. Configure a machine-local `forgejo` SSH alias and your authorized personal key first. Onclave tracks `feature/v2-broker-core`; other historical branches remain only in its GitHub repository, which stays unarchived. Keep the actual service address in local SSH configuration, not this repository. The submodule's [hosting instructions](modules/homelab-infra/README.md#repository-hosting) include a public-safe example.
+Recursive cloning requires access to the private Forgejo submodules `git@forgejo:mike/homelab-infra.git`, `git@forgejo:mike/onclave.git`, `git@forgejo:mike/hatchery.git`, and `git@forgejo:mike/story-workshop.git`. Configure a machine-local `forgejo` SSH alias and your authorized personal key first. Onclave tracks `feature/v2-broker-core`; other historical branches remain only in its GitHub repository, which stays unarchived. Keep the actual service address in local SSH configuration, not this repository. The submodule's [hosting instructions](modules/homelab-infra/README.md#repository-hosting) include a public-safe example.
 
 > **Note:** Dotbot uses `force: true` for symlinks, which will overwrite existing files at target locations (including `~/.claude/`). Back up any existing configuration before running the installer for the first time.
 
@@ -321,6 +321,7 @@ Automatic identity switching based on directory or remote URL:
 | `modules/onclave/` | Onclave product and Pi adapter submodule |
 | `modules/hatchery/` | Hatchery disposable-compute product submodule; currently PRD, architecture, and agent guidance |
 | `modules/homelab-infra/` | Homelab infrastructure submodule with a nested private `values/` repository |
+| `modules/story-workshop/` | Private story, book, and shared-universe brainstorming submodule |
 
 ## Agent Surfaces
 
