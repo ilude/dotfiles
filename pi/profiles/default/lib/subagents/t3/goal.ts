@@ -25,11 +25,16 @@ export function captureT3RoleGoal(pi: ExtensionAPI, ctx: ExtensionToolContext, l
 }
 export function clearT3RoleWork(pi: ExtensionAPI, ctx: ExtensionContext): Promise<void> { return request(pi, CLEAR, { ctx }); }
 export function requestT3GoalAdmission(pi: Pick<ExtensionAPI, "events">, ctx: ExtensionContext): Promise<GoalAdmission> { return request(pi, ADMIT, { ctx }); }
-/** Lazily gate every helper attempt, including native compact's retries. Accounting stays outside this wrapper. */
-export function gateT3GoalStream(pi: Pick<ExtensionAPI, "events">, ctx: ExtensionContext, start: () => AssistantMessageEventStream): AssistantMessageEventStream {
+/** A policy refusal is cancellation, not a failed provider request. */
+export class T3GoalAdmissionDeniedError extends Error {}
+
+/** Gate every helper attempt. Only compaction may proceed after successful goal completion. */
+export function gateT3GoalStream(pi: Pick<ExtensionAPI, "events">, ctx: ExtensionContext, start: () => AssistantMessageEventStream, purpose: "work" | "compaction" = "work"): AssistantMessageEventStream {
   let stream: Promise<AssistantMessageEventStream> | undefined;
   const open = () => stream ??= requestT3GoalAdmission(pi, ctx).then(decision => {
-    if (!decision.allowed) throw new Error(decision.reason ?? "Goal admission denied");
+    if (!decision.allowed && !(purpose === "compaction" && decision.completed === true)) {
+      throw new T3GoalAdmissionDeniedError(decision.reason ?? "Goal admission denied");
+    }
     return start();
   });
   return new class extends AssistantMessageEventStream {
@@ -120,7 +125,10 @@ export function createT3GoalBackend(pi: ExtensionAPI, options: { store?: Handoff
         guidance = typeof decision.guidance === "string" ? decision.guidance : undefined;
         if (decision.allowed !== true) {
           // Explicit owner stop initiates scope cancellation. Missing/reloaded owner only denies work.
-          return { allowed: false, reason: typeof decision.reason === "string" ? decision.reason : "Owning goal paused further work" };
+          return {
+            allowed: false, reason: typeof decision.reason === "string" ? decision.reason : "Owning goal paused further work",
+            ...(decision.completed === true ? { completed: true } : {}),
+          };
         }
         return { allowed: true, guidance };
       }

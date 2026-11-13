@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-11-13: Check preserved workflows when extending shared policies
+
+- Refine code-review guidance to question both prohibited and required behavior when a shared policy reaches new callers, comparing their purposes and lifecycle states.
+- Refine test-design guidance to derive expectations from the requested workflow and exercise relevant lifecycle transitions. These address the completed-goal compaction blind spot without adding a skill, mandatory reviewer, or verification phase.
+
+## 2026-11-13: Allow T3 context compaction after goal completion
+
+- Distinguish successful goal completion from other admission denials so manual and automatic compaction can preserve context without restarting completed work. Keep active-goal budget checks, paused-goal restrictions, authentication, retry behavior and response accounting unchanged.
+- Treat goal-policy refusals as compaction cancellations rather than failed provider requests, avoiding repeated warnings that printed the goal's operational summary. Actual compaction failures remain visible.
+- Existing idle T3/Pi sessions need `/reload-runtime` to load the fix. Previously recorded notices remain in the conversation; no goal state or history is cleared.
+
 ## 2026-11-13: Improve native site operation and public Compose drift readback
 
 - Align Hatchery's README, requirements, architecture and decision ledger with the accepted durable migration and active private site repository, while retaining historical evidence limits and the unfinished broader product roadmap.

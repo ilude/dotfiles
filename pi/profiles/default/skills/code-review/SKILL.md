@@ -21,6 +21,8 @@ Gather only context that affects understanding the change or assessing a candida
 
 ## Investigate and verify
 
+When a change extends a shared policy or gate to new callers, check both what must be blocked and what must remain possible. Compare callers' purposes and relevant lifecycle states rather than assuming the same mechanism implies the same policy.
+
 1. Read the diff and applicable guidance. Trace changed behavior through relevant callers, consumers, configuration, state transitions, and tests as needed. Include pre-existing code when the change makes a defect reachable or materially worse; keep unrelated discoveries separate from findings about this change.
 2. Try to break the implementation under its intended conditions. Look for concrete triggering inputs, invalid assumptions, and relevant failure or concurrency paths, rather than merely confirming the happy path. This adversarial lens applies to correctness as well as security and is not a quota to find problems.
 3. Try to disprove each candidate. Check reachability, caller guards, framework guarantees, intentional behavior, accepted limitations, and whether the issue already existed. A demonstrated code path can establish a defect without a past incident. Conversely, a missing best practice does not establish a defect.

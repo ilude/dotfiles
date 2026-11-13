@@ -6,6 +6,7 @@ description: Guide test design when adding, changing, or reviewing tests, especi
 # Testing
 
 - Prefer tests of observable behavior using existing test infrastructure.
+- Derive expected behavior from the requested workflow, not just the implementation's branches. When changing lifecycle-dependent behavior, exercise a relevant transition and its observable result.
 - Use mocks when real dependencies would be unsafe, nondeterministic, or impractical. Mocks are not inherently a problem.
 - Do not mock away the behavior under test. Assert internal call sequences only when those interactions are part of the required behavior.
 - Do not build abstractions or extensive fake infrastructure for speculative tests.
