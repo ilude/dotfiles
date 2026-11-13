@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-11-13: Keep Opus on Bedrock and honor explicit ccyl requests
+
+- Correct an agent-routing failure that selected Pi's direct Anthropic OAuth provider for an unspecified “Opus high” request, then treated its expired refresh grant as an operator login problem. Bare Opus family requests now select the newest configured AWS Bedrock release, preferring Mantle, with no direct-Anthropic fallback.
+- Make direct Anthropic delegation overrides deliberate through a separate matching `providerOverride` field in native and T3 launch tools. Preserve explicit configured role defaults and other provider references; do not alter credentials or replace normal AWS renewal.
+- Clarify that an explicit ccyl request selects its configured Claude Code subscription client and models, including after a failed Pi-role attempt. Use generic T3 delegation for this user-selected external task, without claiming Pi role/tool enforcement carries over or substituting Pi's model. Native/Herdr ccyl behavior is unchanged.
+- Changes load in fresh default-profile Pi runtimes or through an idle resource reload (`/reload-runtime` in T3). Other running instances retain their loaded code; no T3 product, generated bridge, existing thread, or desktop process is restarted by this change.
+
 ## 2026-11-12: Restore live Codex quota status in T3
 
 - Restore the existing five-minute Codex quota polling in T3 so its Pi status bar does not retain an old weekly percentage while other fields update. Keep periodic refreshes status-only, preserving startup reports, explicit `/usage`, authentication and terminal behavior.

@@ -8,10 +8,13 @@ const PROVIDER_LADDER = [
 	["amazon-bedrock"],
 ] as const;
 
+const AWS_PROVIDER_LADDER = PROVIDER_LADDER.slice(1);
+
 const MODEL_ALIASES: Readonly<Record<string, string>> = {
 	astra: "astra",
 	fable: "claude-fable",
 	luna: "luna",
+	opus: "claude-opus",
 	sol: "sol",
 	terra: "terra",
 };
@@ -84,10 +87,12 @@ export function resolvePreferredModel(
 		return resolveLatestCodexModelFromRegistry(alias, registry);
 	}
 	if (alias === "fable") return resolveLatestFamilyModel("fable", registry);
+	if (alias === "opus") return resolveLatestFamilyModel("opus", registry, AWS_PROVIDER_LADDER);
 	const target = trimmed;
 	const authenticated = registry.getAll().filter(model => registry.hasConfiguredAuth(model));
 
-	for (const providers of PROVIDER_LADDER) {
+	const providerLadder = modelFamilyVersion(trimmed)?.family === "opus" ? AWS_PROVIDER_LADDER : PROVIDER_LADDER;
+	for (const providers of providerLadder) {
 		const candidates = authenticated
 			.filter(model => (providers as readonly string[]).includes(model.provider))
 			.map(model => {
@@ -99,7 +104,7 @@ export function resolvePreferredModel(
 		if (candidates.length > 0) return candidates[0].model;
 	}
 
-	throw new Error(`No configured subscription or AWS model matches "${requested}"`);
+	throw new Error(`No configured ${providerLadder === AWS_PROVIDER_LADDER ? "AWS Bedrock" : "subscription or AWS"} model matches "${requested}"`);
 }
 
 function latestFamilyModel(family: OpenAIFamily | "fable" | "opus", models: readonly Model<Api>[]): Model<Api> | undefined {
@@ -122,7 +127,7 @@ function resolveLatestFamilyModel(
 		const model = latestFamilyModel(family, authenticated.filter(candidate => providerTier.includes(candidate.provider)));
 		if (model) return model;
 	}
-	throw new Error(`No configured subscription or AWS model matches "${family}"`);
+	throw new Error(`No configured ${providers === AWS_PROVIDER_LADDER ? "AWS Bedrock" : "subscription or AWS"} model matches "${family}"`);
 }
 
 function latestCodexModel(family: OpenAIFamily, models: readonly Model<Api>[]): Model<Api> {
@@ -155,7 +160,7 @@ export function resolveLatestShortcutModel(
 	family: "astra" | "sol" | "terra" | "luna" | "fable" | "opus",
 	registry: Pick<ModelRegistry, "getAll" | "hasConfiguredAuth">,
 ): Model<Api> {
-	return resolveLatestFamilyModel(family, registry);
+	return resolveLatestFamilyModel(family, registry, family === "opus" ? AWS_PROVIDER_LADDER : PROVIDER_LADDER);
 }
 
 export function modelAliasNames(): readonly string[] {

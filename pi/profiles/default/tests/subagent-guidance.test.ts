@@ -84,7 +84,7 @@ describe("delegation prompt composition", () => {
     expect(prompt).toContain("A normal final reply completes your assignment.");
   });
 
-  it("uses one lifecycle contract in root and coordinator tools without a retain option", () => {
+  it("uses one lifecycle contract and model routing contract in root and coordinator tools", async () => {
     const beforeAuthority = process.env.PI_SUBAGENT_AUTHORITY;
     const beforeEndpoint = process.env.PI_SUBAGENT_ENDPOINT;
     const rootTools = new Map<string, ToolDefinition>();
@@ -102,9 +102,14 @@ describe("delegation prompt composition", () => {
       childAuthority(api(coordinatorTools) as never);
       for (const tools of [rootTools, coordinatorTools]) {
         expect(tools.get("subagent")!.parameters).not.toHaveProperty("properties.retain");
+        expect(tools.get("subagent")!.parameters).toHaveProperty("properties.providerOverride");
+        expect(tools.get("subagent")!.parameters).toHaveProperty("properties.model.description", expect.stringContaining("Opus defaults to AWS Bedrock"));
         expect(tools.get("subagent")!.description.startsWith(SUBAGENT_LAUNCH_DESCRIPTION)).toBe(true);
         expect(tools.get("subagent_control")!.description.startsWith(SUBAGENT_CONTROL_DESCRIPTION)).toBe(true);
       }
+      const profile = fileURLToPath(new URL("../", import.meta.url));
+      const rejected = await rootTools.get("subagent")!.execute("accidental-anthropic", { agent: "advisor", instructions: "Inspect", model: "anthropic/claude-opus-5-5" }, undefined, undefined, { cwd: profile, isProjectTrusted: () => false } as never);
+      expect(rejected).toMatchObject({ isError: true, details: { error: expect.stringContaining("providerOverride") } });
       expect(SUBAGENT_CONTROL_DESCRIPTION).toContain("reopens a closed saved conversation");
       expect(SUBAGENT_CONTROL_DESCRIPTION).toContain("original role and permissions");
       expect(SUBAGENT_CONTROL_DESCRIPTION).toContain("follow-up closes on completion");

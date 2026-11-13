@@ -1,7 +1,7 @@
 import { describe, expect, expectTypeOf, it, vi } from "vitest";
 import type { Api, Model } from "@earendil-works/pi-ai";
 import type { ModelRegistry, ModelRuntime } from "@earendil-works/pi-coding-agent";
-import { resolveLatestCodexModelFromRegistry, resolveLatestCodexModelFromRuntime, resolvePreferredModel } from "../lib/model-selection.ts";
+import { resolveLatestCodexModelFromRegistry, resolveLatestCodexModelFromRuntime, resolveLatestShortcutModel, resolvePreferredModel } from "../lib/model-selection.ts";
 import { modelFixture, registryFixture } from "./helpers/model-selection.ts";
 
 const models = [
@@ -10,6 +10,32 @@ const models = [
 	modelFixture("bedrock-mantle", "openai.gpt-7-luna"),
 	modelFixture("openai", "gpt-7-sol"),
 ];
+
+describe("Opus AWS routing", () => {
+	const mantle = modelFixture("bedrock-mantle", "anthropic.claude-opus-5-5");
+	const native = modelFixture("amazon-bedrock", "global.anthropic.claude-opus-5-5");
+	const direct = modelFixture("anthropic", "claude-opus-5-5");
+
+	it("selects the newest Mantle Opus, not an older cheaper model or direct Anthropic", () => {
+		const old = modelFixture("bedrock-mantle", "anthropic.claude-opus-5");
+		const latest = { ...mantle, cost: { input: 10, output: 20, cacheRead: 1, cacheWrite: 12 } };
+		const registry = registryFixture([old, latest, native, direct], ["bedrock-mantle", "amazon-bedrock", "anthropic"]);
+		expect(resolvePreferredModel("opus", registry)).toBe(latest);
+		expect(resolvePreferredModel("claude-opus-5-5", registry)).toBe(latest);
+		expect(resolveLatestShortcutModel("opus", registry)).toBe(latest);
+	});
+
+	it("uses native Bedrock only when Mantle is not configured", () => {
+		const registry = registryFixture([mantle, native, direct], ["amazon-bedrock", "anthropic"]);
+		expect(resolvePreferredModel("opus", registry)).toBe(native);
+	});
+
+	it("does not substitute another provider when AWS has no configured Opus", () => {
+		const registry = registryFixture([direct, modelFixture("openai", "claude-opus-5-5")], ["anthropic", "openai"]);
+		expect(() => resolvePreferredModel("opus", registry)).toThrow(/No configured AWS Bedrock model/);
+		expect(() => resolvePreferredModel("claude-opus-5-5", registry)).toThrow(/No configured AWS Bedrock model/);
+	});
+});
 
 describe("latest authenticated OpenAI family resolution", () => {
 	it("keeps registry and runtime contracts separate at compile time", () => {

@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 import { loadDefinitions, resolveAgentEffort, resolveModel } from "../lib/subagents/definitions.ts";
+import { resolveDelegationModel } from "../lib/subagents/options.ts";
 import { modelFixture as model, registryFixture as registry } from "./helpers/model-selection.ts";
 const roots:string[]=[];const old=process.env.PI_CODING_AGENT_DIR;
 afterEach(()=>{process.env.PI_CODING_AGENT_DIR=old;for(const r of roots.splice(0))rmSync(r,{recursive:true,force:true})});
@@ -30,6 +31,16 @@ describe("subagent definitions",()=>{
   const models=[model("amazon-bedrock","anthropic.claude-fable-5"),model("bedrock-mantle","anthropic.claude-fable-5")];
   const got=resolveModel("fable",undefined,registry(models,["amazon-bedrock","bedrock-mantle"]));
   expect(got).toEqual({provider:"bedrock-mantle",id:"anthropic.claude-fable-5"});
+ });
+ it("requires a deliberate direct-Anthropic override at the delegation boundary",()=>{
+  expect(()=>resolveDelegationModel("anthropic/claude-opus-5-5",undefined)).toThrow(/providerOverride/);
+  expect(resolveDelegationModel("anthropic/claude-opus-5-5",undefined,undefined,"anthropic")).toEqual({provider:"anthropic",id:"claude-opus-5-5"});
+  expect(()=>resolveDelegationModel("anthropic/claude-opus-5-5",undefined,undefined,"bedrock-mantle")).toThrow(/must match/);
+  expect(()=>resolveDelegationModel("opus",undefined,undefined,"anthropic")).toThrow(/must match/);
+  expect(resolveDelegationModel(undefined,"anthropic/configured-role")).toEqual({provider:"anthropic",id:"configured-role"});
+ });
+ it.each(["ccyl","ccyl/claude-opus-5-5"])("rejects treating %s as a Pi model",(name)=>{
+  expect(()=>resolveDelegationModel(name,undefined)).toThrow(/separate Claude Code client/);
  });
  it("reports preferred-provider not-found errors",()=>{
   expect(()=>resolveModel("missing",undefined,registry([model("openai","gpt")],["openai"]))).toThrow(/No configured subscription or AWS model/);

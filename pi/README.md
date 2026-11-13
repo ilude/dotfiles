@@ -122,7 +122,12 @@ native `subagent`, `subagent_control`, and `subagent_parent`. Pi in T3 Code uses
 T3 children, without creating a native child manager. Raw T3 tools stay generic
 for the orchestrator; named roles must use the profile wrappers with frozen Pi
 role/tools/delegates/settings. No generated bridge or T3 product change is
-required. Role requests preserve project context/trust and selected skills while
+required. “Opus high” without ccyl resolves through AWS Bedrock; explicit direct
+Anthropic delegation overrides require a matching `providerOverride`. An explicit
+ccyl request instead uses generic T3 delegation to its configured Claude Code
+subscription client, including after a failed Pi-role attempt. It does not inherit
+Pi role/tool enforcement or Pi's model. See [routing details](profiles/default/docs/subagents.md#opus-and-ccyl-routing).
+Role requests preserve project context/trust and selected skills while
 excluding root routing and unrelated catalogs. Strategist-first, implemented
 reviewer/validator Steward triage, writer ownership and explicit-user councils
 remain common policy.

@@ -2,6 +2,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
+import { modelFixture, registryFixture } from "./helpers/model-selection.ts";
 import type { ExtensionAPI, ExtensionToolContext, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { createMockPi } from "./helpers/mock-pi.ts";
 import { createT3RoleRuntime } from "../lib/subagents/t3/bootstrap.ts";
@@ -70,6 +71,31 @@ it("launches source-verified actual callable delegation with bootstrap prefix, r
   expect(args).not.toHaveProperty("role"); expect(args).not.toHaveProperty("cwd");
   expect(output.details).toMatchObject({ threadId: "child", taskId: "task-one", runId: "child-run", childLink: "t3://child", t3Status: "running" });
   expect(await f.store.read((args as Record<string, string>).clientRequestId)).toMatchObject({ commissioner: { threadId: "parent", runId: "parent-run" } });
+});
+it("routes Opus high to the AWS model in the actual T3 launch target", async () => {
+  const f = await fixture();
+  const model = "bedrock-mantle/anthropic.claude-opus-5-5";
+  Object.assign(f.ctx, { modelRegistry: registryFixture([modelFixture("bedrock-mantle", "anthropic.claude-opus-5"), modelFixture("bedrock-mantle", "anthropic.claude-opus-5-5"), modelFixture("anthropic", "claude-opus-5-5")], ["bedrock-mantle", "anthropic"]) });
+  f.metadata.capabilities.mockResolvedValue({ inheritedProviderInstanceId: "pi-actual", providers: [{ driverKind: "pi", providerInstanceId: "pi-actual", canRunChildTask: true, models: [{ id: model, options: [{ id: "thinking", values: ["low", "high"] }] }] }] });
+  expect((await f.run("t3_delegate_role", { agent: "reader", instructions: "Inspect", model: "opus", effort: "high", background: true })).isError).not.toBe(true);
+  expect(f.executeTool.mock.calls[0][1]).toMatchObject({ target: { providerInstanceId: "pi-actual", model, options: { thinking: "high" } } });
+});
+it("rejects accidental direct Anthropic and ccyl-as-Pi before any launch or handoff", async () => {
+  const f = await fixture();
+  f.metadata.currentThread.mockClear(); // Ignore session-start identity discovery.
+  for (const model of ["anthropic/claude-opus-5-5", "ccyl/claude-opus-5-5"]) {
+    expect(await f.run("t3_delegate_role", { agent: "reader", instructions: "Inspect", model, background: true })).toMatchObject({ isError: true });
+  }
+  expect(f.executeTool).not.toHaveBeenCalled();
+  expect(f.metadata.currentThread).not.toHaveBeenCalled();
+  expect(await f.store.ownedHandoffs("parent")).toEqual([]);
+});
+it("retains a user-requested direct-Anthropic override without rerouting it", async () => {
+  const f = await fixture();
+  const model = "anthropic/claude-opus-5-5";
+  f.metadata.capabilities.mockResolvedValue({ inheritedProviderInstanceId: "pi-actual", providers: [{ driverKind: "pi", providerInstanceId: "pi-actual", canRunChildTask: true, models: [{ id: model, options: [{ id: "thinking", values: ["low", "high"] }] }] }] });
+  expect((await f.run("t3_delegate_role", { agent: "reader", instructions: "Inspect", model, providerOverride: "anthropic", background: true })).isError).not.toBe(true);
+  expect(f.executeTool.mock.calls[0][1]).toMatchObject({ target: { model } });
 });
 it("omits unadvertised T3 options while retaining the exact Pi bootstrap setting", async () => {
   const f = await fixture();

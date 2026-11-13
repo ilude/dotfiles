@@ -3,7 +3,7 @@ import { isDeepStrictEqual } from "node:util";
 import { getAgentDir, type ExtensionAPI, type ExtensionToolContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { resolveRoleSnapshot } from "../authority.ts";
-import { EFFORTS } from "../options.ts";
+import { DELEGATION_MODEL_DESCRIPTION, EFFORTS, PROVIDER_OVERRIDE_DESCRIPTION } from "../options.ts";
 import type { T3RoleRuntime } from "./bootstrap.ts";
 import { callT3, failure, optionalText, record, result, text, t3ToolNames } from "./call.ts";
 import { createT3MetadataClient, type T3MetadataReader } from "./context.ts";
@@ -53,12 +53,12 @@ export function registerT3RoleTools(pi: ExtensionAPI, runtime: T3RoleRuntime, op
   };
   pi.registerTool({ name: "t3_delegate_role", label: "Delegate role", exposure: "model-only",
     description: "Launch a Pi-enforced named role as an app-owned T3 child. Select background:true for automatic result delivery; default foreground and Strategist is always foreground. Other foreground launches require blockingReason. Only shared checkout or a new T3 worktree is supported, not arbitrary cwd or an existing worktree. No hidden native fallback. New reviews/re-checks need a fresh delegation, not a retained-thread message. T3 owns completion delivery; follow its next instruction without polling.",
-    parameters: Type.Object({ agent: Type.String(), instructions: Type.String(), model: Type.Optional(Type.String()), effort: Type.Optional(Type.Union(EFFORTS.map(value => Type.Literal(value)))), skills: Type.Optional(Type.Array(Type.String())), background: Type.Optional(Type.Boolean()), blockingReason: Type.Optional(Type.String()), isolation: Type.Optional(Type.Union([Type.Literal("shared"), Type.Literal("worktree")])), title: Type.Optional(Type.String()), timeoutMs: Type.Optional(Type.Number({ minimum: 1 })) }, { additionalProperties: false }),
+    parameters: Type.Object({ agent: Type.String(), instructions: Type.String(), model: Type.Optional(Type.String({ description: DELEGATION_MODEL_DESCRIPTION })), providerOverride: Type.Optional(Type.String({ description: PROVIDER_OVERRIDE_DESCRIPTION })), effort: Type.Optional(Type.Union(EFFORTS.map(value => Type.Literal(value)))), skills: Type.Optional(Type.Array(Type.String())), background: Type.Optional(Type.Boolean()), blockingReason: Type.Optional(Type.String()), isolation: Type.Optional(Type.Union([Type.Literal("shared"), Type.Literal("worktree")])), title: Type.Optional(Type.String()), timeoutMs: Type.Optional(Type.Number({ minimum: 1 })) }, { additionalProperties: false }),
     reachesTools: () => services.reaches(["delegate_task", "orchestrator_capabilities"]),
     async execute(id, p, signal, update, ctx) { try {
       const authority = runtime.authority();
       if (authority && !authority.canonicalTools.includes("subagent")) throw new Error("Role cannot delegate");
-      const snapshot = resolveRoleSnapshot({ agent: p.agent, backend: "t3", profile, cwd: ctx.cwd, projectTrusted: ctx.isProjectTrusted(), model: p.model, effort: p.effort, skills: p.skills, parentDelegates: authority?.delegates, modelRegistry: ctx.modelRegistry });
+      const snapshot = resolveRoleSnapshot({ agent: p.agent, backend: "t3", profile, cwd: ctx.cwd, projectTrusted: ctx.isProjectTrusted(), model: p.model, providerOverride: p.providerOverride, effort: p.effort, skills: p.skills, parentDelegates: authority?.delegates, modelRegistry: ctx.modelRegistry });
       const strategist = snapshot.definition.name === "strategist";
       const background = strategist ? false : p.background ?? false;
       if (!background && !strategist && !p.blockingReason?.trim()) throw new Error("Non-Strategist foreground launch requires blockingReason");

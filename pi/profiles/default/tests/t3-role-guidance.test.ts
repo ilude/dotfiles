@@ -6,9 +6,9 @@ import type { SystemMessage } from "@earendil-works/pi-ai";
 import { getCurrentSystemPrompt } from "@earendil-works/pi-ai";
 import { buildSystemPromptSections } from "../node_modules/@earendil-works/pi-coding-agent/dist/core/system-prompt.js";
 import { loadDefinitions } from "../lib/subagents/definitions.ts";
-import { composedAgentPrompt, delegationContext } from "../lib/subagents/guidance.ts";
+import { composedAgentPrompt, delegationContext, T3_ROLE_OPERATIONS_GUIDANCE } from "../lib/subagents/guidance.ts";
 import { resolveRoleSnapshot } from "../lib/subagents/authority.ts";
-import { projectT3Guidance, registerT3RoleGuidance } from "../lib/subagents/t3/guidance.ts";
+import { projectT3Guidance, registerT3RoleGuidance, T3_EXTERNAL_CLIENT_GUIDANCE } from "../lib/subagents/t3/guidance.ts";
 import type { T3RoleRuntime } from "../lib/subagents/t3/bootstrap.ts";
 import { createMockPi } from "./helpers/mock-pi.ts";
 
@@ -22,7 +22,7 @@ function render(sections: Record<string, string>, skills: Skill[] = []): SystemM
   return { role: "system", content: "", timestamp: 0, sections: buildSystemPromptSections({ cwd: profile, selectedTools: ["read"], sections, skills, contextFiles: [{ path: "/project/AGENTS.md", content: "ACTUAL_PROJECT_CONTEXT_TRUST_UNCHANGED" }] }) } satisfies SystemMessage;
 }
 function caller() {
-  return render({ "t3-role-caller": `${delegationContext({ audience: "caller", definitions: catalog, backend: "t3" })}`, t3_code_orchestration: bridge });
+  return render({ "t3-role-caller": `${delegationContext({ audience: "caller", definitions: catalog, backend: "t3" })}\n\n${T3_ROLE_OPERATIONS_GUIDANCE}\n\n${T3_EXTERNAL_CLIENT_GUIDANCE}`, t3_code_orchestration: bridge });
 }
 
 describe("T3 full request guidance composition", () => {
@@ -53,6 +53,7 @@ describe("T3 full request guidance composition", () => {
     expect(full).toContain("Keep generic visual behavior");
     expect(full).not.toContain("use your native tool");
     expect(full).not.toContain("private role body");
+    expect(full).toContain('"Opus high" means model: "opus", effort: "high" through AWS Bedrock');
     expect(delegationContext({ audience: "caller", definitions: new Map([...catalog].reverse()), backend: "t3" })).toBe(delegationContext({ audience: "caller", definitions: catalog, backend: "t3" }));
   });
 
@@ -66,6 +67,7 @@ describe("T3 full request guidance composition", () => {
     expect(full).toContain("ACTUAL_PROJECT_CONTEXT_TRUST_UNCHANGED");
     expect(full).toContain(role.prompt);
     expect(full).toContain(selectedSkill);
+    expect(full).not.toContain(T3_EXTERNAL_CLIENT_GUIDANCE);
     expect(full).not.toMatch(/UNRELATED_ROOT_CATALOG|UNRELATED_SKILL_CATALOG|T3 Code orchestration|Generic T3 Code operations|use your native tool/);
     if (name === "teamlead") {
       expect(full).toContain("Commission a Strategist");
@@ -94,6 +96,12 @@ describe("T3 full request guidance composition", () => {
     expect(projected.messages[0].toolsAdded).toBe(head.toolsAdded);
     expect(projected.messages[1]).toBe(user);
     const full = getCurrentSystemPrompt(projected.messages);
+    expect(full).toContain(T3_EXTERNAL_CLIENT_GUIDANCE);
+    expect(full).toContain('target.providerInstanceId: "ccyl"');
+    expect(full).toContain('target.options.effort: "high"');
+    expect(full).toContain("read its effective Claude settings");
+    expect(full).toContain("including after a failed Pi-role attempt");
+    expect(full).toContain("not an automatic fallback or a Pi-enforced role");
     expect(full).toContain("background:true");
     expect(full).toContain("blockingReason");
     expect(full).toContain("not a retained-thread message");

@@ -4,7 +4,7 @@ import type { ModelRegistry } from "@earendil-works/pi-coding-agent";
 import { resolvePiClient } from "../herdr-host.ts";
 import { loadDefinitions, type AgentDefinition } from "./definitions.ts";
 import { composedAgentPrompt } from "./guidance.ts";
-import { EFFORTS, resolveAgentEffort, resolveModel, resolveSkills, type AgentEffort } from "./options.ts";
+import { EFFORTS, resolveAgentEffort, resolveDelegationModel, resolveSkills, type AgentEffort } from "./options.ts";
 
 export type SubagentBackend = "native" | "t3";
 export interface BackendSelectionInput {
@@ -55,7 +55,7 @@ export interface RoleResolutionSnapshot {
 }
 export interface ResolveRoleOptions {
   agent: string; backend: SubagentBackend; profile: string; cwd: string; projectTrusted: boolean;
-  model?: string; effort?: AgentEffort; skills?: readonly string[];
+  model?: string; providerOverride?: string; effort?: AgentEffort; skills?: readonly string[];
   parentDelegates?: readonly string[];
   modelRegistry?: ModelRegistry;
 }
@@ -65,7 +65,7 @@ export function resolveRoleSnapshot(options: ResolveRoleOptions): RoleResolution
   const definition = catalog.agents.get(options.agent);
   if (!definition) throw new Error(`Unknown or invalid agent ${options.agent}. ${catalog.errors.join("; ")}`);
   if (options.parentDelegates && !options.parentDelegates.includes(definition.name)) throw new Error("Delegation is outside frozen authority");
-  const model = resolveModel(options.model ?? definition.model, undefined, options.modelRegistry);
+  const model = resolveDelegationModel(options.model, definition.model, options.modelRegistry, options.providerOverride);
   const qualified = `${model.provider}/${model.id}`;
   const skills = resolveSkills(options.profile, definition.skills, options.skills ?? [], { cwd: options.cwd, projectTrusted: options.projectTrusted });
   const names = [...new Set([...definition.skills, ...(options.skills ?? [])])];

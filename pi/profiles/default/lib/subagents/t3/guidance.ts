@@ -7,10 +7,16 @@ import type { T3RoleRuntime } from "./bootstrap.ts";
 const CALLER_SECTION = "t3-role-caller";
 const BRIDGE_SECTION = "t3_code_orchestration";
 
+export const T3_EXTERNAL_CLIENT_GUIDANCE = `## Explicit ccyl requests
+
+When the user names ccyl, the orchestrator uses generic T3 delegate_task with target.providerInstanceId: "ccyl", not t3_delegate_role, Pi\'s anthropic OAuth, Herdr, or a shell CLI. This is user-selected external-client work, including after a failed Pi-role attempt, not an automatic fallback or a Pi-enforced role. Preserve the bounded assignment and report that Pi role/tool enforcement does not carry over; if the user requires that enforcement, explain the incompatibility rather than dropping it.
+
+Check orchestrator_capabilities for ccyl\'s configured subscription models/options. "ccyl Opus high" selects its advertised Opus subscription model with target.options.effort: "high"; do not send a Bedrock model ID or thinking option. "Use ccyl" without a model means its configured subscription default: read its effective Claude settings (model and effortLevel, honoring the instance\'s config directory) and map that selection to its advertised subscription catalog. Never inherit the parent\'s Pi model or invent a model. If it cannot be determined, ask which configured subscription model to use. A ccyl request does not authorize Bedrock mode. If ccyl is unavailable, report that route without substituting. Use background delegation and automatic delivery when independent work remains.`;
+
 /** The installed bridge owns this section. Scope its generic routing, not its tools. */
 export function scopedT3BridgeGuidance(section: string): string {
   return section.replace(/^(- Subagents:)[^\n]*/m,
-    "- Generic delegation: use delegate_task for an untyped T3 child only when generic delegation is intended. Named Pi roles always use t3_delegate_role with the profile's frozen role policy, including same-provider and background work. Never bypass a failed role launch with generic delegation.")
+    "- Generic delegation: use delegate_task for an untyped T3 child only when generic delegation is intended. Named Pi roles always use t3_delegate_role with the profile's frozen role policy, including same-provider and background work. Never bypass a failed role launch with generic delegation. A later explicit user request for ccyl selects external-client work, not a fallback Pi-role launch.")
     .replace("## T3 Code orchestration", "## Generic T3 Code operations (not named-role routing)");
 }
 
@@ -34,7 +40,7 @@ export function registerT3RoleGuidance(pi: ExtensionAPI, runtime: T3RoleRuntime)
   pi.on("before_agent_start", (event, ctx) => {
     if (runtime.binding()) { delete event.systemPromptOptions.sections[CALLER_SECTION]; return; }
     const catalog = loadDefinitions(ctx.cwd, ctx.isProjectTrusted(), getAgentDir());
-    event.systemPromptOptions.sections[CALLER_SECTION] = `${delegationContext({ audience: "caller", definitions: catalog.agents, backend: "t3" })}\n\n## Named Pi roles in T3\n\n${T3_ROLE_OPERATIONS_GUIDANCE}`;
+    event.systemPromptOptions.sections[CALLER_SECTION] = `${delegationContext({ audience: "caller", definitions: catalog.agents, backend: "t3" })}\n\n## Named Pi roles in T3\n\n${T3_ROLE_OPERATIONS_GUIDANCE}\n\n${T3_EXTERNAL_CLIENT_GUIDANCE}`;
   });
   pi.on("context_with_system", event => ({
     messages: event.messages.map(message => message.role === "system" ? projectT3Guidance(message, Boolean(runtime.binding())) : message),

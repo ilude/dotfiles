@@ -20,6 +20,10 @@ Do not consult Steward before starting requested implementation, including user-
 
 const WRITING_GUIDANCE = `Reviewer and validator are read-only: use them for evidence-based findings returned through their normal results, never filesystem output. You correlate and integrate results unless synthesis is explicitly assigned. Use writer when the delegated outcome is a prose artifact; give a natural-language brief and applicable skills as useful suggestions, not required fields. Do not repeat established synthesis just to write it. Preserve disjoint write ownership.`;
 
+const MODEL_ROUTING_GUIDANCE = `## Model routing
+
+"Opus high" means model: "opus", effort: "high" through AWS Bedrock. ccyl selects Claude subscription. No inferred providerOverride or silent rerouting.`;
+
 const CALLER_GUIDANCE = `## Delegation guidance
 
 Consult \`subagent\` with \`agent: "strategist"\` for implementation-plan execution or user-authorized work suited to parallel subagents or Team Leads. Delegate a standalone job to a single subagent or Team Lead only when the user explicitly requests it or delegation conserves context; explain the context-conservation reason when applicable, and skip the Strategist consultation in either case. Otherwise work directly, including when Strategist recommends one worker without an exception. An explicit single-agent handoff also bypasses consultation when handing off plan work. When the user requests delegation while you continue another discussion, launch the requested agent in the background and continue the discussion.
@@ -84,7 +88,8 @@ export function delegationContext(options: DelegationContextOptions): string {
         : options.audience === "council"
           ? COUNCIL_GUIDANCE
           : CALLER_GUIDANCE;
-  const text = `${guidance}\n\n${catalog}\n${entries || "- none"}`;
+  const routing = options.audience === "strategist" ? "" : `\n\n${MODEL_ROUTING_GUIDANCE}`;
+  const text = `${guidance}${routing}\n\n${catalog}\n${entries || "- none"}`;
   return options.backend === "t3" ? t3ToolReferences(text) : text;
 }
 
