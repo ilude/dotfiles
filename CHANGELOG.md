@@ -1,5 +1,122 @@
 # Changelog
 
+## 2026-11-12: Restore live Codex quota status in T3
+
+- Restore the existing five-minute Codex quota polling in T3 so its Pi status bar does not retain an old weekly percentage while other fields update. Keep periodic refreshes status-only, preserving startup reports, explicit `/usage`, authentication and terminal behavior.
+- Existing T3/Pi runtimes need `/reload-runtime` when idle or a Pi runtime restart to load the fix; no T3 app update is required.
+
+## 2026-11-12: Publish separate workstation, story and migration commits
+
+- Keep the Chrome native-host path refresh and T3 Codex quota polling fix in independent commits. The quota polling check passes all seven focused cases.
+- Commit Story Workshop capture/authorship guidance separately from its saved project development notes, then update its parent pin independently.
+- Publish the accepted Hatchery facilities, homelab-infra ownership handover and private site compositions in their owning repositories before updating the dotfiles migration pins. This subsequent explicit publication authorization does not archive unfinished product work or include ignored runtime/private artifacts.
+
+## 2026-11-12: Reconcile all selected native migration owners
+
+- Document the complete selected lifecycle/configuration/application ownership map and retained security/trust, backup/restore and release-policy boundaries. Old state keeps nonphysical enabled-service validation, not an extra physical writer.
+- Verify production callers using S's own BWS resolver without legacy decoder/fixtures: 27 stack plans contain 352 noop resource rows; the final game caller reapplies unchanged and reports present. No staging, publication or whole-spec archival is included.
+- Include Git in the existing validation tooling image because deterministic source-archive fixtures consume it. This does not change guest software or count as a live handover.
+- Complete the final `just validate`: 487 unit cases (one existing skip), full syntax/production lint and public/BWS/data-boundary checks pass. Adapt stale legacy-writer assertions while keeping restore/release/ownership contracts; retain compatibility inputs rather than deleting them to silence warnings.
+
+## 2026-11-12: Hand over the separate game stack without restarting it
+
+- Adopt the existing complete Docker VM game/Dozzle/RCON Web/selected Playit graph in one retained native resource with noop/unchanged/present convergence. Preserve VM/container/image/start/mount/port, file/data/world/credential identities and actual digest/Steam/update/restart policy.
+- Verify authenticated RCON, three SQLite databases and normal web TLS/auth protection. Matching handover runs no Compose activation, image/Steam refresh, game stop or Caddy restart; original retry-safe graceful reload preserves the shared file bind.
+- Normalize only the existing BWS connection field to the same verified physical route, removing dependence on a workstation-only alias. Preserve logical identity and prior authorization while adding the existing public management key. Retire exact old deployment writers without DNS/router/tunnel, backup or gameplay-workflow changes.
+
+## 2026-11-12: Transfer the existing DNS relationship and verify redundancy
+
+- Adopt the original two-node relationship in one retained Hatchery resource with noop/unchanged/present convergence. Preserve IDs, domain, URLs, native trust, permanent management endpoints and shared token; matching adoption performs no initialization/join, credential or API configuration write.
+- Verify original catalog membership and 41 replicated record/TTL values per node. Separately stop each Keepalived service, verify exclusive other-node VIP with workstation UDP/TCP and normal UI TLS, then restore primary preference and enabled/running state. Guest boots and DNS/Caddy starts remain unchanged.
+- Retire exact old role/CLI writers, including the installed secondary configurator after public-source parity and file-identity checks. Node-local ownership stays with accepted primary/secondary stacks; no routing/address redesign, extra HA mechanism or backup change.
+
+## 2026-11-12: Hand over controller bootstrap and lifecycle without interruption
+
+- Install eligible dirty Hatchery source through its standalone strict-SSH bootstrap, independent of the old deployment checkout or receiver. Preserve the original pinned/frozen release/dependency/CLI ABI and deployment flock; adopted reapply makes no source switch or protected-file repair.
+- Reproduce original sites/two related provider-token bindings through protected stdin only, with no bootstrap/state/application credential forwarding or secret hashes. One retained native LXC row converges noop/unchanged/present; original boot/configuration, 39 operational files and 51 prior caches remain.
+- Retire exact old lifecycle/readiness/source/binding writers and release only the controller reference without destruction. Old state retains only nonphysical service-selection validation; identity/trust, retained trial/allocation records, old releases, security and backups remain. No controller rebuild/stop, new control plane or fresh-controller acceptance gate was added.
+
+## 2026-11-12: Close selected Hermes and runner lifecycle ownership
+
+- Hand over the two existing LXCs through separate Hatchery lifecycle stacks, keeping their accepted application/configuration owners separate. Each converges one noop row, unchanged reapply and present status; complete physical configuration, running state and guest boot identity remain, with no guest/application/disk mutation.
+- Preserve original static addresses/MACs and power/startup/shape policy. Materialize only two observed root references; no speculative DHCP facility, fresh provisioning or credential inventory was added.
+- Retire exact old lifecycle/dispatch/moved writers and release only both guest references plus the unconsumed selected primary template reference, five to two, without destruction. Keep cached template, selection/outputs, security/trust and backups. Final controller/game/cluster and whole selected-coverage acceptance remain open.
+
+## 2026-11-12: Transfer the existing secondary DNS guest in place
+
+- Separate Hatchery host/configuration stacks adopt the original secondary LXC and complete 15.3.0/.NET10/Caddy/Keepalived graph: one plus 22 noop rows, unchanged reapply and present status. Guest/data/release identities, six documents, DNS/SSH/Keepalived starts and existing cluster/VIP policy remain; direct DNS/API and normal UI TLS pass.
+- Repair the failed Caddy 2.6.2 to already-selected 2.11.4 with Cloudflare. After its normal expired-asset cleanup left a stale in-memory renewal, one targeted Caddy restart restored ordinary issuance with the retained ACME account and CF credential. DNS/Keepalived were not restarted and no certificate files were manually deleted.
+- Retire exact secondary and shared transferred writers/interfaces while retaining the separate cluster-relationship owner. Release only the secondary guest and unused template state references, seven to five, without destruction. Preserve physical template, service presence, security/trust and backups.
+
+## 2026-11-12: Transfer the existing shared app-host VM lifecycle
+
+- Adopt the existing shared VM in a separate Hatchery lifecycle stack with noop/unchanged/present convergence. Its complete physical configuration, OS/data/cloud-init volumes, opaque options, MAC, boot/machine/agent/startup and guest identity remain; original mounted filesystem and persistent-directory identities pass.
+- Keep M01's guest baseline/storage owner separate. Lifecycle receives only selected compute/state capabilities, with no guest SSH/application credentials and no second private inventory.
+- Retire the old VM, automatic replacement trigger, unused boot-image writer and all seven shared-service legacy VM targets. Release exactly their three state references, ten to seven, without destroy/resource apply; the cached image, input/output identity, security/trust and backups remain. No rebuild, resize, data migration, guest reboot or new cold-provision/recovery workflow occurred.
+
+## 2026-11-12: Transfer primary DNS and its selected records in place
+
+- Hand over the existing primary LXC and complete Technitium 15.3.0/.NET10, Caddy, primary Keepalived and selected DNS graph through separate Hatchery stacks. One host and 67 configuration/DNS resources converge noop/unchanged/present, retaining guest/account/data ownership, releases, service starts, settings, three Forwarder zones and 41 record values/TTLs. Only previously blank record comments acquire native ownership metadata.
+- Verify permanent and floating DNS addresses over UDP/TCP, upstream resolution, normal UI TLS and the existing API credential with anonymous rejection. Six original documents remain byte-identical with zero activation; no guest/service restart, app upgrade, state move or credential rotation occurred.
+- Correct consumed compatibility gaps without changing policy: recognize the built-in this-server DefaultProxy response while rejecting remote-forwarder proxy drift, and select installed bind9-dnsutils rather than repeatedly requesting its virtual dnsutils alias. Earlier failed adoption refreshed APT indexes but installed/upgraded no selected software.
+- Retire exact primary lifecycle/app/Caddy/DNS entrypoints and release only its old container reference without destruction. Secondary/cluster owners, independent security/ephemeral trust, schema checks, service selection and backup operations remain.
+
+## 2026-11-12: Transfer existing Caddy/Tailscale ingress in place
+
+- Hand over the existing ingress LXC/TUN and complete pinned Caddy/Tailscale/DNS graph through separate Hatchery stacks. Two host and 13 configuration rows converge noop/unchanged/present while boot, service starts, enrollment/preferences, certificates, repository assets, binaries and the existing DNS record identity/binding remain unchanged.
+- Verify normal TLS and existing-key API access on both LAN and the workstation's already-enrolled personal-tailnet route, with anonymous rejection. No VPN/login/client-auth change, key rotation, package reinstall/build/download, guest/service restart or identity copy was needed.
+- Retire only ingress-specific lifecycle/TUN/configuration/external-DNS entrypoints and release exactly its old container state reference without destruction. Shared roles, independent security/ephemeral trust, internal DNS, backup operations and other state retain their owners.
+
+## 2026-11-12: Transfer the existing Herdr guest and transport in place
+
+- Hand over existing LXC lifecycle and complete operator/configuration through separate Hatchery stacks: one host and 34 configuration rows converge noop/unchanged/present. Preserve guest/account/home, original Herdr/Node/pnpm/Pi releases and marker/link ABI, key/trust, SSH/UFW and rootless Podman transport identities without reinstall, restart, data move or client-auth/workstation/T3 changes.
+- Retain strict non-root operator access and the separate forced-command transport. Docker-over-SSH works while shell and non-exact commands remain rejected. Reuse only the controller's management public identity, preserving prior authorization bytes/metadata and leaving its private key and Herdr's transport private key on their respective hosts.
+- Retire exact old lifecycle/bootstrap/package/context/relay/trust writers and release only the Herdr container state reference without destruction. Preserve other state, service selection, release/build policy and backup operations. Remaining selected migrations and final acceptance are still incomplete.
+
+## 2026-11-12: Transfer existing Forgejo runners in place
+
+- Hand over both existing repository-scoped runners through one complete Hatchery configuration stack. All 28 rows converge noop/unchanged/present while preserving guest/account, registration/scope/label, binary/tool, work/cache, key/trust and Docker/runner process identities. Both original heartbeats advance and the original deployment-job key still passes a strict authenticated PVE read. No new registration, credential rotation, scope broadening, download/build, restart or data move was needed.
+- Keep existing separate BWS credential authorities. Derive registration UUIDs and protected configuration only in controller-private memory, without a second identity inventory or credential/hash state. Retain the original group-readable 0640 files through explicit group authorization, leaving strict default secret permissions unchanged. Reuse the controller's protected management identity without copying it into jobs.
+- Retire exact legacy runner configuration, registration/SQL normalization, job-key/trust and restart writers. Preserve the separate existing LXC lifecycle until its own handover, independent security/bootstrap owners, release policies and existing backup operations. Remaining selected migrations and final acceptance are still incomplete.
+
+## 2026-11-12: Transfer Forgejo lifecycle and configuration in place
+
+- Hand over the existing LXC, retained ZFS/bind attachment and full Forgejo configuration through separate complete Hatchery stacks. Two host and 23 configuration rows converge noop/unchanged/present while preserving guest/data/SSH identities, all six repository refs and all prior row IDs in 128 SQLite tables. Normal authenticated Git/API and verified HTTPS pass without a restart, release switch, download/build, data move or credential rotation.
+- Preserve version-first binary adoption, selected INI edits without credential/unmanaged-body export, the Git-owned CLI link and original Caddy/SSH contracts. Reuse the protected deployment identity and verified trust. Restore only the INI's original root-owner policy without rewriting its bytes or replacing its inode.
+- Retire exact old deployment, dataset/attachment and lifecycle writers and release only their two OpenTofu state references without destruction. Preserve other state, encrypted history, release policies, independent security/trust owners and existing backup/restore formats. Remaining selected migrations and final acceptance are still incomplete.
+
+## 2026-11-12: Transfer Hermes configuration in place
+
+- Hand over the complete Hermes application/configuration graph to Hatchery while preserving the existing custom wheel/two-lock identity, Node/tools, user state, credentials and endpoints. All 34 rows converge noop/unchanged/present with retained tool/data/file identities, four SQLite databases and unchanged dashboard/gateway/Caddy/Docker processes. No release upgrade, downloads/rebuilds, data move or credential rotation was needed for adoption.
+- Keep the original lookup-rstrip marker ABI, configurable caller-local lock inputs and atomic runtime/tool activation. Preserve the live public search override instead of dropping it through an empty old default. Retire only the exact routine application writers and temporary partial deployment entry; independent lifecycle/security owners, release selection and existing backup/restore operations remain available.
+- Earlier ingress repair restored an already failed module-less Caddy binary and expired certificate with the selected build and normal ACME issuance. Verified HTTPS now passes without trust bypasses. This accepted Hermes handover does not complete the remaining service/infrastructure migration.
+
+## 2026-11-11: Add Hatchery durable-stack execution
+
+- Integrate native durable composition, scoped encrypted/versioned S3 state and selected runtime bindings delivered over SSH stdin. Keep private site composition and BWS authority outside generic product code, with raw archives, analytical data and orchestration state separate.
+- Add observed file/service/Quadlet and retained fresh-directory resources, explicit secret refresh and persistent activation intent. Preserve the allocation CLI, controller serialization and no-write/no-restart convergence for unchanged successful applies.
+- Add fresh durable-guest bootstrap with native retention, a separate data disk, checksum-selected image preparation, public-key-only NoCloud, private DHCP/DNS and QGA-derived strict SSH trust. After the initial host failed the pinned engine's CPU requirement, deploy a separate AVX2-capable guest instead of moving the existing shared app VM or its data. The exact engine now passes private authentication, retained identity across unit recreation, drift repair and no-restart reapply. Keep existing app DNS unchanged and consume the observed private address where its new-name resolution is unavailable; the real API/indexer containers now use that private path.
+- Extend the current controller installation with checksummed current-worktree source, complete sibling providers and frozen private-site linkage, without requiring a registry or source push. Bootstrap the separate state identity/bucket and deployment key while preserving existing keys, services, data and guest ownership. Native controller plan/apply/status acceptance passed; the full service migration remains incomplete.
+
+- Deploy separately owned API analytics files/drop-in and a supervised listener-free indexer without taking over the base Onclave deployment. Preserve installed images, independent daily registry adoption, common PostgreSQL/archive bindings and existing target coupling. Core activation also cycled its target dependencies; all recovered. Actual authenticated analytics/readiness, checkpoint catch-up, unchanged no-restart apply and explicit outage/recovery passed. Historical backfill remains incomplete, not complete remote coverage.
+- Avoid probing absent/stopped Quadlets during observation, allowing a corrected declaration to replace an incomplete resource's stored failing probe through normal deployment rather than state edits.
+- Add locally checked existing-account/rootless prerequisites and shared-VM representation for serial-free identity-bound disks, startup and disabled-agent operation. Preserve existing memberships, implicit machine settings and unmanaged disk/network options; existing-volume references cannot create or attach a missing VM. This does not transfer guest ownership or complete the broader account/package/storage facilities.
+- Add selected-entry `/var` and `/srv` UUID fstab reconciliation beside existing-layout recognition, preserving unrelated table bytes and metadata without exporting contents or hashes. Missing entries can converge without hot mounts, filesystem changes or reboot; no live handover is claimed.
+- Add local read-only recognition of the shared guest's selected PV/VG, ext4 devices, mount UUIDs and fstab bindings, rejecting an extra PV or changed registered filesystem identity. Add ordinary `.socket` enable/start support for rootless Podman. Storage mutation and live host ownership are not part of this slice.
+- Add local Debian package-presence and concrete pinned Caddy/Cloudflare/Go build facilities. Correct-state apply performs no index refresh, download or build; installation uses normal APT dependencies, and failed archive/output validation preserves the prior Caddy binary. Service activation remains separate, and no live baseline/Caddy handover is claimed.
+- Add a bounded native checksum-selected artifact-file primitive with actual-byte/metadata observation, explicit file adoption, resource-specific ownership and verified temporary-file replacement. Native shell fixtures cover no-op, drift, failed-download preservation and retry. This is local capability work, not a live artifact or Caddy build handover.
+- Complete the standalone SearXNG configuration pilot with its existing rootless Podman-compose shape, cache, secret, desired image pin and Caddy endpoint. Retire the legacy role/playbook's remote writes without disabling service presence or backup coverage. First convergence replaced a stale running image with the already-selected pin; subsequent applies preserve the installed result without restart. Verified HTTPS/configuration/missing-query handling and cache writes passed; a sample JSON search response had no results, so external provider delivery remains unverified. Broader service, substrate and guest handovers remain in progress.
+
+- Hand over the existing shared app-host baseline to Hatchery in place, including account/packages, SSH/UFW, rootless runtime, selected existing fstab entries and shared Caddy. Retire only its legacy baseline writers, preserving guest lifecycle, separate Debian security-update ownership and all backup paths. Mount/data/account/container identities, four verified-TLS routes and rootless/direct SSH access passed; all-noop plan, unchanged apply and present status caused no SSH/Caddy/container restart. Full Onclave and remaining service/infrastructure handovers are still pending.
+
+- Hand over the full existing Onclave deployment to its private Hatchery composition, preserving Core plus all five dependencies, data/mount identities, named SearXNG volumes, private topology, backup helpers and the separately owned analytics overlay. All-noop plan, unchanged apply and present status retain every existing image/container/start identity. Verified-TLS signed API, raw archive reads, fresh registration/heartbeat and analytics readiness pass; routine old deployment writers are read-only, while backup/legacy-format restore operations remain available. Preserve independent daily image adoption and configuration-only installed-image retention. Bound client SSH concurrency after observed MaxStartups drops rather than weakening host policy. Remaining selected service/infrastructure handovers continue without Git publication.
+
+- Transfer FreeLLMAPI configuration in place, preserving its selected digest, encryption key, container-owned SQLite permissions, existing records and Caddy route. Retire routine legacy writes while retaining service presence and existing backups/restores. All-noop plan, unchanged apply and present status preserve container/image/start/mount/data identities. Existing-key authenticated reads and anonymous rejection pass on application loopback, with normal-TLS route verification separately; no upstream provider credential was configured or provisioned.
+
+- Hand over the existing web-fetch gateway/browser in place with exact configuration bytes, retained SQLite routes, existing bearer and unchanged already-built image selection. Keep local base-provenance/168-hour hold checks and explicit digest exceptions without adding builds or pulls. Verified-TLS authenticated retrieval, anonymous rejection, browser isolation and all-noop/unchanged/present convergence retain all existing container/data identities. Retire routine legacy deployment only; application build source and existing backup/restore operations remain available.
+
+- Transfer SeaweedFS service and selected bucket-policy ownership without a server restart, data move, image change or credential rotation. Preserve OpenTofu history, Onclave objects and separate Hatchery state, with all-noop/unchanged/present convergence, retained object versions and verified access/conditional-write semantics. Retire routine legacy deployment and ensure writes while keeping verification/backups/restores available. Retain the existing identity-file mode through explicit owner-private-parent proof without relaxing default secret-file permissions.
+
 ## 2026-11-10: Add a private story workshop
 
 - Add `modules/story-workshop` as a private Forgejo submodule on `main`, keeping creative content separate from public workstation configuration.
