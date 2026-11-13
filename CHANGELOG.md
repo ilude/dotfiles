@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-11-13: Improve native site operation and public Compose drift readback
+
+- Align Hatchery's README, requirements, architecture and decision ledger with the accepted durable migration and active private site repository, while retaining historical evidence limits and the unfinished broader product roadmap.
+- Detect declared public Compose image, mount and published-port drift, normalize Docker representations and verify targeted convergence. Do not inspect environments or credential-derived Compose hashes, refresh images unnecessarily, activate unrelated services or bypass application preparation during adoption.
+- Add the private site's unified plan/apply/status command: resolve BWS once, project each stack's own capabilities, combine native results and order only the selected stacks. Keep existing aliases, separate state and explicit refresh policies. Known-incomplete whole-site apply fails before deployments; targeted selections never silently add prerequisites.
+- Expose existing service-state operations through a compatibility entrypoint, retaining the old backend's archive/checksum/ACL/quiescing/retention/restore behavior. This does not port or redesign the backup engine, and ordinary native deployment still needs no old deployment checkout.
+- H typecheck and 11 focused provider cases pass; S typecheck and all 98 cases pass. The combined live plan covered 27 stacks with only the game stack's expected public-expectation update. Its targeted update converges noop/unchanged/present with existing container/data/configuration identities and release/restart policy retained. Controller source was installed through normal standalone bootstrap without protected binding writes.
+
 ## 2026-11-13: Keep Opus on Bedrock and honor explicit ccyl requests
 
 - Correct an agent-routing failure that selected Pi's direct Anthropic OAuth provider for an unspecified “Opus high” request, then treated its expired refresh grant as an operator login problem. Bare Opus family requests now select the newest configured AWS Bedrock release, preferring Mantle, with no direct-Anthropic fallback.
