@@ -4,7 +4,7 @@ import type { ModelRegistry } from "@earendil-works/pi-coding-agent";
 import { resolvePreferredModel } from "../model-selection.ts";
 export const EFFORTS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
 export type AgentEffort = typeof EFFORTS[number];
-export const DELEGATION_MODEL_DESCRIPTION = 'Bare model/family, e.g. "opus"; Pi resolves the provider. Opus defaults to AWS Bedrock. Use provider/model only for a user-requested provider, not an inferred choice. ccyl is a separate Claude Code client, not a Pi provider.';
+export const DELEGATION_MODEL_DESCRIPTION = 'Bare model/family, e.g. "opus"; Pi resolves the provider. Opus defaults to AWS Bedrock inside Pi; select personal-project ccyl work before calling this tool. Use provider/model only for a user-requested provider, not an inferred choice. ccyl is a separate Claude Code client, not a Pi provider.';
 export const PROVIDER_OVERRIDE_DESCRIPTION = 'Provider explicitly requested by the user; must match a provider-qualified model. Required for direct anthropic overrides. Do not set for an ordinary Opus request or for ccyl.';
 export function resolveModel(model: string | undefined, fallback: string | undefined, registry?: ModelRegistry): { provider: string; id: string } {
  const value=model??fallback;

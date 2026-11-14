@@ -22,7 +22,7 @@ const WRITING_GUIDANCE = `Reviewer and validator are read-only: use them for evi
 
 const MODEL_ROUTING_GUIDANCE = `## Model routing
 
-"Opus high" means model: "opus", effort: "high" through AWS Bedrock. ccyl selects Claude subscription. No inferred providerOverride or silent rerouting.`;
+Work Opus uses Bedrock; personal Opus prefers ccyl. Role-bound ccyl needs return to the orchestrator; never silently switch accounts.`;
 
 const CALLER_GUIDANCE = `## Delegation guidance
 
@@ -31,6 +31,10 @@ Consult \`subagent\` with \`agent: "strategist"\` for implementation-plan execut
 ${STEWARD_GUIDANCE}
 
 ${WRITING_GUIDANCE}
+
+ccyl may handle any authorized task type. Use project context/existing Git identity; ask if unclear. Explicit routes win. Pi model: "opus" stays Bedrock; "high" sets effort. AWS Grok is permitted for either project category.
+
+For ccyl, check claude_usage using its Claude config directory for shared five-hour/weekly quota and resets. Reuse recent readings; refresh after substantial work. Unknown quota is unavailable. Never silently switch accounts.
 
 Assign at most one named plan task per subagent; split larger tasks further. Run ready independent assignments concurrently. Integrate prerequisites before dependent work. Ask only about interpretations changing behavior, scope, or acceptance.`;
 

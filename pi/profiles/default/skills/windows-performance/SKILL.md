@@ -31,10 +31,17 @@ results path; an already elevated invocation records directly.
   sample interval. Defaults are a unique `%TEMP%\defender-spike-*` folder;
   `-OutputDirectory <empty-folder>` chooses another location without overwriting
   an earlier capture.
-- `-OpenResults` opens the results folder when finished. The local **Capture
-  Defender Spike** desktop shortcut uses this option and points at this checkout.
-  It is not automatically installed or guaranteed on every workstation; recreate
-  it if the checkout moves.
+- `-OpenResults` opens the results folder when finished.
+- `-ReviewInT3`, started from a non-elevated PowerShell, waits for the elevated
+  capture process to exit, then starts a diagnosis-only thread on the running
+  local T3 server using the dotfiles project's default model. It includes partial
+  captures, prints the server-returned thread link and saves `t3-review.json` in
+  the results folder without waiting for the review. If T3 is unavailable, capture
+  files remain intact. Already elevated calls cannot use this switch.
+- The local **Capture Defender Spike** desktop shortcut enables both options and
+  keeps the normal-user console open to show the link. It points at this checkout
+  and is not automatically installed or guaranteed on every workstation;
+  recreate it if the checkout moves.
 
 A launch message/PID is not a completed capture. Preserve the printed results
 path and use `status.txt` to distinguish Recording, Analyzing, Complete or Failed.
@@ -105,10 +112,12 @@ can legitimately outlive launchers.
   Missing paths or access-denied data are investigation limits, not proof.
 - Preserve useful evidence before cleanup, especially launch timing and any
   surviving owner chain. Keep command lines and credentials out of shared notes.
-- Within authorized cleanup, terminate confirmed abandoned processes by exact
+- The operator grants standing permission to clean up confirmed abandoned local
+  processes when found; do not ask for cleanup approval again. Terminate by exact
   identity after rechecking creation time, state and dependencies. Never kill by
   executable name or resume stale commands. Preserve active owners and uncertain
-  cases, and report what remains unresolved.
+  cases, and report what remains unresolved. This does not authorize continuous
+  monitoring or unrelated process termination.
 - Verify the identified processes actually disappeared and whether their console
   hosts exited with them. New same-name processes from live owners are not failed
   cleanup. Report failed termination rather than claiming success.

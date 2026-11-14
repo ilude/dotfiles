@@ -1,6 +1,6 @@
 ---
 created: 2026-11-14
-status: ready
+status: in-progress
 completed: null
 ---
 
@@ -56,13 +56,13 @@ and recurring collection are not automatic search/fetch fallbacks.
 
 ### Authorization
 
-This request authorizes collaborative planning with Opus high, not implementation,
-account changes, deployments or Git mutations. Earlier authorization to publish
-appropriate completed repository/submodule changes remains separate and is not
-revoked. Execution of this new plan requires implementation authorization.
-Invoking `/do-it` authorizes its implementation, local task worktrees, commits and
-integration unless restricted by the user. No Firecrawl/Browserbase credits or
-new browser sessions have been used for this planning work.
+On 2026-11-14 the operator authorized execution: 'work the plan to completion'.
+This permits the selected implementation, agent-owned checks, local task worktrees,
+commits and integration under this plan. Earlier authorization to publish appropriate
+completed repository/submodule changes is not revoked. It does not authorize
+account changes, deployments, paid provider validation or a separate harness
+permission change. No Firecrawl/Browserbase credits or live browser sessions have
+been used for planning or the initial execution attempt.
 
 ## Fresh-context handoff
 
@@ -90,8 +90,11 @@ Runtime `lib/...` and `tests/...` references are relative to
   Preserve current ignored locator/private artifacts and unrelated source edits.
   Keep caller-local bootstrap/locator data out of task commits; do not copy secrets
   into the execution worktree or override Git exclusions.
-- No task branch/worktree has been created. Record actual execution coordinates
-  before implementation; do not infer them from this planning checkout.
+- T3 created task branch `feat/web-tools-consolidation` at
+  `C:/Users/mglenn/.t3/worktrees/.dotfiles/t3-21398b41-8fc7cb522677218f`.
+  Parent T3 metadata verified these coordinates; the coordinator stopped before
+  independently verifying Git state or implementing W01. Do not claim implementation
+  or branch commits from worktree creation alone.
 
 ## Verified starting behavior and evidence limits
 
@@ -413,7 +416,7 @@ and schema edits. Dependencies above, not phase ordering alone, determine readin
 
 ## Current handoff
 
-- Status: ready; no implementation started.
+- Status: execution blocked before W01; no implementation started.
 - Completed: current code/tests/provider-doc reconnaissance and two Opus high
   design consultations. The full path retains Browserbase, automatic fallback,
   image/news and structured extraction rather than making explicit Firecrawl the
@@ -425,10 +428,18 @@ and schema edits. Dependencies above, not phase ordering alone, determine readin
   cloud requests. Return honest quality/truncation/provenance information.
 - Settled caching: provider-cached pages are allowed; do not require fresh reads
   by default. Report only known cache/freshness metadata.
-- Next on implementation authorization: begin W01 and the ready early tasks;
-  consult Strategist before delegation. Use runtime-prepared T3 worktree ownership
-  where applicable rather than creating a child's checkout in the shell.
-- Blocking readiness: none. Numerical attempt caps and equivalent module details
-  remain executor-owned within the specified overall acquisition bounds.
+- Execution attempt: top-level Strategist consultation and isolated Team Lead
+  launch succeeded. The Team Lead's nested Strategist call failed with
+  `Callable injected T3 delegate_task unavailable`; no implementation worker ran.
+- Parent baseline: profile typecheck passed. Five-file Vitest run had 47/48 pass
+  with one curl test timing out during concurrent typecheck; that file passed
+  3/3 when rerun alone. No cause or code fix is claimed.
+- Next action: obtain the operator's decision on a bounded nested-delegation
+  repair or an explicitly authorized execution-topology change, then resume W01.
+  Do not silently use raw/generic/native delegation or broaden role permissions.
+- Product-design readiness: no open policy decisions. Execution blocker: the
+  selected nested named-role delegation route is unavailable. Preserve the idle
+  task worktree, main's unrelated edits, both operator stashes and the unrelated
+  `fix/commit-workflow` worktree.
 - Separate retirement blocker: gateway application source-home decision. This does
   not prevent planning or independent native-tool implementation after authorization.

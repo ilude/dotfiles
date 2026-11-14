@@ -1,5 +1,23 @@
 # Changelog
 
+## 2026-11-14: Preauthorize confirmed abandoned-process cleanup
+
+- Record the operator's standing permission in the Windows performance skill to clean up confirmed abandoned local processes when found without another approval prompt. Retain exact-identity/state/dependency checks, evidence preservation, removal verification and protection of active or uncertain processes. No continuous monitoring or unrelated process termination is authorized.
+
+## 2026-11-14: Route Opus tasks by project and expose Claude subscription quota
+
+- Prefer work-paid Pi/AWS Bedrock for work-project Opus tasks and personal-subscription ccyl for personal projects, including implementation. Keep classification in agent guidance using project context and existing Git identity, not a new classifier. Honor explicit routes, preserve Pi-only role boundaries, and leave the active `/opus` model switch and bare Pi AWS resolver unchanged. The parent owns external ccyl council participation; the preferred council is Sol, project-routed Opus, and AWS Grok, whose AWS route still needs live verification.
+- Add the on-demand `claude_usage` tool using the existing Claude login in place. Report account-wide five-hour, weekly, and available Opus-specific weekly quota, reset times, observation time, and credential-directory provenance. Consult recent quota when planning ccyl work and refresh after substantial work; absent data is unavailable, not free capacity. No credential copying/refresh, polling, fixed thresholds, paid overage, or silent account fallback is introduced. File-based Claude credentials are supported; keychain-only logins are not implemented.
+
+## 2026-11-14: Start a T3 review after a Defender capture
+
+- Add opt-in `-ReviewInT3` and enable it on the workstation-local capture shortcut. The non-elevated launcher waits for its elevated recorder to exit, then creates a diagnosis-only thread using the running local T3 server and dotfiles project's default model. Capture execution remains elevated; the review launch stays in the normal-user context. Already elevated invocations must omit the switch or relaunch normally.
+- Include partial captures and request evidence-based findings, earlier incident comparisons and recommended next steps, not automatic code edits, process termination or Defender changes. Print the server-returned link and retain thread identity in `t3-review.json`, without waiting for the agent's answer. T3 launch failures leave capture artifacts intact; no continuous monitoring or automatic repair is added.
+
+## 2026-11-14: Keep partial capture counters from flooding the console
+
+- Keep sampling valid process/system counters and saving the Defender trace when individual counters are unavailable, without repeating red errors throughout the capture window. Preserve captured errors in `counter-errors.txt` and the partial-data notice in `report.txt`; recording failures still surface normally. This changes capture presentation, not the CPU workload or Defender settings.
+
 ## 2026-11-14: Diagnose instruction-caused workflow friction
 
 - Distinguish guidance unavailable to the acting agent and unsupported, misplaced or conflicting guidance followed as written from instruction-adherence failures. Explicitly consider narrowing or removing guidance, and resolve instruction conflicts at their owning scope, so remedies can remove or narrow guidance instead of only adding more.
@@ -13,7 +31,8 @@
 ## 2026-11-14: Add task-scoped full send without a PR lifecycle
 
 - Add the default profile's explicit-invocation `full-send` skill for completing an agreed task without repeated implementation or testing approvals. Include direct verification, independent read-only review, in-scope fixes and completion reporting through existing routing; preserve separately authorized commit/integration/publication/deployment workflows and existing data/history boundaries.
-- Omit tstack's PR creation, publication, babysitting and merge requirements. Keep Forgejo agent reviews, homelab automation and CI workflow design for a separate discussion after the other skills. This instruction-only adoption does not toggle Damage Control or implement automatic plan-scoped runtime preapproval; existing human-only prompts, hard blocks and operator-controlled local bypass remain unchanged.
+- Add `/full-send` as an explicit command using the existing same-session goal lifecycle, with status/off controls and branch/session/run-bound restoration. During running goal work, project original task authority into Damage Control and waive only existing eligible local asks after a valid independent task-membership judgment. Recheck active authorization after asynchronous review; preserve hard blocks, human-only prompts, protected paths, disclosure, shell modes, review-failure approvals, child role limits and the separate `/dc off` control. Paused goals suspend this authorization; explicit resume of the same armed run reactivates it. Task membership remains model judgment, not a resource sandbox, and children do not inherit the bypass.
+- Omit tstack's PR creation, publication, babysitting and merge requirements. Keep Forgejo agent reviews, homelab automation and CI workflow design for a separate discussion after the other skills. Plain chat and `/skill:full-send` do not arm runtime preapproval; native browser controls and remote/deployment/publication permission boundaries remain unchanged.
 
 ## 2026-11-14: Adapt council review mechanics without forcing consensus
 

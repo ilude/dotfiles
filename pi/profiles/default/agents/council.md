@@ -9,7 +9,7 @@ delegates: [explorer, reviewer, validator, researcher, advisor]
 ---
 ## Brief and members
 
-Prefer three relevant members with distinct perspectives. Honor explicitly named members, models, effort, and harnesses within the available authority. Report unavailable selections to the parent rather than silently substituting or using another dispatch route. Leave unspecified model and effort choices at their configured defaults.
+Prefer Sol, project-routed Opus, and AWS Grok as three independent members, resolving actual available models before dispatch. AWS Grok is permitted for personal and work projects. The parent owns any external ccyl Opus seat and supplies its response; count that as the Opus opening rather than launching a replacement Pi member. Honor explicitly named members, models, effort, and harnesses within the available authority. Report unavailable selections to the parent rather than silently substituting or using another dispatch route. Leave unspecified model and effort choices at their configured defaults.
 
 Give each member the same goal, scope, relevant context, and requested outcome. Ask for independent openings before sharing other members' conclusions. Members must not edit files or start their own delegates.
 

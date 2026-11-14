@@ -76,6 +76,17 @@ describe("native conversation and Luna evidence projection", () => {
     expect(JSON.stringify(projected)).not.toContain("SYNTHETIC_SENTINEL");
   });
 
+  it("projects and redacts only task authority, retaining restrictions and excluding runtime identities", () => {
+    const input = evidence({ taskAuthorization: { source: "/full-send", sessionId: "PRIVATE SESSION", runId: "PRIVATE RUN", task: {
+      goal: "Repair app", scope: ["app"], exclusions: ["No deployment"], decisions: ["token=SYNTHETIC_SENTINEL", "Keep the API unchanged"],
+    } } });
+    const projected = projectJudgeEvidence(input);
+    expect(projected).toMatchObject({ status: "ready", context: { taskAuthorization: { source: "/full-send", task: {
+      goal: "Repair app", scope: ["app"], exclusions: ["No deployment"], decisions: ["token=[REDACTED]", "Keep the API unchanged"],
+    } } } });
+    expect(JSON.stringify(projected)).not.toMatch(/SYNTHETIC_SENTINEL|PRIVATE SESSION|PRIVATE RUN/);
+  });
+
   it("redacts known secret forms", () => {
     const result = redactOutbound("Authorization: Bearer SYNTHETIC_SENTINEL");
     expect(result.lossy).toBe(true);

@@ -1,11 +1,14 @@
 ---
 name: full-send
-description: Complete an agreed task or workflow autonomously when the user explicitly says "full send" or invokes this skill. Includes task-scoped implementation, testing, review and fixes, without a PR workflow.
+description: Workflow for the explicit /full-send command. Complete an agreed task with implementation, testing, review and fixes, without a PR lifecycle.
+disable-model-invocation: true
 ---
 
 # Full send
 
-Use only for an explicit user request for full send, not a quotation, discussion of the skill, or inferred enthusiasm. Apply it to the agreed task or plan, not every later request in the session.
+`/full-send <task>` starts a same-session goal with scoped local preapproval; bare `/full-send` arms or resumes the current incomplete goal. Follow that goal and its direct user decisions, not every later task in the session. Plain chat and `/skill:full-send` do not arm runtime preapproval.
+
+Use `goal_control` to record acceptance evidence and complete the task. A normal reply does not end the goal. Questions, blockers, budgets and interruption suspend preapproval. `/goal resume` resumes the same armed goal; `/full-send off` disarms without cancelling it. See [goal commands](../../docs/goal.md#full-send).
 
 The user wants completion without approving each implementation step. Do available work rather than stopping after a plan, a progress report, or a request to continue.
 
@@ -27,9 +30,11 @@ Ask only when a choice changes the intended result, scope or acceptance; necessa
 
 ## Damage Control boundary
 
-This skill grants task authority; it does not itself toggle or reconfigure runtime enforcement. Existing Damage Control sees direct user authorization during contextual review, but human-only prompts and hard blocks remain enforced. Do not disguise a denied action or claim that loading this skill disabled the gate.
+Only `/full-send` arms preapproval. Damage Control receives the running goal's original authority separately from conversation summaries. Its independent judge must confirm that a call belongs to that task before an otherwise eligible local ask is waived. Code enforces the owning session/run, active goal state and existing bypass eligibility; task membership is model judgment, not a resource sandbox.
 
-The existing `/dc off` is an operator-controlled, session-local bypass for eligible local asks, not a plan-scoped exemption. Its exact limits are in [Damage Control controls](../../docs/damage-control-setup.md#operator-controls). Automatic task-scoped runtime preapproval is not implemented by this skill.
+Hard blocks, human-only approvals, protected paths, disclosure, shell modes and frozen role limits remain enforced. Remote effects, unresolved targets and review failures are not locally bypassed. Existing explicitly authorized remote steps still receive normal contextual review. Children do not inherit the parent's bypass. Native browser controls are unchanged. Do not disguise a denied action.
+
+`/dc off` remains a separate operator-controlled session-local bypass. `/full-send off` does not change it. See [Damage Control controls](../../docs/damage-control-setup.md#operator-controls).
 
 ## No PR lifecycle
 

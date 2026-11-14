@@ -53,7 +53,11 @@ describe("T3 full request guidance composition", () => {
     expect(full).toContain("Keep generic visual behavior");
     expect(full).not.toContain("use your native tool");
     expect(full).not.toContain("private role body");
-    expect(full).toContain('"Opus high" means model: "opus", effort: "high" through AWS Bedrock');
+    expect(full).toContain("Work Opus uses Bedrock; personal Opus prefers ccyl");
+    expect(full).toContain("any authorized task type");
+    expect(full).toContain("existing Git identity");
+    expect(full).toContain("claude_usage");
+    expect(full).toContain("AWS Grok is permitted for either project category");
     expect(delegationContext({ audience: "caller", definitions: new Map([...catalog].reverse()), backend: "t3" })).toBe(delegationContext({ audience: "caller", definitions: catalog, backend: "t3" }));
   });
 
@@ -100,6 +104,10 @@ describe("T3 full request guidance composition", () => {
     expect(full).toContain('target.providerInstanceId: "ccyl"');
     expect(full).toContain('target.options.effort: "high"');
     expect(full).toContain("read its effective Claude settings");
+    expect(full).toContain("personal-project Opus preference");
+    expect(full).toContain("implementation as well as advisory tasks");
+    expect(full).toContain("orchestrator owns the ccyl Opus seat");
+    expect(full).toContain("shared five-hour/weekly quota and resets");
     expect(full).toContain("including after a failed Pi-role attempt");
     expect(full).toContain("not an automatic fallback or a Pi-enforced role");
     expect(full).toContain("background:true");
