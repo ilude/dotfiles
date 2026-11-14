@@ -30,8 +30,10 @@ source revision or working-tree payload, and scenario the user wants tested:
 - **Installation without AWS (`-SkipBedrock`):** exercise prerequisites, runtime
   bootstrap, clients and protection before the test identity is available. This
   is useful partial progress, not proof of AWS login or Bedrock configuration.
-- **Client/configuration-only case:** use the dedicated test identity's working
-  credentials. Do not claim this exercised fresh authentication/key creation.
+- **Client/configuration/model-access case:** use a dedicated IAM-only test user
+  and its working test key; no email or SSO account is required. Choose routine
+  test naming when the operator leaves it open. Do not claim this exercised the
+  browser SSO or installer-created-key bootstrap.
 
 These are available scenarios, not a mandatory test matrix. Run only the requested
 cases. An authorized sandbox test is an iterative development task: investigate

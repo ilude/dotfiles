@@ -26,8 +26,8 @@ Use network-iac's current runbook for VM operations and ownership checks.
 
 ## Installation without AWS
 
-`-All -SkipBedrock` is a useful noninteractive installation case while the dedicated
-SSO test identity is unavailable. It does not test authentication or model access.
+`-All -SkipBedrock` is a useful noninteractive installation case before dedicated
+test credentials are available, whether the later auth case uses IAM or SSO. It does not test authentication or model access.
 `-SkipBedrock` skips Bedrock configuration, not necessarily installation of the AWS
 CLI prerequisite. It is not evidence that the installer made no network requests.
 
@@ -97,6 +97,69 @@ installer defect separately from harness failure or missing user interaction;
 within an authorized sandbox development/test task, fix established installer
 issues and retest from the clean baseline without a new approval for every fix.
 Keep evidence before resetting so a retry does not hide the original failure.
+
+## Lessons from the repair cycle
+
+Authorized testing includes the source fix/reset/retest loop, not another approval
+for each established defect. Keep the original result before changing source.
+Record working-tree script/archive hashes when testing fixes not yet committed.
+
+The patched clean run passed first-time pnpm installation and installed all four
+clients and Damage Control. It exposed a separate offline provider-load check:
+Pi's `get_available_models` still filters by auth resolution in `--offline` mode.
+An empty model list before AWS login did not establish a broken provider package.
+The repair confines inert auth values to the offline validation child only; it is
+registration evidence, never real AWS access or a persisted credential fallback.
+
+A Git attempt reported native installer exit 2, explicitly "You cancelled the
+installation." A prompt-handled limited-user retest installed Git successfully;
+do not silently turn an interaction failure into another source change. Keep
+important error text when filtering logs, including lines mixed with spinner or
+progress glyphs. A black idle console can require a neutral wake key before
+inspection; this is not a reason to change the VM's power or security policy.
+
+The repair cycle concluded with an installed-state `-All -SkipBedrock` rerun
+returning exit 0. All four client version probes passed from the pnpm bin under
+the non-elevated Sandbox profile, the provider and Pi/Claude protection load checks
+passed, and the AWS credential directory remained absent. Both installer fixture
+suites passed. This is clean-install-plus-repair-rerun evidence, not a claim that
+the final patched source was rerun from zero in a single pass, nor AWS/model proof.
+The final evidence is local under
+`.data/windows-sandbox/installer-tests/41a19e5-final-rerun/`.
+
+## Later IAM-backed checks (2026-11-14 UTC)
+
+Normal `-All` onboarding then passed with the dedicated IAM-only test user under
+the same limited Sandbox profile. Pi selected `us.openai.gpt-6.1-sol`. Live model
+responses and a harmless file-read round trip passed for Pi and Codex. Claude and
+OpenCode passed the same proof with explicitly selected Sonnet 4.6; these overrides
+do not prove that their discovered default works. Evidence is local under
+`.data/windows-sandbox/installer-tests/aws-dev-setup-test/`.
+
+Keep these distinct failure boundaries:
+
+- The selected Fable 5.2 profile was `ACTIVE`, but invocation returned Marketplace
+  authorization failure. Read-only foundation availability showed its agreement
+  `NOT_AVAILABLE`. Discovery is not account agreement or invocation proof. Do not
+  silently downgrade defaults, grant Marketplace permissions or accept a new
+  agreement to hide this; get the account-level decision when needed.
+- OpenCode 1.19.5 did not initialize its credential chain with only a configured
+  region and default credential file. A child-only `AWS_PROFILE=default` activated
+  normal profile resolution and the Sonnet proof passed. Select the intended
+  profile explicitly; never copy secret keys into OpenCode JSON. Discuss credential
+  selection before pinning a profile in distributed configuration or globally
+  changing `AWS_PROFILE`, since that can override later credential choices.
+- Codex's restricted Windows tool process could not start the WindowsApps
+  `pwsh.exe` alias (`CreateProcessAsUserW`, access denied). It completed the file
+  proof through another native shell, so inference/file access passed but the
+  PowerShell tool path did not. A successful installer handoff or `--version`
+  probe does not prove that alias works with Codex's restricted token. Do not
+  disable its sandbox or elevate the entire runner to conceal the failure.
+
+The test key was delivered privately only to the current disposable user profile.
+The clean snapshot and template remain pre-authentication; local non-secret key
+metadata identifies the exact key for a later authorized reset. SSO bootstrap was
+not exercised, and no Marketplace agreement or policy expansion was applied.
 
 The first run's raw evidence is local/ignored under
 `.data/windows-sandbox/installer-tests/41a19e5/` in the controller checkout. Read

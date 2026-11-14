@@ -9,21 +9,31 @@ Read its ancestor/project instructions, `variables.tf`, `iam.tf` and
 preserve existing work. Use the existing account and Bedrock developer workflow,
 not a new AWS Organizations account or a new administrative permission set.
 
-A dedicated username such as `dev-setup-test` needs a matching IAM user and
-Identity Center username, plus a deliverable sign-in email/alias. A suggested name
-is not evidence that it has been created. Verify actual provisioning before use.
-Obtain missing identity details from the operator; do not invent an email address.
+Choose the authentication case, rather than making email a universal prerequisite:
 
-Current Terraform inputs are `users_to_create`, `bedrock_users` and
-`identity_center_users`. Follow the existing membership pattern. The installer
-derives its IAM username from the SSO session, so the usernames must match.
+- **Automated Bedrock/client tests:** an IAM-only user such as `dev-setup-test`
+  needs no email, console password or Identity Center account. Use
+  `users_to_create` and `bedrock_users`, following the existing membership pattern.
+  An authorized test key may be created through the primary session and delivered
+  privately to the disposable user profile. Record only its non-secret cleanup
+  metadata; keep keys out of Terraform state, controller logs and golden images.
+- **Full browser SSO bootstrap tests:** also create the matching username in
+  `identity_center_users` with a deliverable sign-in email/alias. The installer
+  derives its IAM username from the SSO session, so the usernames must match.
+  A made-up, undeliverable address does not prove this workflow works.
+
+When the user leaves incidental naming to the agent, choose a clear test name and
+continue with the suitable supported auth path. Do not block programmatic testing
+on an email that only the SSO scenario requires. Verify actual provisioning;
+a suggested name is not evidence that the user already exists.
 From the gitlab-helm root, use scoped `just plan bedrock` and, when authorized,
 `just deploy bedrock`, not an aggregate infrastructure deployment. Inspect the plan
 for the intended identity changes; writing a skill does not authorize an apply.
 
-Do not pre-create a permanent access key for a fresh-onboarding test: the installer
-must create and store it after real SSO login. Existing test credentials are useful
-for rerun/configuration cases, but do not prove that the SSO bootstrap works.
+Do not pre-create a permanent access key when the selected case is fresh SSO
+bootstrap: that case must let the installer create it after real SSO login.
+A programmatically provisioned test key is appropriate for automated client,
+configuration and model-access testing, but does not prove browser SSO bootstrap.
 
 ## Two independent kinds of state
 

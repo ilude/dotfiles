@@ -13,6 +13,11 @@
 - Site Node 26 typecheck/all 117 cases and network-disabled tooling checks pass. Final infrastructure `just validate` passes 464 cases (one existing skip), full Ansible syntax/production lint with zero failures or warnings, and the public/BWS/excluded-data checks. A longer-bound final run and correction of seven stale assertions passed without restoring old writers or changing host/Docker configuration. No production backup, restore, guest SSH or object-endpoint access was run for this port.
 - Reconcile foundation completion from the accepted consuming handovers and archive the completed spec at `modules/homelab-infra/.specs/archive/hatchery-transition/plan.md`. Publish owning repositories before the parent pins; preserve unrelated work, the cancelled private-site plan, excluded data, Pi legacy and the broader proposed product roadmap.
 
+## 2026-11-13: Distinguish IAM model tests from browser SSO bootstrap
+
+- Correct the dev-setup testing skill so automated client/model testing can use an IAM-only test user without an email, console password or Identity Center record. Reserve matching SSO usernames and deliverable email for the actual browser-bootstrap scenario; choose incidental test naming when the operator leaves it open.
+- Record limited-user live onboarding and file-read evidence separately from unresolved defaults: Fable 5.2 lacks an available account agreement, OpenCode needs an explicit AWS profile activation marker, and Codex's restricted process cannot launch the WindowsApps PowerShell alias. Keep credential-selection changes and account agreement acceptance distinct from routine installer fixes; preserve test-key cleanup metadata, pre-authentication baselines and existing security boundaries.
+
 ## 2026-11-13: Keep sandbox testing in a diagnose-fix-retest loop
 
 - Clarify the dev-setup testing skill so authorized sandbox work includes fixing established installer/runtime defects and retesting from the clean baseline, rather than requesting fresh approval after each finding. Keep missing user-only input and changes outside the agreed repositories/accounts/resources as actual boundaries.
