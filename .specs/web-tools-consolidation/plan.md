@@ -60,9 +60,10 @@ On 2026-11-14 the operator authorized execution: 'work the plan to completion'.
 This permits the selected implementation, agent-owned checks, local task worktrees,
 commits and integration under this plan. Earlier authorization to publish appropriate
 completed repository/submodule changes is not revoked. It does not authorize
-account changes, deployments, paid provider validation or a separate harness
-permission change. No Firecrawl/Browserbase credits or live browser sessions have
-been used for planning or the initial execution attempt.
+account changes, deployments or paid provider validation. The operator separately
+authorized the bounded nested-T3 delegation repair on 2026-11-14, preserving frozen
+permissions rather than bypassing the failed route. No Firecrawl/Browserbase
+credits or live browser sessions have been used for planning or initial execution.
 
 ## Fresh-context handoff
 
@@ -416,7 +417,8 @@ and schema edits. Dependencies above, not phase ordering alone, determine readin
 
 ## Current handoff
 
-- Status: execution blocked before W01; no implementation started.
+- Status: nested-delegation repair passes offline checks; idle coordinator reload
+  and live nested launch remain before W01. No web-tools implementation started.
 - Completed: current code/tests/provider-doc reconnaissance and two Opus high
   design consultations. The full path retains Browserbase, automatic fallback,
   image/news and structured extraction rather than making explicit Firecrawl the
@@ -434,12 +436,16 @@ and schema edits. Dependencies above, not phase ordering alone, determine readin
 - Parent baseline: profile typecheck passed. Five-file Vitest run had 47/48 pass
   with one curl test timing out during concurrent typecheck; that file passed
   3/3 when rerun alone. No cause or code fix is claimed.
-- Next action: obtain the operator's decision on a bounded nested-delegation
-  repair or an explicitly authorized execution-topology change, then resume W01.
-  Do not silently use raw/generic/native delegation or broaden role permissions.
-- Product-design readiness: no open policy decisions. Execution blocker: the
-  selected nested named-role delegation route is unavailable. Preserve the idle
-  task worktree, main's unrelated edits, both operator stashes and the unrelated
+- Authorized prerequisite repair: exact installed-bridge dependencies are active
+  but hidden behind named wrappers; frozen authority and once-only grants remain
+  unchanged. Three focused T3 test files pass 26 cases, including an installed-Pi
+  coordinator regression; profile typecheck passes. Live repair is not yet claimed.
+- Next action: reload only the idle owned Team Lead, resume its mandatory nested
+  Strategist launch, then continue W01 and the full plan if successful. Do not
+  silently use raw/generic/native delegation or broaden role permissions.
+- Product-design readiness: no open policy decisions. Remaining prerequisite:
+  live nested delegation after supported reload. Preserve the task worktree,
+  main's unrelated work, both operator stashes and the unrelated
   `fix/commit-workflow` worktree.
 - Separate retirement blocker: gateway application source-home decision. This does
   not prevent planning or independent native-tool implementation after authorization.

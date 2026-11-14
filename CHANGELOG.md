@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-14: Keep nested T3 role delegation callable
+
+- Keep authorized named-role wrappers' exact installed-bridge dependencies active and callable while hiding them from model declarations through Pi's loadout projection. This fixes nested delegation failing after a coordinator's frozen loadout removed the underlying direct bridge tool.
+- Preserve frozen role permissions, installed-bridge identity checks, normal tool hooks and exact once-only wrapper grants. Direct/raw calls, substituted tool sources and undeclared role operations remain blocked. An installed-Pi offline coordinator regression covers repeated nested launches without exposing bridge declarations; no package upgrade or delegation fallback is introduced.
+
 ## 2026-11-14: Preauthorize confirmed abandoned-process cleanup
 
 - Record the operator's standing permission in the Windows performance skill to clean up confirmed abandoned local processes when found without another approval prompt. Retain exact-identity/state/dependency checks, evidence preservation, removal verification and protection of active or uncertain processes. No continuous monitoring or unrelated process termination is authorized.

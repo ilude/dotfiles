@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { Type } from "typebox";
 import { relative, resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { getAgentDir, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -35,6 +36,34 @@ export function createT3RoleRuntime(pi: ExtensionAPI, options: T3BootstrapOption
   const calls = new Map<string, string>();
   const grants = new Map<string, { operation: string; args: Record<string, unknown>; consumed: boolean }>();
   let baseline: string[] | undefined;
+  let loadoutRegistered = false;
+  const loadoutTool = "t3_role_bridge_loadout";
+  function roleTools(active: readonly string[] = authority?.tools ?? []): string[] {
+    if (!authority) return [];
+    const registered = pi.getAllTools();
+    const allowed = new Set(authority.tools.filter(name => active.includes(name)));
+    const tools = registered.filter(tool => allowed.has(tool.name) && !operation(tool.name) && (tool.exposure === "direct" || tool.exposure === "model-only")).map(tool => tool.name);
+    // reachesTools describes dependencies, but does not activate inactive direct tools.
+    // Only exact registered names from the installed bridge are loadout dependencies.
+    const reached = new Set(tools.filter(name => WRAPPERS.has(name)).flatMap(name => {
+      const names = registered.find(tool => tool.name === name)?.reachesTools?.({});
+      return names && names !== "all" ? [...names] : [];
+    }));
+    const dependencies = registered.filter(tool => reached.has(tool.name) && operation(tool.name) && tool.exposure === "direct").map(tool => tool.name);
+    if (!dependencies.length) return tools;
+    if (!loadoutRegistered) {
+      // A model-only loadout hook is not a callable operation or role permission.
+      // Pi overwrites prompt.hiddenTools from prepareLoadout on every refresh.
+      loadoutRegistered = true;
+      pi.registerTool({
+        name: loadoutTool, label: "T3 role bridge loadout", description: "Private T3 role loadout projection",
+        parameters: Type.Object({}), exposure: "model-only", defaultActive: false,
+        prepareLoadout: loadout => ({ hiddenDeclarations: loadout.declared.filter(tool => tool.name === loadoutTool || operation(tool.name)).map(tool => tool.name) }),
+        async execute() { throw new Error("Private T3 loadout is not an operation"); },
+      });
+    }
+    return [...tools, ...dependencies, loadoutTool];
+  }
   const publish = () => pi.events.emit(SUBAGENT_AUTHORITY_CHANGED, authority);
   const lock = () => { void clearT3CloseoutAuthority(); failure = "T3 role bootstrap or restoration failed; no assignment dispatched"; binding = undefined; authority = undefined; calls.clear(); grants.clear(); pi.setActiveTools([]); publish(); };
   const bind = async (value: T3RoleThreadBinding) => {
@@ -127,8 +156,7 @@ export function createT3RoleRuntime(pi: ExtensionAPI, options: T3BootstrapOption
     try {
       const selected = await resources(ctx);
       await settings(ctx);
-      const allowed = new Set(authority.tools);
-      const tools = pi.getAllTools().filter(tool => allowed.has(tool.name) && tool.exposure !== "hidden" && tool.exposure !== "deferred" && tool.exposure !== "codemode").map(tool => tool.name);
+      const tools = roleTools();
       pi.setActiveTools(tools);
       const prompt = event.systemPromptOptions;
       prompt.selectedTools = tools;
@@ -158,8 +186,9 @@ export function createT3RoleRuntime(pi: ExtensionAPI, options: T3BootstrapOption
     if (WRAPPERS.has(event.toolName) && !event.parentToolCallId) calls.set(event.toolCallId, event.toolName);
   });
   pi.on("tool_result", () => {
-    // Native discovery can activate tools, but cannot widen the role's declarations.
-    if (authority) pi.setActiveTools(pi.getActiveTools().filter(name => authority!.tools.includes(name) && !operation(name)));
+    // Discovery cannot widen role declarations. Retain hidden bridge dependencies
+    // across nested results and later turns, still gated by exact once-only grants.
+    if (authority) pi.setActiveTools(roleTools(pi.getActiveTools()));
   });
   pi.on("tool_execution_end", event => { calls.delete(event.toolCallId); grants.delete(event.toolCallId); });
   return {
