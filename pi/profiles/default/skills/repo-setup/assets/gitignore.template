@@ -1,0 +1,10 @@
+# Select the patterns used by this project.
+.env
+.env.local
+.env.*.local
+config.local.json
+.venv/
+__pycache__/
+*.py[cod]
+runs/
+.tmp/

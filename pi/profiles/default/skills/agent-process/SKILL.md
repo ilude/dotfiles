@@ -28,4 +28,6 @@ Do not write workflow records or review artifacts into Git-tracked files. Instru
 
 ## Research reference
 
+These notes belong to the private research-vault submodule, not the dotfiles repository. If it is uninitialized, follow the [vault setup and repository workflow](../../../../../README.md#research-vault); keep research edits and commits in that repository.
+
 For reviews of scope drift, excessive verification, delegation sizing, dependency decomposition, or model/effort routing, consult [Agent scope and stopping](../../../../../docs/research/obsidian-vault/agent-workflows/patterns/agent-scope-and-stopping.md) as needed. For disputed instruction-evolution choices, consult [Instruction evolution and reasoning budgets](../../../../../docs/research/obsidian-vault/agent-workflows/patterns/instruction-evolution-and-reasoning-budgets.md). Research proposals are not active policy.

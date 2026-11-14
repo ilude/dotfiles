@@ -232,6 +232,33 @@ it("preserves sole index content with normal Git before blanket staging", async 
 	expect(report.text).toContain("Preserved index content:"); expect(JSON.stringify(results[0]?.content)).toContain("working copy");
 });
 
+it("preserves index-only contents alongside a tracked-directory-to-submodule conversion", async () => {
+	const vault = "docs/vault", child = join(root, vault);
+	mkdirSync(child, { recursive: true }); writeFileSync(join(child, "note.md"), "research\n");
+	git(root, "add", "-A"); git(root, "commit", "--quiet", "-m", "tracked research");
+	init(child);
+	const childHead = git(child, "rev-parse", "HEAD").trim();
+	git(root, "rm", "-r", "--cached", "--", vault);
+	writeFileSync(join(root, ".gitmodules"), `[submodule "vault"]\n\tpath = ${vault}\n\turl = https://unused.invalid/vault.git\n`);
+	git(root, "add", "--", ".gitmodules", vault);
+	writeFileSync(join(root, "base.txt"), "index-only\n"); git(root, "add", "--", "base.txt");
+	writeFileSync(join(root, "base.txt"), "working copy\n");
+	steps.push(empty(vault), inspect("git diff --cached -- base.txt"), plan("convert vault", [".gitmodules", "base.txt", vault, `${vault}/note.md`]));
+	const originalStream = provider.stream.getMockImplementation()!;
+	provider.stream.mockImplementation((model, context, options) => {
+		if (JSON.stringify(context.messages.at(-1)).includes("Git stash failed")) steps.unshift(blocked("Stash cannot preserve this directory replacement."));
+		return originalStream(model, context, options);
+	});
+	const report = await run();
+	expect(git(root, "show", "stash@{0}^2:base.txt")).toBe("index-only\n");
+	expect(git(root, "ls-tree", "stash@{0}^2", "--", vault)).toContain(`160000 commit ${childHead}`);
+	expect(git(root, "show", "HEAD:base.txt")).toBe("working copy\n");
+	expect(readFileSync(join(child, "note.md"), "utf8")).toBe("research\n");
+	expect(git(root, "ls-tree", "HEAD", "--", vault)).toContain(`160000 commit ${childHead}`);
+	expect(git(root, "status", "--porcelain")).toBe("");
+	expect(report.text).toContain("Preserved index content:");
+}, 45_000);
+
 it("applies the fixed local settings policy in code before review", async () => {
 	mkdirSync(join(root, ".pi")); writeFileSync(join(root, ".pi", "settings.json"), "{}\n");
 	steps.push(inspect("git diff --cached"), plan("ignore local settings", [".gitignore"]));

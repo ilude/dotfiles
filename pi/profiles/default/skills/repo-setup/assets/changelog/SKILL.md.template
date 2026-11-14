@@ -1,0 +1,16 @@
+---
+name: changelog
+description: Record material repository outcomes, commit intent and explicit sensitive-artifact approvals in CHANGELOG.md.
+---
+
+# Changelog
+
+- Read root AGENTS.md and the current changelog section.
+- Record material outcomes under UTC dates: requested problem/intent, change and
+  reason, scope, preserved behavior, validation/limits and known human operator.
+  Pure investigation needs no entry; keep routine logs/raw evidence local.
+- Keep commit intent aligned with the entry. This skill grants no Git publication
+  authority and does not override ignores.
+- Before tracking normally excluded sensitive material, obtain artifact-specific
+  approval and append who, what, exact paths, UTC when and conditions. Do not put
+  the sensitive payload in that record; correct records additively.

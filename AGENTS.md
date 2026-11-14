@@ -20,9 +20,10 @@ Claude hooks, commands, settings, runtime workarounds, and content ingestion are
 - `modules/homelab-infra/` is the homelab infrastructure repository. It owns Proxmox resources, infrastructure services, host deployment orchestration, and the nested private `values/` repository.
 - `modules/hatchery/` is the Hatchery disposable-compute product repository. Read its `AGENTS.md` for product work. Hatchery owns product definitions, configuration facilities, and compute adapters; homelab-infra owns deployment and live site configuration. Its initial documentation does not authorize a change to existing Proxmox resource ownership.
 - This dotfiles repository owns workstation setup and Pi runtime integration. `pi/extensions/onclave-pi.ts` is only a loader for the implementation in `modules/onclave/`.
-- Treat each module as an independent repository with its own instructions, branch, validation, commit, and remote. Make changes in the owning repository rather than duplicating source across repositories.
+- `docs/research/obsidian-vault/` is the private Forgejo `mike/research-vault` submodule. It owns research notes, indexes, templates, and vault/topic instructions, not dotfiles runtime implementation. Keep research output at this existing path and follow its local `AGENTS.md`. It is separate from Onclave's content-ingestion/search vault. See the [research vault workflow](README.md#research-vault) for initialization and publication.
+- Treat each submodule as an independent repository with its own instructions, branch, validation, commit, and remote. Make changes in the owning repository rather than duplicating source across repositories.
 - For coordinated changes, preserve the boundary: Onclave publishes application contracts, homelab-infra consumes them for deployment, and dotfiles wires local clients to them. Do not move live inventory or site secrets out of `modules/homelab-infra/values/`.
-- Commit module changes from the module first, then commit the updated gitlink in dotfiles. Local parent pin commits do not require pulling or publication. When push is requested, publish relevant module commits before the parent that references them. Never include a module's files directly in a dotfiles commit.
+- Commit submodule changes from the submodule first, then commit the updated gitlink in dotfiles. Local parent pin commits do not require pulling or publication. When push is requested, publish relevant module commits before the parent that references them. Never include a submodule's files directly in a dotfiles commit.
 
 ## Remote workstation access
 
@@ -105,6 +106,6 @@ Key paths:
 | `config/git/`, `powershell/profile.ps1` | Git and PowerShell configuration |
 | `test/` | Repository tests |
 | `plugins/`, `dotbot/` | zsh plugins and Dotbot submodule |
-| `docs/research/obsidian-vault/` | Research vault; obey its local `AGENTS.md` and topic instructions |
+| `docs/research/obsidian-vault/` | Private research-vault submodule; obey its local `AGENTS.md` and topic instructions |
 
 Windows packages live in `winget/configuration/{core,work,dev}.dsc.yaml`; edit the applicable file and preserve `id: <id>  # <Display Name>` with two spaces before `#` so `install.ps1 -ListPackages` continues to work.

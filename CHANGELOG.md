@@ -1,5 +1,53 @@
 # Changelog
 
+## 2026-11-14: Reuse neutral repository setup conventions
+
+- Add the on-demand default-profile `repo-setup` skill with adaptable Windows/Python bootstrap, agent/README, ignore and changelog templates. Keep work-specific context conditional in `references/work.md`; personal projects use the neutral baseline without a speculative personal variant. Preserve native instruction ownership instead of copying tenant/deployment workflows, automatic Git synchronization or workstation onboarding into every repo.
+- Native Pi skill discovery, bundled links and Windows-template rendering pass. AI Workbench's adapted script passes prerequisite checks under PowerShell 5.1, an existing-environment locked rerun, configuration preservation and isolated failure paths; fresh-machine installation and authenticated services were not tested. Existing runtime settings and live processes are unchanged; discover the skill in a fresh default-profile session or after an idle resource reload. Operator: Mike Glenn.
+
+## 2026-11-13: Preserve index stat caches during commit reconstruction
+
+- Fix the reproduced cause of repeated `modules/t3code` status timeouts: plain `git read-tree HEAD` cleared cached file metadata even for clean plans, forcing the next status to reread roughly 32,000 tracked files. Use single-tree `read-tree -m` to preserve unchanged entries' stat data while retaining the same reviewed contents and exclusions.
+- The same checkout with a copied index exceeded 15 seconds after plain `read-tree`, while the stat-preserving form completed status in 0.8 seconds. Remove the unrelated native-Git launcher experiment; keep normal launch paths, hooks, deadlines, cancellation and publication behavior unchanged.
+- Preserve sole index-only contents during a directory-to-gitlink conversion through the existing retained index-snapshot path. Git's `stash create` cannot walk both a new gitlink and its former tracked descendants; the snapshot retains the original staged contents and gitlink under the usual `^2` reference without altering working files.
+
+## 2026-11-13: Ground the Windows testing skill in a clean installer trial
+
+- Exercise the real limited-user Windows runner against committed dev-setup source with all clients selected and Bedrock skipped while test-identity setup remains pending. Add practical guidance for pre-install snapshots, source archive/hash staging, installation-only scope, actual runtime command discovery and evidence collection without WinGet progress noise.
+- Record the first trial's PowerShell 5.1-to-7.7 handoff and exit-1 failure: unscoped prerequisite searches were blocked by a Store certificate error, then probing absent pnpm terminated setup before installation. A community-source query succeeded in the same user context. Preserve the failed VM and clean snapshot; do not mask fresh-machine defects by preinstalling tools or weakening certificate checks. No installer source, AWS identity, credentials or shared policies were changed, and client/Bedrock acceptance remains incomplete.
+
+## 2026-11-13: Clean up obsolete T3 scheduled tasks
+
+- Add T3 skill guidance to remove scheduled tasks that no longer serve the current workflow, while preserving useful tasks and respecting thread ownership. This changes instructions only; no existing schedules were changed.
+
+## 2026-11-13: Handle intermittent commit status timeouts without repository repair
+
+- Retry a timed-out read-only `git status` once at the existing 15-second deadline. Distinguish timeouts from operator cancellation, output-cap termination and normal Git failures; do not retry staging, commits, fetches, merges or pushes.
+- Stop after two status timeouts with the repository, command arguments, elapsed time and attempt/timeout details instead of sending a subprocess-read failure into the AI's repository-repair loop. Preserve already confirmed commits when later status reporting fails, and continue collecting results from other repositories.
+- Initial fresh-process checks used warm indexes and did not reproduce the slow status read. The later index-reconstruction investigation above identifies the cause; status-only retries remain bounded error handling, not the root-cause repair. Existing Pi sessions need an idle runtime reload before retrying `/commit`.
+
+## 2026-11-13: Document repeatable installer tests and coordinated resets
+
+- Add an on-demand `dev-setup-testing` skill that composes network-iac VM operations with the existing gitlab-helm Bedrock identity workflow. Distinguish fresh onboarding, authenticated reruns and intentional stale-cloud-key refusal cases, and document the interactive console/SSO requirements instead of treating every installer as an unattended job.
+- Treat cleanup of the run's dedicated IAM test key and local VM reset as separate parts of an authorized test cycle, without repeated approval prompts for already-scoped cleanup. Preserve unexpected failures, employee/unrelated keys, the installer's refusal to replace unknown keys, credential-free clean baselines and the original evaluation deadline. This changes guidance only; no identity, key, VM or installer behavior was changed.
+
+## 2026-11-13: Guide Windows sandbox spawning through network-iac
+
+- Add an on-demand default-profile `network-iac` skill for choosing VM reuse, clean snapshot reset, linked or independent full cloning, and fresh Windows image preparation. Keep normal CLI/testing instructions separate from conditional API and timing references so agents can use the existing controller without repeating Windows installation.
+- Distinguish recommendations from current implementation: the CLI still full-clones and recreates on reset; linked creation and disk rollback were live-tested operations, not invented switches. Preserve repository ownership, primary-session live access, limited-user script execution, local private state, explicit cleanup and the original evaluation deadline. Retain the single-trial timing limits rather than promising fixed startup performance.
+- This adds guidance only, with no VM mutation, CLI-default change, credential movement or legacy-profile edit. Fresh default-profile sessions or an idle resource reload discover the skill.
+
+## 2026-11-13: Commit directory-to-submodule replacements as one group
+
+- Fix `/commit` reconstruction of a reviewed directory-to-gitlink change: restore the replacement root rather than deleted child paths that no longer resolve beneath the gitlink. Keep the root and changed descendants in one commit or exclude them together; the reverse conversion uses the same behavior.
+- Preserve reviewed staged contents, exact changed-path verification, normal hooks, exclusions and working files. This repairs the vault migration failure without rewriting history or changing publication behavior. Existing Pi processes need an idle runtime reload before retrying `/commit`.
+
+## 2026-11-13: Separate the research vault into a Forgejo submodule
+
+- Move research ownership to the private `mike/research-vault` repository while keeping its dotfiles mount at `docs/research/obsidian-vault/`. Existing Obsidian registrations, local note links and research output paths remain unchanged; Onclave's ingestion/search service is separate and unchanged.
+- Carry over 48 research commits, including the earlier `docs/research/agent-workflows/` history, with authors, dates and messages preserved. The extracted tip matches all 129 original files before repository guidance changes. Extraction creates new commit IDs without rewriting or removing dotfiles history.
+- Update clone prerequisites, repository boundaries and research guidance for independent vault commits followed by parent gitlink updates, with vault publication first. Existing checkouts initialize it with `git submodule update --init -- docs/research/obsidian-vault`; standalone clones retain vault-local instructions and applicable ignore rules.
+
 ## 2026-11-13: Check preserved workflows when extending shared policies
 
 - Refine code-review guidance to question both prohibited and required behavior when a shared policy reaches new callers, comparing their purposes and lifecycle states.

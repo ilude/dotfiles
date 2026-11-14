@@ -24,7 +24,7 @@ For contributor and coding-agent onboarding, start with `AGENTS.md`.
 
 ## Installation
 
-Recursive cloning requires access to the private Forgejo submodules `git@forgejo:mike/homelab-infra.git`, `git@forgejo:mike/onclave.git`, `git@forgejo:mike/hatchery.git`, and `git@forgejo:mike/story-workshop.git`. Configure a machine-local `forgejo` SSH alias and your authorized personal key first. Onclave tracks `feature/v2-broker-core`; other historical branches remain only in its GitHub repository, which stays unarchived. Keep the actual service address in local SSH configuration, not this repository. The submodule's [hosting instructions](modules/homelab-infra/README.md#repository-hosting) include a public-safe example.
+Recursive cloning requires access to the private Forgejo submodules `git@forgejo:mike/homelab-infra.git`, `git@forgejo:mike/onclave.git`, `git@forgejo:mike/hatchery.git`, `git@forgejo:mike/story-workshop.git`, and `git@forgejo:mike/research-vault.git`. Configure a machine-local `forgejo` SSH alias and your authorized personal key first. Onclave tracks `feature/v2-broker-core`; other historical branches remain only in its GitHub repository, which stays unarchived. Keep the actual service address in local SSH configuration, not this repository. The submodule's [hosting instructions](modules/homelab-infra/README.md#repository-hosting) include a public-safe example.
 
 > **Note:** Dotbot uses `force: true` for symlinks, which will overwrite existing files at target locations (including `~/.claude/`). Back up any existing configuration before running the installer for the first time.
 
@@ -96,6 +96,28 @@ successful update/current checks, explicit no-update results, skips, failures an
 reboot requirements. Exit codes are `0` for success, `1` for failures, `2` for failed
 or cancelled elevation, and `3010` for reboot-required completion without other
 failures. Elevated runs propagate the child exit code. No automatic reboot occurs.
+
+### Research vault
+
+Research notes live in the private Forgejo repository
+`git@forgejo:mike/research-vault.git`, mounted as a submodule at
+[`docs/research/obsidian-vault/`](docs/research/obsidian-vault/README.md).
+The path is unchanged, so existing Obsidian vault registrations, local links and
+research output paths still work. This Markdown vault is separate from Onclave's
+content-ingestion and search service.
+
+After pulling the migration into an existing checkout, initialize the vault:
+
+```sh
+git submodule update --init -- docs/research/obsidian-vault
+```
+
+New recursive clones include it automatically. Read its `AGENTS.md` and applicable
+topic instructions before writing notes. Commit research changes inside the vault,
+then commit its updated gitlink in dotfiles. When publishing, push the vault commit
+before the dotfiles commit that references it. See the vault's
+[repository workflow](docs/research/obsidian-vault/README.md#repository-workflow)
+for standalone use and history provenance.
 
 ### Forgejo CLI (`fj`)
 
@@ -307,6 +329,7 @@ Automatic identity switching based on directory or remote URL:
 | `install.d/` | End-of-install temporary hooks (`*.py` common, `*.sh`/`*.ps1` platform-specific) |
 | `wsl/` | WSL installer, packages, and validation |
 | `install.conf.yaml` | Dotbot symlink configuration |
+| `docs/research/obsidian-vault/` | Private Forgejo research-vault submodule |
 | `zsh/env.d/` | Environment modules (WINHOME, locale, PATH) |
 | `zsh/rc.d/` | Interactive modules (completions, plugins, prompt, aliases) |
 | `powershell/profile.ps1` | PowerShell profile |
