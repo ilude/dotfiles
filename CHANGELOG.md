@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-11-14: Diagnose instruction-caused workflow friction
+
+- Distinguish guidance unavailable to the acting agent and unsupported, misplaced or conflicting guidance followed as written from instruction-adherence failures. Explicitly consider narrowing or removing guidance, and resolve instruction conflicts at their owning scope, so remedies can remove or narrow guidance instead of only adding more.
+- Reuse selective feedback capture, existing approval boundaries and later comparable-work follow-up. Mandatory consultations and planning guidance remain unchanged; no runtime trigger, background evaluation or additional review gate is introduced.
+
+## 2026-11-14: Add bounded intent review without another completion gate
+
+- Add the explicit-invocation `intent-review` skill, inspired by tstack's sol-loop, to counter long-context scope drift. Brief a fresh reviewer from original user authority and observed checks rather than accumulated implementation rationale; identify both demonstrated completion blockers and unnecessary task-created additions.
+- Reuse existing reviewer, Steward and provider routing with a three-round default ceiling, scoped post-fix reviews and evidence-backed dispositions. Preserve unrelated work and scope authority; optional suggestions, disagreement and exhausted review rounds do not become new requirements or imply approval. Goal continuation/resource control and commit/publication authority remain unchanged, with no runtime changes, automatic review on every goal or persistent ledger.
+
+## 2026-11-14: Add task-scoped full send without a PR lifecycle
+
+- Add the default profile's explicit-invocation `full-send` skill for completing an agreed task without repeated implementation or testing approvals. Include direct verification, independent read-only review, in-scope fixes and completion reporting through existing routing; preserve separately authorized commit/integration/publication/deployment workflows and existing data/history boundaries.
+- Omit tstack's PR creation, publication, babysitting and merge requirements. Keep Forgejo agent reviews, homelab automation and CI workflow design for a separate discussion after the other skills. This instruction-only adoption does not toggle Damage Control or implement automatic plan-scoped runtime preapproval; existing human-only prompts, hard blocks and operator-controlled local bypass remain unchanged.
+
 ## 2026-11-14: Adapt council review mechanics without forcing consensus
 
 - Adapt the existing non-writing council role with Theo's tstack review mechanics: independent common briefs, stable review scope, known-fix/check preparation, evidence-backed findings, explicit unavailable-member reporting, and review coverage suitable for a PR description. Keep scores opt-in and report missing coverage rather than implying approval.

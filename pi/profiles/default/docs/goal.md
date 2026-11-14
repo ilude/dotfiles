@@ -31,6 +31,15 @@ The agent investigates facts before asking. If a consequential decision remains 
 
 The loop re-presents the same goal at healthy completion boundaries and continues in the current session until an explicit outcome stops it. Progress checkpoints preserve current work without adding requirements. This is not a scheduler or a new session. Questions, blockers, budget pauses, errors, interruption, and completion stop automatic continuation. `/goal status` shows the recorded outcome and reason; use `/goal resume [instruction]` when ready. A direct answer to a waiting question or blocker can also resume work. Asynchronous findings are not user answers.
 
+## Optional intent review
+
+For a bounded fresh-context check against the original request, explicitly request **intent review** in the goal text, or invoke `/skill:intent-review` on current changes. The [skill](../skills/intent-review/SKILL.md) looks for completion blockers and unnecessary task-created additions, with at most three review rounds by default. It reuses existing reviewer routing and goal limits; it does not run on every goal or require reviewer unanimity before completion.
+
+```text
+/goal Fix the CSV export regression, run the existing focused checks, then intent review.
+/skill:intent-review Review the current CSV export changes against my original request.
+```
+
 ## Optional budgets
 
 With no flags, `/goal` imposes no budget counter. A configured counter applies across the run, including continuation and resume, rather than granting a new allowance per turn or agent.

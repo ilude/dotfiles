@@ -7,7 +7,7 @@ description: Create, review, or optimize agent instructions, including role/syst
 
 - Keep concise instructions only for the operator's specific work style/requirements or knowledge a frontier model would not ordinarily have. Remove generic advice.
 - Verify custom policy against the operator's requirements; its presence in an existing file is not justification. Distinguish user requirements from agent proposals and role-local restrictions.
-- Put each instruction at its narrowest useful scope. Non-obvious component facts do not belong in global instructions. Consolidate duplicates rather than adding exceptions around them.
+- Put each instruction at its narrowest useful scope. Non-obvious component facts do not belong in global instructions. Resolve conflicts and consolidate duplicates at the owning scope, using applicable instruction precedence and the operator's requirements rather than adding exceptions.
 - Do not turn an instruction cleanup into new workflow gates, tool restrictions or runtime mechanisms.
 
 ## Conditional references
