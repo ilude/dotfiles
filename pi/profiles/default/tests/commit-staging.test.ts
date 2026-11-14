@@ -499,6 +499,27 @@ it.each([false, true])("includes runner-staged parent gitlinks in the reviewed p
 	} else expect(execs.some(args => /^(branch|pull|push|remote|ls-remote)$/.test(args[2] ?? ""))).toBe(false);
 }, 45_000);
 
+it("reports late child edits without failing completed publication", async () => {
+	const { child } = submoduleFixture();
+	const { childRemote, parentRemote } = publicationFixture(child);
+	writeFileSync(join(child, "base.txt"), "child change\n");
+	steps.push(plan("child-change", ["base.txt"], "modules/child"), plan("parent-pin", ["modules/child"]));
+	let passes = 0;
+	const report = await run(true, undefined, text => {
+		if (text === "Staging repository changes…" && ++passes === 2)
+			writeFileSync(join(child, "base.txt"), "child change\nlate edit\n");
+	});
+	const childHead = git(child, "rev-parse", "HEAD").trim();
+	expect(report.text).toContain("Pushed.");
+	expect(report.text).toContain('Changed after repository pass; not included:\nmodules/child:\n M "base.txt"');
+	expect(readFileSync(join(child, "base.txt"), "utf8")).toBe("child change\nlate edit\n");
+	expect(git(child, "show", "HEAD:base.txt")).toBe("child change\n");
+	expect(git(childRemote, "rev-parse", "main").trim()).toBe(childHead);
+	expect(git(parentRemote, "rev-parse", "main:modules/child").trim()).toBe(childHead);
+	expect(execs.filter(args => args[2] === "push").map(args => args[1])).toEqual([child, root]);
+	expect(passes).toBe(2);
+}, 45_000);
+
 it("propagates nested gitlinks deepest-first without committing unreviewed pointers", async () => {
 	const { source, child } = submoduleFixture(); const grandSource = join(root, ".git", "grand-source"); mkdirSync(grandSource); init(grandSource);
 	git(source, "-c", "protocol.file.allow=always", "submodule", "add", "--quiet", grandSource, "deps/grand"); git(source, "commit", "--quiet", "-am", "grandchild baseline");

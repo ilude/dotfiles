@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-11-13: Report late edits without failing completed commit passes
+
+- Define `/commit` completion per repository: eligible work discovered during its pass must still be reviewed, committed or explicitly excluded, and requested publication must finish before moving to its parent. Keep existing within-pass re-review, hooks, ignore rules and failure handling.
+- Report additional changes observed after completed passes as not included instead of retroactively declaring successful commits and pushes failed. Preserve those edits and exclusion reasons without another review, commit, push or catch-up loop; a successful `Pushed.` result may include remaining late changes.
+- Actual Git/hook failures, cancellation, unknown push outcomes and reporting failures still fail. Concurrent external commits/branch movement remain outside this reporting fix. Existing Pi sessions need `/reload-runtime` in T3 or `/reload` in the terminal when idle to load it.
+
 ## 2026-11-13: Complete native service-state operations and the Hatchery transition
 
 - Replace the interim retained-backend route with private site implementations for all nine filesystem archive targets and separate explicit SeaweedFS object backup/restore-test. Keep the existing Linux tooling boundary, caller values store, device-local latest/history, checksum/archive formats, quiescing/failure behavior and distinct object identities. No new daemon, retention policy, data relocation or automatic restore is introduced.

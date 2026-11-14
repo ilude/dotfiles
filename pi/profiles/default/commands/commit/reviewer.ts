@@ -681,6 +681,7 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 			// have completed. These read-only queries do not reuse the cancelled signal.
 			progress("Collecting commit results…");
 			let summary = "";
+			const changedAfter: string[] = [];
 			if (root && baselines.size) {
 				const commits: string[] = [], remaining: string[] = [], reportingErrors: string[] = [];
 				for (const [repository, base] of [...baselines].sort(([a], [b]) => b.length - a.length)) {
@@ -695,7 +696,7 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 						if (status) remaining.push(`${label}:\n${status}`);
 						if (!failure) {
 							const unfinished = await unfinishedPaths(repository);
-							if (unfinished.length) failure = `Uncommitted changes remain in ${label}; commit workflow incomplete:\n${unfinished.join("\n")}`;
+							if (unfinished.length) changedAfter.push(`${label}:\n${unfinished.join("\n")}`);
 						}
 					} catch (error) { reportingErrors.push(`${label}: ${error instanceof Error ? error.message : String(error)}`); }
 				}
@@ -713,7 +714,8 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 				const id = repositoryId(root!, repository);
 				return [...paths].filter(([path]) => !requiredExclusions.get(repository)?.has(path)).map(([path, reason]) => `Left out: ${id === "." ? "" : `${id}/`}${path}: ${reason}`);
 			});
-			const report = [summary, ...preservedIndex, ...leftOut.map(line => `Left out: ${line}`), ...exclusions, publication].filter(Boolean).join("\n");
+			const report = [summary, ...preservedIndex, ...leftOut.map(line => `Left out: ${line}`), ...exclusions,
+				changedAfter.length ? `Changed after repository pass; not included:\n${changedAfter.join("\n")}` : "", publication].filter(Boolean).join("\n");
 			if (failure) throw new Error(`${failure}\n${report}\nStopped; existing commits and changes were not undone.`);
 			return { text: report, elapsedMs, model: `${selectedModel?.provider}/${selectedModel?.id}:${thinkingLevel}`, usage };
 }
