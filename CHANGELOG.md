@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-11-13: Complete native service-state operations and the Hatchery transition
+
+- Replace the interim retained-backend route with private site implementations for all nine filesystem archive targets and separate explicit SeaweedFS object backup/restore-test. Keep the existing Linux tooling boundary, caller values store, device-local latest/history, checksum/archive formats, quiescing/failure behavior and distinct object identities. No new daemon, retention policy, data relocation or automatic restore is introduced.
+- Forward compatible filesystem CLI calls to the native owner, including ordered `backup all`, and reject stale-checkout recursion without a fallback operation. Retire the old Ansible backup/restore and legacy regeneration entrypoints to owner reports; preserve historical archive contracts as fixtures, not a second runtime catalog.
+- Site Node 26 typecheck/all 117 cases and network-disabled tooling checks pass. Final infrastructure `just validate` passes 464 cases (one existing skip), full Ansible syntax/production lint with zero failures or warnings, and the public/BWS/excluded-data checks. A longer-bound final run and correction of seven stale assertions passed without restoring old writers or changing host/Docker configuration. No production backup, restore, guest SSH or object-endpoint access was run for this port.
+- Reconcile foundation completion from the accepted consuming handovers and archive the completed spec at `modules/homelab-infra/.specs/archive/hatchery-transition/plan.md`. Publish owning repositories before the parent pins; preserve unrelated work, the cancelled private-site plan, excluded data, Pi legacy and the broader proposed product roadmap.
+
 ## 2026-11-13: Keep sandbox testing in a diagnose-fix-retest loop
 
 - Clarify the dev-setup testing skill so authorized sandbox work includes fixing established installer/runtime defects and retesting from the clean baseline, rather than requesting fresh approval after each finding. Keep missing user-only input and changes outside the agreed repositories/accounts/resources as actual boundaries.
