@@ -1,6 +1,7 @@
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DEFAULT_GATEWAY_URL, GATEWAY_SECRET_ID } from "./gateway-config.ts";
+import { withinSignal } from "./acquisition.ts";
 
 const directory = dirname(fileURLToPath(import.meta.url));
 
@@ -68,11 +69,11 @@ export async function searchApiKey(exec: Exec, name: keyof typeof SEARCH_SECRET_
 		searchKeyPending.set(name, request);
 	}
 	try {
-		const key = await request;
+		const key = signal ? await withinSignal(request, signal) : await request;
 		searchKeyCache.set(name, key);
 		return key;
 	} finally {
-		searchKeyPending.delete(name);
+		if (searchKeyPending.get(name) === request) searchKeyPending.delete(name);
 	}
 }
 

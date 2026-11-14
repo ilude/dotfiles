@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-14: Keep existing search fallbacks usable within bounded acquisition
+
+- Give search a 20-second acquisition budget with separate network and lazy credential windows. Recover from eligible transport, timeout, outage, challenge and quota failures in SearXNG, configured Serper and Brave order, while returning valid empty/partial results without extra searches. Report the selected backend and concrete fallback reasons.
+- Add strict existing-provider selection and reject non-SearXNG engine combinations without substituting providers. Honor reported retry intervals, otherwise use short credential-scoped backoff rather than an invented quota-reset time or reload-only lockout. Keep cancellation and screening outside fallback, and retain fetch’s 60-second gateway/acquisition behavior.
+
 ## 2026-11-14: Report native fetch acquisition provenance
 
 - Distinguish actual workstation retrieval from remote Jina recovery, preserve known redirect destinations, and report bounded acquisition attempts and truncation. Jina relay URLs are not presented as verified target-page redirects.

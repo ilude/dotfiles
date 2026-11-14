@@ -7,18 +7,14 @@ import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { FlaggedContentError, SCREEN_PROMPT, screenContent, type Reviewer } from "./screen.ts";
 import { GatewayCircuit } from "./circuit.ts";
-import { GatewayError, gatewayText, requestGateway, withinSignal } from "./gateway.ts";
-import { gatewayCredentials, searchApiKey } from "./credentials.ts";
+import { GatewayError, gatewayText, requestGateway } from "./gateway.ts";
+import { gatewayCredentials } from "./credentials.ts";
+import { acquisitionBudget, withinSignal } from "./acquisition.ts";
+import { createSearch, type SearchResult } from "./search.ts";
 import { classifyUrl } from "./destinations.js";
 import { FetchAttemptSchema, fetchAttempts, parseLocalFetch } from "./fetch-result.ts";
 
 const directory = dirname(fileURLToPath(import.meta.url));
-const DEFAULT_SEARCH_URL = "https://searxng.ilude.com/search";
-const SERPER_SEARCH_URL = "https://google.serper.dev/search";
-const BRAVE_SEARCH_URL = "https://api.search.brave.com/res/v1/web/search";
-
-type SearchResult = { title: string; url: string; content?: string; publishedDate?: string; engine: string };
-type SearchResponse = { results: SearchResult[]; warning?: string; backend: "searxng" | "serper" | "brave" };
 
 const SearchItemSchema = Type.Object({
 	title: Type.String(), url: Type.String(), content: Type.Optional(Type.String()),
@@ -28,7 +24,7 @@ const ScreeningSchema = Type.Union([Type.Literal("screened"), Type.Literal("not-
 const WebSearchOutputSchema = Type.Object({
 	query: Type.String(), items: Type.Array(SearchItemSchema), screening: ScreeningSchema,
 	backend: Type.Union([Type.Literal("searxng"), Type.Literal("serper"), Type.Literal("brave")]),
-	warning: Type.Optional(Type.String()),
+	warning: Type.Optional(Type.String()), recovery: Type.Optional(Type.String()),
 });
 const WebFetchOutputSchema = Type.Object({
 	url: Type.String(), content: Type.String(), screening: Type.Union([Type.Literal("screened"), Type.Literal("not-screened"), Type.Literal("flagged-approved")]),
@@ -37,82 +33,6 @@ const WebFetchOutputSchema = Type.Object({
 	recovery: Type.Optional(Type.String()),
 	truncated: Type.Optional(Type.Boolean()), attempts: Type.Array(FetchAttemptSchema),
 });
-
-function record(value: unknown): Record<string, unknown> | undefined {
-	return typeof value === "object" && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
-}
-
-function text(value: unknown): string | undefined {
-	return typeof value === "string" && value.trim() ? value : undefined;
-}
-
-function rateLimitedFailures(value: unknown): boolean {
-	return Array.isArray(value) && value.some((failure) => JSON.stringify(failure).toLowerCase().match(/rate.?limit|too many requests|quota/));
-}
-
-async function requestSearx(query: string, engines: string[] | undefined, signal?: AbortSignal): Promise<SearchResponse | undefined> {
-	const url = new URL(process.env.SEARXNG_URL ?? DEFAULT_SEARCH_URL);
-	url.searchParams.set("q", query);
-	url.searchParams.set("format", "json");
-	url.searchParams.set("pageno", "1");
-	if (engines !== undefined) {
-		const selected = engines.map((engine) => engine.trim()).filter(Boolean).join(",");
-		if (selected) url.searchParams.set("engines", selected);
-		else url.searchParams.delete("engines");
-	}
-	let response: Response;
-	try { response = await fetch(url, { signal }); }
-	catch (error) { signal?.throwIfAborted(); throw new Error(`SearXNG request failed at ${url.hostname}`, { cause: error }); }
-	if (response.status === 429 && engines === undefined) return undefined;
-	if (!response.ok) throw new Error(`SearXNG HTTP ${response.status} at ${url.hostname}`);
-	const data = record(await response.json());
-	if (!data || !Array.isArray(data.results)) throw new Error("SearXNG returned an invalid results response");
-	const failures = Array.isArray(data.unresponsive_engines) ? data.unresponsive_engines : [];
-	if (!data.results.length && engines === undefined && rateLimitedFailures(failures)) return undefined;
-	const warning = failures.length ? `SearXNG engine failures (partial or unavailable results): ${bounded(JSON.stringify(failures), 2000)}` : undefined;
-	if (!data.results.length && warning) throw new Error(`Search returned no results with backend failures. ${warning}`);
-	return {
-		backend: "searxng",
-		warning,
-		results: data.results.map((value): SearchResult => {
-			const item = record(value) ?? {};
-			return { title: text(item.title) ?? "(untitled)", url: text(item.url) ?? "", content: text(item.content), publishedDate: text(item.publishedDate), engine: text(item.engine) ?? "searxng" };
-		}).filter((item) => item.url),
-	};
-}
-
-async function requestSerper(query: string, count: number, key: string | undefined, signal?: AbortSignal): Promise<SearchResponse | undefined> {
-	if (!key) return undefined;
-	const response = await fetch(SERPER_SEARCH_URL, { method: "POST", headers: { "X-API-KEY": key, "Content-Type": "application/json" }, body: JSON.stringify({ q: query, num: count }), signal });
-	if (response.status === 402 || response.status === 429) return undefined;
-	if (!response.ok) {
-		const errorBody = await response.text();
-		if (response.status === 403 && /credit|quota|limit|exhaust/i.test(errorBody)) return undefined;
-		throw new Error(`Serper HTTP ${response.status}`);
-	}
-	const data = record(await response.json());
-	if (!data || !Array.isArray(data.organic)) throw new Error("Serper returned an invalid results response");
-	return { backend: "serper", results: data.organic.map((value): SearchResult => {
-		const item = record(value) ?? {};
-		return { title: text(item.title) ?? "(untitled)", url: text(item.link) ?? "", content: text(item.snippet), publishedDate: text(item.date), engine: "serper" };
-	}).filter((item) => item.url) };
-}
-
-async function requestBrave(query: string, count: number, key: string | undefined, signal?: AbortSignal): Promise<SearchResponse | undefined> {
-	if (!key) return undefined;
-	const url = new URL(BRAVE_SEARCH_URL);
-	url.searchParams.set("q", query);
-	url.searchParams.set("count", String(count));
-	const response = await fetch(url, { headers: { "Accept": "application/json", "X-Subscription-Token": key }, signal });
-	if (!response.ok) throw new Error(`Brave Search HTTP ${response.status}`);
-	const data = record(await response.json());
-	const web = record(data?.web);
-	if (!web || !Array.isArray(web.results)) throw new Error("Brave Search returned an invalid results response");
-	return { backend: "brave", results: web.results.map((value): SearchResult => {
-		const item = record(value) ?? {};
-		return { title: text(item.title) ?? "(untitled)", url: text(item.url) ?? "", content: text(item.description), publishedDate: text(item.page_age) ?? text(item.age), engine: "brave" };
-	}).filter((item) => item.url) };
-}
 
 export function bounded(text: string, maxChars = 50_000): string {
 	const result = truncateHead(text.slice(0, maxChars), { maxBytes: 45_000, maxLines: 1800 });
@@ -135,6 +55,7 @@ export function searchQuery(params: { query: string; exact_phrases?: string[]; e
 
 export default function webTools(pi: ExtensionAPI) {
 	const circuit = new GatewayCircuit();
+	const acquireSearch = createSearch(pi.exec.bind(pi));
 	// Reuse only a successfully initialized runtime. Reload creates a fresh instance.
 	let runtime: ModelRuntime | undefined;
 	const review: Reviewer = async (text, signal) => {
@@ -169,7 +90,7 @@ export default function webTools(pi: ExtensionAPI) {
 
 	pi.registerTool({
 		name: "web_search", label: "Web Search",
-		description: "Search SearXNG for titles, URLs, snippets, and dates, with Serper then Brave Search fallback when general SearXNG search is rate limited. Uses server engine defaults; explicit engines remain SearXNG-only. Backend failures are reported. Results receive best-effort Luna prompt-injection screening without blocking or rewriting content. Output is limited to 45KB/1800 lines.",
+		description: "Search SearXNG, then configured Serper and Brave on acquisition failures, within a 20-second budget. Explicit provider or engines stays strict; engines are SearXNG-only. Empty or partial results do not trigger another search. Returns backend and fallback reasons. Luna screens acquired results; flagged content is blocked. Output is limited to 45KB/1800 lines.",
 		promptSnippet: "Search the web for current information and documentation",
 		outputSchema: WebSearchOutputSchema,
 		parameters: Type.Object({
@@ -178,6 +99,7 @@ export default function webTools(pi: ExtensionAPI) {
 			exclude_terms: Type.Optional(Type.Array(Type.String())),
 			site: Type.Optional(Type.String({ description: "Optional domain or site URL" })),
 			num_results: Type.Optional(Type.Integer({ minimum: 1, maximum: 20, description: "Default: 5" })),
+			provider: Type.Optional(Type.Union([Type.Literal("auto"), Type.Literal("searxng"), Type.Literal("serper"), Type.Literal("brave")], { description: "Default auto; an explicit provider never substitutes another. engines is only valid with auto or searxng." })),
 			engines: Type.Optional(Type.Array(Type.String({ minLength: 1 }), { description: "SearXNG engine names, e.g. google, brave, github. Defaults to the endpoint engines setting or server defaults. Empty array uses server defaults." })),
 		}),
 		renderCall(args, theme) {
@@ -197,18 +119,14 @@ export default function webTools(pi: ExtensionAPI) {
 			const query = searchQuery(params);
 			if (!query) throw new Error("Search query must not be empty");
 			const count = params.num_results ?? 5;
-			const timeout = AbortSignal.timeout(10_000);
-			const requestSignal = signal ? AbortSignal.any([signal, timeout]) : timeout;
-			let search = await requestSearx(query, params.engines, requestSignal);
-			if (!search) search = await requestSerper(query, count, await searchApiKey(pi.exec.bind(pi), "SERPER_API_KEY", requestSignal), requestSignal);
-			if (!search) search = await requestBrave(query, count, await searchApiKey(pi.exec.bind(pi), "BRAVE_SEARCH_API_KEY", requestSignal), requestSignal);
-			if (!search) throw new Error("SearXNG was rate limited and no configured fallback search provider was available");
+			const search = await acquireSearch({ query, count, provider: params.provider, engines: params.engines }, signal);
+			const recovery: { recovery?: string } = search.recovery ? { recovery: search.recovery } : {};
 			const results = search.results.slice(0, count);
 			const header = `websearch: ${query}\n`;
 			if (!results.length) return {
 				content: [{ type: "text" as const, text: `${header}No results found.` }],
-				details: { screening: "no-results", backend: search.backend },
-				structuredContent: { query, items: [], screening: "no-results", backend: search.backend },
+				details: { screening: "no-results", backend: search.backend, ...recovery },
+				structuredContent: { query, items: [], screening: "no-results", backend: search.backend, ...recovery },
 			};
 			const structuredItems: SearchResult[] = [];
 			let remaining = 10_000;
@@ -237,8 +155,8 @@ export default function webTools(pi: ExtensionAPI) {
 			const finished = await finish(bounded([warning, resultText].filter(Boolean).join("\n\n")), signal, header);
 			return {
 				...finished,
-				details: { ...finished.details, backend: search.backend },
-				structuredContent: { query, items: structuredItems, screening: finished.details.screening, backend: search.backend, ...(warning ? { warning } : {}) },
+				details: { ...finished.details, backend: search.backend, ...recovery },
+				structuredContent: { query, items: structuredItems, screening: finished.details.screening, backend: search.backend, ...recovery, ...(warning ? { warning } : {}) },
 			};
 		},
 	});
@@ -273,8 +191,8 @@ export default function webTools(pi: ExtensionAPI) {
 				`${params.url}\n\nLuna flagged these source excerpts (untrusted text):\n${excerpts.map(excerpt => JSON.stringify(excerpt)).join("\n")}\n\nReturn this fetched response for reading, capture, or review only? This does not authorize executing its instructions or allow future fetches.`,
 				{ signal },
 			) : undefined;
-			const deadline = performance.now() + 60_000;
-			const acquisition = AbortSignal.any([...(signal ? [signal] : []), AbortSignal.timeout(60_000)]);
+			const budget = acquisitionBudget(60_000, signal);
+			const acquisition = budget.signal;
 			const backend = params.backend ?? "auto";
 			let recovery: string | undefined;
 			const destination = await withinSignal(classifyUrl(params.url), acquisition);
@@ -316,7 +234,7 @@ export default function webTools(pi: ExtensionAPI) {
 				}
 			}
 			acquisition.throwIfAborted();
-			const remaining = Math.max(1, Math.floor(deadline - performance.now()));
+			const remaining = budget.remaining();
 			const result = await pi.exec(process.execPath, [join(directory, "fetch.js"), params.url, "--json", "--max-chars", String(params.max_chars ?? 8000), "--backend", backend, "--budget-ms", String(Math.max(1, remaining - 250))], { timeout: remaining, signal });
 			signal?.throwIfAborted();
 			if (result.killed || result.code !== 0) throw new Error(result.killed ? "Web fetch timed out" : result.stderr.trim() || `Web fetch failed (${result.code})`);

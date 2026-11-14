@@ -268,7 +268,9 @@ describe("actual fetch subprocess", () => {
     const address = server.address() as { port: number };
     const base = `http://127.0.0.1:${address.port}`;
     const script = fileURLToPath(new URL("../extensions/web-tools/fetch.js", import.meta.url));
-    const run = (url: string, args: string[] = []) => promisify(execFile)(process.execPath, [script, url, ...args], { timeout: 10_000 });
+    // A measured cold jsdom import took 13.7s on Windows; include module startup
+    // in this fixture window without changing the native 60s acquisition bound.
+    const run = (url: string, args: string[] = []) => promisify(execFile)(process.execPath, [script, url, ...args], { timeout: 20_000 });
     try {
       const page = await run(`${base}/redirect`);
       expect(page.stdout).toContain(`Source: ${base}/short`);

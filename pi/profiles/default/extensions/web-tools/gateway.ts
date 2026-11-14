@@ -29,13 +29,7 @@ export function validateGatewayReply(value: unknown): GatewayReply {
 		throw new GatewayError("availability", "Gateway returned an invalid error");
 	return reply;
 }
-export async function withinSignal<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
-	let cancel: () => void = () => {};
-	const aborted = new Promise<never>((_, reject) => { cancel = () => reject(signal.reason); signal.addEventListener("abort", cancel, { once: true }); });
-	const pending = Promise.race([work, aborted]);
-	if (signal.aborted) cancel();
-	try { return await pending; } finally { signal.removeEventListener("abort", cancel); }
-}
+export { withinSignal } from "./acquisition.ts";
 export async function requestGateway(endpoint: string, token: string,
 	input: { url: string; max_chars: number; backend: FetchBackend }, signal: AbortSignal): Promise<GatewayReply> {
 	let url: URL;
