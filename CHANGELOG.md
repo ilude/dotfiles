@@ -1,5 +1,49 @@
 # Changelog
 
+## 2026-11-14: Adapt council review mechanics without forcing consensus
+
+- Adapt the existing non-writing council role with Theo's tstack review mechanics: independent common briefs, stable review scope, known-fix/check preparation, evidence-backed findings, explicit unavailable-member reporting, and review coverage suitable for a PR description. Keep scores opt-in and report missing coverage rather than implying approval.
+- Preserve three independent openings, one focused rebuttal, and synthesis without forced agreement or an automatic fix/review loop. Post-fix reviews are fresh assignments; the parent retains implementation and PR updates. Model/effort defaults, provider/harness routing, and role authority remain unchanged pending separate model-selection discussion.
+
+## 2026-11-14: Keep T3 Pi-provider updates linked to the default runtime
+
+- Configure T3 to launch Pi through a small repository-owned adapter outside pnpm's installation directories. Resolve the current global package and its declared CLI entrypoint on each launch, without pinning a Pi version or pnpm hash path. Normal RPC arguments, streams, working directory, environment and exit status pass through.
+- Handle T3's native `update --self` maintenance request with the same global installation, default runtime-link refresh and installation lock as terminal `/update`. Keep T3 in charge of its session lifetimes, preserve Herdr's cooperative restart behavior, and leave chat `/update` unsupported in T3. An explicit setup `--pi-binary` remains an adapter bypass.
+- No T3 bundle patch, rebuild, Electron dependency or application-update replacement is introduced. Rerun T3 setup once to adopt the adapter and after moving the checkout or Node executable. Future upstream changes to the binary-path/native-update contract may require an adapter adjustment. This closes the missing link-refresh path; it does not establish the cause of the separate unreadable-symlink incident.
+
+## 2026-11-14: Scope instruction context and remove plan-only publication gates
+
+- Trim profile-wide instructions to operator preferences and explicit preservation requirements. Move Pi tooling, launcher and historical-profile detail into `pi/AGENTS.md`, keep a short parent warning for repository-wide operations, and move shell details into `zsh/AGENTS.md`. Remove the duplicated parent Onclave branch rule; its existing module instructions still own it and apply to parent-initiated submodule operations. Keep the Pi README as a directory index.
+- Apply the operator's instruction filter in the prompting skill: retain concise operator-specific requirements or non-obvious knowledge at the narrowest useful scope, rather than generic model advice. Link the Integrator procedure instead of repeating its lifecycle in the Git skill.
+- Accept explicit push/deployment authorization from the current conversation or plan without requiring a plan edit. Describe plain `/commit` as a commit-only invocation and keep Integrator's publication restriction local to that role. Role tools, mandatory consultations, closeout dispatch and stash-approval behavior are unchanged; no automatic-push default is introduced.
+
+## 2026-11-14: Make Pi documentation a personal quick reference
+
+- Reduce the Pi README to a linked directory map. Keep setup command-first for installation, login, updates and troubleshooting; remove repeated policy and smoke-test internals instead of moving them into another wall of text.
+- Keep runtime behavior, agent constraints and publication rules unchanged. Fix the root setup link to point directly to the shorter guide; existing detailed feature docs and dated changelog entries remain available.
+
+## 2026-11-14: Load Pi operational and specialist guidance on demand
+
+- Move detailed Pi dependency, launcher/profile, upgrade, authentication and runtime-acceptance procedures from root instructions into `pi/README.md` and the default profile's setup reference. Retain the root's explicit routing trigger, pnpm-only rule, public-launcher invariant and historical-profile boundary without changing their behavior.
+- Split host-adapter, tool-presentation and subprocess/path guidance into conditional references within the existing `pi-extension` skill. Keep runtime fundamentals, prompt-context responsibilities and bounded validation in the entry point; add no skills, runtime gates or authority changes. Git publication policy and role restrictions are unchanged and remain separate discussion items.
+
+## 2026-11-14: Centralize historical Windows diagnostic findings
+
+- Migrate six missing historical Windows diagnostic records to the shared Onclave improvement store: Claude hook console flashing, the MSYS2 crash/retirement dossier, earlier Defender/orphan-process findings, and three process-churn or cleanup observations. Verify saved contents before replacing standalone tracking notes with lookup pointers; preserve implementation plans and historical research with record references.
+- Preserve dated findings, superseded advice, uncertainty and validation limits rather than treating old hypotheses or Defender workarounds as current policy. Current November incidents were already stored. No runtime, Defender setting, ignored private data or legacy Pi content is changed; active submodule documentation searches found no additional matching incident records.
+
+## 2026-11-14: Guide Windows CPU-spike diagnosis and incident tracking
+
+- Extend the skill to review duplicate processes, distinguish legitimate workers from suspended or abandoned subprocesses, and clean up confirmed leftovers only within authorized cleanup. Trace live owners and recheck exact process identities before termination, preserve uncertain cases, and verify removal without resuming stale commands. Track recurring AI-tool launch/cleanup evidence and address confirmed defects in the owning code; cleanup alone does not prove prevention or Defender causality. No automatic killer or continuous monitor is added.
+
+- Add the on-demand `windows-performance` skill to connect the capture script and desktop shortcut with report interpretation, process-churn diagnosis and concise incident summaries in the existing shared improvement store. Track proven causes, proposals, validation gaps and related episodes without copying raw traces or private command lines into central records.
+- Consolidate the older process-churn procedure, capture/report usage and deferred monitoring note into this skill; root instructions and the T3 guide now route to it instead of maintaining parallel procedures. Link the initial incident's shared record while keeping changing history separate from executable guidance, preserving local raw evidence and Defender settings. This changes instructions only; it does not install a recorder service or start a new capture.
+
+## 2026-11-13: Capture Windows Defender spikes on demand
+
+- Add `scripts/capture-defender-spike.ps1` for an administrator-approved, roughly one-minute recording of Defender scans alongside system and per-process CPU/I/O. Keep readable and machine-readable reports in a unique local temporary folder, include protected Defender processes through performance counters, and distinguish scan duration from CPU usage and process I/O from disk-only activity.
+- Provide a workstation-local **Capture Defender Spike** desktop shortcut that runs the same script and opens its results. Keep Defender protection/exclusions unchanged, preserve other recording sessions, and leave continuous monitoring and automatic spike-triggered recording deferred. The shortcut is not added to automatic installation; documentation covers direct agent/shell use and report locations.
+
 ## 2026-11-13: Report late edits without failing completed commit passes
 
 - Define `/commit` completion per repository: eligible work discovered during its pass must still be reviewed, committed or explicitly excluded, and requested publication must finish before moving to its parent. Keep existing within-pass re-review, hooks, ignore rules and failure handling.
@@ -12,6 +56,11 @@
 - Forward compatible filesystem CLI calls to the native owner, including ordered `backup all`, and reject stale-checkout recursion without a fallback operation. Retire the old Ansible backup/restore and legacy regeneration entrypoints to owner reports; preserve historical archive contracts as fixtures, not a second runtime catalog.
 - Site Node 26 typecheck/all 117 cases and network-disabled tooling checks pass. Final infrastructure `just validate` passes 464 cases (one existing skip), full Ansible syntax/production lint with zero failures or warnings, and the public/BWS/excluded-data checks. A longer-bound final run and correction of seven stale assertions passed without restoring old writers or changing host/Docker configuration. No production backup, restore, guest SSH or object-endpoint access was run for this port.
 - Reconcile foundation completion from the accepted consuming handovers and archive the completed spec at `modules/homelab-infra/.specs/archive/hatchery-transition/plan.md`. Publish owning repositories before the parent pins; preserve unrelated work, the cancelled private-site plan, excluded data, Pi legacy and the broader proposed product roadmap.
+
+## 2026-11-13: Record approved default-model and profile repairs
+
+- Extend the Windows testing reference with explicit account agreement activation and OpenCode's approved per-client AWS profile capture. Preserve custom profiles, leave global AWS selection unchanged, and distinguish account terms from automatic installer behavior or IAM grants.
+- Claude and OpenCode now pass their discovered Fable 5.2 response/file-read proofs without model overrides; OpenCode needs no process profile marker. Retain the initial post-activation Claude 403 and later successful retry as separate evidence, alongside the remaining Codex WindowsApps PowerShell tool limitation and untested browser SSO/fresh-final-source cases.
 
 ## 2026-11-13: Distinguish IAM model tests from browser SSO bootstrap
 

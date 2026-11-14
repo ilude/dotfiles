@@ -1,12 +1,12 @@
-import { spawn, execFile } from "node:child_process";
 import { createConnection } from "node:net";
 import { readFile, readdir } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
-import lockfile from "proper-lockfile";
 import { createHerdrCli, type HerdrCli } from "./herdr-cli.ts";
 import { samePlatformPath } from "./path-identity.ts";
 // @ts-expect-error Shared executable JavaScript lives outside the profile's TS project.
 import { updateRegistryDirectory } from "../../../../scripts/pi-update-host.mjs";
+// @ts-expect-error Shared executable JavaScript also runs outside the Pi profile.
+import { acquireUpdateLock as sharedAcquireUpdateLock, runUpdateCommand as sharedRunUpdateCommand, runPiUpdatePass as sharedRunPiUpdatePass } from "../../../../scripts/pi-runtime-update.mjs";
 
 export interface UpdateEndpoint {
   port: number; token: string; pid: number; profile: string; server: string; pane: string;
@@ -32,48 +32,12 @@ export function parseUpdateEndpoint(value: string | undefined): UpdateEndpoint |
   } catch { return; }
 }
 
-/** One installation/link-refresh/pass at a time, including callers in other panes. */
-export async function acquireUpdateLock(): Promise<() => Promise<void>> {
-  return lockfile.lock(updateRegistryDirectory(), { realpath: false, retries: 0, stale: 30 * 60_000 });
-}
-
-export const runUpdateCommand: UpdateRunner = (command, args, options) => new Promise((accept, reject) => {
-  const child = spawn(command, args, { ...options, stdio: ["ignore", "pipe", "pipe"], windowsHide: true, shell: false, detached: process.platform !== "win32" });
-  let output = "", failure: Error | undefined;
-  for (const stream of [child.stdout, child.stderr]) stream.on("data", chunk => { output = (output + String(chunk)).slice(-16_000); });
-  const timer = setTimeout(() => {
-    failure = new Error(`${command} timed out`);
-    if (!child.pid) return;
-    if (process.platform === "win32") execFile("taskkill", ["/pid", String(child.pid), "/t", "/f"], { windowsHide: true, timeout: 5000 }, () => {});
-    else { try { process.kill(-child.pid, "SIGTERM"); } catch { child.kill(); } }
-  }, 10 * 60_000);
-  child.once("error", error => { failure = error; });
-  child.once("close", code => {
-    clearTimeout(timer);
-    if (failure) reject(failure);
-    else if (code !== 0) reject(new Error(`${command} exited ${code}: ${output.trim()}`));
-    else accept();
-  });
-});
-
-export async function runPiUpdatePass(options: { cwd: string; env: NodeJS.ProcessEnv; platform?: NodeJS.Platform }, run: UpdateRunner = runUpdateCommand): Promise<UpdateResult> {
-  let installed = false, linked = false;
-  try {
-    // Use PowerShell to resolve the Windows pnpm shim without introducing CMD quoting.
-    if ((options.platform ?? process.platform) === "win32") await run("pwsh", ["-NoProfile", "-NonInteractive", "-Command", "$ErrorActionPreference = 'Stop'; & pnpm add -g '@earendil-works/pi-coding-agent@latest'; exit $LASTEXITCODE"], options);
-    else await run("pnpm", ["add", "-g", "@earendil-works/pi-coding-agent@latest"], options);
-    installed = true;
-    if ((options.platform ?? process.platform) === "win32") {
-      const helper = join(options.cwd, "powershell/lib/path-utils.ps1").replace(/'/g, "''");
-      await run("pwsh", ["-NoProfile", "-NonInteractive", "-Command",
-        `$ErrorActionPreference = 'Stop'; . '${helper}'; & (Get-GitBash) 'scripts/pi-deps-link-setup' --profile default; exit $LASTEXITCODE`], options);
-    } else await run("bash", ["scripts/pi-deps-link-setup", "--profile", "default"], options);
-    linked = true;
-    const pkg: unknown = JSON.parse(await readFile(join(options.env.PI_CODING_AGENT_DIR ?? "", "node_modules/@earendil-works/pi-coding-agent/package.json"), "utf8"));
-    if (!record(pkg) || typeof pkg.version !== "string" || !/^\d+\.\d+\.\d+(?:[-+][\w.-]+)?$/.test(pkg.version)) throw new Error("Updated Pi version unavailable from refreshed runtime link");
-    return { installed, linked, version: pkg.version };
-  } catch (error) { return { installed, linked, error: error instanceof Error ? error.message : String(error) }; }
-}
+/** Share installation, link refresh and locking with T3, not session restarts. */
+export const acquireUpdateLock: () => Promise<() => Promise<void>> = sharedAcquireUpdateLock;
+export const runUpdateCommand: UpdateRunner = sharedRunUpdateCommand;
+export const runPiUpdatePass: (
+  options: { cwd: string; env: NodeJS.ProcessEnv; platform?: NodeJS.Platform }, run?: UpdateRunner,
+) => Promise<UpdateResult> = sharedRunPiUpdatePass;
 
 export function requestCooperativeRestart(endpoint: UpdateEndpoint, version: string, mode: "same-tab" | "new-tab" = "same-tab"): Promise<RestartResult> {
   return exchangeRestart(endpoint, version, false, mode);

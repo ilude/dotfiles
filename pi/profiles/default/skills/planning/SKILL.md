@@ -68,7 +68,7 @@ reopening them.
    plan authorizes implementation, dedicated task worktrees, local commits, and merge
    into the recorded target unless `--no-merge` is specified or the user restricts
    those actions. Do not require a second approval for local Git. Push and deployment
-   require separate explicit authorization. Executable plans must tell the
+   require explicit user authorization, from the current conversation or the plan. Executable plans must tell the
    orchestrator to consult Strategist before delegating unless the user explicitly
    requests a single-agent handoff, including a Team Lead. Preserve the Team Lead's
    own Strategist-first workflow. Assign at most one named plan task per subagent,

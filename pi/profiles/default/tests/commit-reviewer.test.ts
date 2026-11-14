@@ -22,7 +22,7 @@ it("supplies boundaries, stage-first ordering, and captured publication permissi
 	expect(childTask).toContain('Repository root: "child"');
 	expect(childTask).toContain(inventory[1]);
 	expect(childTask).not.toContain(' M "first.txt"');
-	expect(task).toContain("Push was NOT requested");
+	expect(task).toContain("This command invocation is commit-only.");
 	expect(task).not.toContain("commit_git_review");
 	expect(buildCommitTask(true, ".", inventory)).toContain("clean initialized submodules with outgoing referenced commits");
 	expect(buildCommitTask(true, ".", inventory)).toContain("Publication is code-owned");

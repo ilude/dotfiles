@@ -1,30 +1,27 @@
 #!/usr/bin/env node
 // Merge portable preferences and the default Pi integration, never link runtime state.
-import { accessSync, constants, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { delimiter, dirname, isAbsolute, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseEnv } from "node:util";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const object = value => value !== null && typeof value === "object" && !Array.isArray(value);
 
-function findPiBinary() {
-  // T3's Windows spawner supports .cmd, not PowerShell functions or .ps1 shims.
-  const names = process.platform === "win32" ? ["pi.exe", "pi.cmd"] : ["pi"];
-  const directories = (process.env.PATH || "").split(delimiter).filter(Boolean);
-  if (process.env.PNPM_HOME) directories.push(process.env.PNPM_HOME);
-  for (const directory of directories) {
-    for (const name of names) {
-      const candidate = resolve(directory.replace(/^"|"$/g, ""), name);
-      try {
-        if (!statSync(candidate).isFile()) continue;
-        accessSync(candidate, process.platform === "win32" ? constants.F_OK : constants.X_OK);
-        return candidate;
-      } catch { /* Try the next PATH entry. */ }
-    }
-  }
-  throw new Error("Pi executable is unavailable on PATH; install default Pi first");
+function piAdapterLauncher(baseDir) {
+  const adapter = join(root, "scripts", "t3-pi.mjs");
+  if (!statSync(adapter).isFile()) throw new Error("T3 Pi adapter is unavailable");
+  // Keep this real file outside pnpm: T3 then uses Pi's native update --self route.
+  if (process.platform === "win32") return {
+    path: resolve(baseDir, "bin", "t3-pi.cmd"),
+    content: `@echo off\r\n"${process.execPath}" "${adapter}" %*\r\n`,
+  };
+  const quote = value => `'${value.replaceAll("'", "'\\''")}'`;
+  return {
+    path: resolve(baseDir, "bin", "t3-pi"),
+    content: `#!/bin/sh\nexec ${quote(process.execPath)} ${quote(adapter)} "$@"\n`,
+  };
 }
 
 function readJson(path, fallback) {
@@ -35,15 +32,25 @@ function readJson(path, fallback) {
   }
 }
 
-function writeJson(path, value) {
-  const serialized = `${JSON.stringify(value, null, 2)}\n`;
+function writeLocalFile(path, serialized, mode = 0o600) {
   let current;
   try { current = readFileSync(path, "utf8"); }
   catch (error) { if (error.code !== "ENOENT") throw error; }
   if (current !== serialized) {
     mkdirSync(dirname(path), { recursive: true });
-    writeFileSync(path, serialized, { mode: 0o600 });
+    writeFileSync(path, serialized, { mode });
   }
+}
+
+function writeJson(path, value) {
+  writeLocalFile(path, `${JSON.stringify(value, null, 2)}\n`);
+}
+
+export function installPiAdapterLauncher(baseDir = process.env.T3CODE_HOME || join(homedir(), ".t3")) {
+  const launcher = piAdapterLauncher(baseDir);
+  writeLocalFile(launcher.path, launcher.content, 0o700);
+  if (process.platform !== "win32") chmodSync(launcher.path, 0o700);
+  return launcher.path;
 }
 
 const validBindings = value => Array.isArray(value) && value.every(binding =>
@@ -77,8 +84,9 @@ export function configureT3({
 } = {}) {
   const profile = join(root, "pi", "profiles", "default");
   if (!statSync(profile).isDirectory()) throw new Error(`Default Pi profile is unavailable: ${profile}`);
-  const binary = piBinary ? resolve(piBinary) : findPiBinary();
-  if (!isAbsolute(binary) || !statSync(binary).isFile()) throw new Error("Pi binary must be an existing file");
+  const launcher = piBinary ? undefined : piAdapterLauncher(baseDir);
+  const binary = piBinary ? resolve(piBinary) : launcher.path;
+  if (!isAbsolute(binary) || (piBinary && !statSync(binary).isFile())) throw new Error("Pi binary must be an existing file");
   const preferencesDir = join(root, "config", "t3-code");
   const settingsPath = resolve(baseDir, "userdata", "settings.json");
   const clientPath = resolve(baseDir, "userdata", "client-settings.json");
@@ -146,6 +154,7 @@ export function configureT3({
   if (settings.defaultModelSelection === undefined) {
     settings.defaultModelSelection = { instanceId: "pi", model: "default" };
   }
+  if (launcher) installPiAdapterLauncher(baseDir);
   writeJson(settingsPath, settings);
   writeJson(clientPath, clientDocument);
   writeJson(bindingsPath, mergedBindings);

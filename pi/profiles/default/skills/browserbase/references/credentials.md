@@ -1,6 +1,6 @@
 # Bitwarden credential setup
 
-Resolve the dotfiles checkout from this skill's location, not the task's working directory: the checkout is five parents above the `browserbase` directory. The authoritative locator is `modules/homelab-infra/settings.local.json`; its `bws` object contains `project_id` and `api_server`. These identify Bitwarden, not Browserbase. Follow the module's instructions before changing its configuration. Do not create a second locator or secret store in the Pi profile.
+Resolve the dotfiles checkout from this skill's location, not the task's working directory: the checkout is five parents above the `browserbase` directory. The workstation locator is `config/bws/settings.local.json`; its `bws` object contains `project_id` and `api_server`. These identify Bitwarden, not Browserbase. Follow `config/bws/README.md` for its configuration boundary. Do not create a second locator or secret store in the Pi profile.
 
 Use an existing provider environment key first. Otherwise retrieve exactly one nonempty record using the controller bootstrap credential `BITWARDEN_ACCESS_KEY`, capture BWS JSON internally, check exit codes, and restore prior BWS environment values. Scope the provider key to the operation and restore its prior environment value afterward. Firecrawl's bundled helper implements this lifecycle internally with `FIRECRAWL_API_KEY`; the Browserbase recipe below uses `BROWSERBASE_API_KEY`. Do not print secrets or persist them in files or shell configuration.
 
@@ -11,7 +11,7 @@ $ErrorActionPreference = 'Stop'
 $priorKey = $env:BROWSERBASE_API_KEY
 try {
     if (-not $env:BROWSERBASE_API_KEY) {
-        $locator = (Get-Content -Raw (Join-Path $dotfiles 'modules/homelab-infra/settings.local.json') | ConvertFrom-Json).bws
+        $locator = (Get-Content -Raw (Join-Path $dotfiles 'config/bws/settings.local.json') | ConvertFrom-Json).bws
         if (-not $env:BITWARDEN_ACCESS_KEY) { throw 'Controller BITWARDEN_ACCESS_KEY is unavailable' }
         $priorToken = $env:BWS_ACCESS_TOKEN
         $priorServer = $env:BWS_SERVER_URL

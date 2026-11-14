@@ -32,9 +32,10 @@ stages. No Dotbot link is created for T3's mutable settings or databases.
 The helper merges `~/.t3/userdata/settings.json` (or the home selected by
 `T3CODE_HOME`). It:
 
-- Enables the standard `pi` provider instance and resolves its native executable
-  from the installation shell's PATH. On Windows, it uses `.exe` or `.cmd`, not
-  the shell's `pi` function or a PowerShell `.ps1` shim.
+- Enables the standard `pi` provider instance through a repository-owned adapter
+  at `<T3 home>/bin/t3-pi.cmd` on Windows, or `t3-pi` elsewhere. The adapter
+  resolves the current pnpm-global Pi and its declared CLI entrypoint on each
+  launch; it does not pin a package version or pnpm hash directory.
 - Sets that instance's `PI_CODING_AGENT_DIR` to this checkout's
   `pi/profiles/default`, sharing its existing authentication, settings, models,
   extensions, skills, tools, and native session storage. It copies no credentials.
@@ -51,9 +52,9 @@ The helper merges `~/.t3/userdata/settings.json` (or the home selected by
   unrelated environment entries, secret references, and untracked T3 settings.
   Invalid or conflicting local settings are reported without overwriting them.
 
-Rerun the helper after moving the checkout or changing Pi's executable location.
-Pi upgrades at the same package-manager shim path require no rewrite. For an
-explicit installation:
+Rerun the helper after moving the checkout or Node executable. Ordinary Pi and
+T3 application upgrades need no adapter rebuild. To explicitly bypass the
+adapter and use another executable:
 
 ```sh
 node scripts/t3-code-setup.mjs --base-dir /path/to/t3-home --pi-binary /path/to/pi
@@ -61,7 +62,23 @@ node scripts/t3-code-setup.mjs --base-dir /path/to/t3-home --pi-binary /path/to/
 
 `--base-dir` is the T3 home, not its `userdata` subdirectory. Point `--pi-binary`
 at an executable T3 can spawn on that OS. `--secrets-file /path/to/local.env`
-overrides the default private source when needed.
+overrides the default private source when needed. An explicit `--pi-binary`
+bypasses the adapter's post-update link refresh.
+
+### Pi provider updates
+
+Use Pi's update action in T3's provider settings. The adapter handles T3's native
+`update --self` command with the same global `pnpm add` and default-profile
+runtime-link refresh as terminal `/update`. Both share the installation lock.
+Failure in either step is reported as update failure. Existing T3 sessions are
+not restarted by the adapter; T3 owns their lifetimes. Chat `/update` remains
+unsupported in T3.
+
+Normal RPC argv, streams, cwd and T3-injected environment pass through to Pi.
+No T3 application files are patched, and the adapter has no Electron dependency.
+The integration relies on T3's configurable binary path and native Pi update
+argv; a future change to that upstream contract may need an adapter adjustment,
+not a T3 rebuild. T3 desktop/CLI application updates remain separate operations.
 
 ### Pi private environment through Dolos
 
@@ -276,7 +293,7 @@ Installation and model discovery alone do not prove authenticated model access.
 | Herdr visible subagent layout, pane/service control and independent-session messaging | Not ported or redirected to T3 |
 | Herdr new-instance, prepared-plan launch and same-tab closeout successor | Remain Herdr-specific; use T3's own thread/worktree interface for T3 work |
 | Pi terminal footer, widgets and custom TUI pickers | No equivalent rendering in RPC; TUI-only commands may be unavailable |
-| Shell launcher preflight and cooperative `/update` host | Not used: T3 invokes native Pi and owns its process lifecycle |
+| Shell launcher preflight and cooperative `/update` host | Not used: the T3 adapter forwards RPC and refreshes links on provider update; T3 owns process lifetimes |
 
 ### Named Pi roles through existing T3 delegation
 
@@ -335,6 +352,15 @@ catalog order and static size, not cache-performance or live UI acceptance.
 The main installed-T3 smoke has not yet passed at this documentation update;
 installation, tool discovery and isolated unit tests are not its acceptance.
 
+## Windows Defender spike capture
+
+Use `/skill:windows-performance`. The
+[Windows performance skill](../pi/profiles/default/skills/windows-performance/SKILL.md)
+is the single workflow for the capture script, desktop shortcut, report analysis,
+process-churn diagnosis and incident-history lookup. It also retains the deferred
+continuous-monitoring proposal. Incident summaries stay in the shared improvement
+store; raw recordings remain local.
+
 ## Remote use
 
 Setup does not enable network listening, pairing, T3 Connect, a background service,
@@ -347,7 +373,7 @@ running, or run a CLI server; the upstream background service is not available
 there. Closing the desktop app's last window stops its local server.
 
 This is not a migration of Herdr's saved machines. Existing remote workstation
-policy remains in the [remote access runbook](../modules/homelab-infra/docs/remote-workstation-access.md).
+policy remains in the [remote access runbook](remote-workstation-access.md).
 
 ## Sources and verification
 

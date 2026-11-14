@@ -133,7 +133,11 @@ Normal `-All` onboarding then passed with the dedicated IAM-only test user under
 the same limited Sandbox profile. Pi selected `us.openai.gpt-6.1-sol`. Live model
 responses and a harmless file-read round trip passed for Pi and Codex. Claude and
 OpenCode passed the same proof with explicitly selected Sonnet 4.6; these overrides
-do not prove that their discovered default works. Evidence is local under
+did not prove that their discovered default worked. With subsequent explicit
+approval, the account's Fable 5.2 agreement was accepted and OpenCode's per-client
+profile was configured from the tested source helper. Both clients then passed
+their discovered Fable 5.2 response/file-read proofs without model overrides;
+OpenCode also needed no process `AWS_PROFILE` marker. Evidence is local under
 `.data/windows-sandbox/installer-tests/aws-dev-setup-test/`.
 
 Keep these distinct failure boundaries:
@@ -148,7 +152,10 @@ Keep these distinct failure boundaries:
   normal profile resolution and the Sonnet proof passed. Select the intended
   profile explicitly; never copy secret keys into OpenCode JSON. Discuss credential
   selection before pinning a profile in distributed configuration or globally
-  changing `AWS_PROFILE`, since that can override later credential choices.
+  changing `AWS_PROFILE`, since that can override later credential choices. The
+  approved repair captures `AWS_PROFILE`, then `AWS_DEFAULT_PROFILE`, or `default`
+  only when no per-client profile exists; later reruns preserve that selection.
+  Changing the shell's profile afterward does not re-pin OpenCode automatically.
 - Codex's restricted Windows tool process could not start the WindowsApps
   `pwsh.exe` alias (`CreateProcessAsUserW`, access denied). It completed the file
   proof through another native shell, so inference/file access passed but the
@@ -159,7 +166,13 @@ Keep these distinct failure boundaries:
 The test key was delivered privately only to the current disposable user profile.
 The clean snapshot and template remain pre-authentication; local non-secret key
 metadata identifies the exact key for a later authorized reset. SSO bootstrap was
-not exercised, and no Marketplace agreement or policy expansion was applied.
+not exercised and no IAM policy expansion was applied. Agreement activation was
+an explicitly approved account operation, not a new automatic installer action.
+Its `PENDING` state became `AVAILABLE` while implementation/checks continued. All
+three US backing regions reported availability, but the first Claude retest still
+returned 403; a later bounded retry passed without any additional agreement or
+policy write. Keep transient failures and distinguish availability from actual
+client success rather than immediately expanding permissions.
 
 The first run's raw evidence is local/ignored under
 `.data/windows-sandbox/installer-tests/41a19e5/` in the controller checkout. Read

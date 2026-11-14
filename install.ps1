@@ -1647,7 +1647,7 @@ try {
         if ($LASTEXITCODE -ne 0) {
             throw "Failed to synchronize submodule configuration"
         }
-        git submodule update --init --recursive -- $DOTBOT_DIR 'modules/onclave' 'modules/homelab-infra'
+        git submodule update --init --recursive -- $DOTBOT_DIR 'modules/onclave'
         if ($LASTEXITCODE -ne 0) {
             throw "Failed to initialize required submodules"
         }

@@ -91,7 +91,7 @@ completed_steps+=("Required submodules")
 current_step="Project submodules"
 # Soft failure: these are private repos. A checkout without access to them must
 # still get a working shell, Claude Code, and pi setup.
-if git submodule update --init --recursive modules/onclave modules/homelab-infra; then
+if git submodule update --init --recursive modules/onclave; then
     completed_steps+=("Project submodules")
 else
     echo "Warning: could not initialize project submodules; continuing" >&2

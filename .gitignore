@@ -16,6 +16,10 @@
 # Secrets and Credentials
 # =============================================================================
 .env
+/config/bws/settings.local.json
+
+# Retired local checkout contains the independent private values/artifact store.
+/modules/homelab-infra/
 
 # =============================================================================
 # Claude Code

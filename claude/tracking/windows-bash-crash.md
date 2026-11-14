@@ -1,26 +1,11 @@
----
-title: MSYS2 Bash Crash (add_item Race Condition)
-status: archived-custom-patch-retired
-primary_issue: https://github.com/anthropics/claude-code/issues/30165
-last_checked: 2026-08-23
----
+# MSYS2 Bash crash investigation
 
-## MSYS2 Bash Crash: add_item Race Condition on Windows
+The historical investigation and retirement evidence now live in the shared
+Onclave improvement store:
 
-The historical investigation and retirement evidence are archived at:
+`48564853566f5afba3dcd5cdcc929a727ba38b512ed77fc90db2bb3199b63b19`
 
-**`.specs/archive/msys2-bash-crash/context.md`**
-
-The custom DLL and installer were removed after the vendor runtime passed a
-100-concurrent-Bash startup test without the patch. The upstream pull request
-remains unmerged, so consult the archived evidence if the failure recurs.
-
-Read that file for the error signature, root cause, the March 2026 trigger,
-fix-verification details, and - most importantly - the Current State table:
-several March mitigations have since drifted (the Git for Windows version
-pin did not hold; nsswitch.conf reverted; the SessionStart pre-warm was
-never applied). Verify against the live system before assuming any listed
-mitigation still holds.
-
-If this crash recurs, start with the dossier's "Priority action if the
-crash recurs" section before re-investigating from scratch.
+Retrieve it with `onclave_improvement` using `operation: "get"` and this ID.
+The original repository location, `.specs/archive/msys2-bash-crash/context.md`,
+is a migration pointer. Old remediation advice is historical, not permission to
+restore a retired custom runtime. Recheck the live system if symptoms recur.

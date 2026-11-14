@@ -84,7 +84,7 @@ export function formatPublicationEligibility(push: boolean, branch: string): str
 }
 
 export function buildCommitTask(push: boolean, root: string, inventory: readonly string[], currentRepository = "."): string {
-	return `Review the staged changes and submit a complete commit plan now. ${push ? "Publication is code-owned, including clean initialized submodules with outgoing referenced commits. Do not check outgoing commits or run pull/push. The runner integrates and publishes children before parents, silently skipping detached entries. It will request conflict resolution separately if needed." : "Push was NOT requested. Do not run publication-related branch, upstream, outgoing, remote, or push checks or commands."}
+	return `Review the staged changes and submit a complete commit plan now. ${push ? "Publication is code-owned, including clean initialized submodules with outgoing referenced commits. Do not check outgoing commits or run pull/push. The runner integrates and publishes children before parents, silently skipping detached entries. It will request conflict resolution separately if needed." : "This command invocation is commit-only. Do not run publication-related branch, upstream, outgoing, remote, or push checks or commands."}
 
 Location (JSON-quoted absolute path; decode and shell-quote as data):
 Workflow root: ${JSON.stringify(root)}

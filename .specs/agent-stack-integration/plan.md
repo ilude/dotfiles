@@ -33,15 +33,21 @@ separately authorized. Do not turn live deployment into a second local-Git appro
 
 ## Fresh-context handoff
 
+Ownership note after the accepted Hatchery transition: this draft's dated
+starting-state/ownership snapshots are historical. Use current root guidance,
+Hatchery and private homelab-config for live site facts; homelab-infra is retired.
+This reference repair does not authorize or revise this draft's proposed work.
+
 Paths are relative to `C:/Users/mglenn/.dotfiles` unless another repository is named.
 Read current applicable `AGENTS.md` files before acting.
 
 Required evidence:
 - [Research synthesis and source map](../../docs/research/obsidian-vault/agent-workflows/projects/agent-stack-integration.md).
 - [Onclave product](../../modules/onclave/README.md) and
-  [deployment owner](../../modules/homelab-infra/docs/onclave-deployment.md).
-- [Hermes operator PRD](../../modules/homelab-infra/docs/hermes-operator-pilot-prd.md),
-  a requirements document, not proof of implemented operator actions.
+  [current deployment ownership](../../modules/onclave/deploy/app/onclave/README.md#production-ownership).
+- Historical `homelab-infra/docs/hermes-operator-pilot-prd.md` in the retired
+  repository: requirements evidence, not an active module dependency or proof
+  of implemented operator actions.
 - [Existing Jev spec](../jev-workflow-experiments/plan.md): T1/T2 delivered;
   T3 and live experiments explicitly deferred.
 - [Existing remote-platform PRD](../remote-agent-platform/PRD.md): draft with
@@ -82,7 +88,7 @@ Required evidence:
   No task worktree or execution branch has been created. Record actual coordinates
   at execution; identify each selected module/application target independently.
 
-## Consolidated responsibility map
+## Consolidated responsibility map (2026-11-06 snapshot)
 
 | Surface | Owner / purpose | Boundary to preserve |
 | --- | --- | --- |

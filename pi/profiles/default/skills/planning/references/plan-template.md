@@ -10,7 +10,7 @@ completed: null
 
 - User requirements and settled decisions: <requested outcomes and preserved behavior>.
 - Non-goals: <important exclusions, not speculative restrictions>. Do not add rollback work unless requested.
-- Authorization: planning alone permits no implementation or Git operations. `/do-it` authorizes the selected plan's implementation, local worktrees, commits, and merge unless `--no-merge` is specified or the user restricts those actions. Record any restriction and separately authorized push/deployment; do not require another approval for local Git.
+- Authorization: planning alone permits no implementation or Git operations. `/do-it` authorizes the selected plan's implementation, local worktrees, commits, and merge unless `--no-merge` is specified or the user restricts those actions. Carry forward restrictions and authorized push/deployment; do not require another approval for local Git.
 
 The user's request and subsequent changes are authoritative. Keep unapproved
 recommendations and optional work outside tasks and completion criteria.
@@ -129,9 +129,9 @@ intentionally pending.
 The Integrator verifies the target and archive, records the actual completion date,
 status, and evidence, commits that metadata, then removes the clean task worktree.
 It reports CLEANUP PENDING if integration or metadata succeeded but cleanup did not.
-Push and deployment require explicit user authorization, which may already be
-recorded in this plan; a later execution command does not revoke recorded
-authorization unless the user says so. Operator manual testing does not block closeout.
+Push and deployment require explicit user authorization from the current
+conversation or this plan. Current authorization does not require a plan edit;
+a later execution command does not revoke it unless the user says so. Operator manual testing does not block closeout.
 
 ### Final response
 

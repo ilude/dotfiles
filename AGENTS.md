@@ -2,32 +2,31 @@
 
 Repository-wide rules for this cross-platform dotfiles repository: Linux, Windows PowerShell, Git Bash/MSYS2, and WSL; Dotbot and project submodules under `modules/`; terminals converging on zsh. Read this file first. More specific active-client or directory instructions take precedence without changing these repository-wide invariants:
 
-`pi/profiles/legacy/` preserves the previous customized Pi setup and its local runtime state. It is historical, not the active default or a routine maintenance target. Use `pi/profiles/default/` for current Pi work.
-
-Leave legacy untouched unless the user explicitly requests a specific operation there. Do not inspect, edit, test, install dependencies, launch Pi against it, or stage/commit its changes as part of unrelated work. This includes indirect access through `~/.pi/agent`. A mention or Git status entry is not authorization; preserve incidental runtime metadata changes unless the user asks to revert them.
+Leave `pi/profiles/legacy/` untouched unless explicitly asked, including during repository-wide checks, cleanup or staging. Pi-specific instructions live in `pi/AGENTS.md`.
 
 - Claude Code: `CLAUDE.md`
 - OpenCode/Codex: `opencode/AGENTS.md`
 - Default Pi's profile-wide working rules live in `pi/profiles/default/AGENTS.md`, loaded through `PI_CODING_AGENT_DIR` by bare `pi`. Other profiles keep their own instructions.
 - Claude global instructions: `claude/CLAUDE.md` (independent from Pi instructions, no symlink)
-- Pi runtime: [`pi/README.md`](pi/README.md)
+- Before Pi work, including installer or launcher changes outside `pi/`, read [`pi/AGENTS.md`](pi/AGENTS.md).
 
 Claude hooks, commands, settings, runtime workarounds, and content ingestion are Claude-only. Follow the owning surface rather than blending client, shell, PowerShell, WSL, or platform conventions.
 
 ## Module and repository boundaries
 
-- `modules/onclave/` is the Onclave product repository. It owns the agent communication protocol, services, adapter implementation, and provider-neutral application contracts. Keep its checkout attached to and tracking `origin/feature/v2-broker-core`; do not switch it to `main` or another branch unless the user explicitly requests that branch change.
-- `modules/homelab-infra/` is the homelab infrastructure repository. It owns Proxmox resources, infrastructure services, host deployment orchestration, and the nested private `values/` repository.
-- `modules/hatchery/` is the Hatchery disposable-compute product repository. Read its `AGENTS.md` for product work. Hatchery owns product definitions, configuration facilities, and compute adapters; homelab-infra owns deployment and live site configuration. Its initial documentation does not authorize a change to existing Proxmox resource ownership.
+- `modules/onclave/` owns the communication protocol, services, adapters and application contracts. Follow its [`AGENTS.md`](modules/onclave/AGENTS.md), including for submodule operations invoked from this parent.
+- `modules/hatchery/` owns generic compute, configuration and service facilities. Read its `AGENTS.md` for product work. The independent private `homelab-config` repository (normally `~/homelab-config`) owns live site composition, BWS bindings, deployment/operational commands and the maintained local tooling-image source.
+- `modules/homelab-infra/` is no longer a submodule or an active deployment owner. An ignored local checkout may remain because its nested private `values/` repository stores existing backups/artifacts. Preserve that directory and data; do not delete it as submodule cleanup or treat its historical instructions as current ownership.
 - This dotfiles repository owns workstation setup and Pi runtime integration. `pi/extensions/onclave-pi.ts` is only a loader for the implementation in `modules/onclave/`.
 - `docs/research/obsidian-vault/` is the private Forgejo `mike/research-vault` submodule. It owns research notes, indexes, templates, and vault/topic instructions, not dotfiles runtime implementation. Keep research output at this existing path and follow its local `AGENTS.md`. It is separate from Onclave's content-ingestion/search vault. See the [research vault workflow](README.md#research-vault) for initialization and publication.
 - Treat each submodule as an independent repository with its own instructions, branch, validation, commit, and remote. Make changes in the owning repository rather than duplicating source across repositories.
-- For coordinated changes, preserve the boundary: Onclave publishes application contracts, homelab-infra consumes them for deployment, and dotfiles wires local clients to them. Do not move live inventory or site secrets out of `modules/homelab-infra/values/`.
+- For coordinated changes, Onclave publishes application contracts, Hatchery supplies generic facilities, homelab-config consumes them for the live site, and dotfiles wires local clients. BWS owns live inventory and secrets; private `values/` holds excluded backups/artifacts/dumps/mutable service state, not a second configuration store.
+- The workstation BWS locator is ignored `config/bws/settings.local.json`; see `config/bws/README.md`. Keep bootstrap credentials caller-local and never create per-skill credential stores.
 - Commit submodule changes from the submodule first, then commit the updated gitlink in dotfiles. Local parent pin commits do not require pulling or publication. When push is requested, publish relevant module commits before the parent that references them. Never include a submodule's files directly in a dotfiles commit.
 
 ## Remote workstation access
 
-Before Herdr remote attachment, Windows PowerShell remoting, or changes to their network access, read [`modules/homelab-infra/docs/remote-workstation-access.md`](modules/homelab-infra/docs/remote-workstation-access.md). It covers native Herdr attachment, Windows Terminal launch context, credentials, and verification limits. Workstation launchers belong here; managed live inventory and secrets follow homelab-infra's BWS boundary, not tracked examples or a second inventory in `values/`.
+Before Herdr remote attachment, Windows PowerShell remoting, or changes to their network access, read [`docs/remote-workstation-access.md`](docs/remote-workstation-access.md). It covers native Herdr attachment, Windows Terminal launch context, credentials, and verification limits. Workstation launchers belong here; managed live inventory and secrets remain in BWS, not tracked examples or a second inventory in `values/`.
 
 ## Command index
 
@@ -36,33 +35,15 @@ Installation entrypoints and options live in [`README.md#installation`](README.m
 Tooling rules:
 
 - Python tooling uses `uv`; tests use `pytest`, Python lint/format uses `ruff`, shell lint uses `shellcheck`, shell format uses `shfmt`, and `pyproject.toml` sets Python 3.9 as the floor.
-- Pi TypeScript is pnpm-only. `pi/profiles/default/package.json` owns default dependencies, typecheck, and Vitest; `pi/profiles/legacy/package.json` remains the source of truth for the customized legacy setup. After global Pi installation, `bash scripts/pi-default-setup` owns frozen default dependency installation, matching runtime/native-profile linking, runtime checks, and offline launch acceptance. `make check-pi-default` validates default without reinstalling; file filters go directly after `pnpm test` without `--`. Never use `bun add`, `bun install`, `bun run`, or `bun test` for Pi packages/tests. Use `cd pi/profiles/legacy && pnpm install --frozen-lockfile` only when dependencies need installation; available checks include `pnpm run typecheck` and `pnpm test`.
-- For one Vitest file in the legacy Pi profile, pass the filter directly, for example `cd pi/profiles/legacy && pnpm test operator-status.test.ts`; never insert `--`, because the script passes it through to Vitest and would run the full suite.
-- `@earendil-works/*` and `typebox` are intentionally absent from `pi/profiles/legacy/package.json`; `scripts/pi-deps-link-setup` links them from pnpm-global into `pi/profiles/legacy/node_modules` so they match the installed Pi binary. See [`pi/README.md`](pi/README.md) and [`pi/profiles/legacy/README.md`](pi/profiles/legacy/README.md).
 
 ## Repository invariants
 
-### Install, links, shells, and Pi profiles
+### Install, links and shells
 
 The installer entrypoints and supporting paths are indexed in [`README.md#structure`](README.md#structure).
 
-- `pi` is the sole public cross-platform Pi launcher. Use bare `pi` for the clean repository-owned default profile, `pi --profile legacy` for the customized legacy setup, and `pi --profile <name>` for other isolated profiles.
-- Interactive shell functions invoke the internal `scripts/pi-profile-launch` and `scripts/pi-profile-launch.ps1` helpers directly. They reserve `-p` for profile selection, validate profile names as `[A-Za-z0-9][A-Za-z0-9._-]*`, set `PI_CODING_AGENT_DIR`, and pass remaining arguments to Pi. Use `--print` for Pi print mode, or put Pi's own short `-p` argument after `--`.
-- Repository-owned Pi profiles live under `pi/profiles/`: `default/` is the clean default selected by bare `pi`, and `legacy/` contains the previous customized Pi setup plus its local runtime state. Arbitrary named profiles are created on first use under `~/.pi/profiles/<name>/` and are not repository-owned.
-- The native path `~/.pi/agent` points at `pi/profiles/default/` so direct `pi` invocations and shell launches use the same active profile. Legacy is historical reference, not the implicit runtime. Use `scripts/migrate-pi-profiles.ps1` with Pi stopped to perform or repair the stopped-process migration into `pi/profiles/{default,legacy}/`.
 - `wsl/install.conf.yaml` must mirror every relevant cross-platform link from `install.conf.yaml`. Add the WSL equivalent with each cross-platform link; exclude Windows-only targets such as the PowerShell profile and Windows VS Code paths.
-- All terminals converge through `.bash_profile -> .zshenv -> .zshrc`; see the [shell architecture](README.md#shell-architecture).
-- In MSYS2 and Git Bash, pass `ZDOTDIR` through `env` when execing zsh.
-- On Windows with MSYS2, `nsswitch.conf` must resolve HOME with `db_home: env windows cygwin desc`.
-- Before changing files under `zsh/`, read and follow `zsh/AGENTS.md`; standalone scripts may redefine platform detection only to remain self-contained.
-
-### Pi setup diagnosis and acceptance
-
-- After upgrading global Pi, run `bash scripts/pi-deps-link-setup --profile default` to refresh the default profile's runtime links. Herdr resolves that link on each launch; Pi upgrades do not require rerunning Herdr setup. Existing Pi processes retain their loaded version until restarted.
-- Diagnose the operator's actual launch before changing setup: command resolution (shell function versus native executable), working directory, active process `PI_CODING_AGENT_DIR`, native agent-link target, and selected provider/model. A fresh shell or an explicit profile override can hide the failure in an existing process; repository cwd does not establish its profile.
-- Default uses native `openai` OAuth for the Codex subscription. Historical `openai-codex` routing is not the default repair path. Credentials belong to the selected profile; a login or settings change in another profile does not establish access in this one. Preserve the legacy boundary above.
-- Verify subscription access with an authenticated model request through the affected launch path in the operator's workspace. Installation success, model listings, and wrapper-only requests do not establish native-launch access. When native launch is affected, test without adding `PI_CODING_AGENT_DIR` to make the check pass.
-- Distinguish files changed on disk from configuration already loaded by the operator's process. State the required Pi restart or shell reload specifically; a successful fresh-process check does not prove the existing session is repaired. When challenged, inspect that process and rerun the faithful check rather than repeating the earlier completion claim.
+- Shell configuration follows [`zsh/AGENTS.md`](zsh/AGENTS.md) and the [shell architecture](README.md#shell-architecture).
 
 ### Git identity and submodules
 
@@ -88,24 +69,10 @@ git submodule update --init --recursive
 
 ### Windows process churn
 
-If agent work coincides with high LSM, CryptSvc, Git LFS, MSYS helper, or console-host CPU, run [`scripts/diagnose-windows-process-churn.ps1`](scripts/diagnose-windows-process-churn.ps1) with `pwsh -File` before guessing. Correlate System log `Tcpip` event ID `4227` with recent subprocess-heavy work; prefer fixing process churn through caching, timeouts, and child-tree cleanup over repeated retries.
+For Windows CPU spikes or process churn, load the [Windows performance skill](pi/profiles/default/skills/windows-performance/SKILL.md) before diagnosing.
 
 ## Ownership and navigation
 
-Command ownership follows the client that loads the surface: Pi runtime features, commands, tools, workflows, and operator behavior belong in `pi/`; Claude-specific commands and shared instructions belong in `claude/`; OpenCode-specific overrides belong in `opencode/`, while its shared command links are generated by `scripts/opencode-link-setup`. Change the owning source rather than generated links or parallel copies. Follow [`pi/README.md`](pi/README.md) for Pi behavior. When client or platform patterns conflict, follow the owning/local surface and flag any consequential conflict.
-
-Key paths:
-
-| Path | Purpose |
-| --- | --- |
-| `install`, `install.ps1`, `wsl/` | Primary installers and WSL install/config/validation |
-| `install.conf.yaml` | Cross-platform Dotbot links |
-| `scripts/pi-profile-launch`, `scripts/pi-profile-launch.ps1` | Internal cross-platform Pi profile launch helpers |
-| `pi/profiles/default/`, `pi/profiles/legacy/` | Repository-owned clean and customized Pi profiles |
-| `zsh/env.d/`, `zsh/rc.d/` | Environment and interactive zsh modules; platform helpers start in `zsh/rc.d/00-helpers.zsh` |
-| `config/git/`, `powershell/profile.ps1` | Git and PowerShell configuration |
-| `test/` | Repository tests |
-| `plugins/`, `dotbot/` | zsh plugins and Dotbot submodule |
-| `docs/research/obsidian-vault/` | Private research-vault submodule; obey its local `AGENTS.md` and topic instructions |
+Command ownership follows the client that loads the surface: Pi runtime features, commands, tools, workflows, and operator behavior belong in `pi/`; Claude-specific commands and shared instructions belong in `claude/`; OpenCode-specific overrides belong in `opencode/`, while its shared command links are generated by `scripts/opencode-link-setup`. Change the owning source rather than generated links or parallel copies. When client or platform patterns conflict, follow the owning/local surface and flag any consequential conflict.
 
 Windows packages live in `winget/configuration/{core,work,dev}.dsc.yaml`; edit the applicable file and preserve `id: <id>  # <Display Name>` with two spaces before `#` so `install.ps1 -ListPackages` continues to work.
