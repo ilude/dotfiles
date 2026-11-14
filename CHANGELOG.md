@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-13: Keep sandbox testing in a diagnose-fix-retest loop
+
+- Clarify the dev-setup testing skill so authorized sandbox work includes fixing established installer/runtime defects and retesting from the clean baseline, rather than requesting fresh approval after each finding. Keep missing user-only input and changes outside the agreed repositories/accounts/resources as actual boundaries.
+- Document ordinary package/publisher-checked Windows consent through the console while retaining the limited test-runner token. Do not disable UAC, substitute SYSTEM, erase original failure evidence or broaden cloud-key cleanup. The Windows fixture suite passes for the scoped prerequisite repairs; live installer retesting continues separately.
+
 ## 2026-11-14: Reuse neutral repository setup conventions
 
 - Add the on-demand default-profile `repo-setup` skill with adaptable Windows/Python bootstrap, agent/README, ignore and changelog templates. Keep work-specific context conditional in `references/work.md`; personal projects use the neutral baseline without a speculative personal variant. Preserve native instruction ownership instead of copying tenant/deployment workflows, automatic Git synchronization or workstation onboarding into every repo.
