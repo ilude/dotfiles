@@ -7,6 +7,7 @@ import { adapt } from "./adapters.ts";
 import { analyzeRequest, type AnalysisDependencies } from "./analysis.ts";
 import { Breaker, fingerprint, type BreakerSnapshot } from "./breaker.ts";
 import { bypassEligibility } from "./bypass.ts";
+import { fullSendAuthorization } from "../goal/full-send.ts";
 import { authorizedPlanIntegration } from "./plan-integration-authority.ts";
 import { Context, BROWSER_INTENT_ENTRY, DIRECT_INPUT_LIMIT, activeConversation, processVariableEvidence } from "./context.ts";
 import { decide, applyContextualEffect, contextualEffect } from "./engine.ts";
@@ -257,6 +258,11 @@ export function registerGate(pi: ExtensionAPI, profile: string, repo: string, de
           { tool: request.tool, input: request.input, cwd: request.cwd }, typeof ctx.sessionManager.getBranch === "function" ? ctx.sessionManager.getBranch() : undefined,
         );
         if (contextual) { evidence.browser = context.browserEvidence(contextual); applyContextualEffect(analysis, evidence); }
+        // Only the owning goal can supply this command-originated authority.
+        // Browser/disclosure policy and inspection never inherit local preapproval.
+        const taskAuthorization = !inspectionBound && !policyOnly && !evidence.browser
+          ? fullSendAuthorization(pi.events, ctx.sessionManager.getSessionId()) : undefined;
+        if (taskAuthorization) evidence.taskAuthorization = taskAuthorization;
         let decision = decide(analysis, evidence);
         if (decision.outcome === "review") {
           const reviewSession = ctx.sessionManager.getSessionId();
@@ -270,7 +276,10 @@ export function registerGate(pi: ExtensionAPI, profile: string, repo: string, de
           decision = decide(analysis, evidence, result);
         }
         if (decision.outcome === "block") return blocked(decision.reason);
-        const localBypass = !inspectionBound && !policyOnly && bypassed && bypassEligibility(request, analysis, decision, facts).eligible;
+        const activeAuthorization = taskAuthorization ? fullSendAuthorization(pi.events, ctx.sessionManager.getSessionId()) : undefined;
+        const fullSendOk = !!taskAuthorization && activeAuthorization?.runId === taskAuthorization.runId &&
+          decision.outcome === "user" && decision.review?.status === "valid" && decision.review.verdict === "ask" && decision.review.taskAuthorized === true;
+        const localBypass = !inspectionBound && !policyOnly && (bypassed || fullSendOk) && bypassEligibility(request, analysis, decision, facts).eligible;
         let reviewFuture = false;
         const reviewableScript = analysis.internal?.scripts?.length === 1 ? analysis.internal.scripts[0] : undefined;
         if (decision.outcome === "user" && !localBypass) {

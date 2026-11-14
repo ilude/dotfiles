@@ -88,6 +88,8 @@ export type SequenceEvidence = { kind: string; category?: string; summary: strin
 export type JudgeConversationMessage = { role: "user" | "assistant"; text: string };
 export type PendingJudgeCall = { tool: string; input: unknown; cwd: string };
 export type Evidence = {
+  /** Runtime-issued /full-send authority, independent of conversation summaries. */
+  taskAuthorization?: import("../goal/full-send.ts").FullSendAuthorization;
   callId: string;
   operation: string;
   operator: { source: "interactive" | "rpc"; text: string }[];
@@ -132,7 +134,7 @@ export type JudgeDiagnostic = {
   usage?: JudgeUsage;
 };
 export type ReviewResult =
-  | { status: "valid"; verdict: "allow" | "ask"; reason: string; dismissedCandidates: string[]; diagnostics?: JudgeDiagnostic }
+  | { status: "valid"; verdict: "allow" | "ask"; reason: string; dismissedCandidates: string[]; taskAuthorized?: boolean; diagnostics?: JudgeDiagnostic }
   | { status: "timeout" | "unavailable" | "invalid" | "cancelled"; reason: string; diagnostics?: JudgeDiagnostic };
 export type PendingCall = { callId: string; fingerprint: string; generation: number; signal?: AbortSignal };
 export type DockerCreation = { daemonId: string; containerId: string; timestamp: number; callId: string };
