@@ -246,13 +246,19 @@ or a shortened scope.
     jsdom startup justified a 20s local-fixture subprocess window; the native
     60s fetch limit and production acquisition behavior are unchanged.
 
-- [ ] **W03: Apply the shared reading-approval system to search**
+- [x] **W03: Apply the shared reading-approval system to search**
   - Depends on: no unresolved policy; the screening contract above is approved.
     Files: `screen.ts`, operation finish/UI paths and their existing tests.
   - Add fetch's response-specific reading approval to search and correct its
     description. Preserve fetch's behavior and legitimate documentation distinction.
   - Done when: flagged/unavailable/ordinary-documentation/cancellation outcomes
     match the selected contract, with screening outside acquisition fallback.
+  - Evidence: search and fetch share the response-specific reading prompt;
+    approval is neither cached nor execution authority. Search schema and compact
+    presentation report flagged-approved content. Existing unavailable/no-UI
+    behavior is retained. Typecheck and six focused files pass 61/61 cases,
+    including approval/denial, no screening-driven reacquisition, ordinary setup
+    prose and cancellation during approval. Provider/model calls are fixtures.
 
 - [ ] **W04: Native Firecrawl one-page retrieval**
   - Depends on: W01's provenance result; use the agreed cost/caching semantics.
@@ -433,8 +439,8 @@ and schema edits. Dependencies above, not phase ordering alone, determine readin
 
 ## Current handoff
 
-- Status: W01 and W02 implemented directly by the parent in the existing task
-  worktree; 17 implementation tasks remain. W03 is next. Full scope and acceptance remain
+- Status: W01–W03 implemented directly by the parent in the existing task
+  worktree; 16 implementation tasks remain. W04 is next. Full scope and acceptance remain
   unchanged; orchestration repairs no longer block feature implementation.
 - Completed: current code/tests/provider-doc reconnaissance and two Opus high
   design consultations. The full path retains Browserbase, automatic fallback,
@@ -462,7 +468,7 @@ and schema edits. Dependencies above, not phase ordering alone, determine readin
   developer: two focused T3 files pass 25 cases and typecheck passes. The calling
   runtime has not reloaded that changed closure. This does not block direct work;
   no raw/generic/native delegation fallback or role broadening is introduced.
-- Next action: implement W03 directly, then continue ready tasks without another
+- Next action: implement W04 directly, then continue ready tasks without another
   coordinator launch, repair gate or repeated design consultation.
 - Product-design readiness: no open policy decisions. Preserve the task worktree,
   main's unrelated work, both operator stashes and the unrelated

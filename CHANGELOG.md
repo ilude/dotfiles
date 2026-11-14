@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-14: Share response-specific reading approval across web tools
+
+- Let users read a flagged search response once through the same approval system as fetch. Keep the response untrusted, show its flagged excerpts, and preserve blocking when approval or interactive UI is absent. Approval is not permission to execute source instructions and never applies to later responses.
+- Keep screening outside acquisition routing, retain unavailable-review behavior, and identify approved flagged search output in structured metadata and compact presentation. Ordinary documentation is still reviewed in context rather than rejected merely for containing setup commands; no domain bypass or additional provider request is introduced.
+
 ## 2026-11-14: Keep existing search fallbacks usable within bounded acquisition
 
 - Give search a 20-second acquisition budget with separate network and lazy credential windows. Recover from eligible transport, timeout, outage, challenge and quota failures in SearXNG, configured Serper and Brave order, while returning valid empty/partial results without extra searches. Report the selected backend and concrete fallback reasons.

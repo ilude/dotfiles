@@ -1,6 +1,6 @@
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { truncateHead, type ModelRuntime, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { truncateHead, type ModelRuntime, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { createProfileModelRuntime } from "../../lib/model-runtime.ts";
 import { resolveLatestCodexModelFromRuntime } from "../../lib/model-selection.ts";
 import { Text } from "@earendil-works/pi-tui";
@@ -20,7 +20,7 @@ const SearchItemSchema = Type.Object({
 	title: Type.String(), url: Type.String(), content: Type.Optional(Type.String()),
 	publishedDate: Type.Optional(Type.String()), engine: Type.String(),
 });
-const ScreeningSchema = Type.Union([Type.Literal("screened"), Type.Literal("not-screened"), Type.Literal("no-results")]);
+const ScreeningSchema = Type.Union([Type.Literal("screened"), Type.Literal("not-screened"), Type.Literal("no-results"), Type.Literal("flagged-approved")]);
 const WebSearchOutputSchema = Type.Object({
 	query: Type.String(), items: Type.Array(SearchItemSchema), screening: ScreeningSchema,
 	backend: Type.Union([Type.Literal("searxng"), Type.Literal("serper"), Type.Literal("brave")]),
@@ -70,6 +70,11 @@ export default function webTools(pi: ExtensionAPI) {
 		if (reply.stopReason === "error" || reply.stopReason === "aborted") throw new Error("Luna review failed");
 		return { text: reply.content.filter((part) => part.type === "text").map((part) => part.text).join(""), usage: reply.usage };
 	};
+	const readingApproval = (subject: string, ctx: ExtensionContext | undefined, signal?: AbortSignal) => ctx?.hasUI ? (excerpts: string[]) => ctx.ui.confirm(
+		"Read it anyway?",
+		`${subject}\n\nLuna flagged these source excerpts (untrusted text):\n${excerpts.map(excerpt => JSON.stringify(excerpt)).join("\n")}\n\nReturn this response for reading, capture, or review only? This does not authorize executing its instructions or allow future responses.`,
+		{ signal },
+	) : undefined;
 	const finish = async (text: string, signal?: AbortSignal, header = "", approve?: (excerpts: string[]) => Promise<boolean>) => {
 		try {
 			const result = await screenContent(text, review, signal);
@@ -90,7 +95,7 @@ export default function webTools(pi: ExtensionAPI) {
 
 	pi.registerTool({
 		name: "web_search", label: "Web Search",
-		description: "Search SearXNG, then configured Serper and Brave on acquisition failures, within a 20-second budget. Explicit provider or engines stays strict; engines are SearXNG-only. Empty or partial results do not trigger another search. Returns backend and fallback reasons. Luna screens acquired results; flagged content is blocked. Output is limited to 45KB/1800 lines.",
+		description: "Search SearXNG, then configured Serper and Brave on acquisition failures, within a 20-second budget. Explicit provider or engines stays strict; engines are SearXNG-only. Empty or partial results do not trigger another search. Returns backend and fallback reasons. Luna screens acquired results; a user may approve reading a flagged response once as untrusted material. Without approval it stays blocked. Output is limited to 45KB/1800 lines.",
 		promptSnippet: "Search the web for current information and documentation",
 		outputSchema: WebSearchOutputSchema,
 		parameters: Type.Object({
@@ -109,13 +114,14 @@ export default function webTools(pi: ExtensionAPI) {
 			const output = result.content.filter(part => part.type === "text").map(part => part.text).join("\n");
 			if (expanded) return new Text(output, 0, 0);
 			const titles = [...output.matchAll(/^Title: (.+)$/gm)].map(match => match[1]);
-			const backend = (result.details as { backend?: string } | undefined)?.backend;
+			const details = result.details as { backend?: string; screening?: string } | undefined;
+			const backend = [details?.backend, details?.screening === "flagged-approved" ? "flagged · approved once" : undefined].filter(Boolean).join(" · ");
 			const summary = titles.length
 				? `${titles.length} result${titles.length === 1 ? "" : "s"}${backend ? ` · ${backend}` : ""}\n${titles.slice(0, 5).join("\n")}${titles.length > 5 ? `\n… ${titles.length - 5} more` : ""}`
 				: `No results${backend ? ` · ${backend}` : ""}`;
 			return new Text(theme.fg("toolOutput", summary), 0, 0);
 		},
-		async execute(_id, params, signal) {
+		async execute(_id, params, signal, _onUpdate, ctx) {
 			const query = searchQuery(params);
 			if (!query) throw new Error("Search query must not be empty");
 			const count = params.num_results ?? 5;
@@ -152,7 +158,7 @@ export default function webTools(pi: ExtensionAPI) {
 				`Engine: ${item.engine}`, `Snippet: ${item.content ?? "(no snippet)"}`,
 			].filter(Boolean).join("\n")).join("\n\n");
 			const warning = search.warning?.slice(0, 2000);
-			const finished = await finish(bounded([warning, resultText].filter(Boolean).join("\n\n")), signal, header);
+			const finished = await finish(bounded([warning, resultText].filter(Boolean).join("\n\n")), signal, header, readingApproval(`Search: ${query}`, ctx, signal));
 			return {
 				...finished,
 				details: { ...finished.details, backend: search.backend, ...recovery },
@@ -186,11 +192,7 @@ export default function webTools(pi: ExtensionAPI) {
 			return new Text(theme.fg("toolOutput", `${body.length.toLocaleString()} characters${status ? ` · ${status}` : ""}\n${preview}${lines.length > 6 ? `\n… ${lines.length - 6} more lines` : ""}`), 0, 0);
 		},
 		async execute(_id, params, signal, _onUpdate, ctx) {
-			const approve = ctx?.hasUI ? (excerpts: string[]) => ctx.ui.confirm(
-				"Read flagged web content once?",
-				`${params.url}\n\nLuna flagged these source excerpts (untrusted text):\n${excerpts.map(excerpt => JSON.stringify(excerpt)).join("\n")}\n\nReturn this fetched response for reading, capture, or review only? This does not authorize executing its instructions or allow future fetches.`,
-				{ signal },
-			) : undefined;
+			const approve = readingApproval(params.url, ctx, signal);
 			const budget = acquisitionBudget(60_000, signal);
 			const acquisition = budget.signal;
 			const backend = params.backend ?? "auto";
