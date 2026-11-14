@@ -73,7 +73,7 @@ and proposed provider modules are under `pi/profiles/default/extensions/web-tool
 Runtime `lib/...` and `tests/...` references are relative to
 `pi/profiles/default/`, not the repository root.
 
-- Root/target: `C:/Users/mglenn/.dotfiles`, branch `main`, observed `54f67341` on
+- Root/target: `C:/Users/mglenn/.dotfiles`, branch `main`, observed `2faf9891` on
   2026-11-14. Recheck current state; preserve concurrent and retirement changes.
 - Runtime owner: `pi/profiles/default/extensions/web-tools/` and associated profile
   tests/skills. Planning profile verified as `default`; intended execution profile
@@ -93,9 +93,10 @@ Runtime `lib/...` and `tests/...` references are relative to
   into the execution worktree or override Git exclusions.
 - T3 created task branch `feat/web-tools-consolidation` at
   `C:/Users/mglenn/.t3/worktrees/.dotfiles/t3-21398b41-8fc7cb522677218f`.
-  Parent T3 metadata verified these coordinates; the coordinator stopped before
-  independently verifying Git state or implementing W01. Do not claim implementation
-  or branch commits from worktree creation alone.
+  Parent T3 metadata and Git verified these coordinates. The parent now implements
+  directly here after the idle coordinator stalled on harness/setup issues. The
+  unchanged dirty `modules/t3code` and operator stashes remain protected; this
+  unrelated submodule is not a blanket cleanliness prerequisite.
 
 ## Verified starting behavior and evidence limits
 
@@ -205,7 +206,7 @@ The path incorporates two Opus high consultations and the operator's subsequent
 decisions. These are full-goal delivery boundaries, not implementation authorization
 or a shortened scope.
 
-- [ ] **W01: Truthful fetch provenance**
+- [x] **W01: Truthful fetch provenance**
   - Depends on: none. Files: `fetch.js`, `index.ts`, relevant web-tools tests.
   - Return machine-readable acquisition source/final URL from local retrieval,
     including Jina recovery, while preserving human-readable helper compatibility
@@ -216,6 +217,13 @@ or a shortened scope.
     error/deadline/metadata helpers consumed by real paths, not a provider framework.
   - Done when: native output distinguishes actual local retrieval from Jina and
     retains existing private/local routing, bounds and cancellation behavior.
+  - Evidence: versioned helper JSON preserves actual local/Jina backend, known
+    final URL, bounded attempt facts and truncation; the default text CLI remains.
+    Gateway attempt/truncation facts are projected without raw payload fields.
+    Profile typecheck passed; five focused files passed 50/50 tests. Timeouts were
+    not increased. A cold jsdom import took 13.7s in a local diagnostic, exceeding
+    the pre-existing fixture subprocess window; the subsequent redirect helper
+    completed in about 2s and the suite passed. No live provider call was made.
 
 - [ ] **W02: Reliable existing search fallback**
   - Depends on: the search failure/deadline contract above, not a new provider.
@@ -417,8 +425,9 @@ and schema edits. Dependencies above, not phase ordering alone, determine readin
 
 ## Current handoff
 
-- Status: nested-delegation repair passes offline checks; idle coordinator reload
-  and live nested launch remain before W01. No web-tools implementation started.
+- Status: W01 implemented directly by the parent in the existing task worktree;
+  18 implementation tasks remain. W02 is next. Full scope and acceptance remain
+  unchanged; orchestration repairs no longer block feature implementation.
 - Completed: current code/tests/provider-doc reconnaissance and two Opus high
   design consultations. The full path retains Browserbase, automatic fallback,
   image/news and structured extraction rather than making explicit Firecrawl the
@@ -430,7 +439,7 @@ and schema edits. Dependencies above, not phase ordering alone, determine readin
   cloud requests. Return honest quality/truncation/provenance information.
 - Settled caching: provider-cached pages are allowed; do not require fresh reads
   by default. Report only known cache/freshness metadata.
-- Execution attempt: top-level Strategist consultation and isolated Team Lead
+- Initial execution attempt: top-level Strategist consultation and isolated Team Lead
   launch succeeded. The Team Lead's nested Strategist call failed with
   `Callable injected T3 delegate_task unavailable`; no implementation worker ran.
 - Parent baseline: profile typecheck passed. Five-file Vitest run had 47/48 pass
@@ -439,12 +448,15 @@ and schema edits. Dependencies above, not phase ordering alone, determine readin
 - Authorized prerequisite repair: exact installed-bridge dependencies are active
   but hidden behind named wrappers; frozen authority and once-only grants remain
   unchanged. Three focused T3 test files pass 26 cases, including an installed-Pi
-  coordinator regression; profile typecheck passes. Live repair is not yet claimed.
-- Next action: reload only the idle owned Team Lead, resume its mandatory nested
-  Strategist launch, then continue W01 and the full plan if successful. Do not
-  silently use raw/generic/native delegation or broaden role permissions.
-- Product-design readiness: no open policy decisions. Remaining prerequisite:
-  live nested delegation after supported reload. Preserve the task worktree,
+  coordinator regression; profile typecheck passes. A supported idle coordinator
+  reload and successful live nested Strategist subsequently verified this repair.
+- A separate thread-scoped resume guard defect was repaired in main by the bounded
+  developer: two focused T3 files pass 25 cases and typecheck passes. The calling
+  runtime has not reloaded that changed closure. This does not block direct work;
+  no raw/generic/native delegation fallback or role broadening is introduced.
+- Next action: implement W02 directly, then continue ready tasks without another
+  coordinator launch, repair gate or repeated design consultation.
+- Product-design readiness: no open policy decisions. Preserve the task worktree,
   main's unrelated work, both operator stashes and the unrelated
   `fix/commit-workflow` worktree.
 - Separate retirement blocker: gateway application source-home decision. This does

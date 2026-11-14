@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-14: Report native fetch acquisition provenance
+
+- Distinguish actual workstation retrieval from remote Jina recovery, preserve known redirect destinations, and report bounded acquisition attempts and truncation. Jina relay URLs are not presented as verified target-page redirects.
+- Add a machine-readable helper mode for the native tool while retaining the existing text CLI. Preserve local/private routing, cancellation and content bounds; project useful gateway receipt fields without exposing arbitrary backend payloads or changing its running contract. Partial output alone does not trigger reacquisition.
+
 ## 2026-11-14: Keep nested T3 role delegation callable
 
 - Keep authorized named-role wrappers' exact installed-bridge dependencies active and callable while hiding them from model declarations through Pi's loadout projection. This fixes nested delegation failing after a coordinator's frozen loadout removed the underlying direct bridge tool.

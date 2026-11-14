@@ -217,7 +217,7 @@ describe("tool integration", () => {
   });
   it("uses a real profile-local script path and passes cancellation", async () => {
     const { registered, exec } = tools();
-    exec.mockResolvedValue({ code: 0, killed: false, stdout: "page", stderr: "" });
+    exec.mockResolvedValue({ code: 0, killed: false, stdout: JSON.stringify({ version: 1, backend: "local", content: "page", finalUrl: null, truncated: false, attempts: [{ backend: "local", outcome: "useful" }] }), stderr: "" });
     const signal = new AbortController().signal;
     const result = await registered.get("web_fetch").execute("id", { url: "https://example.com" }, signal);
     expect(result.content[0].text).toBe("webfetch: https://example.com\npage");
@@ -226,6 +226,28 @@ describe("tool integration", () => {
     expect(local).toBeTruthy();
     expect(local![1][0]).toBe(fileURLToPath(new URL("../extensions/web-tools/fetch.js", import.meta.url)));
     expect(local![2].signal).toBe(signal);
+    expect(local![1]).toContain("--json");
+  });
+  it("reports Jina provenance and output truncation without reacquiring partial content", async () => {
+    const { registered, exec } = tools();
+    exec.mockResolvedValue({ code: 0, killed: false, stdout: JSON.stringify({ version: 1, backend: "jina", content: "界".repeat(20_000), finalUrl: null, truncated: false, attempts: [
+      { backend: "local", outcome: "failed", elapsedMs: 5, html: "raw payload must not escape" },
+      { backend: "jina", outcome: "useful", elapsedMs: 10 },
+    ] }), stderr: "" });
+    const result = await registered.get("web_fetch").execute("id", { url: "https://example.com" });
+    expect(result.structuredContent).toMatchObject({ backend: "jina", finalUrl: null, truncated: true, attempts: [
+      { backend: "local", outcome: "failed", elapsedMs: 5 }, { backend: "jina", outcome: "useful", elapsedMs: 10 },
+    ] });
+    expect(result.details.backend).toBe("jina");
+    expect(JSON.stringify(result)).not.toContain("raw payload");
+    expect(exec.mock.calls.filter(call => call[0] === process.execPath)).toHaveLength(1);
+    expect(complete).toHaveBeenCalledTimes(1);
+  });
+  it("rejects malformed machine receipts instead of screening transport output", async () => {
+    const { registered, exec } = tools();
+    exec.mockResolvedValue({ code: 0, killed: false, stdout: "not a machine receipt", stderr: "" });
+    await expect(registered.get("web_fetch").execute("id", { url: "https://example.com" })).rejects.toThrow("invalid JSON result");
+    expect(complete).not.toHaveBeenCalled();
   });
   it("throws on fetch process failure instead of screening stderr", async () => {
     const { registered, exec } = tools();
@@ -246,13 +268,15 @@ describe("actual fetch subprocess", () => {
     const address = server.address() as { port: number };
     const base = `http://127.0.0.1:${address.port}`;
     const script = fileURLToPath(new URL("../extensions/web-tools/fetch.js", import.meta.url));
-    const run = (url: string) => promisify(execFile)(process.execPath, [script, url], { timeout: 10_000 });
+    const run = (url: string, args: string[] = []) => promisify(execFile)(process.execPath, [script, url, ...args], { timeout: 10_000 });
     try {
       const page = await run(`${base}/redirect`);
       expect(page.stdout).toContain(`Source: ${base}/short`);
       expect(page.stdout).toContain("Useful short content.");
       expect(page.stdout).not.toContain("Jina");
-      expect((await run(`${base}/json`)).stdout).toContain('{"hello":"world"}');
+      const machine = JSON.parse((await run(`${base}/json`, ["--json"])).stdout);
+      expect(machine).toMatchObject({ version: 1, backend: "local", finalUrl: `${base}/json`, content: '{"hello":"world"}', truncated: false });
+      expect(machine.attempts).toMatchObject([{ backend: "local", outcome: "useful" }]);
       await expect(run("http://169.254.169.254/")).rejects.toThrow("Cloud metadata endpoints are not allowed");
     } finally { await new Promise<void>((resolve) => server.close(() => resolve())); }
   });

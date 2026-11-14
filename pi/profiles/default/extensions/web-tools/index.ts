@@ -10,6 +10,7 @@ import { GatewayCircuit } from "./circuit.ts";
 import { GatewayError, gatewayText, requestGateway, withinSignal } from "./gateway.ts";
 import { gatewayCredentials, searchApiKey } from "./credentials.ts";
 import { classifyUrl } from "./destinations.js";
+import { FetchAttemptSchema, fetchAttempts, parseLocalFetch } from "./fetch-result.ts";
 
 const directory = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_SEARCH_URL = "https://searxng.ilude.com/search";
@@ -34,6 +35,7 @@ const WebFetchOutputSchema = Type.Object({
 	backend: Type.Union([Type.Literal("local"), Type.Literal("direct"), Type.Literal("trawl"), Type.Literal("jina")]),
 	quality: Type.Optional(Type.String()), finalUrl: Type.Union([Type.String(), Type.Null()]),
 	recovery: Type.Optional(Type.String()),
+	truncated: Type.Optional(Type.Boolean()), attempts: Type.Array(FetchAttemptSchema),
 });
 
 function record(value: unknown): Record<string, unknown> | undefined {
@@ -164,7 +166,6 @@ export default function webTools(pi: ExtensionAPI) {
 		}
 	};
 	const fetchHeader = (url: string) => `webfetch: ${url}\n`;
-	const localContent = (text: string) => text.replace(/^Source: [^\r\n]+\r?\n(?:\r?\n)?/, "");
 
 	pi.registerTool({
 		name: "web_search", label: "Web Search",
@@ -243,7 +244,7 @@ export default function webTools(pi: ExtensionAPI) {
 	});
 	pi.registerTool({
 		name: "web_fetch", label: "Web Fetch",
-		description: "Fetch readable HTTP(S) content through the optional adaptive gateway, or locally with public Jina fallback. Local/private URLs stay local. Auto mode recovers locally on gateway outages; explicit backends stay strict. Luna flags possible prompt injection; an interactive user may approve reading that response once as untrusted source material. Without approval it stays blocked. Default 8000 chars; max 50000 chars and 45KB/1800 lines.",
+		description: "Fetch readable HTTP(S) content through the optional adaptive gateway or workstation retrieval. Public Jina fallback is remote; output identifies the actual backend, known final URL, attempts and truncation. Local/private URLs stay local. Auto mode recovers through the workstation on gateway outages; explicit backends stay strict. Luna flags possible prompt injection; an interactive user may approve reading that response once as untrusted source material. Without approval it stays blocked. Default 8000 chars; max 50000 chars and 45KB/1800 lines.",
 		promptSnippet: "Fetch a web page as readable text",
 		outputSchema: WebFetchOutputSchema,
 		parameters: Type.Object({
@@ -294,10 +295,16 @@ export default function webTools(pi: ExtensionAPI) {
 						try {
 							const reply = await requestGateway(endpoint, token, { url: params.url, max_chars: params.max_chars ?? 8000, backend }, acquisition);
 							circuit.reachable();
-							const result = await finish(bounded(gatewayText(reply)), signal, fetchHeader(params.url), approve);
+							const source = gatewayText(reply);
+							const body = bounded(source);
+							const result = await finish(body, signal, fetchHeader(params.url), approve);
+							const screened = result.content[0].text.slice(fetchHeader(params.url).length);
+							const content = bounded(screened);
 							if (reply.backend !== "direct" && reply.backend !== "trawl" && reply.backend !== "jina") throw new Error("Gateway returned an unsupported backend");
-							const metadata = { ...result.details, backend: reply.backend, quality: reply.quality, finalUrl: reply.final_url, recovery };
-							return { ...result, details: metadata, structuredContent: { url: params.url, content: bounded(result.content[0].text.slice(fetchHeader(params.url).length)), screening: result.details.screening, backend: reply.backend, ...(reply.quality ? { quality: reply.quality } : {}), finalUrl: reply.final_url, ...(recovery ? { recovery } : {}) } };
+							const truncated = body !== source || content !== screened ? true : reply.truncated;
+							const provenance = { ...(truncated === undefined ? {} : { truncated }), attempts: fetchAttempts(reply.attempts) };
+							const metadata = { ...result.details, backend: reply.backend, quality: reply.quality, finalUrl: reply.final_url, recovery, ...provenance };
+							return { ...result, details: metadata, structuredContent: { url: params.url, content, screening: result.details.screening, backend: reply.backend, ...(reply.quality ? { quality: reply.quality } : {}), finalUrl: reply.final_url, ...provenance, ...(recovery ? { recovery } : {}) } };
 						} catch (error) {
 							if (signal?.aborted) { circuit.cancelled(); signal.throwIfAborted(); }
 							if (!(error instanceof GatewayError) || error.kind !== "availability") { circuit.reachable(); throw error; }
@@ -310,16 +317,21 @@ export default function webTools(pi: ExtensionAPI) {
 			}
 			acquisition.throwIfAborted();
 			const remaining = Math.max(1, Math.floor(deadline - performance.now()));
-			const result = await pi.exec(process.execPath, [join(directory, "fetch.js"), params.url, "--max-chars", String(params.max_chars ?? 8000), "--backend", backend, "--budget-ms", String(Math.max(1, remaining - 250))], { timeout: remaining, signal });
+			const result = await pi.exec(process.execPath, [join(directory, "fetch.js"), params.url, "--json", "--max-chars", String(params.max_chars ?? 8000), "--backend", backend, "--budget-ms", String(Math.max(1, remaining - 250))], { timeout: remaining, signal });
 			signal?.throwIfAborted();
 			if (result.killed || result.code !== 0) throw new Error(result.killed ? "Web fetch timed out" : result.stderr.trim() || `Web fetch failed (${result.code})`);
 			if (!result.stdout.trim()) throw new Error("No content extracted");
-			const finished = await finish(bounded(localContent(result.stdout.trim())), signal, fetchHeader(params.url), approve);
-			const metadata = { ...finished.details, backend: "local", quality: undefined, finalUrl: null, recovery };
+			const local = parseLocalFetch(result.stdout);
+			const body = bounded(local.content);
+			const finished = await finish(body, signal, fetchHeader(params.url), approve);
+			const screened = finished.content[0].text.slice(fetchHeader(params.url).length);
+			const content = bounded(screened);
+			const provenance = { backend: local.backend, finalUrl: local.finalUrl, truncated: local.truncated || body !== local.content || content !== screened, attempts: local.attempts };
+			const metadata = { ...finished.details, recovery, ...provenance };
 			return {
 				...finished,
 				details: metadata,
-				structuredContent: { url: params.url, content: bounded(finished.content[0].text.slice(fetchHeader(params.url).length)), screening: finished.details.screening, backend: "local", finalUrl: null, ...(recovery ? { recovery } : {}) },
+				structuredContent: { url: params.url, content, screening: finished.details.screening, ...provenance, ...(recovery ? { recovery } : {}) },
 			};
 		},
 	});
