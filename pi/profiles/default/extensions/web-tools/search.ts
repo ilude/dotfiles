@@ -2,9 +2,10 @@ import { AcquisitionError as SearchAcquisitionError, acquisitionBudget, retryAft
 export { AcquisitionError as SearchAcquisitionError } from "./acquisition.ts";
 import { searchApiKey } from "./credentials.ts";
 import { searchBrowserbase } from "./browserbase.ts";
+import { searchFirecrawl } from "./firecrawl.ts";
 
 type ExistingSearchProvider = "searxng" | "serper" | "brave";
-export type SearchProvider = ExistingSearchProvider | "browserbase";
+export type SearchProvider = ExistingSearchProvider | "browserbase" | "firecrawl";
 export type SearchSelection = "auto" | SearchProvider;
 export type SearchKind = "web" | "images" | "news";
 export type SearchResult = { title: string; url: string; content?: string; publishedDate?: string; engine: string; imageUrl?: string; thumbnailUrl?: string; source?: string; width?: number; height?: number };
@@ -99,6 +100,7 @@ export function createSearch(exec: Exec) {
 		if (input.engines !== undefined && selected !== "auto" && selected !== "searxng") throw new SearchAcquisitionError("invalid-request", "engines can only be used with SearXNG");
 		const budget = acquisitionBudget(20_000, parent);
 		if (selected === "browserbase") return searchBrowserbase(input, budget);
+		if (selected === "firecrawl") return searchFirecrawl(input, budget);
 		const strict = selected !== "auto" || input.engines !== undefined;
 		const order: ExistingSearchProvider[] = selected !== "auto" ? [selected] : input.engines !== undefined ? ["searxng"] : providers;
 		const failures: string[] = [];

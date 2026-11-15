@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-14: Add explicit Firecrawl discovery with shared credit availability
+
+- Add native discovery-only Firecrawl search using the same credential/client as scraping. Preserve composed query refinements, request one source kind, and omit result scraping, Highlights enrichment and domain-tool discovery. Return valid empty/partial data without another request and screen provider warnings even when there are no hits.
+- Share actual credit-exhaustion backoff between search and scrape, while keeping rate/capability failures scoped and allowing timed/key-change recovery without reload. No quota amount or reset time is invented, no upgrade is attempted, and automatic search is unchanged in this increment.
+
 ## 2026-11-14: Add owned public-page Browserbase rendering
 
 - Add a distinct rendered-read backend using a fresh bounded Browserbase session, the existing low-level CDP connection and isolated Readability processing. It does not import local/authenticated state, create an autonomous browser agent, interact with forms, enable proxies/CAPTCHA solving or download files.

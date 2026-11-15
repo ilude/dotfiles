@@ -12,25 +12,49 @@ vi.mock("@earendil-works/pi-coding-agent", async original => ({
 }));
 const page = { success: true, data: { markdown: "Readable page content.", metadata: { title: "Page", statusCode: 200, sourceURL: "https://8.8.8.8/docs", cacheState: "hit", cachedAt: "2026-11-13T10:00:00Z" }, rawHtml: "opaque payload must not escape" } };
 const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status });
+let key = 0;
 beforeEach(() => {
-	vi.stubEnv("FIRECRAWL_API_KEY", "fixture-firecrawl"); vi.stubEnv("BITWARDEN_ACCESS_KEY", "");
+	vi.stubEnv("FIRECRAWL_API_KEY", `fixture-firecrawl-${++key}`); vi.stubEnv("BITWARDEN_ACCESS_KEY", "");
 	complete.mockResolvedValue({ stopReason: "stop", content: [{ type: "text", text: '{"suspicious":false,"excerpts":[]}' }] });
 	resetGatewayCredentialCacheForTest();
 });
 afterEach(() => { vi.clearAllMocks(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); resetGatewayCredentialCacheForTest(); });
 function tool() {
-	let fetchTool: any;
+	let fetchTool: any, searchTool: any;
 	const exec = vi.fn(async () => ({ code: 0, killed: false, stdout: JSON.stringify({ version: 1, backend: "local", content: "Local page", finalUrl: null, truncated: false, attempts: [{ backend: "local", outcome: "useful" }] }), stderr: "" }));
-	webTools({ registerTool: (value: any) => { if (value.name === "web_fetch") fetchTool = value; }, exec } as any);
-	return { run: (params: Record<string, unknown> = {}, signal?: AbortSignal) => fetchTool.execute("id", { url: "https://8.8.8.8/docs", backend: "firecrawl", ...params }, signal), exec };
+	webTools({ registerTool: (value: any) => { if (value.name === "web_fetch") fetchTool = value; if (value.name === "web_search") searchTool = value; }, exec } as any);
+	return { run: (params: Record<string, unknown> = {}, signal?: AbortSignal) => fetchTool.execute("id", { url: "https://8.8.8.8/docs", backend: "firecrawl", ...params }, signal),
+		search: (params: Record<string, unknown> = {}) => searchTool.execute("id", { query: "topic", provider: "firecrawl", ...params }), exec };
 }
+describe("Firecrawl discovery and shared allowance", () => {
+	it("uses discovery-only search with the full composed query", async () => {
+		const fetch = vi.fn().mockResolvedValue(json({ success: true, data: { web: [{ title: "Source", url: "https://example.com", description: "Snippet", markdown: "not returned" }] } })); vi.stubGlobal("fetch", fetch);
+		const { search, exec } = tool(); const result = await search({ exact_phrases: ["two words"], exclude_terms: ["excluded"], site: "example.com" });
+		expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual({ query: 'topic "two words" -excluded site:example.com', limit: 5, sources: ["web"], highlights: false, domainTools: false });
+		expect(result.structuredContent).toMatchObject({ backend: "firecrawl", items: [{ title: "Source", url: "https://example.com", content: "Snippet", engine: "firecrawl" }] });
+		expect(JSON.stringify(result)).not.toContain("not returned"); expect(exec).not.toHaveBeenCalled(); expect(fetch).toHaveBeenCalledOnce();
+	});
+	it("retains and screens provider warnings even for empty results", async () => {
+		const fetch = vi.fn().mockResolvedValue(json({ success: true, warning: "Partial provider results", data: { web: [] } })); vi.stubGlobal("fetch", fetch);
+		const result = await tool().search(); expect(result.structuredContent).toMatchObject({ items: [], warning: "Partial provider results", screening: "screened" });
+		expect(complete.mock.calls[0][1].messages[0].content).toContain("Partial provider results"); expect(fetch).toHaveBeenCalledOnce();
+	});
+	it("shares reported credit exhaustion between scrape and search, then reopens without reload", async () => {
+		const fetch = vi.fn().mockResolvedValueOnce(json({}, 402)).mockResolvedValueOnce(json({ success: true, data: { web: [] } })); vi.stubGlobal("fetch", fetch);
+		const now = Date.now(); const clock = vi.spyOn(Date, "now").mockReturnValue(now); const { run, search } = tool();
+		try {
+			await expect(run()).rejects.toMatchObject({ kind: "quota" }); await expect(search()).rejects.toMatchObject({ kind: "quota" }); expect(fetch).toHaveBeenCalledOnce();
+			clock.mockReturnValue(now + 30_001); expect((await search()).structuredContent.screening).toBe("no-results"); expect(fetch).toHaveBeenCalledTimes(2);
+		} finally { clock.mockRestore(); }
+	});
+});
 describe("explicit native Firecrawl retrieval", () => {
 	it("requests only basic Markdown, accepts provider caching and screens the projected page", async () => {
 		const fetch = vi.fn().mockResolvedValue(json(page)); vi.stubGlobal("fetch", fetch);
 		const { run, exec } = tool(); const result = await run();
 		expect(fetch.mock.calls[0][0]).toBe("https://api.firecrawl.dev/v2/scrape");
 		const options = fetch.mock.calls[0][1]; const body = JSON.parse(options.body);
-		expect(options.headers.Authorization).toBe("Bearer fixture-firecrawl");
+		expect(options.headers.Authorization).toBe(`Bearer ${process.env.FIRECRAWL_API_KEY}`);
 		expect(options.redirect).toBe("error");
 		expect(body).toMatchObject({ url: "https://8.8.8.8/docs", formats: ["markdown"], proxy: "basic", onlyMainContent: true, parsers: [] });
 		expect(body).not.toHaveProperty("maxAge"); expect(body).not.toHaveProperty("actions");

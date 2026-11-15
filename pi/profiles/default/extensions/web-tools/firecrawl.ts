@@ -1,9 +1,11 @@
-import { AcquisitionError, acquisitionBudget, readJsonResponse, retryAfterMilliseconds, withinSignal } from "./acquisition.ts";
+import { AcquisitionError, AllowanceBackoff, acquisitionBudget, readJsonResponse, retryAfterMilliseconds, withinSignal } from "./acquisition.ts";
 import { invalidateProviderApiKey, providerApiKey } from "./credentials.ts";
 import type { FetchReceipt } from "./fetch-result.ts";
+import type { SearchResponse, SearchResult, SearchKind } from "./search.ts";
 
 type Budget = ReturnType<typeof acquisitionBudget>;
 const api = "https://api.firecrawl.dev/v2";
+const backoff = new AllowanceBackoff<"credits" | "/scrape" | "/search" | "json">();
 function record(value: unknown): Record<string, unknown> | undefined {
 	return value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
 }
@@ -15,6 +17,8 @@ export async function requestFirecrawl(path: "/scrape" | "/search", input: Recor
 	catch { budget.signal.throwIfAborted(); throw new AcquisitionError("credentials", "Firecrawl credential unavailable"); }
 	budget.signal.throwIfAborted();
 	if (!key) throw new AcquisitionError("credentials", "Firecrawl credential unavailable");
+	const capability = path === "/scrape" && Array.isArray(input.formats) && input.formats.some(format => record(format)?.type === "json") ? "json" : path;
+	backoff.check("credits", key); backoff.check(capability, key);
 	const milliseconds = Math.min(45_000, budget.remaining() - 250);
 	if (milliseconds < 1000) throw new AcquisitionError("timeout", "Insufficient acquisition time for Firecrawl's minimum request timeout");
 	const signal = budget.attempt(milliseconds + 250);
@@ -32,13 +36,25 @@ export async function requestFirecrawl(path: "/scrape" | "/search", input: Recor
 			throw new AcquisitionError(kind, `Firecrawl API HTTP ${response.status}`, retryAfterMilliseconds(response));
 		}
 		const data = record(await readJsonResponse(response, signal, "Firecrawl"));
-		if (!data || data.success !== true) throw new AcquisitionError("unavailable", "Firecrawl reported unsuccessful acquisition");
+		if (!data || data.success !== true) throw new AcquisitionError(data?.code === "insufficient_credits" ? "quota" : data?.code === "THIRD_PARTY_DATA_TERMS_REQUIRED" ? "unsupported" : "unavailable", "Firecrawl reported unsuccessful acquisition", retryAfterMilliseconds(response));
 		return data;
 	} catch (error) {
 		budget.signal.throwIfAborted();
-		if (error instanceof AcquisitionError) throw error;
-		throw new AcquisitionError(signal.aborted ? "timeout" : "transport", "Firecrawl request unavailable");
+		const failure = error instanceof AcquisitionError ? error : new AcquisitionError(signal.aborted ? "timeout" : "transport", "Firecrawl request unavailable");
+		backoff.note(failure.kind === "quota" ? "credits" : capability, key, failure); throw failure;
 	}
+}
+
+export async function searchFirecrawl(input: { query: string; count: number; kind?: SearchKind }, budget: Budget): Promise<SearchResponse> {
+	if (input.kind && input.kind !== "web") throw new AcquisitionError("unsupported", "Firecrawl vertical search is not yet enabled");
+	const response = await requestFirecrawl("/search", { query: input.query, limit: input.count, sources: ["web"], highlights: false, domainTools: false }, budget);
+	const data = record(response.data);
+	if (!Array.isArray(data?.web)) throw new AcquisitionError("invalid-response", "Firecrawl returned invalid web results");
+	return { backend: "firecrawl", ...(typeof response.warning === "string" ? { warning: response.warning.slice(0, 2000) } : {}), results: data.web.map((value): SearchResult => {
+		const item = record(value) ?? {};
+		return { title: typeof item.title === "string" ? item.title : "(untitled)", url: typeof item.url === "string" ? item.url : "", engine: "firecrawl",
+			...(typeof item.description === "string" ? { content: item.description } : {}) };
+	}).filter(item => item.url) };
 }
 
 export async function fetchFirecrawl(url: string, maxChars: number, budget: Budget): Promise<FetchReceipt> {

@@ -279,12 +279,19 @@ or a shortened scope.
     fixture window was aligned with its three bounded cold-start subprocesses.
     These are fixture/local checks, not authenticated provider validation.
 
-- [ ] **W05: Native Firecrawl search**
+- [x] **W05: Native Firecrawl search**
   - Depends on: W04's Firecrawl credential/client and W02's search contract.
   - Reuse that client for explicit native search, retaining query/filter semantics
     and discovery-only behavior. Do not implicitly scrape each result.
   - Done when: native search returns normalized source results and handles the
     actual shared Firecrawl allowance without a second credential mechanism.
+  - Evidence: explicit v2 discovery sends the composed query with one source,
+    no scrapeOptions, no Highlights/LLM enrichment and no domain-tool discovery.
+    Shared credit backoff covers search/scrape under the same key; rate/capability
+    backoff stays scoped. Empty/partial results and provider warnings retain the
+    shared screening policy. Typecheck and affected tests pass (50 cases in the
+    last two-file run). Contract evidence came from completed screened public
+    docs, not the later blocked reading prompt; no provider validation was run.
 
 - [x] **W06: Native Browserbase search**
   - Depends on: W02's search contract. Can proceed independently of W04/W05 after
@@ -476,7 +483,7 @@ and schema edits. Dependencies above, not phase ordering alone, determine readin
 ## Current handoff
 
 - Status: W01–W04 implemented directly by the parent in the existing task
-  worktree, with W06–W07 also complete; 10 implementation tasks remain, with W08 and W10a–b also complete. Continue ready tasks while the narrow W05 contract lookup completes. Full scope and acceptance remain
+  worktree, with W06–W07 also complete; 9 implementation tasks remain. W01–W08 and W10a–b are complete; automatic routing, cloud verticals, explicit structured extraction and closeout remain. Continue ready tasks while the narrow W05 contract lookup completes. Full scope and acceptance remain
   unchanged; orchestration repairs no longer block feature implementation.
 - Completed: current code/tests/provider-doc reconnaissance and two Opus high
   design consultations. The full path retains Browserbase, automatic fallback,

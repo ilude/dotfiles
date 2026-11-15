@@ -28,7 +28,7 @@ const SearchItemSchema = Type.Object({
 const ScreeningSchema = Type.Union([Type.Literal("screened"), Type.Literal("not-screened"), Type.Literal("no-results"), Type.Literal("flagged-approved")]);
 const WebSearchOutputSchema = Type.Object({
 	query: Type.String(), items: Type.Array(SearchItemSchema), screening: ScreeningSchema,
-	backend: Type.Union([Type.Literal("searxng"), Type.Literal("serper"), Type.Literal("brave"), Type.Literal("browserbase")]),
+	backend: Type.Union([Type.Literal("searxng"), Type.Literal("serper"), Type.Literal("brave"), Type.Literal("browserbase"), Type.Literal("firecrawl")]),
 	warning: Type.Optional(Type.String()), recovery: Type.Optional(Type.String()),
 	kind: Type.Optional(Type.Union([Type.Literal("web"), Type.Literal("images"), Type.Literal("news")])), truncated: Type.Optional(Type.Boolean()),
 });
@@ -116,7 +116,7 @@ export default function webTools(pi: ExtensionAPI) {
 
 	pi.registerTool({
 		name: "web_search", label: "Web Search",
-		description: "Search web/images/news with distinct source/image URLs. Try SearXNG then eligible configured Serper and Brave on acquisition failures; Brave is web-only without confirmed vertical entitlement, within a 20-second budget. Browserbase included fast web search is explicitly selectable; auto does not yet use it. Browserbase has no documented structured filters. Explicit provider or engines stays strict; engines are SearXNG-only. Empty or partial results do not trigger another search. Returns backend and fallback reasons. Luna screens acquired results; a user may approve reading a flagged response once as untrusted material. Without approval it stays blocked. Output is limited to 45KB/1800 lines.",
+		description: "Search web/images/news with distinct source/image URLs. Try SearXNG then eligible configured Serper and Brave on acquisition failures; Brave is web-only without confirmed vertical entitlement, within a 20-second budget. Firecrawl discovery and Browserbase included fast web search are explicitly selectable; auto does not yet use them. Firecrawl search never implicitly scrapes hits and shares its credit availability with scraping. Browserbase has no documented structured filters. Explicit provider or engines stays strict; engines are SearXNG-only. Empty or partial results do not trigger another search. Returns backend and fallback reasons. Luna screens acquired results; a user may approve reading a flagged response once as untrusted material. Without approval it stays blocked. Output is limited to 45KB/1800 lines.",
 		promptSnippet: "Search the web for current information and documentation",
 		outputSchema: WebSearchOutputSchema,
 		parameters: Type.Object({
@@ -126,7 +126,7 @@ export default function webTools(pi: ExtensionAPI) {
 			exclude_terms: Type.Optional(Type.Array(Type.String())),
 			site: Type.Optional(Type.String({ description: "Optional domain or site URL" })),
 			num_results: Type.Optional(Type.Integer({ minimum: 1, maximum: 20, description: "Default: 5" })),
-			provider: Type.Optional(Type.Union([Type.Literal("auto"), Type.Literal("searxng"), Type.Literal("serper"), Type.Literal("brave"), Type.Literal("browserbase")], { description: "Default auto; an explicit provider never substitutes another. engines is only valid with auto or searxng." })),
+			provider: Type.Optional(Type.Union([Type.Literal("auto"), Type.Literal("searxng"), Type.Literal("serper"), Type.Literal("brave"), Type.Literal("browserbase"), Type.Literal("firecrawl")], { description: "Default auto; an explicit provider never substitutes another. engines is only valid with auto or searxng." })),
 			engines: Type.Optional(Type.Array(Type.String({ minLength: 1 }), { description: "SearXNG engine names, e.g. google, brave, github. Defaults to the endpoint engines setting or server defaults. Empty array uses server defaults." })),
 		}),
 		renderCall(args, theme) {
@@ -151,6 +151,11 @@ export default function webTools(pi: ExtensionAPI) {
 			const recovery: { recovery?: string; kind?: SearchKind; truncated?: boolean } = { ...(search.recovery ? { recovery: search.recovery } : {}), ...(params.kind ? { kind: params.kind } : {}) };
 			const results = search.results.slice(0, count);
 			const header = `websearch: ${query}\n`;
+			if (!results.length && search.warning) {
+				const warning = search.warning.slice(0, 2000);
+				const finished = await finish(`${warning}\n\nNo results found.`, signal, header, readingApproval(`Search: ${query}`, ctx, signal));
+				return { ...finished, details: { ...finished.details, backend: search.backend, ...recovery }, structuredContent: { query, items: [], screening: finished.details.screening, backend: search.backend, warning, ...recovery } };
+			}
 			if (!results.length) return {
 				content: [{ type: "text" as const, text: `${header}No results found.` }],
 				details: { screening: "no-results", backend: search.backend, ...recovery },
