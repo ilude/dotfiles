@@ -103,8 +103,9 @@ def test_pi_ci_installs_runtime_before_bounded_default_stage(
 ) -> None:
     workflow = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
     job = workflow["jobs"]["pi-default"]
-    assert job["env"]["HOME"] == "${{ runner.temp }}/pi-ci-home"
-    assert job["env"]["USERPROFILE"] == job["env"]["HOME"]
+    home_step = job["steps"][0]
+    assert home_step["shell"] == "bash"
+    assert home_step["env"]["PI_CI_HOME"] == "${{ runner.temp }}/pi-ci-home"
     # Execute actual workflow commands. Only resolver/package-manager, downstream
     # stage and verification boundaries are fakes, not install orchestration.
     # A missing bootstrap must fail even if a Pi executable is already on PATH.
@@ -141,8 +142,9 @@ def test_pi_ci_installs_runtime_before_bounded_default_stage(
     events = tmp_path / "events"
     env = {
         **os.environ,
-        "HOME": home.as_posix(),
-        "USERPROFILE": home.as_posix(),
+        "PI_CI_HOME": home.as_posix(),
+        "HOME": (tmp_path / "original-home").as_posix(),
+        "USERPROFILE": (tmp_path / "original-home").as_posix(),
         "GITHUB_ENV": env_file.as_posix(),
         "GITHUB_PATH": path_file.as_posix(),
         "EVENTS": events.as_posix(),
@@ -181,6 +183,8 @@ def test_pi_ci_installs_runtime_before_bounded_default_stage(
             for line in env_file.read_text(encoding="utf-8").splitlines():
                 key, value = line.split("=", 1)
                 env[key] = value
+    assert home.is_dir()
+    assert env["HOME"] == env["USERPROFILE"] == home.as_posix()
     log = events.read_text(encoding="utf-8").splitlines() if events.exists() else []
     assert log[:2] == [
         "resolver run python scripts/get_latest_agent_version.py pi",

@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-14: Fix GitHub Actions workflow validation
+
+- Move the default Pi job's isolated home setup from job-level environment expressions into its first step. GitHub does not allow the `runner` context in job-level `env`, so it rejected the workflow before any jobs started.
+- Create the same temporary home and export `HOME` and `USERPROFILE` for subsequent steps through `GITHUB_ENV`, preserving isolation on Linux and Windows without changing the checks or runtime installation policy.
+
 ## 2026-11-10: Add host-aware Pi workflows and optional central analytics
 
 - Keep one default profile across standalone Pi, Herdr and T3. Route supported T3 launches/forks, plan selection and thread-bound reminders through installed app-owned interfaces, preserving current/root workspace intent and native permissions. Commands issue explicit follow-up requests, not fabricated tool contexts or launch receipts. Refuse native UUID resume and restart inside T3 without a native fallback; preserve standalone behavior.
