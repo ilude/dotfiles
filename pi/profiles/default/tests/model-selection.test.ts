@@ -37,6 +37,15 @@ describe("Opus AWS routing", () => {
 	});
 });
 
+describe("Grok AWS routing", () => {
+	it("resolves the council's bare Grok selection through the configured AWS provider", () => {
+		const grok = modelFixture("bedrock-mantle", "xai.grok-4.7");
+		const direct = modelFixture("xai", "grok-4.7");
+		expect(resolvePreferredModel("grok", registryFixture([grok, direct], ["bedrock-mantle", "xai"]))).toBe(grok);
+		expect(() => resolvePreferredModel("grok", registryFixture([direct], ["xai"]))).toThrow(/No configured/);
+	});
+});
+
 describe("latest authenticated OpenAI family resolution", () => {
 	it("keeps registry and runtime contracts separate at compile time", () => {
 		expectTypeOf<ModelRegistry>().not.toExtend<Parameters<typeof resolveLatestCodexModelFromRuntime>[1]>();

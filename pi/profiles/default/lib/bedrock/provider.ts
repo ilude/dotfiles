@@ -23,6 +23,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
 	selectLatestClaudeModelIds,
 	selectLatestGptModelIds,
+	selectLatestGrokModelIds,
 } from "./model-policy.js";
 import { bedrockModelCost } from "./pricing.js";
 export interface BedrockModelMetadata { id: string; kind: "foundation" | "inference-profile"; inferenceProfileName?: string; modelName?: string; }
@@ -307,6 +308,21 @@ function runtimeClaudeRoutes(
 	});
 }
 
+function runtimeGrokRoutes(): BedrockModelRoute[] {
+	const catalog = getBuiltinModels("amazon-bedrock");
+	return selectLatestGrokModelIds(catalog.map((model) => model.id)).flatMap((id) => {
+		const target = catalog.find((model) => model.id === id);
+		if (!target) return [];
+		const model: Model<Api> = {
+			...target,
+			id: id.replace(/^us[.]/, ""),
+			provider: PROVIDER_ID,
+			name: `${target.name.replace(/ \(US\)$/, "")} (Bedrock Runtime)`,
+		};
+		return [{ model, target, transport: "runtime" as const }];
+	});
+}
+
 export function buildBedrockModelRoutes(
 	mantleModelIds: readonly string[],
 	target: BedrockMantleTarget = resolveBedrockMantleTarget(),
@@ -343,7 +359,7 @@ export function buildBedrockModelRoutes(
 		const route = mantleGptRoute(modelId, target);
 		return route ? [route] : [];
 	});
-	return [...claudeRoutes, ...gptRoutes];
+	return [...claudeRoutes, ...gptRoutes, ...runtimeGrokRoutes()];
 }
 
 /** Read actual targets from the provider's materialized routes. Runtime Claude

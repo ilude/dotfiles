@@ -7,7 +7,7 @@ import { readRecords } from "../lib/bedrock/ledger.ts";
 import registerBedrockProvider from "../extensions/bedrock/provider.ts";
 import { createAssistantMessageEventStream } from "@earendil-works/pi-ai";
 import { getBuiltinModels } from "@earendil-works/pi-ai/providers/all";
-import { selectLatestClaudeModelIds } from "../lib/bedrock/model-policy.ts";
+import { selectLatestClaudeModelIds, selectLatestGrokModelIds } from "../lib/bedrock/model-policy.ts";
 
 let scratch: string | undefined;
 
@@ -44,10 +44,35 @@ describe("Bedrock provider routing", () => {
 		], "anthropic");
 		const routes = buildBedrockModelRoutes([...discoveredIds, "openai.gpt-5.6-luna", "openai.gpt-5.6-sol"]);
 		expect(expectedClaudeIds.length).toBeGreaterThan(0);
-		expect(routes.map(route => route.model.id).sort()).toEqual([...expectedClaudeIds, "openai.gpt-5.6-luna", "openai.gpt-5.6-sol"].sort());
+		const grokIds = selectLatestGrokModelIds(getBuiltinModels("amazon-bedrock").map(model => model.id)).map(id => id.replace(/^us[.]/, ""));
+		expect(routes.map(route => route.model.id).sort()).toEqual([...expectedClaudeIds, "openai.gpt-5.6-luna", "openai.gpt-5.6-sol", ...grokIds].sort());
 		for (const id of expectedClaudeIds.filter(id => discoveredIds.includes(id))) {
 			expect(routes.find(route => route.model.id === id)).toMatchObject({ transport: "mantle-anthropic", target: { id } });
 		}
+	});
+	it("selects the newest supported US Grok without switching geography or model variants", () => {
+		expect(selectLatestGrokModelIds([
+			"us.xai.grok-4.6", "us.xai.grok-4.7", "us.xai.grok-4.10",
+			"global.xai.grok-5", "xai.grok-5", "us.xai.grok-5-fast", "us.xai.grok-5-preview",
+		])).toEqual(["us.xai.grok-4.10"]);
+		expect(selectLatestGrokModelIds(["global.xai.grok-4.7"])).toEqual([]);
+	});
+	it("exposes native Grok through the consolidated AWS provider with exact Runtime identity and pricing", async () => {
+		const provider = createBedrockModelProvider({}, { provideToken: async () => { throw new Error("Runtime must not use Mantle authentication"); } });
+		const route = buildBedrockModelRoutes([]).find(route => route.model.id.startsWith("xai.grok-"))!;
+		expect(route).toBeDefined();
+		expect(route.transport).toBe("runtime");
+		expect(route.target.id).toBe(`us.${route.model.id}`);
+		expect(route.target.provider).toBe("amazon-bedrock");
+		expect(route.model.provider).toBe("bedrock-mantle");
+		expect(route.model.api).toBe("bedrock-converse-stream");
+		expect(route.model.cost).toEqual(route.target.cost);
+		expect(route.model.input).toEqual(route.target.input);
+		expect(route.model.compat).toEqual(route.target.compat);
+		expect(bedrockRouteTargetIds(provider, [route.model.id])).toEqual([route.target.id]);
+		// A stored pre-Grok Mantle inventory must not remove this Runtime route.
+		await provider.refreshModels?.({ allowNetwork: false, stored: { models: [{ id: "openai.gpt-5.6-luna" }] }, signal: new AbortController().signal, publish: async (event: any) => event.update?.() } as any);
+		expect(provider.getModels().find(model => model.id === route.model.id)).toEqual(route.model);
 	});
 	it("preserves the materialized Runtime fallback versus advertised Mantle target", async () => {
 		const runtimeRoute = buildBedrockModelRoutes([]).find(route => route.model.id.startsWith("anthropic.claude-opus-"));

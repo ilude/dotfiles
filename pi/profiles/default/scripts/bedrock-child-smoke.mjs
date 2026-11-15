@@ -22,7 +22,8 @@ try {
     maxBuffer: 2_000_000,
   });
   assert.match(stdout, /^bedrock-mantle\s+anthropic\.claude-/m, `provider models absent\n${stderr}`);
-  console.log(`Pi ${manifest.version}: child-only Bedrock provider loaded through the real CLI offline.`);
+  assert.match(stdout, /^bedrock-mantle\s+xai\.grok-/m, `Grok Runtime route absent\n${stderr}`);
+  console.log(`Pi ${manifest.version}: child-only Bedrock provider loaded Claude and Grok through the real CLI offline.`);
 } finally {
   await rm(scratch, { recursive: true, force: true });
 }

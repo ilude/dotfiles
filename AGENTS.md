@@ -50,7 +50,7 @@ The installer entrypoints and supporting paths are indexed in [`README.md#struct
 - Git identity switches by directory and remote URL; see the [Git identity system](README.md#git-identity-system), and keep machine-specific SSH config in gitignored local files managed by [`scripts/git-ssh-setup`](scripts/git-ssh-setup).
 - Personal SSH key priority is `id_ed25519-personal`, then generic `id_ed25519`.
 - Work SSH key priority is `id_ed25519-work`, then `id_ed25519-eagletg`; work must not fall back to generic `id_ed25519`.
-- Never force-push a submodule repository. Never amend or rebase an already-pushed submodule commit. For publication, pull inside a submodule when needed to reconcile its remote before publishing the parent reference; do not automatically merge or rebase. This is not a prerequisite for a local parent pin commit.
+- Never force-push a submodule repository. Never amend or rebase an already-pushed submodule commit. Local parent pin commits do not require pulling or publication.
 - If `git pull` fails on a submodule fetch, recover with:
 
 ```bash

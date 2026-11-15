@@ -44,7 +44,11 @@ Runtime requests use Pi's native Bedrock transport and its provider-scoped AWS r
 
 ## Routes and commands
 
-Discovery selects the newest supported Fable, Opus, Sonnet, and Haiku releases, plus tiers of the newest supported GPT release. Claude prefers an advertised Mantle route for the selected release and otherwise uses a Runtime inference profile. GPT uses Mantle Responses. A failed request is not replayed on another transport.
+Discovery selects the newest supported Fable, Opus, Sonnet, and Haiku releases, plus tiers of the newest supported GPT release. Claude prefers an advertised Mantle route for the selected release and otherwise uses a Runtime inference profile. GPT uses Mantle Responses. Grok selects the newest supported US inference profile from Pi's native Bedrock catalog and uses Runtime Converse, not Mantle or the direct xAI API. A failed request is not replayed on another transport.
+
+Select Grok with `/model bedrock-mantle/xai.grok-4.7`, or use `model: "grok"` for bare-name subagent resolution. The logical provider remains `bedrock-mantle` (displayed as Amazon Bedrock); the actual inference target is `us.xai.grok-4.7`. Native model capabilities, tool handling, regional pricing, provider-scoped AWS credentials, and the existing usage ledger are retained. Restoring an older Mantle inventory does not hide the Runtime Grok route. This does not enable T3's separate `grok` provider.
+
+Existing Pi sessions need an idle supported resource reload to load provider changes. T3 also caches its provider model list: refresh Pi under Settings → Providers after the source is loaded. On 2026-11-14, installed Pi 1.5.1 successfully used Grok 4.7 to call `read`, consume the result, and return the requested answer, with Runtime target and priced usage recorded. That establishes live Pi inference/tool use, not T3 delegation or image-input verification.
 
 - `/bedrock` shows non-secret target configuration, current curated routes, and this month's estimate.
 - `/bedrock refresh` refreshes only `bedrock-mantle` inventory through Pi's native provider cache lifecycle.

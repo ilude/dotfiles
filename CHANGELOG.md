@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-11-14: Keep ordinary planning independent of command workflows
+
+- Simplify the planning skill and template around standalone intent, settled decisions, bounded tasks/checks and stopping points. Worktrees, archival, Integrator closeout and command-specific reports apply only when the selected workflow uses them; `/do-it` keeps its existing owning prompt. Preserve mandatory Strategist and Steward consultation policy and anti-churn requirements.
+- Trim duplicated role/host prompt guidance without changing tools, routing, account preferences or lifecycle behavior. Keep authority and operational facts with the audiences that need them rather than repeating generic advice.
+- Remove the root instruction that prohibited normal publication merges. Authorized pushes use ordinary Git reconciliation without another approval gate; existing force-push and published-history restrictions remain.
+
+## 2026-11-14: Expose AWS Grok through Pi's consolidated Bedrock provider
+
+- Register the newest supported US Grok inference profile alongside the existing Claude/GPT routes. Reuse native Bedrock Converse and provider-scoped AWS authentication rather than adding a direct xAI client, changing accounts, or silently changing inference geography. Bare Grok subagent selection resolves through the existing AWS provider.
+- Preserve native capabilities, tool-result replay, exact Runtime target identity and regional pricing in the existing usage ledger. Old Mantle inventory snapshots no longer leave Grok absent from the consolidated catalog; Claude/GPT route selection stays unchanged.
+- Verify installed Pi 1.5.1 inference with an actual file-read tool call and a final answer derived from its result. Document the idle Pi reload and separate T3 provider-catalog refresh requirement; live Pi success does not establish T3 delegation or image-input coverage.
+
 ## 2026-11-14: Make existing Hatchery workflows easier to use
 
 - Separate ordinary worker and durable-site locking while retaining the controller's exclusive bootstrap gate, serialized VMID reservations and same-allocation protection. Add credential-free local allocation listing; independent worker execution no longer blocks site operations.

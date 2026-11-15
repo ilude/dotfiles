@@ -105,7 +105,7 @@ describe("T3 full request guidance composition", () => {
     expect(full).toContain('target.options.effort: "high"');
     expect(full).toContain("read its effective Claude settings");
     expect(full).toContain("personal-project Opus preference");
-    expect(full).toContain("implementation as well as advisory tasks");
+    expect(full).toContain("ccyl may handle any authorized task type");
     expect(full).toContain("orchestrator owns the ccyl Opus seat");
     expect(full).toContain("shared five-hour/weekly quota and resets");
     expect(full).toContain("including after a failed Pi-role attempt");

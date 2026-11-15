@@ -5,107 +5,59 @@ description: Create, review, or explicitly revise standalone implementation plan
 
 # Planning
 
-Use this skill to turn user intent into a bounded implementation plan. The user
-supplies desired outcomes, priorities, and consequential judgment. The agent
-investigates the implementation, recommends choices, and supplies technical
-reasoning. Planning does not authorize execution.
-
-A plan should stand alone for a fresh-context executor. Size ordinary tasks for
-reliable Luna execution within one context, allowing room for unexpected findings
-across investigation, implementation, and validation. Apply the same sizing to
-review work when included. This is a planning target, not a guarantee or token limit.
-Preserve intent and make each next step and its finish observable without requiring
-the executor to load this skill or reconstruct the planning discussion. Keep detail
-proportional and leave routine implementation choices flexible.
-
-Questions about an existing plan do not authorize rewriting it. Revise a plan
-only when explicitly asked. The user's request and subsequent changes are
-authoritative; reconcile stale drafts against recorded decisions rather than
-reopening them.
+Turn user intent into a bounded, fresh-context implementation plan. Planning does
+not authorize execution. Questions about an existing plan do not authorize rewriting
+it; revise only when explicitly asked. The user's request and subsequent decisions
+are authoritative, including when an older draft disagrees.
 
 ## Create or revise
 
-1. Establish the selected repository root and read its applicable instructions.
-   Inspect the actual implementation and relevant feedback before proposing changes.
-   Preserve unrelated work. Existing plans from another client or profile are
-   context, not current policy. Do not impose reviewers or a new execution system.
-2. Put the canonical plan at `REPO_ROOT/.specs/<descriptive-kebab-case-stub>/plan.md`.
-   For cross-repository work, keep one coordinating plan and identify each owning
-   repository. Code, secrets, and deployment configuration stay with their owners.
-   Use the [plan template](references/plan-template.md), combining or omitting
-   sections that add no useful information.
-3. Separate user requirements, verified facts, proposals, and unresolved decisions.
-   Investigate discoverable facts and choose routine technical details yourself.
-   When user judgment could materially change scope, architecture, or acceptance,
-   explain the choices and consequences, recommend one with reasons, and ask one
-   consequential question at a time. Incorporate the answer into the plan, continue
-   technical investigation, and ask the next question only if still needed. Preserve
-   settled decisions; recommendations do not become requirements until agreed.
-   Continue ordinary planning until the selected scope is executable, not merely
-   drafted. If the user intentionally requests a draft, honor that stopping point.
-   If a genuine external prerequisite blocks readiness, record what is missing,
-   who must act, and the next action rather than claiming readiness. Keep explicitly
-   deferred work outside that scope's acceptance criteria and dependencies; it must
-   not block independent approved work.
-4. Write named Markdown checkbox tasks with concrete changes, dependencies, relevant
-   paths or contracts, finite checks, and observable done conditions. Shape tasks as
-   independently assignable outcomes: separate shared prerequisites from parallel
-   implementation, identify disjoint write ownership, and name the specific result
-   each dependency supplies. Task order alone is not a dependency. Where a consumer
-   needs only an established interface, separate that prerequisite from the producer's
-   remaining implementation. Show useful concurrent groups without manufacturing
-   extra work or splitting tightly coupled changes merely to increase agent count.
-   Split obviously oversized tasks now. Where useful, record complexity and split
-   hints: difficult technical judgments, interacting contracts, coordination needs,
-   or independently verifiable boundaries. Describe the difficulty rather than
-   prescribing a model or effort; Strategist owns staffing recommendations. Hints
-   support further decomposition, not deferral of consequential user decisions.
-   Include only context needed to restart. Label paths repository-root-relative and
-   future files as proposed. Do not invent optional work, rollback tasks, exhaustive
-   contingencies, approval gates, or manual acceptance requirements.
-5. Record authorization, preservation, and delegation constraints. Planning alone
-   authorizes no implementation or Git operations. Invoking `/do-it` for the selected
-   plan authorizes implementation, dedicated task worktrees, local commits, and merge
-   into the recorded target unless `--no-merge` is specified or the user restricts
-   those actions. Do not require a second approval for local Git. Push and deployment
-   require explicit user authorization, from the current conversation or the plan. Executable plans must tell the
-   orchestrator to consult Strategist before delegating unless the user explicitly
-   requests a single-agent handoff, including a Team Lead. Preserve the Team Lead's
-   own Strategist-first workflow. Assign at most one named plan task per subagent,
-   split larger tasks further, and use only roles from the active agent catalog.
-   Plans must also tell the executor to continue independent work around blockers,
-   adapt mechanisms within settled intent, and ask before changing
-   scope, decisions, or acceptance.
-6. Include a bounded closeout contract. After implementation and agreed agent-owned
-   checks, archive the whole spec and commit it with the task changes on the task
-   branch. For authorized `/do-it` execution, the orchestrator dispatches the
-   Integrator from the recorded target checkout after that commit; the role owns
-   local integration and cleanup under its skill. Prepared Herdr runs use the
-   runtime-admitted same-tab successor: it publishes integration readiness, waits
-   for orchestrator-only authorized obligations and exact-origin retirement, then
-   cleans up and owns operator questions/final reporting. Direct/run-here execution
-   keeps ordinary parent-owned communication. Consume runtime-prepared coordinates
-   without creating another worktree or replacing the recorded origin. Preserve explicit no-merge
-   instructions as an intentional exception. Operator manual or live testing happens
-   after completion and never blocks archival, commit, or authorized integration;
-   record it only as a non-blocking verification limit. Require accurate unfinished
-   integration/cleanup checkboxes and blocker, next-action, and action-owner records.
-   Include the template's outcome-first response contract: 🟢 completed, 🔴 merge
-   blocked or user input required, 🔵 merge intentionally skipped, or 🟡 cleanup
-   pending, always with explicit text. Blocked results must foreground the reason
-   and action needed, not passed checks. Routine merge conflicts remain agent-owned.
-7. When Pi behavior matters, record the verified planning profile and intended
-   execution profile. Keep actual runs separate by date, profile/path, scope, and
-   result. Never claim intended profiles or model behavior were tested.
-8. Review once as a fresh executor: are ordinary tasks sized for the execution target
-   above, with useful hints for unusually complex work? Can the executor preserve
-   fixed intent while choosing routine mechanisms, handle blockers, run finite checks,
-   and complete authorized closeout from the plan alone? Does each behavior-changing
-   restriction come from an agreed requirement, applicable repository policy, or
-   demonstrated task need? Remove unsupported restrictions or present them as proposals
-   outside the executable scope. Resolve remaining gaps through investigation and
-   the question-and-answer loop above, then mark the plan ready and hand it off.
-   Readiness completes planning; it does not authorize execution.
+1. Read the selected repository's applicable instructions and inspect the relevant
+   implementation. Preserve unrelated work. Plans from other clients or profiles
+   are context, not current policy.
+2. Put the canonical plan at `REPO_ROOT/.specs/<descriptive-kebab-case-stub>/plan.md`
+   using the [template](references/plan-template.md). Keep its frontmatter; combine
+   or omit sections that add no value. Cross-repository work uses one coordinating
+   plan naming each owner, without relocating code, secrets, or deployment config.
+3. Separate requirements and settled decisions from verified facts, proposals, and
+   open questions. Investigate discoverable facts and choose routine technical
+   details yourself. For consequential choices affecting scope, architecture, or
+   acceptance, explain the tradeoff, recommend an option, and ask one question at a
+   time. Preserve settled decisions. Continue until executable unless the user
+   requested a draft or an external prerequisite blocks readiness; record that
+   prerequisite, action owner, and next action. Deferred work must not block
+   independent approved work.
+4. Write named checkbox tasks with bounded changes, paths/contracts, actual
+   prerequisite results, finite checks, and observable done conditions. Size ordinary
+   tasks for reliable Luna execution within one context, including investigation and
+   validation headroom. Split oversized tasks and identify useful independent work
+   with disjoint write ownership, without manufacturing tasks or concurrency. Note
+   difficult judgments or split points when useful; Strategist owns staffing advice.
+   Include only restart context, using repository-relative paths and labeling proposed
+   files. Leave equivalent implementation choices flexible.
+5. Carry forward authorization and preservation constraints, not a new execution
+   system. Include the existing [delegation policy](../../docs/subagents.md#roles-guidance-and-councils):
+   consult Strategist before executing implementation plans, with the explicit
+   single-agent handoff exception; a Team Lead retains its own Strategist-first
+   workflow. Assign at most one named plan task per leaf worker and use active roles.
+   Consult Steward for post-implementation reviewer/validator findings when assessing
+   whether more work is warranted, not for planning or initial implementation; handle
+   evidence-proved corrections directly and reuse assessments for the same finding.
+6. Specify the stopping point: implement settled scope, fix demonstrated task-related
+   failures, and stop when agreed checks pass. Continue independent work around
+   blockers; ask before changing scope, decisions, or acceptance. Do not add optional
+   improvements, audits, speculative fixes, rollback work, reviewer sequences, or
+   acceptance gates. Pending operator manual/live testing is a non-blocking
+   verification limit, not a reason to keep implementation active.
+7. Record worktree/integration coordinates and closeout steps only when the selected
+   workflow uses them. If execution uses `/do-it`, link its
+   [owning prompt](../../prompts/do-it.md) for authorization, worktrees, archival,
+   Integrator closeout, and reporting; do not duplicate those mechanics. Ordinary
+   plans do not require that command or its workflow.
+8. When Pi behavior matters, distinguish verified planning profile, intended execution
+   profile, and actual runs by date, profile/path, scope, and result. Do not describe
+   intended behavior as tested. Check the plan once as a fresh executor, resolve
+   remaining scope decisions, and mark it ready without starting implementation.
 
 See [agent-process](../agent-process/SKILL.md) when reviewing workflow feedback or
 changing instructions. Ordinary planning does not require another feedback review.

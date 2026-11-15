@@ -13,7 +13,7 @@ import { codexHistory, discoveredClaudeIds } from "./fixtures/bedrock-cross-prov
 // newly added Runtime Sonnet/Haiku models must not silently remove these cases.
 vi.mock("@earendil-works/pi-ai/providers/all", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("@earendil-works/pi-ai/providers/all")>();
-	const runtimeIds = new Set(["us.anthropic.claude-fable-5-1", "us.anthropic.claude-opus-5-5"]);
+	const runtimeIds = new Set(["us.anthropic.claude-fable-5-1", "us.anthropic.claude-opus-5-5", "us.xai.grok-4.7"]);
 	return {
 		...actual,
 		getBuiltinModels: ((provider) => {
@@ -54,6 +54,7 @@ describe("Bedrock real adapter serialization", () => {
 			["anthropic.claude-opus-5-5", "us.anthropic.claude-opus-5-5", "runtime"],
 			["anthropic.claude-sonnet-5", "anthropic.claude-sonnet-5", "mantle-anthropic"],
 			["anthropic.claude-haiku-4-5", "anthropic.claude-haiku-4-5", "mantle-anthropic"],
+			["xai.grok-4.7", "us.xai.grok-4.7", "runtime"],
 		]);
 	});
 
@@ -110,8 +111,8 @@ describe("Bedrock real adapter serialization", () => {
 		expect(captured.requests[0].payload.messages.at(-1)).toEqual({ role: "system", content: [], output_config: { effort: "low" } });
 	});
 
-	it("serializes the real latest Fable Runtime route with request-level low effort", async () => {
-		const route = routes.find(route => route.model.id === "anthropic.claude-fable-5-1")!;
+	it.each(["anthropic.claude-fable-5-1", "xai.grok-4.7"])("serializes the real %s Runtime route with native tools and request options", async (id) => {
+		const route = routes.find(route => route.model.id === id)!;
 		const requests: { url: string; payload: any }[] = [];
 		// Runtime uses the AWS Node HTTP handler, not fetch. Capture its serialized
 		// HTTP body at loopback rather than mocking the adapter or SDK command.
@@ -134,7 +135,12 @@ describe("Bedrock real adapter serialization", () => {
 			expect(decodeURIComponent(requests[0].url)).toContain(`/model/${route.target.id}/converse-stream`);
 			const { payload } = requests[0];
 			expectCompatibleMessages(payload);
-			expect(payload.additionalModelRequestFields).toMatchObject({ thinking: { type: "adaptive" }, output_config: { effort: "low" } });
+			if (id.startsWith("anthropic.")) {
+				expect(payload.additionalModelRequestFields).toMatchObject({ thinking: { type: "adaptive" }, output_config: { effort: "low" } });
+			} else {
+				expect(payload).not.toHaveProperty("additionalModelRequestFields");
+			}
+			expect(payload.toolConfig.tools[0].toolSpec.name).toBe(codexHistory.tools![0].name);
 			expect(payload.inferenceConfig.maxTokens).toBe(128);
 		} finally {
 			server.closeAllConnections();

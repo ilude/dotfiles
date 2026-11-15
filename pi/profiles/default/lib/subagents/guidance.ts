@@ -34,9 +34,9 @@ ${WRITING_GUIDANCE}
 
 ccyl may handle any authorized task type. Use project context/existing Git identity; ask if unclear. Explicit routes win. Pi model: "opus" stays Bedrock; "high" sets effort. AWS Grok is permitted for either project category.
 
-For ccyl, check claude_usage using its Claude config directory for shared five-hour/weekly quota and resets. Reuse recent readings; refresh after substantial work. Unknown quota is unavailable. Never silently switch accounts.
+For ccyl, check claude_usage using its Claude config directory for shared five-hour/weekly quota and resets. Reuse recent readings; refresh after substantial work. Unknown quota is unavailable.
 
-Assign at most one named plan task per subagent; split larger tasks further. Run ready independent assignments concurrently. Integrate prerequisites before dependent work. Ask only about interpretations changing behavior, scope, or acceptance.`;
+Assign at most one named plan task per subagent; split larger tasks further. Run ready independent assignments concurrently. Integrate prerequisites before dependent work.`;
 
 function coordinatorGuidance(taskSizing = "Assign at most one named plan task per subagent; split larger tasks into independently verifiable outcomes."): string {
   return `## Delegation guidance
@@ -64,7 +64,7 @@ Inspect the subagent's evidence and prerequisites before retrying. Retry the sam
 
 const COUNCIL_GUIDANCE = `## Council guidance
 
-Run a council only when the user explicitly requested one. Use non-writing members for independent openings, focused rebuttal, and synthesis. Use follow-up messages to reopen the same members for rebuttal. Report strongest arguments, changed positions, disagreements, and evidence gaps without forcing agreement or implementation.`;
+Run a council only when the user explicitly requested one. Use follow-up messages to reopen the same members for rebuttal.`;
 
 function catalogEntries(definitions: ReadonlyMap<string, AgentDefinition>, permitted?: readonly string[]): string {
   const allowed = permitted ? new Set(permitted) : undefined;
