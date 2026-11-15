@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-14: Add native SearXNG image and news discovery
+
+- Add an explicit search kind with SearXNG web/image/news categories, preserving query filters and strict engine selection. Distinguish source-page, full image and thumbnail URLs, retain publication metadata, and leave missing source pages unknown rather than inventing links.
+- Bound and screen all returned text fields and report known output clipping without spending more allowance. Providers lacking the requested kind stay unsupported rather than silently returning web results. No image download, browser search UI or new cloud call is involved.
+
 ## 2026-11-14: Add explicit Browserbase static retrieval
 
 - Add a distinct `browserbase-static` fetch backend using raw HTTP Fetch and the existing isolated Readability extractor. It does not execute JavaScript, use Extract/LLM conversion, create a browser session or borrow saved contexts.

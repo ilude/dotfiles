@@ -367,12 +367,17 @@ and never retry a screening decision as an acquisition failure.
   - Done when: an eligible request can reach rendering without borrowing login
     state, leaking sessions, or making either cloud account mandatory.
 
-- [ ] **W10a: Native SearXNG image/news discovery and result shapes**
+- [x] **W10a: Native SearXNG image/news discovery and result shapes**
   - Depends on: W02's search contract, not a cloud provider implementation.
   - Establish explicit query-kind and typed source/provenance fields with the
     existing SearXNG image/news categories. Publish these shapes for other clients.
   - Done when: image/news discovery can use the existing primary without spending
     new cloud allowance, preserving filters and distinguishing source/image URLs.
+  - Evidence: explicit kind selects SearXNG categories and preserves composed
+    filters/engine selection. Native source/image/thumbnail/publication fields
+    are separately bounded and screened; unknown source pages remain unknown.
+    Known output clipping is reported rather than triggering another request.
+    Typecheck and three affected files passed 52/52 cases; no live API calls.
 
 - [ ] **W10b: Serper image/news discovery**
   - Depends on: W10a's result/capability contract.
@@ -460,7 +465,7 @@ and schema edits. Dependencies above, not phase ordering alone, determine readin
 ## Current handoff
 
 - Status: W01–W04 implemented directly by the parent in the existing task
-  worktree, with W06–W07 also complete; 13 implementation tasks remain. Continue ready tasks while the narrow W05 contract lookup completes. Full scope and acceptance remain
+  worktree, with W06–W07 also complete; 12 implementation tasks remain, including W10a complete. Continue ready tasks while the narrow W05 contract lookup completes. Full scope and acceptance remain
   unchanged; orchestration repairs no longer block feature implementation.
 - Completed: current code/tests/provider-doc reconnaissance and two Opus high
   design consultations. The full path retains Browserbase, automatic fallback,

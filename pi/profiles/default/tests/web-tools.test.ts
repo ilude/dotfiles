@@ -227,6 +227,22 @@ describe("tool integration", () => {
     expect(result.content[0].text).toContain("too many requests");
     expect(complete.mock.calls[0][1].messages[0].content).toContain("too many requests");
   });
+  it.each(["images", "news"])("preserves SearXNG %s discovery and typed source fields", async kind => {
+    const { registered } = tools();
+    const fetch = vi.fn(async (_url: unknown) => ({ ok: true, json: async () => ({ results: [{ title: "Source", url: "https://example.com/article", img_src: "https://images.example.com/full.png", thumbnail_src: "https://images.example.com/thumb.png", content: "Description", source: "Publication", publishedDate: "2026-11-13", engine: "fixture" }] }) })); vi.stubGlobal("fetch", fetch);
+    const result = await registered.get("web_search").execute("id", { query: "topic", kind, exact_phrases: ["two words"], exclude_terms: ["excluded"], site: "example.com" });
+    const url = new URL(String(fetch.mock.calls[0][0]));
+    expect(url.searchParams.get("categories")).toBe(kind); expect(url.searchParams.get("q")).toContain('"two words" -excluded site:example.com');
+    expect(result.structuredContent.kind).toBe(kind); expect(result.structuredContent.items[0].url).toBe("https://example.com/article");
+    if (kind === "images") { expect(result.structuredContent.items[0].imageUrl).toBe("https://images.example.com/full.png"); expect(complete.mock.calls[0][1].messages[0].content).toContain("Image URL: https://images.example.com/full.png"); }
+    else { expect(result.structuredContent.items[0].source).toBe("Publication"); expect(complete.mock.calls[0][1].messages[0].content).toContain("Source: Publication"); }
+    expect(fetch).toHaveBeenCalledOnce();
+  });
+  it("retains image-only candidates without inventing a source-page URL", async () => {
+    const { registered } = tools(); vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => ({ results: [{ title: "Image", img_src: "https://images.example.com/image.png" }] }) })));
+    const result = await registered.get("web_search").execute("id", { query: "topic", kind: "images" });
+    expect(result.structuredContent.items[0]).toMatchObject({ url: "", imageUrl: "https://images.example.com/image.png" });
+  });
   it("shows the fetch URL in the operator-facing call row", () => {
     const { registered } = tools();
     const rendered = registered.get("web_fetch").renderCall(

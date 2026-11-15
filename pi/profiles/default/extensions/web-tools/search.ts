@@ -6,10 +6,11 @@ import { searchBrowserbase } from "./browserbase.ts";
 type ExistingSearchProvider = "searxng" | "serper" | "brave";
 export type SearchProvider = ExistingSearchProvider | "browserbase";
 export type SearchSelection = "auto" | SearchProvider;
-export type SearchResult = { title: string; url: string; content?: string; publishedDate?: string; engine: string };
+export type SearchKind = "web" | "images" | "news";
+export type SearchResult = { title: string; url: string; content?: string; publishedDate?: string; engine: string; imageUrl?: string; thumbnailUrl?: string; source?: string; width?: number; height?: number };
 export type SearchResponse = { results: SearchResult[]; warning?: string; backend: SearchProvider; recovery?: string };
 type FailureKind = "transport" | "timeout" | "rate-limit" | "quota" | "credentials" | "unavailable" | "challenge" | "invalid-response" | "invalid-request";
-type SearchRequest = { query: string; count: number; provider?: SearchSelection; engines?: string[]; filters?: boolean };
+type SearchRequest = { query: string; count: number; provider?: SearchSelection; engines?: string[]; filters?: boolean; kind?: SearchKind };
 type Exec = Parameters<typeof searchApiKey>[0];
 const labels = { searxng: "SearXNG", serper: "Serper", brave: "Brave Search" };
 const defaultSearx = "https://searxng.ilude.com/search";
@@ -35,6 +36,7 @@ async function request(provider: ExistingSearchProvider, input: SearchRequest, k
 		try { url = new URL(process.env.SEARXNG_URL ?? defaultSearx); }
 		catch { throw new SearchAcquisitionError("unavailable", "Invalid SearXNG endpoint"); }
 		url.searchParams.set("q", input.query); url.searchParams.set("format", "json"); url.searchParams.set("pageno", "1");
+		url.searchParams.set("categories", input.kind === "images" ? "images" : input.kind === "news" ? "news" : "general");
 		if (input.engines !== undefined) {
 			const engines = input.engines.map(value => value.trim()).filter(Boolean).join(",");
 			if (engines) url.searchParams.set("engines", engines); else url.searchParams.delete("engines");
@@ -79,8 +81,10 @@ async function request(provider: ExistingSearchProvider, input: SearchRequest, k
 				content: text(provider === "serper" ? item.snippet : provider === "brave" ? item.description : item.content),
 				publishedDate: text(provider === "serper" ? item.date : provider === "brave" ? item.page_age ?? item.age : item.publishedDate),
 				engine: provider === "searxng" ? text(item.engine) ?? provider : provider,
+				...(input.kind === "images" ? { imageUrl: text(item.img_src), thumbnailUrl: text(item.thumbnail_src) } : {}),
+				...(input.kind === "news" && text(item.source) ? { source: text(item.source) } : {}),
 			};
-		}).filter(item => item.url),
+		}).filter(item => item.url || item.imageUrl),
 	};
 }
 
@@ -98,6 +102,10 @@ export function createSearch(exec: Exec) {
 		const failures: string[] = [];
 		for (const provider of order) {
 			budget.signal.throwIfAborted();
+			if (input.kind && input.kind !== "web" && provider !== "searxng") {
+				if (strict) throw new SearchAcquisitionError("unsupported", `${labels[provider]} has no enabled ${input.kind} capability`);
+				failures.push(`${provider}:unsupported`); continue;
+			}
 			let key: string | undefined;
 			if (provider !== "searxng") {
 				const credentialSignal = budget.attempt(2000);

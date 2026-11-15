@@ -69,7 +69,8 @@ export async function fetchBrowserbase(url: string, maxChars: number, budget: Bu
 	throw new AcquisitionError("invalid-response", "Browserbase exceeded the redirect limit");
 }
 
-export async function searchBrowserbase(input: { query: string; count: number; filters?: boolean }, budget: Budget): Promise<SearchResponse> {
+export async function searchBrowserbase(input: { query: string; count: number; filters?: boolean; kind?: "web" | "images" | "news" }, budget: Budget): Promise<SearchResponse> {
+	if (input.kind && input.kind !== "web") throw new AcquisitionError("unsupported", "Browserbase has no documented image/news search mode");
 	if (input.query.length > 200 || input.filters) throw new AcquisitionError("unsupported", "Browserbase Search does not document the requested query length or structured filters");
 	const data = await requestBrowserbase("/v1/search", { query: input.query, numResults: input.count, provider: "parallel", mode: "fast", excerpts: true }, budget, "search");
 	if (!Array.isArray(data.results) || (data.provider !== undefined && data.provider !== "parallel") || (data.mode !== undefined && data.mode !== "fast")) throw new AcquisitionError("invalid-response", "Browserbase returned an unrequested search mode or invalid results");

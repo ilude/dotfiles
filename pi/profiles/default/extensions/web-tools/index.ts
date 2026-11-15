@@ -10,7 +10,7 @@ import { GatewayCircuit } from "./circuit.ts";
 import { GatewayError, gatewayText, requestGateway } from "./gateway.ts";
 import { gatewayCredentials } from "./credentials.ts";
 import { acquisitionBudget, withinSignal } from "./acquisition.ts";
-import { createSearch, type SearchResult } from "./search.ts";
+import { createSearch, type SearchKind, type SearchResult } from "./search.ts";
 import { classifyUrl } from "./destinations.js";
 import { FetchAttemptSchema, fetchAttempts, parseLocalFetch, type FetchReceipt } from "./fetch-result.ts";
 import { fetchFirecrawl } from "./firecrawl.ts";
@@ -21,12 +21,15 @@ const directory = dirname(fileURLToPath(import.meta.url));
 const SearchItemSchema = Type.Object({
 	title: Type.String(), url: Type.String(), content: Type.Optional(Type.String()),
 	publishedDate: Type.Optional(Type.String()), engine: Type.String(),
+	imageUrl: Type.Optional(Type.String()), thumbnailUrl: Type.Optional(Type.String()), source: Type.Optional(Type.String()),
+	width: Type.Optional(Type.Integer({ minimum: 1 })), height: Type.Optional(Type.Integer({ minimum: 1 })),
 });
 const ScreeningSchema = Type.Union([Type.Literal("screened"), Type.Literal("not-screened"), Type.Literal("no-results"), Type.Literal("flagged-approved")]);
 const WebSearchOutputSchema = Type.Object({
 	query: Type.String(), items: Type.Array(SearchItemSchema), screening: ScreeningSchema,
 	backend: Type.Union([Type.Literal("searxng"), Type.Literal("serper"), Type.Literal("brave"), Type.Literal("browserbase")]),
 	warning: Type.Optional(Type.String()), recovery: Type.Optional(Type.String()),
+	kind: Type.Optional(Type.Union([Type.Literal("web"), Type.Literal("images"), Type.Literal("news")])), truncated: Type.Optional(Type.Boolean()),
 });
 const WebFetchOutputSchema = Type.Object({
 	url: Type.String(), content: Type.String(), screening: Type.Union([Type.Literal("screened"), Type.Literal("not-screened"), Type.Literal("flagged-approved")]),
@@ -111,11 +114,12 @@ export default function webTools(pi: ExtensionAPI) {
 
 	pi.registerTool({
 		name: "web_search", label: "Web Search",
-		description: "Search SearXNG, then configured Serper and Brave on acquisition failures, within a 20-second budget. Browserbase included fast web search is explicitly selectable; auto does not yet use it. Browserbase has no documented structured filters. Explicit provider or engines stays strict; engines are SearXNG-only. Empty or partial results do not trigger another search. Returns backend and fallback reasons. Luna screens acquired results; a user may approve reading a flagged response once as untrusted material. Without approval it stays blocked. Output is limited to 45KB/1800 lines.",
+		description: "Search web results, or SearXNG images/news with distinct source/image URLs. For web, try SearXNG then configured Serper and Brave on acquisition failures, within a 20-second budget. Browserbase included fast web search is explicitly selectable; auto does not yet use it. Browserbase has no documented structured filters. Explicit provider or engines stays strict; engines are SearXNG-only. Empty or partial results do not trigger another search. Returns backend and fallback reasons. Luna screens acquired results; a user may approve reading a flagged response once as untrusted material. Without approval it stays blocked. Output is limited to 45KB/1800 lines.",
 		promptSnippet: "Search the web for current information and documentation",
 		outputSchema: WebSearchOutputSchema,
 		parameters: Type.Object({
 			query: Type.String({ minLength: 1, description: "Base search query" }),
+			kind: Type.Optional(Type.Union([Type.Literal("web"), Type.Literal("images"), Type.Literal("news")], { description: "Default web. Image/news discovery preserves source-page and image URLs separately." })),
 			exact_phrases: Type.Optional(Type.Array(Type.String())),
 			exclude_terms: Type.Optional(Type.Array(Type.String())),
 			site: Type.Optional(Type.String({ description: "Optional domain or site URL" })),
@@ -141,8 +145,8 @@ export default function webTools(pi: ExtensionAPI) {
 			const query = searchQuery(params);
 			if (!query) throw new Error("Search query must not be empty");
 			const count = params.num_results ?? 5;
-			const search = await acquireSearch({ query, count, provider: params.provider, engines: params.engines, filters: Boolean(params.site || params.exact_phrases?.length || params.exclude_terms?.length) }, signal);
-			const recovery: { recovery?: string } = search.recovery ? { recovery: search.recovery } : {};
+			const search = await acquireSearch({ query, count, provider: params.provider, engines: params.engines, filters: Boolean(params.site || params.exact_phrases?.length || params.exclude_terms?.length), kind: params.kind }, signal);
+			const recovery: { recovery?: string; kind?: SearchKind; truncated?: boolean } = { ...(search.recovery ? { recovery: search.recovery } : {}), ...(params.kind ? { kind: params.kind } : {}) };
 			const results = search.results.slice(0, count);
 			const header = `websearch: ${query}\n`;
 			if (!results.length) return {
@@ -153,24 +157,32 @@ export default function webTools(pi: ExtensionAPI) {
 			const structuredItems: SearchResult[] = [];
 			let remaining = 10_000;
 			for (const item of results) {
-				if (remaining <= 0) break;
+				if (remaining <= 0) { recovery.truncated = true; break; }
 				const allowance = Math.min(2000, remaining);
 				let itemBudget = allowance;
 				const take = (value: string | undefined, max: number) => {
-					if (value === undefined || itemBudget <= 0) return undefined;
+					if (value === undefined) return undefined;
+					if (value.length > Math.min(max, itemBudget)) recovery.truncated = true;
+					if (itemBudget <= 0) return undefined;
 					const field = value.slice(0, Math.min(max, itemBudget)); itemBudget -= field.length; return field;
 				};
 				const title = take(item.title, 1000) ?? "";
 				const url = take(item.url, 1000) ?? "";
 				const engine = take(item.engine, 100) ?? "";
+				const imageUrl = take(item.imageUrl, 1000);
+				const thumbnailUrl = take(item.thumbnailUrl, 1000);
+				const source = take(item.source, 300);
 				const content = take(item.content, allowance);
 				const publishedDate = take(item.publishedDate, 100);
 				remaining -= allowance - itemBudget;
-				structuredItems.push({ title, url, engine, ...(content === undefined ? {} : { content }), ...(publishedDate === undefined ? {} : { publishedDate }) });
+				structuredItems.push({ title, url, engine, ...(content === undefined ? {} : { content }), ...(publishedDate === undefined ? {} : { publishedDate }),
+					...(imageUrl === undefined ? {} : { imageUrl }), ...(thumbnailUrl === undefined ? {} : { thumbnailUrl }), ...(source === undefined ? {} : { source }),
+					...(item.width === undefined ? {} : { width: item.width }), ...(item.height === undefined ? {} : { height: item.height }) });
 			}
 			const resultText = structuredItems.map((item, index) => [
 				`--- Result ${index + 1} ---`, `Title: ${item.title}`, `URL: ${item.url}`,
 				item.publishedDate ? `Date: ${item.publishedDate}` : "",
+				item.imageUrl ? `Image URL: ${item.imageUrl}` : "", item.thumbnailUrl ? `Thumbnail URL: ${item.thumbnailUrl}` : "", item.source ? `Source: ${item.source}` : "",
 				`Engine: ${item.engine}`, `Snippet: ${item.content ?? "(no snippet)"}`,
 			].filter(Boolean).join("\n")).join("\n\n");
 			const warning = search.warning?.slice(0, 2000);
