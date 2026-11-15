@@ -313,7 +313,7 @@ or a shortened scope.
     cookies, contexts and TLS/proxy bypasses are not forwarded. Typecheck and
     three affected files passed 43/43 fixture/local cases. No live account call.
 
-- [ ] **W08: Native Browserbase read-only rendered retrieval**
+- [x] **W08: Native Browserbase read-only rendered retrieval**
   - Depends on: W01 and W06's client/credential interface. May run alongside W07
     with distinct provider modules/tests and one integration owner.
   - Use a fresh owned public-page session for bounded navigation/rendered content
@@ -326,6 +326,13 @@ or a shortened scope.
   - Done when: rendered retrieval reports its capability/provenance and releases
     only its owned session on success, failure and cancellation, with useful
     fallback on unavailable allowance.
+  - Evidence: native rendered reads reuse CdpConnection and the isolated parser,
+    create a fresh bounded session without contexts/proxies/CAPTCHA solving,
+    deny downloads, validate public requests, and read DOM from an isolated world.
+    Explicit release uses the exact created ID/key even on cancellation; failed
+    release is visible and never creates a replacement session. Typecheck and
+    three affected files passed 48/48 cases using REST/CDP fixtures. No SDK was
+    installed, local Brave transport widened, or live session created.
 
 Automatic routing is delivered in independent small increments, not one final
 switch after every provider is implemented. Each uses the agreed escalation
@@ -469,7 +476,7 @@ and schema edits. Dependencies above, not phase ordering alone, determine readin
 ## Current handoff
 
 - Status: W01–W04 implemented directly by the parent in the existing task
-  worktree, with W06–W07 also complete; 11 implementation tasks remain, including W10a–b complete. Continue ready tasks while the narrow W05 contract lookup completes. Full scope and acceptance remain
+  worktree, with W06–W07 also complete; 10 implementation tasks remain, with W08 and W10a–b also complete. Continue ready tasks while the narrow W05 contract lookup completes. Full scope and acceptance remain
   unchanged; orchestration repairs no longer block feature implementation.
 - Completed: current code/tests/provider-doc reconnaissance and two Opus high
   design consultations. The full path retains Browserbase, automatic fallback,

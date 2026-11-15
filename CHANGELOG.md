@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-11-14: Add owned public-page Browserbase rendering
+
+- Add a distinct rendered-read backend using a fresh bounded Browserbase session, the existing low-level CDP connection and isolated Readability processing. It does not import local/authenticated state, create an autonomous browser agent, interact with forms, enable proxies/CAPTCHA solving or download files.
+- Enforce public request boundaries, capture bounded DOM from an isolated world, and explicitly release only the created session with its original access key on success, failure and cancellation. Cleanup has a separate bounded window; a failed release remains visible and the bounded server lease remains a backstop. No replacement session is created to improve partial output.
+- Keep browser-minute availability separate from Search/Fetch meters and retain the existing gateway contract and local Brave ownership policy. Tests use REST/CDP fixtures, not live browser allowance.
+
 ## 2026-11-14: Preserve image/news kinds through existing search fallback
 
 - Route Serper image and news discovery to the appropriate endpoints under its existing key and allowance. Preserve query refinements, source/image URLs, dimensions, dates and publication labels without scraping hits or downloading images.

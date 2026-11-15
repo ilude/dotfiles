@@ -12,14 +12,18 @@ const api = "https://api.browserbase.com";
 function record(value: unknown): Record<string, unknown> | undefined {
 	return value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
 }
-export async function requestBrowserbase(path: string, body: Record<string, unknown>, budget: Budget, meter: Meter): Promise<Record<string, unknown>> {
+export async function browserbaseKey(budget: Budget): Promise<string> {
 	const credentialSignal = budget.attempt(10_000);
 	let key: string | undefined;
 	try { key = await withinSignal(providerApiKey("BROWSERBASE_API_KEY", credentialSignal), credentialSignal); }
 	catch { budget.signal.throwIfAborted(); throw new AcquisitionError("credentials", "Browserbase credential unavailable"); }
 	budget.signal.throwIfAborted();
 	if (!key) throw new AcquisitionError("credentials", "Browserbase credential unavailable");
-	backoff.check(meter, key);
+	return key;
+}
+export async function requestBrowserbase(path: string, body: Record<string, unknown>, budget: Budget, meter: Meter, accessKey?: string, cleanup = false): Promise<Record<string, unknown>> {
+	const key = accessKey ?? await browserbaseKey(budget);
+	if (!cleanup) backoff.check(meter, key);
 	const signal = budget.attempt(45_000);
 	try {
 		const response = await withinSignal(fetch(api + path, {
