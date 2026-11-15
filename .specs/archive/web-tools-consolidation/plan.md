@@ -95,8 +95,9 @@ Runtime `lib/...` and `tests/...` references are relative to
   `C:/Users/mglenn/.t3/worktrees/.dotfiles/t3-21398b41-8fc7cb522677218f`.
   Parent T3 metadata and Git verified these coordinates. The parent now implements
   directly here after the idle coordinator stalled on harness/setup issues. The
-  unchanged dirty `modules/t3code` and operator stashes remain protected; this
-  unrelated submodule is not a blanket cleanliness prerequisite.
+  operator stashes and unrelated work remain protected. The apparent
+  `modules/t3code` deletion was a Windows long-path status artifact: read-only
+  `git -c core.longpaths=true status` reports it clean; no file was restored.
 
 ## Verified starting behavior and evidence limits
 
@@ -519,41 +520,48 @@ and schema edits. Dependencies above, not phase ordering alone, determine readin
   🔵 merge intentionally skipped and 🟡 cleanup pending, with reason/action first
   when blocked. Planning readiness is not implementation completion.
 
-## Current handoff
+## Execution receipt
 
-- Status: W01–W04 implemented directly by the parent in the existing task
-  worktree, with W06–W07 also complete; Only W12 closeout remains. W01–W11 are complete; automatic routing, explicit structured extraction and closeout remain. Continue ready tasks while the narrow W05 contract lookup completes. Full scope and acceptance remain
-  unchanged; orchestration repairs no longer block feature implementation.
-- Completed: current code/tests/provider-doc reconnaissance and two Opus high
-  design consultations. The full path retains Browserbase, automatic fallback,
-  image/news and structured extraction rather than making explicit Firecrawl the
-  endpoint. Advice was integrated selectively, not treated as implementation authority.
-- Settled since consultation: both tools will use fetch's existing one-shot
-  reading-approval system for screened content; W03's policy is no longer blocked.
-- Settled result handling: the requesting agent judges sufficiency and decides
-  whether another request is needed; partial data does not itself trigger more
-  cloud requests. Return honest quality/truncation/provenance information.
-- Settled caching: provider-cached pages are allowed; do not require fresh reads
-  by default. Report only known cache/freshness metadata.
-- Initial execution attempt: top-level Strategist consultation and isolated Team Lead
-  launch succeeded. The Team Lead's nested Strategist call failed with
-  `Callable injected T3 delegate_task unavailable`; no implementation worker ran.
-- Parent baseline: profile typecheck passed. Five-file Vitest run had 47/48 pass
-  with one curl test timing out during concurrent typecheck; that file passed
-  3/3 when rerun alone. No cause or code fix is claimed.
-- Authorized prerequisite repair: exact installed-bridge dependencies are active
-  but hidden behind named wrappers; frozen authority and once-only grants remain
-  unchanged. Three focused T3 test files pass 26 cases, including an installed-Pi
-  coordinator regression; profile typecheck passes. A supported idle coordinator
-  reload and successful live nested Strategist subsequently verified this repair.
-- A separate thread-scoped resume guard defect was repaired in main by the bounded
-  developer: two focused T3 files pass 25 cases and typecheck passes. The calling
-  runtime has not reloaded that changed closure. This does not block direct work;
-  no raw/generic/native delegation fallback or role broadening is introduced.
-- Next action: implement W05/W06 directly, then continue ready tasks without another
-  coordinator launch, repair gate or repeated design consultation.
-- Product-design readiness: no open policy decisions. Preserve the task worktree,
-  main's unrelated work, both operator stashes and the unrelated
-  `fix/commit-workflow` worktree.
-- Separate retirement blocker: gateway application source-home decision. This does
-  not prevent planning or independent native-tool implementation after authorization.
+- W01–W11b are committed in 18 usable implementation increments. Native guidance
+  and the material CHANGELOG are consolidated for the full endpoint, not only the
+  first provider. W12 stays unchecked until actual integration/cleanup.
+- Final agent-owned checks on 2026-11-14: profile typecheck passed; all 11 affected
+  web-tools test files passed **129/129** sequentially with `--maxWorkers=1` and
+  `PI_WEB_LIVE=0`. Verified Node 26.13.0 and pnpm 11.23.0.
+- Earlier failed fixture attempts remain evidence, not acceptance. A measured
+  13.7-second cold jsdom import exceeded the old 10-second child/15-second outer
+  windows. Affected child windows are now 20 seconds and multi-child outer cases
+  60 seconds. Concurrency was an earlier hypothesis, not the established cause.
+  Production acquisition budgets were not increased by that fixture change.
+- The parent completed implementation directly after the coordinator stalled.
+  The separately authorized nested-bridge prerequisite is committed at
+  `2faf9891` and was live-verified by an idle coordinator reload/nested launch.
+  A separate owned-thread follow-up guard fix preserves fail-closed task-scoped
+  operations; its two focused T3 files passed 25 cases and typecheck passed.
+  Calling-runtime adoption still requires an idle supported reload, not another
+  feature prerequisite or broader role permission.
+- No authenticated Firecrawl/Browserbase API, cloud browser session, account
+  balance, deployment or image refresh was used for acceptance. Public vendor
+  contracts and fixtures are not evidence of account entitlement or live-site
+  success. Manual/live validation is non-blocking.
+- Preserve the operator stashes `e869b39a7e75e75ee29266a5e5eea4c6d6b0d4c8` and
+  `d7367423f1bccfa67cdfc198da66df6bfbdecc08`, the separate
+  `fix/commit-workflow` worktree, current unrelated main/submodule work and all
+  ignored private locator/data artifacts. Apparent task-submodule dirt disappears
+  under read-only long-path-aware Git status; no restoration/reset was performed.
+- No product-policy question remains. Gateway source-home/retirement work stays
+  separate. The retained local homelab-infra values/Git metadata and Onclave's
+  `feature/v2-broker-core` branch must remain untouched.
+
+## Closeout state
+
+- [x] All 18 native implementation tasks, guidance and finite checks complete.
+- [x] Whole spec archived and included in the task-branch closeout commit.
+- [ ] Task commit integrated into the recorded main target.
+- [ ] Final target verification and completion metadata committed.
+- [ ] Owned task worktree removed without unrelated data loss; task branch retained.
+- [ ] Authorized publication verified; existing stashes/worktrees/private data preserved.
+
+Next action: commission Integrator from the recorded main checkout for local
+closeout, then complete parent-owned target verification/publication. Keep any
+integration or cleanup limitation explicit instead of claiming the whole goal done.

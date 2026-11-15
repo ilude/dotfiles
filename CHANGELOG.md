@@ -1,97 +1,16 @@
 # Changelog
 
-## 2026-11-14: Add explicit Browserbase static schema extraction
+## 2026-11-14: Consolidate native web discovery and one-page acquisition
 
-- Use Browserbase’s native static JSON/schema format only when extraction is explicitly requested, with the same unchanged-value validation and reading policy as Firecrawl. Keep ordinary reads on raw Fetch plus local extraction and do not substitute a browser agent for unsupported rendered schema work.
-- Keep Extract availability separate from raw Fetch, Search and browser minutes. Eligible schema requests may use another supported provider with the identical schema and a concrete failure trace; partial/oversize output does not trigger extra spending. Account/format limitations remain reported rather than prompting upgrades.
-
-## 2026-11-14: Add explicit one-page Firecrawl schema extraction
-
-- Make JSON extraction an explicit format/schema request, separate from ordinary Markdown reads. Validate returned values against the requested JSON Schema using the installed TypeBox library, without cleaning, coercing or rewriting source data, then screen all serialized fields through the shared reading policy.
-- Return the unchanged structured object only when its full view fits the output bounds. Oversize responses remain marked partial views with the full object explicitly omitted, not malformed JSON presented as valid data or a trigger for another paid request. Keep basic proxy/cache/privacy settings and actual account limitations intact.
-
-## 2026-11-14: Reach owned rendering after eligible retrieval failures
-
-- Permit automatic public-page Browserbase rendering after suitable existing/static/Firecrawl acquisition paths fail. Rendering requirements skip static Fetch, failed cloud calls do not impose a one-cloud-attempt lock, and useful partial data never triggers another session.
-- Reuse the same fresh-session ownership, bounded navigation/parser work and explicit release path as strict rendered requests. Keep browser availability independent from other meters, local/authenticated state untouched, and caller cancellation/screening outside escalation.
-
-## 2026-11-14: Add capability-aware static cloud retrieval fallback
-
-- After suitable existing gateway/workstation/Jina routes, try Browserbase raw/static HTTP before a new dynamic Firecrawl scrape. This ordering reflects the requested work, not an assumption that free allowances or provider coverage are interchangeable.
-- Skip static Fetch when rendering is required, keep strict backend selection, and return partial readable data without another cloud request. Raw Fetch availability remains separate from Extract, Search and browser minutes.
-
-## 2026-11-14: Retain Browserbase as an automatic search alternative
-
-- Try eligible included-mode Browserbase search after existing providers and Firecrawl fail acquisition. A failed cloud attempt does not impose an arbitrary one-cloud limit; every attempt remains within the shared deadline and actual capability/allowance boundaries.
-- Keep Search backoff independent from raw Fetch, Extract and browser minutes. Unsupported result kinds/filters remain explicit limitations, not downgraded web queries or browser sessions. Valid empty/partial data still stops acquisition.
-
-## 2026-11-14: Reach Firecrawl discovery after existing search failures
-
-- Append eligible Firecrawl search after SearXNG and existing configured fallbacks, within the same 20-second acquisition budget and shared search/scrape credit state. Preserve kind, filters and strict explicit selection; no hit scraping, premium mode or eager credential lookup is introduced.
-- Return valid empty or partial results immediately. Screening remains after acquisition and never triggers another provider request.
-
-## 2026-11-14: Add acquisition-only Firecrawl fallback
-
-- Separate fetch acquisition from screening/approval and append suitable Firecrawl retrieval after eligible existing gateway, workstation and Jina failures. Do not cut the gateway chain short to reserve cloud time. Preserve useful partial data, strict provider requests, caller cancellation and public/private boundaries.
-- Carry typed gateway/helper failures without changing the gateway wire contract. Definitive 404/410, authentication and restricted-target failures stop rather than spending another allowance, including stopping the helper’s Jina recovery for terminal target errors. Return concrete attempt/recovery metadata; never switch providers to evade screening.
-- Add an explicit rendering requirement so static HTTP backends cannot silently satisfy it. Browserbase remains explicit in this increment; no live provider validation or quota assumptions are introduced.
-
-## 2026-11-14: Add supported cloud image/news discovery
-
-- Map Firecrawl’s explicit image/news sources into the same native result contract, keeping source-page URLs distinct from image assets and retaining supplied dimensions and dates. Request only the selected source and do not scrape hits.
-- Keep Browserbase image/news discovery unsupported because its documented Search interface is web-only. Incidental image metadata is not simulated as an image search, and no browser session is substituted for a missing search capability. Existing cheaper search routes remain ahead of cloud escalation when automatic routing is enabled.
-
-## 2026-11-14: Add explicit Firecrawl discovery with shared credit availability
-
-- Add native discovery-only Firecrawl search using the same credential/client as scraping. Preserve composed query refinements, request one source kind, and omit result scraping, Highlights enrichment and domain-tool discovery. Return valid empty/partial data without another request and screen provider warnings even when there are no hits.
-- Share actual credit-exhaustion backoff between search and scrape, while keeping rate/capability failures scoped and allowing timed/key-change recovery without reload. No quota amount or reset time is invented, no upgrade is attempted, and automatic search is unchanged in this increment.
-
-## 2026-11-14: Add owned public-page Browserbase rendering
-
-- Add a distinct rendered-read backend using a fresh bounded Browserbase session, the existing low-level CDP connection and isolated Readability processing. It does not import local/authenticated state, create an autonomous browser agent, interact with forms, enable proxies/CAPTCHA solving or download files.
-- Enforce public request boundaries, capture bounded DOM from an isolated world, and explicitly release only the created session with its original access key on success, failure and cancellation. Cleanup has a separate bounded window; a failed release remains visible and the bounded server lease remains a backstop. No replacement session is created to improve partial output.
-- Keep browser-minute availability separate from Search/Fetch meters and retain the existing gateway contract and local Brave ownership policy. Tests use REST/CDP fixtures, not live browser allowance.
-
-## 2026-11-14: Preserve image/news kinds through existing search fallback
-
-- Route Serper image and news discovery to the appropriate endpoints under its existing key and allowance. Preserve query refinements, source/image URLs, dimensions, dates and publication labels without scraping hits or downloading images.
-- Do not substitute Brave web results for an unsupported vertical. Its direct image/news capabilities remain disabled without evidence the current account includes them. Empty/partial source results still return without extra provider spending.
-
-## 2026-11-14: Add native SearXNG image and news discovery
-
-- Add an explicit search kind with SearXNG web/image/news categories, preserving query filters and strict engine selection. Distinguish source-page, full image and thumbnail URLs, retain publication metadata, and leave missing source pages unknown rather than inventing links.
-- Bound and screen all returned text fields and report known output clipping without spending more allowance. Providers lacking the requested kind stay unsupported rather than silently returning web results. No image download, browser search UI or new cloud call is involved.
-
-## 2026-11-14: Add explicit Browserbase static retrieval
-
-- Add a distinct `browserbase-static` fetch backend using raw HTTP Fetch and the existing isolated Readability extractor. It does not execute JavaScript, use Extract/LLM conversion, create a browser session or borrow saved contexts.
-- Revalidate each redirect before another provider request, never forward response cookies, preserve target status/final URL, and keep binary formats unsupported rather than invoking OCR. Bound parser stdin/output and preserve the existing helper’s normal text/JSON interfaces. Automatic retrieval remains unchanged in this increment; validation uses fixtures and local subprocesses only.
-
-## 2026-11-14: Add explicit native Browserbase web search
-
-- Select Browserbase’s included Parallel fast mode through `web_search` without creating a browser, scraping hits or enabling deep modes. Preserve backend/excerpt provenance and report unsupported structured filters or query lengths instead of silently dropping them.
-- Share bounded HTTP parsing and credential ownership with the existing clients. Keep Search retry state separate from Fetch and browser allowances, honor reported retry intervals, and use temporary backoff rather than invented reset times or reload-only lockouts. Automatic search remains on the existing providers in this increment; no account calls were used for validation.
-
-## 2026-11-14: Add explicit native Firecrawl page retrieval
-
-- Add a strict `web_fetch` Firecrawl backend using bounded Markdown scraping with basic proxy mode, no enhanced retries, no OCR/LLM/interactive formats, and the provider’s normal accepted cache age. Preserve the existing automatic chain in this increment; no gateway contract or deployment changes are needed.
-- Separate provider API failures from reported target HTTP failures, preserve unknown final redirects rather than substituting the requested source URL, and screen content through the shared reading-approval path. Expose only bounded acquisition facts and supplied cache metadata, not arbitrary provider payloads.
-- Resolve named provider credentials from the existing environment or workstation BWS locator using a cancellable direct child with child-local environment. Cache only successful keys and discard rejected cached authentication values without retrying the failed request. No credential files, new packages or live provider validation are introduced.
-
-## 2026-11-14: Share response-specific reading approval across web tools
-
-- Let users read a flagged search response once through the same approval system as fetch. Keep the response untrusted, show its flagged excerpts, and preserve blocking when approval or interactive UI is absent. Approval is not permission to execute source instructions and never applies to later responses.
-- Keep screening outside acquisition routing, retain unavailable-review behavior, and identify approved flagged search output in structured metadata and compact presentation. Ordinary documentation is still reviewed in context rather than rejected merely for containing setup commands; no domain bypass or additional provider request is introduced.
-
-## 2026-11-14: Keep existing search fallbacks usable within bounded acquisition
-
-- Give search a 20-second acquisition budget with separate network and lazy credential windows. Recover from eligible transport, timeout, outage, challenge and quota failures in SearXNG, configured Serper and Brave order, while returning valid empty/partial results without extra searches. Report the selected backend and concrete fallback reasons.
-- Add strict existing-provider selection and reject non-SearXNG engine combinations without substituting providers. Honor reported retry intervals, otherwise use short credential-scoped backoff rather than an invented quota-reset time or reload-only lockout. Keep cancellation and screening outside fallback, and retain fetch’s 60-second gateway/acquisition behavior.
-
-## 2026-11-14: Report native fetch acquisition provenance
-
-- Distinguish actual workstation retrieval from remote Jina recovery, preserve known redirect destinations, and report bounded acquisition attempts and truncation. Jina relay URLs are not presented as verified target-page redirects.
-- Add a machine-readable helper mode for the native tool while retaining the existing text CLI. Preserve local/private routing, cancellation and content bounds; project useful gateway receipt fields without exposing arbitrary backend payloads or changing its running contract. Partial output alone does not trigger reacquisition.
+- Keep `web_search` for discovery and `web_fetch` for known-URL retrieval/extraction. Add native Firecrawl and Browserbase clients without new packages, daemons, databases or a local page cache. Keep interactive/authenticated browsing, screenshots, map/crawl and recurring collection separate.
+- Preserve suitable existing mechanisms first: search uses SearXNG and eligible configured Serper/Brave before Firecrawl and included-mode Browserbase; fetch keeps the existing gateway/workstation/Trawl/public Jina paths before eligible raw/static cloud HTTP, Firecrawl and owned rendering. Search acquisition is bounded at 20 seconds, fetch at 60, with separate bounded browser cleanup. Explicit selections and requested filters/capabilities never silently downgrade.
+- Distinguish local retrieval from remote Jina, static Fetch from rendered DOM reads, and actual target status from provider API success. Report known redirects, attempts, truncation and supplied cache facts; unknown facts stay unknown. Provider caching, including Firecrawl’s normal two-day accepted cache age, is allowed without claiming fresh content.
+- Add typed image/news discovery through supported SearXNG, Serper and Firecrawl paths. Browserbase dedicated image/news and direct Brave verticals remain unsupported without contract/account evidence; incidental result images are not an image-search API.
+- Make schema extraction explicit. Validate unchanged JSON values with the installed TypeBox library, screen all returned field content, and omit the full object when only a bounded partial view fits. Ordinary reads never invoke LLM extraction. The requesting agent judges sufficiency: empty/partial data does not trigger another cloud request.
+- Share response-specific **Read it anyway?** approval across both tools. Approval permits reading only that untrusted response, not executing instructions or trusting later responses. Preserve unavailable-review behavior and no-UI blocking; never change providers to evade screening or trust a domain automatically.
+- Conserve Free accounts: no upgrades, deep/premium modes, enhanced proxy retries, incidental OCR, paid overage, invented quotas/reset times or reload-only lockouts. Share Firecrawl credit availability across operations, isolate Browserbase meters, and keep credentials lazy in the existing environment/workstation BWS ownership with child-local settings.
+- Keep private/local acquisition and local authenticated profiles separate from cloud clients. Fresh public rendered reads reuse existing CDP/Readability primitives, deny downloads/CAPTCHA solving/proxies, and release only their created session. Local acquisition is not an end-to-end privacy guarantee because existing Luna review can use its configured remote model.
+- Preserve the running gateway contract and infrastructure ownership. Validation uses finite fixtures/local processes, not live provider/browser/account/deployment gates. Cold extraction fixture windows include measured Windows module startup without increasing production acquisition limits.
 
 ## 2026-11-14: Keep nested T3 role delegation callable
 

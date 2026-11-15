@@ -2,6 +2,12 @@
 
 Read this when deciding whether a capability has actually been tested locally or diagnosing a related failure. These dated observations are not permanent provider guarantees, account entitlements, or a mandatory smoke-test checklist.
 
+## Native implementation checks, 2026-11-14
+
+Native Firecrawl search/scrape, Browserbase included-mode web search, raw/static Fetch, owned rendered reads, supported image/news mapping, automatic acquisition routing and explicit schema extraction are implemented and checked with fixtures/local subprocesses. Search/fetch share response-specific reading approval; structured values are validated and screened without coercion. These checks do **not** establish current account balances, format entitlements, arbitrary-site success or live session behavior. Browserbase dedicated image/news and direct Brave verticals are not enabled without supporting contract/account evidence. No cloud credits, browser minutes, deployment or image refresh was used for these checks.
+
+## Earlier live observations
+
 Observed in this setup on 2026-10-29:
 
 | Capability | Evidence | Limit |

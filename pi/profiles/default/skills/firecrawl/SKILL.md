@@ -1,15 +1,21 @@
 ---
 name: firecrawl
-description: Extract structured page content, discover image/news results or site URLs, and collect bounded page sets with Firecrawl. Load for extraction workflows, mapping/crawling, or Firecrawl-specific requests; use the bundled HTTP helper with Bitwarden credentials.
+description: Extract structured page content, discover image/news results or site URLs, and collect bounded page sets with Firecrawl. Load for extraction workflows, mapping/crawling, or Firecrawl-specific requests. Prefer native search/fetch; use the bundled HTTP helper only for explicit capabilities outside that interface.
 ---
 
 # Firecrawl
 
-Follow [web tool selection](../web-tools/SKILL.md) for provider choice, role availability, output persistence, and cross-provider failure handling. This skill owns Firecrawl execution through a shell-callable HTTP helper, not a native Pi tool.
+Follow [web tool selection](../web-tools/SKILL.md) for provider choice, role availability, output persistence, and cross-provider failure handling. Native `web_search` and `web_fetch` own ordinary discovery and one-page retrieval/extraction. This skill also owns the shell-callable helper for explicit map/crawl and other provider operations outside that interface.
+
+## Native use
+
+Use `web_search` with `provider: "firecrawl"` and the requested `kind` for strict web/image/news discovery. It never scrapes hits implicitly. Use `web_fetch` with `backend: "firecrawl"` for strict Markdown retrieval, or add an explicit JSON Schema/JSON format for structured extraction. Automatic mode keeps suitable existing mechanisms ahead of cloud allowance. Search and scrape share actual Firecrawl credit availability; neither a key nor a successful basic scrape proves every format is included.
+
+The native adapter uses basic proxy mode, accepts the provider cache default and does not enable enhanced retries, OCR, Interact, screenshots or LLM cleanup incidentally. Schema extraction is explicit. Preserve native screening and caller-owned sufficiency; do not switch to the helper to evade a flagged response.
 
 ## Credentials and invocation
 
-Run `scripts/invoke-firecrawl.ps1` relative to this skill directory with PowerShell (`pwsh -File` from Bash). It uses `FIRECRAWL_API_KEY` if set; otherwise it resolves the existing dotfiles checkout's homelab Bitwarden locator and retrieves exactly that secret using `BITWARDEN_ACCESS_KEY`. It captures secret records internally, restores prior BWS environment values, and keeps the API key scoped to the request. This is the same credential lifecycle described in the [Browserbase credential recipe](../browserbase/references/credentials.md), with a different secret name. No key files or new credentials are needed. Do not print keys, dump BWS records, or embed secrets in shell arguments or tracked configuration.
+Run `scripts/invoke-firecrawl.ps1` relative to this skill directory with PowerShell (`pwsh -File` from Bash). It uses `FIRECRAWL_API_KEY` if set; otherwise it resolves the existing dotfiles checkout’s workstation locator at `config/bws/settings.local.json` and retrieves exactly that secret using `BITWARDEN_ACCESS_KEY`. It captures secret records internally, restores prior BWS environment values, and keeps the API key scoped to the request. This is the same credential lifecycle described in the [Browserbase credential recipe](../browserbase/references/credentials.md), with a different secret name. No key files or new credentials are needed. Do not print keys, dump BWS records, or embed secrets in shell arguments or tracked configuration.
 
 The helper calls only `https://api.firecrawl.dev/v2`, emits the complete response as JSON, and fails on HTTP errors. For example, with `$helper` set to its absolute path:
 
@@ -17,6 +23,8 @@ The helper calls only `https://api.firecrawl.dev/v2`, emits the complete respons
 & $helper -ApiPath /scrape -Body (@{
     url = 'https://example.com'
     formats = @('markdown')
+    proxy = 'basic'
+    parsers = @()
 } | ConvertTo-Json)
 ```
 

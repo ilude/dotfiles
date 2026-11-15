@@ -91,7 +91,7 @@ async function request(provider: ExistingSearchProvider, input: SearchRequest, k
 	};
 }
 
-/** Existing search providers only. Keys stay lazy; each failed attempt leaves usable fallback time. */
+/** Capability-aware search acquisition. Keys stay lazy; valid partial/empty data stops fallback. */
 export function createSearch(exec: Exec) {
 	const backoff = new Map<SearchProvider, { until: number; identity: string; error: SearchAcquisitionError }>();
 	return async (input: SearchRequest, parent?: AbortSignal): Promise<SearchResponse> => {
