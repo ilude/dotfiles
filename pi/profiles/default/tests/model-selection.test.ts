@@ -38,11 +38,18 @@ describe("Opus AWS routing", () => {
 });
 
 describe("Grok AWS routing", () => {
-	it("resolves the council's bare Grok selection through the configured AWS provider", () => {
-		const grok = modelFixture("bedrock-mantle", "xai.grok-4.7");
-		const direct = modelFixture("xai", "grok-4.7");
-		expect(resolvePreferredModel("grok", registryFixture([grok, direct], ["bedrock-mantle", "xai"]))).toBe(grok);
-		expect(() => resolvePreferredModel("grok", registryFixture([direct], ["xai"]))).toThrow(/No configured/);
+	it("resolves the council's bare Grok selection to the newest authenticated native US model", () => {
+		const grok = modelFixture("amazon-bedrock", "us.xai.grok-4.7");
+		const others = [
+			modelFixture("amazon-bedrock", "us.xai.grok-4.6"),
+			modelFixture("amazon-bedrock", "global.xai.grok-4.7"),
+			modelFixture("bedrock-mantle", "xai.grok-4.7"),
+			modelFixture("xai", "grok-4.7"),
+		];
+		const providers = ["amazon-bedrock", "bedrock-mantle", "xai"];
+		expect(resolvePreferredModel("grok", registryFixture([...others, grok], providers))).toBe(grok);
+		expect(() => resolvePreferredModel("grok", registryFixture(others.slice(2), providers))).toThrow(/No configured native AWS Bedrock/);
+		expect(() => resolvePreferredModel("grok", registryFixture([grok], []))).toThrow(/No configured native AWS Bedrock/);
 	});
 });
 

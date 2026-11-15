@@ -1,6 +1,7 @@
 import type { Api, Model } from "@earendil-works/pi-ai";
 import type { ModelRegistry, ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { compareModelVersions, modelFamilyVersion } from "./model-family.ts";
+import { selectLatestGrokModelIds } from "./bedrock/model-policy.ts";
 
 const PROVIDER_LADDER = [
 	["openai"],
@@ -90,6 +91,13 @@ export function resolvePreferredModel(
 	if (alias === "opus") return resolveLatestFamilyModel("opus", registry, AWS_PROVIDER_LADDER);
 	const target = trimmed;
 	const authenticated = registry.getAll().filter(model => registry.hasConfiguredAuth(model));
+	if (alias === "grok") {
+		const native = authenticated.filter(model => model.provider === "amazon-bedrock");
+		const [id] = selectLatestGrokModelIds(native.map(model => model.id));
+		const selected = native.find(model => model.id === id);
+		if (selected) return selected;
+		throw new Error('No configured native AWS Bedrock model matches "grok"');
+	}
 
 	const providerLadder = modelFamilyVersion(trimmed)?.family === "opus" ? AWS_PROVIDER_LADDER : PROVIDER_LADDER;
 	for (const providers of providerLadder) {

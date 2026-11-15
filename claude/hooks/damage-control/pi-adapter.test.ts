@@ -1,7 +1,8 @@
-import { describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
-import { homedir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 
 const adapter = resolve(import.meta.dir, "pi-adapter.ts");
 function run(payload: unknown) {
@@ -9,6 +10,44 @@ function run(payload: unknown) {
   expect(result.status).toBe(0);
   return result.stdout ? JSON.parse(result.stdout) : undefined;
 }
+describe("repository-root recursive grep", () => {
+  const root = mkdtempSync(resolve(tmpdir(), "claude-root-grep-"));
+  mkdirSync(resolve(root, ".git"));
+  mkdirSync(resolve(root, "src"));
+  mkdirSync(resolve(root, "nested"));
+  writeFileSync(resolve(root, "nested/.git"), "gitdir: /fixture");
+  afterAll(() => rmSync(root, { recursive: true, force: true }));
+  const absolute = root.replaceAll("\\", "/");
+
+  test.each([
+    "grep -rn --exclude-dir=.git -F -e needle . 2>/dev/null | grep -v excluded | head",
+    "grep -R needle ./",
+    "grep --recursive needle",
+    "grep --dereference-recursive -e needle .",
+    `grep -rn needle '${absolute}'`,
+    "cd src && grep -r needle ..",
+    "cd nested && grep -r needle .",
+  ])("denies %s", command => {
+    const result = run({ tool_name: "Bash", tool_input: { command }, cwd: root });
+    expect(result.hookSpecificOutput.permissionDecision).toBe("deny");
+    expect(result.hookSpecificOutput.permissionDecisionReason).toContain("git grep");
+  });
+
+  test.each([
+    "grep -rn needle src",
+    "grep -r needle nested",
+    "cd src && grep -r needle .",
+    "grep -n needle .",
+    "grep -e '-r' .",
+    "grep -- -r .",
+    "git grep -n needle",
+    "rg needle .",
+    "printf '%s' 'grep -r needle .'",
+  ])("preserves %s", command => {
+    expect(run({ tool_name: "Bash", tool_input: { command }, cwd: root })).toBeUndefined();
+  });
+});
+
 describe("Claude Damage Control adapter", () => {
   test("allows a deterministic low-risk Bash call without a decision", () => {
     expect(run({ tool_name: "Bash", tool_input: { command: "echo hello" }, cwd: process.cwd() })).toBeUndefined();

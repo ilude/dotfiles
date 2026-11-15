@@ -74,7 +74,9 @@ export type DockerMetadataResult =
 export type DockerMetadataReader = (endpoint: DockerEndpoint, targets: readonly string[], signal?: AbortSignal) => Promise<DockerMetadataResult>;
 /** Parser internals stay local; only the bounded variable projection is copied into review evidence. */
 // Parser-resolved argv is local metadata input, never serialized for Luna.
-export type ShellSearch = { effectId: string; executable: "rg"; inventoryArgs?: string[] };
+export type ShellSearch =
+  | { effectId: string; executable: "rg"; inventoryArgs?: string[] }
+  | { effectId: string; executable: "grep" }; // Recursive grep only.
 export type ScriptSourceIdentity = { path: string; sha256: string; range: { start: number; end: number }; argv: string[]; source?: string; sourceOmission?: string };
 /** Inspection-only parser projection. Quoted arguments remain data, not command text. */
 export type InspectionInvocation = { executable: string; args: ({ known: true; value: string } | { known: false; expression: string; reason: string })[]; wrappers: string[]; language: Language; range: { start: number; end: number } };

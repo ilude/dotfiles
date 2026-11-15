@@ -1,5 +1,23 @@
 # Changelog
 
+## 2026-11-14: Stop Claude repository-root recursive grep
+
+- Reject Claude Bash recursive grep against the current repository root, including pipelines and worktree roots, through the existing Damage Control hook. Direct the caller to tracked-file or ignore-aware searches after a source review crawled ignored dependencies and runtime history.
+- Reuse parsed search operands and metadata-only repository discovery. Preserve scoped grep, nonrecursive grep, Git grep, ripgrep and Pi's existing policy decisions; do not add monitoring or claim to repair Claude's separate task-cancellation behavior.
+
+## 2026-11-14: Add opt-in Hatchery expiry and activation-impact plans
+
+- Add explicit disposable-worker TTL/absolute expiry, later-only extension, due-only ownership-checked cleanup and retained expiry reasons. Create retries retain the first deadline; nonexpiring version-1 records remain unchanged. Deadline-bound attached operations prevent indefinite cleanup blocking. Sample controller timer units are opt-in and are not installed or enabled by this change.
+- Add `pnpm site plan --impact` through the existing native stack request/result path. Reuse file/service plan observations for will/may/unknown activation annotations, retain native replacements and explicit unknowns for uncovered resources/Actions, and leave default plan shapes unchanged. No extra remote observations, secret reads, shell inference or execution policy is added.
+- Keep worker-owned jobs and streaming incomplete pending the operator's output-cap policy. Local checks do not establish production deployment, automatic cleanup activation or live hard-expiry acceptance. Preserve earlier site changes and commits made independently while this work was in progress.
+
+## 2026-11-14: Use the existing native AWS Grok route
+
+- Correct the preceding Grok integration: `amazon-bedrock/us.xai.grok-4.7` already exists in Pi. Remove the duplicate `bedrock-mantle` registration rather than maintaining a second model identity. Keep Claude/GPT routing intact and preserve published history.
+- Preserve the native provider's AWS-profile authentication, API implementation and descriptors while filtering model visibility. Keep the newest native US Grok visible alongside saved Claude selections, and resolve bare `grok` only through authenticated native US models without account, geography or provider fallback.
+- Refresh native Bedrock through its native lifecycle instead of a subscription API-key path or Mantle redirect, retaining Grok's provider identity in model cycling. Local native authentication uses an ignored provider-scoped AWS-profile reference; no AWS credentials are copied or machine-wide environment defaults changed.
+- Verify native Grok inference, file-read tool use, tool-result consumption and priced usage in the full default profile without a shell AWS-profile override. T3's separate cached Pi model inventory still needs a provider refresh before delegation is claimed verified.
+
 ## 2026-11-14: Keep ordinary planning independent of command workflows
 
 - Simplify the planning skill and template around standalone intent, settled decisions, bounded tasks/checks and stopping points. Worktrees, archival, Integrator closeout and command-specific reports apply only when the selected workflow uses them; `/do-it` keeps its existing owning prompt. Preserve mandatory Strategist and Steward consultation policy and anti-churn requirements.

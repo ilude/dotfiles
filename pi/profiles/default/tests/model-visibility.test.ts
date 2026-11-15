@@ -10,8 +10,33 @@ import modelVisibility, {
 	shouldHideModel,
 } from "../extensions/model-visibility";
 import { createMockCtx, createMockPi } from "./helpers/mock-pi";
+import { builtinProviders } from "@earendil-works/pi-ai/providers/all";
 
 describe("applyProviderFilter", () => {
+	it("preserves native Bedrock AWS auth, streaming, and Grok descriptors without requiring an API key", async () => {
+		const agentDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-native-bedrock-visibility-"));
+		try {
+			fs.writeFileSync(path.join(agentDir, "settings.json"), JSON.stringify({ bedrockRefresh: { models: ["us.anthropic.claude-fable-5-1"] } }));
+			vi.stubEnv("PI_CODING_AGENT_DIR", agentDir);
+			const native = builtinProviders().find(provider => provider.id === "amazon-bedrock")!;
+			const models = native.getModels();
+			const grok = models.find(model => model.id === "us.xai.grok-4.7");
+			const registerProvider = vi.fn();
+			const getApiKeyForProvider = vi.fn(async () => undefined);
+			await applyProviderFilter({ modelRegistry: { getAll: () => models, getProvider: () => native, getApiKeyForProvider, registerProvider } }, "amazon-bedrock");
+			const wrapped = registerProvider.mock.calls[0][0];
+			expect(wrapped.id).toBe("amazon-bedrock");
+			expect(wrapped.auth).toBe(native.auth);
+			expect(wrapped.api).toBe(native.api);
+			expect(wrapped.getModels().find(model => model.id === grok.id)).toBe(grok);
+			expect(wrapped.getAllModels().filter(model => model.id.includes("grok")).map(model => model.id)).toEqual([grok.id]);
+			expect(wrapped.filterAllModels(models, { type: "api_key", env: { AWS_PROFILE: "work" } }).map(model => model.id)).toContain(grok.id);
+			expect(getApiKeyForProvider).not.toHaveBeenCalled();
+		} finally {
+			vi.unstubAllEnvs();
+			fs.rmSync(agentDir, { recursive: true, force: true });
+		}
+	});
 	it("preserves native descriptors and OAuth filtering without resolving an API key", async () => {
 		const registerProvider = vi.fn();
 		const model = {
@@ -196,7 +221,10 @@ describe("shouldHideModel", () => {
 		).toBe(false);
 	});
 
-	it("only keeps selected Amazon Bedrock Anthropic models", () => {
+	it("only keeps selected Amazon Bedrock Anthropic models and native US Grok", () => {
+		expect(shouldHideModel("amazon-bedrock", { id: "us.xai.grok-4.7", name: "Grok 4.7 (US)" })).toBe(false);
+		expect(shouldHideModel("amazon-bedrock", { id: "us.xai.grok-4.6", name: "Grok 4.6 (US)" })).toBe(true);
+		expect(shouldHideModel("amazon-bedrock", { id: "global.xai.grok-4.7", name: "Grok 4.7 (Global)" })).toBe(true);
 		expect(
 			shouldHideModel("amazon-bedrock", {
 				id: "global.anthropic.claude-sonnet-4-6",
@@ -263,7 +291,7 @@ describe("shouldHideModel", () => {
 			);
 			vi.stubEnv("PI_CODING_AGENT_DIR", agentDir);
 			expect(getConfiguredBedrockModelIds()).toEqual(
-				new Set(["us.anthropic.claude-fable-5-1"]),
+				new Set(["us.anthropic.claude-fable-5-1", "us.xai.grok-4.7"]),
 			);
 		} finally {
 			vi.unstubAllEnvs();

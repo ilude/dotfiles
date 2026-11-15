@@ -111,7 +111,7 @@ describe("Bedrock accounting", () => {
 	it.each([
 		["amazon-bedrock", "bedrock-converse-stream", "us.anthropic.claude-opus-5-5", "runtime"],
 		["bedrock-mantle", "bedrock-converse-stream", "us.anthropic.claude-opus-5-5", "runtime"],
-		["bedrock-mantle", "bedrock-converse-stream", "us.xai.grok-4.7", "runtime"],
+		["amazon-bedrock", "bedrock-converse-stream", "us.xai.grok-4.7", "runtime"],
 		["bedrock-mantle", "anthropic-messages", "anthropic.claude-opus-5-5", "mantle-anthropic"],
 		["bedrock-mantle", "openai-responses", "openai.gpt-5.6-luna", "mantle-openai"],
 	])("labels %s %s accounting by its transport", async (provider, api, target, transport) => {

@@ -3,6 +3,8 @@ import { getSettingsPath } from "../lib/settings-file.ts";
 import * as fs from "node:fs";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { Provider } from "@earendil-works/pi-ai";
+import { getBuiltinModels } from "@earendil-works/pi-ai/providers/all";
+import { selectLatestGrokModelIds } from "../lib/bedrock/model-policy.ts";
 
 type ModelLike = {
 	provider: string;
@@ -39,6 +41,7 @@ const ALLOW_EXACT_IDS = {
 		"us.anthropic.claude-opus-5",
 		"us.anthropic.claude-sonnet-5",
 		"us.anthropic.claude-haiku-4-5-20251001-v1:0",
+		...selectLatestGrokModelIds(getBuiltinModels("amazon-bedrock").map(model => model.id)),
 	]),
 } as const;
 
@@ -326,7 +329,6 @@ function toProviderModelDef(model: ModelLike): Record<string, unknown> {
 
 type ModelRegistryLike = {
 	getAll(): ModelLike[];
-	getApiKeyForProvider(provider: string): Promise<string | undefined>;
 	getProvider?(provider: string): Provider | undefined;
 	registerProvider(provider: string | Provider, definition?: Record<string, unknown>): void;
 };
@@ -337,11 +339,11 @@ type ProviderPlan = {
 	provider: string;
 	models: ModelLike[];
 	filtered: ModelLike[];
-	credentialRequired: boolean;
+	bedrockAllowedIds?: ReadonlySet<string>;
 	apiKeyEnv: string | undefined;
 };
 
-export function getConfiguredBedrockModelIds(): Set<string> {
+export function getConfiguredBedrockModelIds(models: readonly Pick<ModelLike, "id">[] = getBuiltinModels("amazon-bedrock")): Set<string> {
 	const settings = JSON.parse(
 		fs.readFileSync(getSettingsPath(), "utf-8"),
 	) as Record<string, unknown>;
@@ -359,16 +361,17 @@ export function getConfiguredBedrockModelIds(): Set<string> {
 			? [id]
 			: [];
 	});
-	const models = Array.isArray(refresh?.models) ? refresh.models : [];
+	const savedModels = Array.isArray(refresh?.models) ? refresh.models : [];
 	const configured = new Set(
-		(catalogIds.length > 0 ? catalogIds : models).filter(
+		(catalogIds.length > 0 ? catalogIds : savedModels).filter(
 			(model): model is string =>
 				typeof model === "string" && model.startsWith("us.anthropic.claude-"),
 		),
 	);
-	return configured.size > 0
-		? configured
-		: new Set(ALLOW_EXACT_IDS["amazon-bedrock"]);
+	return new Set([
+		...(configured.size > 0 ? configured : ALLOW_EXACT_IDS["amazon-bedrock"]),
+		...selectLatestGrokModelIds(models.map(model => model.id)),
+	]);
 }
 
 function planProvider(
@@ -386,15 +389,11 @@ function planProvider(
 				provider === "amazon-bedrock" ? bedrockAllowedIds : undefined,
 			),
 	);
-	const changed = filtered.length !== providerModels.length;
 	return {
 		provider,
 		models: providerModels,
 		filtered,
-		credentialRequired:
-			changed &&
-			filtered.length > 0 &&
-			provider === "amazon-bedrock",
+		bedrockAllowedIds,
 		apiKeyEnv:
 			provider === "opencode" || provider === "opencode-go"
 				? "$OPENCODE_API_KEY"
@@ -412,24 +411,15 @@ async function applyPlans(
 	ctx: VisibilityContext,
 	plans: ProviderPlan[],
 ): Promise<Array<FilterResult | undefined>> {
-	const credentials = await Promise.all(
-		plans.map((plan) =>
-			plan.credentialRequired
-				? ctx.modelRegistry.getApiKeyForProvider(plan.provider)
-				: Promise.resolve("available"),
-		),
-	);
-	return plans.map((plan, index) => {
-		if (plan.credentialRequired && !credentials[index])
-			return { before: plan.models.length, after: plan.models.length };
+	return plans.map((plan) => {
 		const result = planResult(plan);
 		if (result.after > 0 && result.after < result.before) {
-			if (plan.provider === "openai") {
+			if (plan.provider === "openai" || plan.provider === "amazon-bedrock") {
 				const native = ctx.modelRegistry.getProvider?.(plan.provider);
 				if (!native) return { before: result.before, after: result.before };
 				// Keep native APIs, auth, model descriptors, and non-chat operations.
 				const originalFilter = native.filterAllModels;
-				const visibleChat = (model: Pick<ModelLike, "id" | "name">) => !shouldHideModel("openai", model);
+				const visibleChat = (model: Pick<ModelLike, "id" | "name">) => !shouldHideModel(plan.provider, model, plan.bedrockAllowedIds);
 				ctx.modelRegistry.registerProvider({
 					...native,
 					getModels: () => native.getModels().filter(visibleChat),
@@ -437,7 +427,7 @@ async function applyPlans(
 						.filter((model) => model.type !== "chat" || visibleChat(model)),
 					filterAllModels: (models, credential) =>
 						(originalFilter ? originalFilter(models, credential) : models)
-							.filter((model) => model.type !== "chat" || !shouldHideModel("openai", model)),
+							.filter((model) => model.type !== "chat" || visibleChat(model)),
 				});
 				return result;
 			}
@@ -446,8 +436,8 @@ async function applyPlans(
 				baseUrl: first.baseUrl,
 				models: plan.filtered.map(toProviderModelDef),
 			};
-			if (plan.apiKeyEnv || plan.provider === "amazon-bedrock") {
-				definition.apiKey = plan.apiKeyEnv ?? "$AWS_BEARER_TOKEN_BEDROCK";
+			if (plan.apiKeyEnv) {
+				definition.apiKey = plan.apiKeyEnv;
 				definition.api = first.api;
 			}
 			ctx.modelRegistry.registerProvider(plan.provider, definition);
@@ -460,10 +450,11 @@ export async function applyProviderFilter(
 	ctx: VisibilityContext,
 	provider: string,
 ): Promise<FilterResult | undefined> {
+	const models = ctx.modelRegistry.getAll();
 	const plan = planProvider(
-		ctx.modelRegistry.getAll(),
+		models,
 		provider,
-		provider === "amazon-bedrock" ? getConfiguredBedrockModelIds() : undefined,
+		provider === "amazon-bedrock" ? getConfiguredBedrockModelIds(models.filter(model => model.provider === provider)) : undefined,
 	);
 	if (!plan) return undefined;
 	return (await applyPlans(ctx, [plan]))[0];
@@ -473,7 +464,7 @@ async function applyProviderFilters(
 	ctx: VisibilityContext,
 ): Promise<Array<{ provider: string; result: FilterResult }>> {
 	const models = ctx.modelRegistry.getAll();
-	const bedrockAllowedIds = getConfiguredBedrockModelIds();
+	const bedrockAllowedIds = getConfiguredBedrockModelIds(models.filter(model => model.provider === "amazon-bedrock"));
 	const plans = TARGET_PROVIDERS.map((provider) =>
 		planProvider(models, provider, bedrockAllowedIds),
 	).filter(
