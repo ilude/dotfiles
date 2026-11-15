@@ -557,29 +557,34 @@ and schema edits. Dependencies above, not phase ordering alone, determine readin
 
 - [x] All 18 native implementation tasks, guidance and finite checks complete.
 - [x] Whole spec archived and included in the task-branch closeout commit.
-- [ ] Task commit integrated into the recorded main target.
+- [x] Task commit integrated into the recorded main target.
 - [ ] Final target verification and completion metadata committed.
 - [ ] Owned task worktree removed without unrelated data loss; task branch retained.
 - [ ] Authorized publication verified; existing stashes/worktrees/private data preserved.
 
-## Current integration blocker
+## Integration evidence
 
-- The requested Integrator dispatch was rejected before launch: its manifest
-  validator accepts only repository-local `.worktrees/`, not this T3-created
-  external task worktree. No alternate path, replacement checkout or harness
-  repair was introduced. The plan permits parent-owned direct closeout.
-- Parent integration into main then stopped safely because a concurrent Hatchery
-  workflow added uncommitted `CHANGELOG.md` content. That edit and unrelated
-  `modules/hatchery` dirt are preserved. No stash, restoration or merge occurred.
-- A following target check ran against unchanged main, not the feature: typecheck
-  and seven existing files/73 cases passed. This is not final feature acceptance;
-  the complete task worktree run remains 11 files/129 cases. Check command exit
-  status and matched file counts before accepting post-merge verification.
-- Required decision, owner **operator**: authorize temporary preservation of only
-  the concurrent `CHANGELOG.md` edit in a named exact-OID stash, followed by merge
-  and exact restoration. Existing stashes and all Hatchery files stay untouched.
-  Ordinary parent-owned Git workflow requires that approval before removal.
-- After approval, owner **parent**: integrate the committed task, restore/verify
-  the exact preserved edit, rerun the finite target checks, complete metadata,
-  remove only the owned clean worktree and publish. W12 and all outstanding
-  closeout checkboxes stay unchecked until those steps actually finish.
+- Main merge `4079ced4ab0166faae1f05942250b1c92fcbfbfe` contains exact task
+  commit `ec3bb15ade9a88534885e2d3f988341116139ea6`. The additive CHANGELOG
+  conflict retained both the Hatchery and native-web sections, plus the main-only
+  T3 repair and workflow entries. Unrelated edits were not staged or discarded.
+- The requested Integrator dispatch rejected T3's external worktree path because
+  its existing validator admits only repository-local `.worktrees/`. No child
+  launched, path was substituted, replacement checkout was created or harness
+  repair was made. The authorized direct/run-here parent closeout path was used.
+- The operator approved temporary preservation of only CHANGELOG on 2026-11-14.
+  Before execution, the other workflow committed that edit at `c556102f`;
+  no stash was needed, created, applied or dropped. Both original stash OIDs and
+  the separate `fix/commit-workflow` checkout remain intact.
+- Final main verification: all **13 requested files/154 cases passed**, comprising
+  129 web cases and 25 T3 repair cases; `pnpm typecheck` also passed. Node 26.13.0,
+  pnpm 11.23.0, `PI_WEB_LIVE=0`, sequential Vitest `--maxWorkers=1`.
+  An intervening main typecheck failed on a concurrent Bedrock signature change;
+  its owning workflow resolved it before the successful rerun. No unrelated
+  Bedrock or planning edits were changed for this task.
+- All seven task submodule checkouts are clean under long-path-aware Git, including
+  ignored-path inspection. The task root contains only its two known generated
+  dependency directories as ignored data. Five task-created peer junctions target
+  main's runtime dependencies and will be unlinked without traversing targets.
+- Integration and final checks are verified. Owned-worktree cleanup, final
+  completion metadata and publication verification remain to be recorded below.
