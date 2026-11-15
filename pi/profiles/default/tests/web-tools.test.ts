@@ -15,7 +15,7 @@ const screeningModel: Model<"openai-responses"> = {
   baseUrl: "https://unused.invalid", reasoning: true, input: ["text"],
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 1000, maxTokens: 1000,
 };
-beforeEach(() => { getAvailable.mockReset().mockResolvedValue([{ ...screeningModel, id: "gpt-5.6-luna" }, screeningModel]); });
+beforeEach(() => { vi.stubEnv("FIRECRAWL_API_KEY", ""); vi.stubEnv("BROWSERBASE_API_KEY", ""); vi.stubEnv("BITWARDEN_ACCESS_KEY", ""); getAvailable.mockReset().mockResolvedValue([{ ...screeningModel, id: "gpt-5.6-luna" }, screeningModel]); });
 vi.mock("@earendil-works/pi-coding-agent", async (original) => ({
   ...await original(),
   getAgentDir: () => "/test-profile",

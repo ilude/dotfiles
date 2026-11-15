@@ -348,11 +348,16 @@ quota state with W05's second Firecrawl operation, not an unused registry in W01
 Keep existing mechanisms first, avoid repeated attempts, preserve useful output,
 and never retry a screening decision as an acquisition failure.
 
-- [ ] **W09a: Automatic Firecrawl retrieval fallback**
+- [x] **W09a: Automatic Firecrawl retrieval fallback**
   - Depends on: W04 and the agreed escalation/deadline contract.
   - Append suitable Firecrawl retrieval after the existing eligible mechanisms.
   - Done when: unavailable/exhausted Firecrawl does not make ordinary fetch fail,
     and eligible acquisition failures can reach it within the overall budget.
+  - Evidence: acquisition is separate from screening and appends Firecrawl only
+    after eligible gateway/workstation/Jina failure. Terminal target/private/auth
+    failures never spend another allowance; partial data returns immediately.
+    Existing gateway contract and its full acquisition window are unchanged.
+    Typecheck and five focused files passed 77/77 fixture/local cases.
 
 - [ ] **W09b: Automatic Firecrawl search fallback**
   - Depends on: W02, W05 and the agreed search escalation/deadline contract.
@@ -488,7 +493,7 @@ and schema edits. Dependencies above, not phase ordering alone, determine readin
 ## Current handoff
 
 - Status: W01–W04 implemented directly by the parent in the existing task
-  worktree, with W06–W07 also complete; 8 implementation tasks remain. W01–W08 and W10a–c are complete; automatic routing, explicit structured extraction and closeout remain. Continue ready tasks while the narrow W05 contract lookup completes. Full scope and acceptance remain
+  worktree, with W06–W07 also complete; 7 implementation tasks remain. W01–W08, W09a and W10a–c are complete; automatic routing, explicit structured extraction and closeout remain. Continue ready tasks while the narrow W05 contract lookup completes. Full scope and acceptance remain
   unchanged; orchestration repairs no longer block feature implementation.
 - Completed: current code/tests/provider-doc reconnaissance and two Opus high
   design consultations. The full path retains Browserbase, automatic fallback,

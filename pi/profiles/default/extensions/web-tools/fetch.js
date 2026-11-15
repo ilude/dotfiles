@@ -160,7 +160,7 @@ async function fetchText(targetUrl, allowCurl = true) {
 			currentUrl = nextUrl;
 			continue;
 		}
-		if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText ?? "target error"}`);
+		if (!response.ok) throw Object.assign(new Error(`HTTP ${response.status}: target error`), { kind: [404, 410].includes(response.status) ? "not-found" : [401, 403].includes(response.status) ? "authentication" : response.status === 429 ? "rate-limit" : "unavailable" });
 		return { text: nativeCurl ? response.text : nodeText, url: currentUrl,
 			contentType: response.headers.get("content-type") ?? "", nativeCurl };
 	}
@@ -240,14 +240,15 @@ try {
 	} catch (primaryError) {
 		attempts.push({ backend: actualBackend, outcome: "failed", elapsedMs: Math.round(performance.now() - started) });
 		signal.throwIfAborted();
-		if (selectedBackend !== "auto") throw primaryError;
+		if (selectedBackend !== "auto" || ["not-found", "authentication"].includes(primaryError.kind)) throw primaryError;
 		try {
 			started = performance.now();
 			output = await extractWithJina(url);
 			attempts.push({ backend: "jina", outcome: "useful", elapsedMs: Math.round(performance.now() - started) });
 			output = `<!-- Fetched via Jina Reader fallback after primary extraction failed: ${primaryError.message} -->\n\n${output}`;
 		} catch (fallbackError) {
-			throw new Error(`${primaryError.message}; Jina fallback failed: ${fallbackError.message}`);
+			if (actualBackend === "jina") attempts.push({ backend: "jina", outcome: "failed", elapsedMs: Math.round(performance.now() - started) });
+			throw Object.assign(new Error(`${primaryError.message}; Jina fallback failed: ${fallbackError.message}`), { kind: fallbackError.kind ?? primaryError.kind ?? "unavailable" });
 		}
 	}
 	if (args.includes("--json")) {
@@ -256,6 +257,7 @@ try {
 			finalUrl, truncated: content.length > maxChars, attempts }));
 	} else console.log(truncate(output));
 } catch (e) {
-	console.error(`Error: ${e.message}`);
+	if (args.includes("--json")) console.error(JSON.stringify({ error: { kind: e.kind ?? (/metadata endpoints|local or private|Invalid URL|HTTP\\(S\\)/i.test(e.message) ? "invalid-request" : /empty|extract readable/i.test(e.message) ? "empty" : "unavailable"), message: e.message }, attempts }));
+	else console.error(`Error: ${e.message}`);
 	process.exit(1);
 }

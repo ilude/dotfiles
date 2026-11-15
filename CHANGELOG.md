@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-11-14: Add acquisition-only Firecrawl fallback
+
+- Separate fetch acquisition from screening/approval and append suitable Firecrawl retrieval after eligible existing gateway, workstation and Jina failures. Do not cut the gateway chain short to reserve cloud time. Preserve useful partial data, strict provider requests, caller cancellation and public/private boundaries.
+- Carry typed gateway/helper failures without changing the gateway wire contract. Definitive 404/410, authentication and restricted-target failures stop rather than spending another allowance, including stopping the helper’s Jina recovery for terminal target errors. Return concrete attempt/recovery metadata; never switch providers to evade screening.
+- Add an explicit rendering requirement so static HTTP backends cannot silently satisfy it. Browserbase remains explicit in this increment; no live provider validation or quota assumptions are introduced.
+
 ## 2026-11-14: Add supported cloud image/news discovery
 
 - Map Firecrawl’s explicit image/news sources into the same native result contract, keeping source-page URLs distinct from image assets and retaining supplied dimensions and dates. Request only the selected source and do not scrape hits.

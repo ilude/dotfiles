@@ -1,23 +1,12 @@
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { truncateHead, type ModelRuntime, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { createProfileModelRuntime } from "../../lib/model-runtime.ts";
 import { resolveLatestCodexModelFromRuntime } from "../../lib/model-selection.ts";
 import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { FlaggedContentError, SCREEN_PROMPT, screenContent, type Reviewer } from "./screen.ts";
-import { GatewayCircuit } from "./circuit.ts";
-import { GatewayError, gatewayText, requestGateway } from "./gateway.ts";
-import { gatewayCredentials } from "./credentials.ts";
-import { acquisitionBudget, withinSignal } from "./acquisition.ts";
 import { createSearch, type SearchKind, type SearchResult } from "./search.ts";
-import { classifyUrl } from "./destinations.js";
-import { FetchAttemptSchema, fetchAttempts, parseLocalFetch, type FetchReceipt } from "./fetch-result.ts";
-import { fetchFirecrawl } from "./firecrawl.ts";
-import { fetchBrowserbase } from "./browserbase.ts";
-import { renderBrowserbase } from "./browserbase-render.ts";
-
-const directory = dirname(fileURLToPath(import.meta.url));
+import { FetchAttemptSchema, type FetchReceipt } from "./fetch-result.ts";
+import { createFetch } from "./fetch.ts";
 
 const SearchItemSchema = Type.Object({
 	title: Type.String(), url: Type.String(), content: Type.Optional(Type.String()),
@@ -62,7 +51,7 @@ export function searchQuery(params: { query: string; exact_phrases?: string[]; e
 }
 
 export default function webTools(pi: ExtensionAPI) {
-	const circuit = new GatewayCircuit();
+	const acquireFetch = createFetch(pi.exec.bind(pi));
 	const acquireSearch = createSearch(pi.exec.bind(pi));
 	// Reuse only a successfully initialized runtime. Reload creates a fresh instance.
 	let runtime: ModelRuntime | undefined;
@@ -203,12 +192,13 @@ export default function webTools(pi: ExtensionAPI) {
 	});
 	pi.registerTool({
 		name: "web_fetch", label: "Web Fetch",
-		description: "Fetch readable HTTP(S) content through the optional adaptive gateway or workstation retrieval, or explicitly select Firecrawl Markdown, Browserbase static Fetch, or a fresh public Browserbase rendered read. Rendered reads release only their owned session and never borrow local/authenticated profiles. Browserbase static uses raw HTTP plus local extraction and does not execute JavaScript. Auto does not yet consume these cloud allowances. Public Jina fallback is remote; output identifies the actual backend, known final URL, attempts and truncation. Local/private URLs stay local. Auto mode recovers through the workstation on gateway outages; explicit backends stay strict. Luna flags possible prompt injection; an interactive user may approve reading that response once as untrusted source material. Without approval it stays blocked. Default 8000 chars; max 50000 chars and 45KB/1800 lines.",
+		description: "Fetch readable HTTP(S) content through the optional adaptive gateway or workstation retrieval, or explicitly select Firecrawl Markdown, Browserbase static Fetch, or a fresh public Browserbase rendered read. Rendered reads release only their owned session and never borrow local/authenticated profiles. Browserbase static uses raw HTTP plus local extraction and does not execute JavaScript. Auto tries suitable existing gateway/workstation/Jina routes before Firecrawl; Browserbase remains explicit in this increment. Public Jina fallback is remote; output identifies the actual backend, known final URL, attempts and truncation. Local/private URLs stay local. Auto mode recovers through the workstation on gateway outages; explicit backends stay strict. Luna flags possible prompt injection; an interactive user may approve reading that response once as untrusted source material. Without approval it stays blocked. Default 8000 chars; max 50000 chars and 45KB/1800 lines.",
 		promptSnippet: "Fetch a web page as readable text",
 		outputSchema: WebFetchOutputSchema,
 		parameters: Type.Object({
 			url: Type.String({ description: "HTTP or HTTPS URL" }),
 			max_chars: Type.Optional(Type.Integer({ minimum: 1, maximum: 50_000 })),
+			render: Type.Optional(Type.Boolean({ description: "Require a rendering-capable route; static HTTP backends are not eligible." })),
 			backend: Type.Optional(Type.Union([Type.Literal("auto"), Type.Literal("direct"), Type.Literal("trawl"), Type.Literal("jina"), Type.Literal("firecrawl"), Type.Literal("browserbase-static"), Type.Literal("browserbase-rendered")], { description: "Default auto; explicit backend selection never substitutes another backend." })),
 		}),
 		renderCall(args, theme) {
@@ -228,56 +218,8 @@ export default function webTools(pi: ExtensionAPI) {
 		},
 		async execute(_id, params, signal, _onUpdate, ctx) {
 			const approve = readingApproval(params.url, ctx, signal);
-			const budget = acquisitionBudget(60_000, signal);
-			const acquisition = budget.signal;
-			const backend = params.backend ?? "auto";
-			let recovery: string | undefined;
-			const destination = await withinSignal(classifyUrl(params.url), acquisition);
-			acquisition.throwIfAborted();
-			if (destination.privateOrLocal) {
-				if (backend === "trawl" || backend === "jina" || backend === "firecrawl" || backend === "browserbase-static" || backend === "browserbase-rendered") throw new Error("Remote backends are disabled for local/private URLs");
-			} else if (backend === "browserbase-rendered") {
-				return finishFetch(params.url, await renderBrowserbase(params.url, params.max_chars ?? 8000, budget), signal, approve);
-			} else if (backend === "browserbase-static") {
-				return finishFetch(params.url, await fetchBrowserbase(params.url, params.max_chars ?? 8000, budget), signal, approve);
-			} else if (backend === "firecrawl") {
-				return finishFetch(params.url, await fetchFirecrawl(params.url, params.max_chars ?? 8000, budget), signal, approve);
-			} else {
-				let credentials;
-				try { credentials = await gatewayCredentials(pi.exec.bind(pi), acquisition); }
-				catch (error) {
-					if (backend === "trawl" || backend === "jina") throw new Error("Gateway credential unavailable", { cause: error });
-					recovery = "credential-unavailable";
-				}
-				if (credentials) {
-					const { endpoint, token } = credentials;
-					circuit.configure(endpoint, token);
-					if (backend !== "auto" || circuit.acquire()) {
-						try {
-							const reply = await requestGateway(endpoint, token, { url: params.url, max_chars: params.max_chars ?? 8000, backend }, acquisition);
-							circuit.reachable();
-							if (reply.backend !== "direct" && reply.backend !== "trawl" && reply.backend !== "jina") throw new Error("Gateway returned an unsupported backend");
-							return await finishFetch(params.url, {
-								backend: reply.backend, content: gatewayText(reply), quality: reply.quality,
-								finalUrl: reply.final_url, truncated: reply.truncated ?? false, attempts: fetchAttempts(reply.attempts),
-							}, signal, approve, recovery);
-						} catch (error) {
-							if (signal?.aborted) { circuit.cancelled(); signal.throwIfAborted(); }
-							if (!(error instanceof GatewayError) || error.kind !== "availability") { circuit.reachable(); throw error; }
-							circuit.unavailable();
-							if (backend !== "auto") throw error;
-							recovery = "gateway-unavailable";
-						}
-					} else recovery = "circuit-open";
-				}
-			}
-			acquisition.throwIfAborted();
-			const remaining = budget.remaining();
-			const result = await pi.exec(process.execPath, [join(directory, "fetch.js"), params.url, "--json", "--max-chars", String(params.max_chars ?? 8000), "--backend", backend, "--budget-ms", String(Math.max(1, remaining - 250))], { timeout: remaining, signal });
-			signal?.throwIfAborted();
-			if (result.killed || result.code !== 0) throw new Error(result.killed ? "Web fetch timed out" : result.stderr.trim() || `Web fetch failed (${result.code})`);
-			if (!result.stdout.trim()) throw new Error("No content extracted");
-			return finishFetch(params.url, parseLocalFetch(result.stdout), signal, approve, recovery);
+			const receipt = await acquireFetch({ url: params.url, maxChars: params.max_chars ?? 8000, backend: params.backend, render: params.render }, signal);
+			return finishFetch(params.url, receipt, signal, approve, receipt.recovery);
 		},
 	});
 }
