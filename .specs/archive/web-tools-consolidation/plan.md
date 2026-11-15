@@ -562,6 +562,24 @@ and schema edits. Dependencies above, not phase ordering alone, determine readin
 - [ ] Owned task worktree removed without unrelated data loss; task branch retained.
 - [ ] Authorized publication verified; existing stashes/worktrees/private data preserved.
 
-Next action: commission Integrator from the recorded main checkout for local
-closeout, then complete parent-owned target verification/publication. Keep any
-integration or cleanup limitation explicit instead of claiming the whole goal done.
+## Current integration blocker
+
+- The requested Integrator dispatch was rejected before launch: its manifest
+  validator accepts only repository-local `.worktrees/`, not this T3-created
+  external task worktree. No alternate path, replacement checkout or harness
+  repair was introduced. The plan permits parent-owned direct closeout.
+- Parent integration into main then stopped safely because a concurrent Hatchery
+  workflow added uncommitted `CHANGELOG.md` content. That edit and unrelated
+  `modules/hatchery` dirt are preserved. No stash, restoration or merge occurred.
+- A following target check ran against unchanged main, not the feature: typecheck
+  and seven existing files/73 cases passed. This is not final feature acceptance;
+  the complete task worktree run remains 11 files/129 cases. Check command exit
+  status and matched file counts before accepting post-merge verification.
+- Required decision, owner **operator**: authorize temporary preservation of only
+  the concurrent `CHANGELOG.md` edit in a named exact-OID stash, followed by merge
+  and exact restoration. Existing stashes and all Hatchery files stay untouched.
+  Ordinary parent-owned Git workflow requires that approval before removal.
+- After approval, owner **parent**: integrate the committed task, restore/verify
+  the exact preserved edit, rerun the finite target checks, complete metadata,
+  remove only the owned clean worktree and publish. W12 and all outstanding
+  closeout checkboxes stay unchecked until those steps actually finish.
