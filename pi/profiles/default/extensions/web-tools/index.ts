@@ -14,6 +14,7 @@ import { createSearch, type SearchResult } from "./search.ts";
 import { classifyUrl } from "./destinations.js";
 import { FetchAttemptSchema, fetchAttempts, parseLocalFetch, type FetchReceipt } from "./fetch-result.ts";
 import { fetchFirecrawl } from "./firecrawl.ts";
+import { fetchBrowserbase } from "./browserbase.ts";
 
 const directory = dirname(fileURLToPath(import.meta.url));
 
@@ -29,7 +30,7 @@ const WebSearchOutputSchema = Type.Object({
 });
 const WebFetchOutputSchema = Type.Object({
 	url: Type.String(), content: Type.String(), screening: Type.Union([Type.Literal("screened"), Type.Literal("not-screened"), Type.Literal("flagged-approved")]),
-	backend: Type.Union([Type.Literal("local"), Type.Literal("direct"), Type.Literal("trawl"), Type.Literal("jina"), Type.Literal("firecrawl")]),
+	backend: Type.Union([Type.Literal("local"), Type.Literal("direct"), Type.Literal("trawl"), Type.Literal("jina"), Type.Literal("firecrawl"), Type.Literal("browserbase-static")]),
 	quality: Type.Optional(Type.String()), finalUrl: Type.Union([Type.String(), Type.Null()]),
 	recovery: Type.Optional(Type.String()),
 	truncated: Type.Optional(Type.Boolean()), attempts: Type.Array(FetchAttemptSchema),
@@ -183,13 +184,13 @@ export default function webTools(pi: ExtensionAPI) {
 	});
 	pi.registerTool({
 		name: "web_fetch", label: "Web Fetch",
-		description: "Fetch readable HTTP(S) content through the optional adaptive gateway or workstation retrieval, or explicitly select a basic Firecrawl Markdown scrape. Auto does not yet consume Firecrawl allowance. Public Jina fallback is remote; output identifies the actual backend, known final URL, attempts and truncation. Local/private URLs stay local. Auto mode recovers through the workstation on gateway outages; explicit backends stay strict. Luna flags possible prompt injection; an interactive user may approve reading that response once as untrusted source material. Without approval it stays blocked. Default 8000 chars; max 50000 chars and 45KB/1800 lines.",
+		description: "Fetch readable HTTP(S) content through the optional adaptive gateway or workstation retrieval, or explicitly select Firecrawl Markdown or Browserbase static Fetch. Browserbase static uses raw HTTP plus local extraction and does not execute JavaScript. Auto does not yet consume these cloud allowances. Public Jina fallback is remote; output identifies the actual backend, known final URL, attempts and truncation. Local/private URLs stay local. Auto mode recovers through the workstation on gateway outages; explicit backends stay strict. Luna flags possible prompt injection; an interactive user may approve reading that response once as untrusted source material. Without approval it stays blocked. Default 8000 chars; max 50000 chars and 45KB/1800 lines.",
 		promptSnippet: "Fetch a web page as readable text",
 		outputSchema: WebFetchOutputSchema,
 		parameters: Type.Object({
 			url: Type.String({ description: "HTTP or HTTPS URL" }),
 			max_chars: Type.Optional(Type.Integer({ minimum: 1, maximum: 50_000 })),
-			backend: Type.Optional(Type.Union([Type.Literal("auto"), Type.Literal("direct"), Type.Literal("trawl"), Type.Literal("jina"), Type.Literal("firecrawl")], { description: "Default auto; explicit backend selection never substitutes another backend." })),
+			backend: Type.Optional(Type.Union([Type.Literal("auto"), Type.Literal("direct"), Type.Literal("trawl"), Type.Literal("jina"), Type.Literal("firecrawl"), Type.Literal("browserbase-static")], { description: "Default auto; explicit backend selection never substitutes another backend." })),
 		}),
 		renderCall(args, theme) {
 			let subject = args.url ?? "";
@@ -215,7 +216,9 @@ export default function webTools(pi: ExtensionAPI) {
 			const destination = await withinSignal(classifyUrl(params.url), acquisition);
 			acquisition.throwIfAborted();
 			if (destination.privateOrLocal) {
-				if (backend === "trawl" || backend === "jina" || backend === "firecrawl") throw new Error("Remote backends are disabled for local/private URLs");
+				if (backend === "trawl" || backend === "jina" || backend === "firecrawl" || backend === "browserbase-static") throw new Error("Remote backends are disabled for local/private URLs");
+			} else if (backend === "browserbase-static") {
+				return finishFetch(params.url, await fetchBrowserbase(params.url, params.max_chars ?? 8000, budget), signal, approve);
 			} else if (backend === "firecrawl") {
 				return finishFetch(params.url, await fetchFirecrawl(params.url, params.max_chars ?? 8000, budget), signal, approve);
 			} else {

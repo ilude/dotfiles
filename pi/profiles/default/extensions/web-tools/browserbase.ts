@@ -1,6 +1,9 @@
 import { AcquisitionError, AllowanceBackoff, acquisitionBudget, readJsonResponse, retryAfterMilliseconds, withinSignal } from "./acquisition.ts";
 import { invalidateProviderApiKey, providerApiKey } from "./credentials.ts";
 import type { SearchResponse, SearchResult } from "./search.ts";
+import type { FetchReceipt } from "./fetch-result.ts";
+import { classifyUrl } from "./destinations.js";
+import { parseHtml } from "./local-parser.ts";
 
 export type Budget = ReturnType<typeof acquisitionBudget>;
 type Meter = "search" | "raw-fetch" | "extract" | "browser";
@@ -40,6 +43,32 @@ export async function requestBrowserbase(path: string, body: Record<string, unkn
 		backoff.note(meter, key, error); throw error;
 	}
 }
+export async function fetchBrowserbase(url: string, maxChars: number, budget: Budget): Promise<FetchReceipt> {
+	const started = performance.now(); let current = url;
+	for (let redirects = 0; redirects <= 5; redirects++) {
+		const destination = await withinSignal(classifyUrl(current), budget.signal);
+		if (destination.privateOrLocal) throw new AcquisitionError("invalid-request", "Remote backends are disabled for local/private URLs");
+		const data = await requestBrowserbase("/v1/fetch", { url: current, format: "raw", allowRedirects: false, allowInsecureSsl: false, proxies: false }, budget, "raw-fetch");
+		const status = data.statusCode;
+		if (typeof status !== "number" || !Number.isInteger(status) || status < 100 || status > 599) throw new AcquisitionError("invalid-response", "Browserbase returned no valid target status");
+		if ([301, 302, 303, 307, 308].includes(status)) {
+			const headers = record(data.headers);
+			const location = headers && Object.entries(headers).find(([name]) => name.toLowerCase() === "location")?.[1];
+			if (typeof location !== "string") throw new AcquisitionError("invalid-response", "Browserbase returned a redirect without Location");
+			current = new URL(location, current).href; continue;
+		}
+		if (status >= 400) throw new AcquisitionError(status === 404 || status === 410 ? "not-found" : status === 401 || status === 403 ? "authentication" : "unavailable", `Browserbase target HTTP ${status}`);
+		if (data.encoding === "base64" || typeof data.content !== "string" || /pdf|octet-stream|^image\//i.test(String(data.contentType ?? ""))) throw new AcquisitionError("unsupported", "Browserbase static response is not supported readable text");
+		if (!data.content.trim()) throw new AcquisitionError("empty", "Browserbase returned empty content");
+		const html = /html/i.test(String(data.contentType ?? "")) || /^\s*</.test(data.content);
+		const parsed = html ? await parseHtml(data.content, current, maxChars, budget) : undefined;
+		const truncated = parsed?.truncated ?? data.content.length > maxChars;
+		return { backend: "browserbase-static", content: parsed?.content ?? data.content.slice(0, maxChars), finalUrl: current, truncated,
+			attempts: [{ backend: "browserbase-static", outcome: truncated ? "partial" : "useful", status, elapsedMs: Math.round(performance.now() - started) }] };
+	}
+	throw new AcquisitionError("invalid-response", "Browserbase exceeded the redirect limit");
+}
+
 export async function searchBrowserbase(input: { query: string; count: number; filters?: boolean }, budget: Budget): Promise<SearchResponse> {
 	if (input.query.length > 200 || input.filters) throw new AcquisitionError("unsupported", "Browserbase Search does not document the requested query length or structured filters");
 	const data = await requestBrowserbase("/v1/search", { query: input.query, numResults: input.count, provider: "parallel", mode: "fast", excerpts: true }, budget, "search");

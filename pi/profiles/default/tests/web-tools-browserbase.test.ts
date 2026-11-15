@@ -21,8 +21,37 @@ afterEach(() => { vi.clearAllMocks(); vi.restoreAllMocks(); vi.unstubAllGlobals(
 function tools() {
 	const registered = new Map<string, any>(); const exec = vi.fn();
 	webTools({ registerTool: (tool: any) => registered.set(tool.name, tool), exec } as any);
-	return { search: (params: Record<string, unknown> = {}, signal?: AbortSignal) => registered.get("web_search").execute("id", { query: "topic", provider: "browserbase", ...params }, signal), exec };
+	return { search: (params: Record<string, unknown> = {}, signal?: AbortSignal) => registered.get("web_search").execute("id", { query: "topic", provider: "browserbase", ...params }, signal),
+		page: (params: Record<string, unknown> = {}, signal?: AbortSignal) => registered.get("web_fetch").execute("id", { url: "https://8.8.8.8/docs", backend: "browserbase-static", ...params }, signal), exec };
 }
+describe("Browserbase static retrieval", () => {
+	it("uses raw Fetch and the isolated local extractor without executing page JavaScript", async () => {
+		const fetch = vi.fn().mockResolvedValue(json({ statusCode: 200, contentType: "text/html", encoding: "utf8", content: "<html><title>Static page</title><main>Useful static text.</main><script>throw new Error('not executed')</script></html>", headers: { "set-cookie": "not forwarded" } })); vi.stubGlobal("fetch", fetch);
+		const result = await tools().page();
+		expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual({ url: "https://8.8.8.8/docs", format: "raw", allowRedirects: false, allowInsecureSsl: false, proxies: false });
+		expect(result.structuredContent).toMatchObject({ backend: "browserbase-static", finalUrl: "https://8.8.8.8/docs", truncated: false });
+		expect(result.structuredContent.content).toContain("Useful static text.");
+		expect(JSON.stringify(result)).not.toContain("not forwarded"); expect(JSON.stringify(result)).not.toContain("not executed");
+		expect(fetch).toHaveBeenCalledOnce(); expect(complete).toHaveBeenCalledOnce();
+	}, 60_000);
+	it("follows only revalidated public redirects and never forwards response cookies", async () => {
+		const fetch = vi.fn().mockResolvedValueOnce(json({ statusCode: 302, headers: { Location: "https://8.8.4.4/final", "set-cookie": "not forwarded" } }))
+			.mockResolvedValueOnce(json({ statusCode: 200, contentType: "text/plain", content: "Final body" })); vi.stubGlobal("fetch", fetch);
+		expect((await tools().page()).structuredContent.finalUrl).toBe("https://8.8.4.4/final");
+		expect(JSON.parse(fetch.mock.calls[1][1].body).url).toBe("https://8.8.4.4/final"); expect(JSON.stringify(fetch.mock.calls[1])).not.toContain("not forwarded");
+	});
+	it("blocks private targets and redirect destinations before sending them to the provider", async () => {
+		const fetch = vi.fn().mockResolvedValue(json({ statusCode: 302, headers: { location: "http://127.0.0.1/private" } })); vi.stubGlobal("fetch", fetch);
+		const { page } = tools(); await expect(page({ url: "http://127.0.0.1/private" })).rejects.toThrow("local/private"); expect(fetch).not.toHaveBeenCalled();
+		await expect(page()).rejects.toThrow("local/private"); expect(fetch).toHaveBeenCalledOnce();
+	});
+	it("keeps target failures terminal and binary formats unsupported", async () => {
+		const fetch = vi.fn().mockResolvedValueOnce(json({ statusCode: 404, content: "Error page" })).mockResolvedValueOnce(json({ statusCode: 200, encoding: "base64", content: "binary" })); vi.stubGlobal("fetch", fetch);
+		await expect(tools().page()).rejects.toMatchObject({ kind: "not-found", eligible: false });
+		await expect(tools().page()).rejects.toMatchObject({ kind: "unsupported" }); expect(complete).not.toHaveBeenCalled();
+	});
+});
+
 describe("explicit Browserbase web search", () => {
 	it("uses included fast search without a browser session or implicit page scraping", async () => {
 		const fetch = vi.fn().mockResolvedValue(json({ provider: "parallel", mode: "fast", results: [{ id: "hit", title: "Page", url: "https://example.com", excerpts: ["First", "Second"], publishedDate: "2026-11-13", privatePayload: "not returned" }] })); vi.stubGlobal("fetch", fetch);

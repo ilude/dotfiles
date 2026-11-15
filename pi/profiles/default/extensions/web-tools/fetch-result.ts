@@ -1,13 +1,13 @@
 import { Type } from "typebox";
 
 export const FetchAttemptSchema = Type.Object({
-	backend: Type.Union([Type.Literal("local"), Type.Literal("direct"), Type.Literal("trawl"), Type.Literal("jina"), Type.Literal("firecrawl")]),
+	backend: Type.Union([Type.Literal("local"), Type.Literal("direct"), Type.Literal("trawl"), Type.Literal("jina"), Type.Literal("firecrawl"), Type.Literal("browserbase-static")]),
 	outcome: Type.Union([Type.Literal("useful"), Type.Literal("partial"), Type.Literal("failed"), Type.Literal("cancelled")]),
 	elapsedMs: Type.Optional(Type.Number({ minimum: 0 })),
 	status: Type.Optional(Type.Integer({ minimum: 100, maximum: 599 })),
 });
 export type FetchAttempt = {
-	backend: "local" | "direct" | "trawl" | "jina" | "firecrawl";
+	backend: "local" | "direct" | "trawl" | "jina" | "firecrawl" | "browserbase-static";
 	outcome: "useful" | "partial" | "failed" | "cancelled";
 	elapsedMs?: number;
 	status?: number;
@@ -31,7 +31,7 @@ export function fetchAttempts(value: unknown): FetchAttempt[] {
 	if (!Array.isArray(value) || value.length > 3) throw new Error("Invalid fetch attempts");
 	return value.map((value): FetchAttempt => {
 		const attempt = record(value);
-		if (!attempt || (attempt.backend !== "local" && attempt.backend !== "direct" && attempt.backend !== "trawl" && attempt.backend !== "jina" && attempt.backend !== "firecrawl")
+		if (!attempt || (attempt.backend !== "local" && attempt.backend !== "direct" && attempt.backend !== "trawl" && attempt.backend !== "jina" && attempt.backend !== "firecrawl" && attempt.backend !== "browserbase-static")
 			|| (attempt.outcome !== "useful" && attempt.outcome !== "partial" && attempt.outcome !== "failed" && attempt.outcome !== "cancelled")) throw new Error("Invalid fetch attempt");
 		const elapsed = attempt.elapsedMs ?? attempt.elapsed_ms;
 		const status = attempt.status ?? attempt.http_status;

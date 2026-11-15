@@ -168,7 +168,16 @@ async function fetchText(targetUrl, allowCurl = true) {
 }
 
 async function extractWithReadability(targetUrl) {
-	const response = await fetchText(targetUrl);
+	let response;
+	if (args.includes("--html-stdin")) {
+		const chunks = []; let bytes = 0;
+		for await (const chunk of process.stdin) {
+			signal.throwIfAborted(); bytes += chunk.length;
+			if (bytes > MAX_RESPONSE_BYTES) throw new Error("HTML input exceeded the extraction byte limit");
+			chunks.push(chunk);
+		}
+		response = { text: Buffer.concat(chunks, bytes).toString("utf8"), url: targetUrl, contentType: "text/html", nativeCurl: false };
+	} else response = await fetchText(targetUrl);
 	finalUrl = response.url;
 	const html = response.text;
 	const provenance = `Source: ${response.url}${response.nativeCurl ? "\nTransport: native curl after Node transport failure" : ""}`;

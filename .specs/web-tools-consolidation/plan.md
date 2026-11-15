@@ -301,12 +301,17 @@ or a shortened scope.
     passed; 65 focused cases passed across initial checks and the affected-file
     rerun. No account balance, paid mode or live provider/session was probed.
 
-- [ ] **W07: Native Browserbase static retrieval**
+- [x] **W07: Native Browserbase static retrieval**
   - Depends on: W01's provenance and W06's Browserbase credential/client.
   - Add bounded explicit Fetch support, distinguish raw/static extraction from
     rendering, and honor supported free-plan output modes.
   - Done when: the native tool can select this backend accurately without
     pretending it executes JavaScript or borrowing authenticated contexts.
+  - Evidence: explicit static Fetch requests raw content, then reuses the isolated
+    Readability process through bounded stdin. It does not consume Extract/LLM
+    output incidentally. Redirects are followed only after public-target checks;
+    cookies, contexts and TLS/proxy bypasses are not forwarded. Typecheck and
+    three affected files passed 43/43 fixture/local cases. No live account call.
 
 - [ ] **W08: Native Browserbase read-only rendered retrieval**
   - Depends on: W01 and W06's client/credential interface. May run alongside W07
@@ -455,7 +460,7 @@ and schema edits. Dependencies above, not phase ordering alone, determine readin
 ## Current handoff
 
 - Status: W01–W04 implemented directly by the parent in the existing task
-  worktree, with W06 also complete; 14 implementation tasks remain. Continue W05/W07. Full scope and acceptance remain
+  worktree, with W06–W07 also complete; 13 implementation tasks remain. Continue ready tasks while the narrow W05 contract lookup completes. Full scope and acceptance remain
   unchanged; orchestration repairs no longer block feature implementation.
 - Completed: current code/tests/provider-doc reconnaissance and two Opus high
   design consultations. The full path retains Browserbase, automatic fallback,

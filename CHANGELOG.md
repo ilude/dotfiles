@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-14: Add explicit Browserbase static retrieval
+
+- Add a distinct `browserbase-static` fetch backend using raw HTTP Fetch and the existing isolated Readability extractor. It does not execute JavaScript, use Extract/LLM conversion, create a browser session or borrow saved contexts.
+- Revalidate each redirect before another provider request, never forward response cookies, preserve target status/final URL, and keep binary formats unsupported rather than invoking OCR. Bound parser stdin/output and preserve the existing helper’s normal text/JSON interfaces. Automatic retrieval remains unchanged in this increment; validation uses fixtures and local subprocesses only.
+
 ## 2026-11-14: Add explicit native Browserbase web search
 
 - Select Browserbase’s included Parallel fast mode through `web_search` without creating a browser, scraping hits or enabling deep modes. Preserve backend/excerpt provenance and report unsupported structured filters or query lengths instead of silently dropping them.
