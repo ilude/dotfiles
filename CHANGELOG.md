@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-11-14: Make existing Hatchery workflows easier to use
+
+- Separate ordinary worker and durable-site locking while retaining the controller's exclusive bootstrap gate, serialized VMID reservations and same-allocation protection. Add credential-free local allocation listing; independent worker execution no longer blocks site operations.
+- Expose supported additive package imports without relocating providers or changing resource identity. Private site consumers use those imports and shared equivalent binding validation while retaining specialized checks, explicit adoption/activation and BWS authority.
+- Add fixed phase-specific stack failure guidance without returning or persisting raw secret-bearing logs, plus an offline declared-site catalog and use-first worker/operator/authoring documentation. Local package and Linux flock checks are not a production rollout. Job handles, streaming, TTL and restart prediction remain deferred; no deployment or publication is implied.
+
 ## 2026-11-14: Keep nested T3 role delegation callable
 
 - Allow follow-up messages to an authenticated owned thread after an automatic continuation advances beyond the latest parent task receipt. Keep task-specific inspection/cancellation fail-closed and persist only actual new follow-up receipts, rather than borrowing a historical task ID. Two focused T3 files pass 25 cases; caller adoption requires an idle supported reload.
