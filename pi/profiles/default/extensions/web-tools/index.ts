@@ -114,7 +114,7 @@ export default function webTools(pi: ExtensionAPI) {
 
 	pi.registerTool({
 		name: "web_search", label: "Web Search",
-		description: "Search web results, or SearXNG images/news with distinct source/image URLs. For web, try SearXNG then configured Serper and Brave on acquisition failures, within a 20-second budget. Browserbase included fast web search is explicitly selectable; auto does not yet use it. Browserbase has no documented structured filters. Explicit provider or engines stays strict; engines are SearXNG-only. Empty or partial results do not trigger another search. Returns backend and fallback reasons. Luna screens acquired results; a user may approve reading a flagged response once as untrusted material. Without approval it stays blocked. Output is limited to 45KB/1800 lines.",
+		description: "Search web/images/news with distinct source/image URLs. Try SearXNG then eligible configured Serper and Brave on acquisition failures; Brave is web-only without confirmed vertical entitlement, within a 20-second budget. Browserbase included fast web search is explicitly selectable; auto does not yet use it. Browserbase has no documented structured filters. Explicit provider or engines stays strict; engines are SearXNG-only. Empty or partial results do not trigger another search. Returns backend and fallback reasons. Luna screens acquired results; a user may approve reading a flagged response once as untrusted material. Without approval it stays blocked. Output is limited to 45KB/1800 lines.",
 		promptSnippet: "Search the web for current information and documentation",
 		outputSchema: WebSearchOutputSchema,
 		parameters: Type.Object({

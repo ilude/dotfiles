@@ -100,6 +100,22 @@ describe("bounded search acquisition", () => {
 		expect(lookup).toHaveBeenCalledTimes(2);
 		expect(fetch).toHaveBeenCalledTimes(2);
 	});
+	it.each(["images", "news"] as const)("retains %s kind through Serper fallback", async kind => {
+		const item = { title: "Source", link: "https://example.com/page", imageUrl: "https://images.example.com/full.png", thumbnailUrl: "https://images.example.com/thumb.png", imageWidth: 1200, imageHeight: 800, snippet: "Snippet", source: "Publication", date: "2026-11-13" };
+		const fetch = vi.fn().mockResolvedValueOnce(json({}, 503)).mockResolvedValueOnce(json({ [kind]: [item] })); vi.stubGlobal("fetch", fetch);
+		const result = await createSearch(exec)({ query: 'topic "exact" -excluded site:example.com', count: 5, kind });
+		expect(fetch.mock.calls[1][0]).toBe(`https://google.serper.dev/${kind}`);
+		expect(JSON.parse(fetch.mock.calls[1][1].body).q).toBe('topic "exact" -excluded site:example.com');
+		expect(result.backend).toBe("serper"); expect(result.results[0].url).toBe("https://example.com/page");
+		if (kind === "images") expect(result.results[0]).toMatchObject({ imageUrl: item.imageUrl, thumbnailUrl: item.thumbnailUrl, width: 1200, height: 800 });
+		else expect(result.results[0]).toMatchObject({ source: "Publication", publishedDate: "2026-11-13" });
+		expect(fetch).toHaveBeenCalledTimes(2);
+	});
+	it("does not spend a Brave web request on an unconfirmed image entitlement", async () => {
+		const fetch = vi.fn(); vi.stubGlobal("fetch", fetch);
+		await expect(createSearch(exec)({ query: "topic", count: 5, provider: "brave", kind: "images" })).rejects.toMatchObject({ kind: "unsupported" });
+		expect(fetch).not.toHaveBeenCalled(); expect(exec).not.toHaveBeenCalled();
+	});
 	it("classifies exhausted-credit responses without exposing raw error bodies", async () => {
 		const fetch = vi.fn().mockResolvedValueOnce(json({}, 503))
 			.mockResolvedValueOnce(new Response("credit quota exhausted; opaque raw payload", { status: 403 }))

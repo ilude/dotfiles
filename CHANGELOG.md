@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-14: Preserve image/news kinds through existing search fallback
+
+- Route Serper image and news discovery to the appropriate endpoints under its existing key and allowance. Preserve query refinements, source/image URLs, dimensions, dates and publication labels without scraping hits or downloading images.
+- Do not substitute Brave web results for an unsupported vertical. Its direct image/news capabilities remain disabled without evidence the current account includes them. Empty/partial source results still return without extra provider spending.
+
 ## 2026-11-14: Add native SearXNG image and news discovery
 
 - Add an explicit search kind with SearXNG web/image/news categories, preserving query filters and strict engine selection. Distinguish source-page, full image and thumbnail URLs, retain publication metadata, and leave missing source pages unknown rather than inventing links.

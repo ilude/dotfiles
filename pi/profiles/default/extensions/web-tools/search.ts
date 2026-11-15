@@ -22,6 +22,7 @@ function record(value: unknown): Record<string, unknown> | undefined {
 	return typeof value === "object" && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
 }
 function text(value: unknown): string | undefined { return typeof value === "string" && value.trim() ? value : undefined; }
+function dimension(value: unknown): number | undefined { return typeof value === "number" && Number.isSafeInteger(value) && value > 0 ? value : undefined; }
 function httpError(provider: ExistingSearchProvider, response: Response, body: string): SearchAcquisitionError {
 	const status = response.status;
 	const kind: FailureKind = status === 429 ? "rate-limit" : status === 402 || (status === 403 && /credit|quota|limit|exhaust/i.test(body)) ? "quota" : status === 408 || status === 504 ? "timeout"
@@ -42,7 +43,7 @@ async function request(provider: ExistingSearchProvider, input: SearchRequest, k
 			if (engines) url.searchParams.set("engines", engines); else url.searchParams.delete("engines");
 		}
 	} else if (provider === "serper") {
-		url = new URL(serperUrl); options.method = "POST";
+		url = new URL(input.kind === "images" ? "https://google.serper.dev/images" : input.kind === "news" ? "https://google.serper.dev/news" : serperUrl); options.method = "POST";
 		options.headers = { "X-API-KEY": key ?? "", "Content-Type": "application/json" };
 		options.body = JSON.stringify({ q: input.query, num: input.count });
 	} else {
@@ -63,7 +64,7 @@ async function request(provider: ExistingSearchProvider, input: SearchRequest, k
 	let data: Record<string, unknown> | undefined;
 	try { data = record(await withinSignal(response.json(), signal)); }
 	catch { signal.throwIfAborted(); throw new SearchAcquisitionError("invalid-response", `${labels[provider]} returned invalid JSON`); }
-	const raw = provider === "searxng" ? data?.results : provider === "serper" ? data?.organic : record(data?.web)?.results;
+	const raw = provider === "searxng" ? data?.results : provider === "serper" ? (input.kind === "images" ? data?.images : input.kind === "news" ? data?.news : data?.organic) : record(data?.web)?.results;
 	if (!Array.isArray(raw)) throw new SearchAcquisitionError("invalid-response", `${labels[provider]} returned an invalid results response`);
 	const failures = provider === "searxng" && Array.isArray(data?.unresponsive_engines) ? data.unresponsive_engines : [];
 	if (!raw.length && failures.length) {
@@ -81,7 +82,8 @@ async function request(provider: ExistingSearchProvider, input: SearchRequest, k
 				content: text(provider === "serper" ? item.snippet : provider === "brave" ? item.description : item.content),
 				publishedDate: text(provider === "serper" ? item.date : provider === "brave" ? item.page_age ?? item.age : item.publishedDate),
 				engine: provider === "searxng" ? text(item.engine) ?? provider : provider,
-				...(input.kind === "images" ? { imageUrl: text(item.img_src), thumbnailUrl: text(item.thumbnail_src) } : {}),
+				...(input.kind === "images" ? { imageUrl: text(provider === "serper" ? item.imageUrl : item.img_src), thumbnailUrl: text(provider === "serper" ? item.thumbnailUrl : item.thumbnail_src),
+					...(dimension(item.imageWidth) === undefined ? {} : { width: dimension(item.imageWidth) }), ...(dimension(item.imageHeight) === undefined ? {} : { height: dimension(item.imageHeight) }) } : {}),
 				...(input.kind === "news" && text(item.source) ? { source: text(item.source) } : {}),
 			};
 		}).filter(item => item.url || item.imageUrl),
@@ -102,7 +104,7 @@ export function createSearch(exec: Exec) {
 		const failures: string[] = [];
 		for (const provider of order) {
 			budget.signal.throwIfAborted();
-			if (input.kind && input.kind !== "web" && provider !== "searxng") {
+			if (input.kind && input.kind !== "web" && provider === "brave") {
 				if (strict) throw new SearchAcquisitionError("unsupported", `${labels[provider]} has no enabled ${input.kind} capability`);
 				failures.push(`${provider}:unsupported`); continue;
 			}

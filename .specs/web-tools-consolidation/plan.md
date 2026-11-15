@@ -379,12 +379,16 @@ and never retry a screening decision as an acquisition failure.
     Known output clipping is reported rather than triggering another request.
     Typecheck and three affected files passed 52/52 cases; no live API calls.
 
-- [ ] **W10b: Serper image/news discovery**
+- [x] **W10b: Serper image/news discovery**
   - Depends on: W10a's result/capability contract.
   - Adapt Serper's appropriate endpoints under existing credentials/allowance.
     Add Brave vertical support only where the current account actually includes it.
   - Done when: existing eligible search fallbacks retain the requested result kind;
     unsupported capabilities do not silently downgrade to web results.
+  - Evidence: Serper uses its image/news endpoints and preserves composed filters,
+    source/image URLs, dimensions and publication fields. Brave verticals remain
+    unsupported without evidence of account entitlement. Typecheck and two
+    affected files passed 43/43 cases; no API calls or image downloads.
 
 - [ ] **W10c: Cloud image/news discovery**
   - Depends on: W05/W06 clients and W10a's result/capability contract.
@@ -465,7 +469,7 @@ and schema edits. Dependencies above, not phase ordering alone, determine readin
 ## Current handoff
 
 - Status: W01–W04 implemented directly by the parent in the existing task
-  worktree, with W06–W07 also complete; 12 implementation tasks remain, including W10a complete. Continue ready tasks while the narrow W05 contract lookup completes. Full scope and acceptance remain
+  worktree, with W06–W07 also complete; 11 implementation tasks remain, including W10a–b complete. Continue ready tasks while the narrow W05 contract lookup completes. Full scope and acceptance remain
   unchanged; orchestration repairs no longer block feature implementation.
 - Completed: current code/tests/provider-doc reconnaissance and two Opus high
   design consultations. The full path retains Browserbase, automatic fallback,
