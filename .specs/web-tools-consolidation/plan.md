@@ -359,12 +359,16 @@ and never retry a screening decision as an acquisition failure.
     Existing gateway contract and its full acquisition window are unchanged.
     Typecheck and five focused files passed 77/77 fixture/local cases.
 
-- [ ] **W09b: Automatic Firecrawl search fallback**
+- [x] **W09b: Automatic Firecrawl search fallback**
   - Depends on: W02, W05 and the agreed search escalation/deadline contract.
   - Keep SearXNG and existing configured fallbacks first. Share the real Firecrawl
     allowance with scrape; preserve empty results and strict explicit selection.
   - Done when: search can use Firecrawl when earlier providers cannot satisfy the
     request, without adding scraping, premium options or new credential lookup.
+  - Evidence: only eligible acquisition failures reach Firecrawl after existing
+    providers; engine/provider selections remain strict and valid empty/partial
+    responses stop acquisition. Shared credits, source kinds and filters are
+    retained. Typecheck and three focused files pass 65/65 cases.
 
 - [ ] **W09c: Automatic Browserbase search fallback**
   - Depends on: W06, W09b and the search routing contract.
@@ -493,7 +497,7 @@ and schema edits. Dependencies above, not phase ordering alone, determine readin
 ## Current handoff
 
 - Status: W01–W04 implemented directly by the parent in the existing task
-  worktree, with W06–W07 also complete; 7 implementation tasks remain. W01–W08, W09a and W10a–c are complete; automatic routing, explicit structured extraction and closeout remain. Continue ready tasks while the narrow W05 contract lookup completes. Full scope and acceptance remain
+  worktree, with W06–W07 also complete; 6 implementation tasks remain. W01–W08, W09a–b and W10a–c are complete; automatic routing, explicit structured extraction and closeout remain. Continue ready tasks while the narrow W05 contract lookup completes. Full scope and acceptance remain
   unchanged; orchestration repairs no longer block feature implementation.
 - Completed: current code/tests/provider-doc reconnaissance and two Opus high
   design consultations. The full path retains Browserbase, automatic fallback,

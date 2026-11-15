@@ -8,7 +8,7 @@ beforeEach(() => {
 	vi.stubEnv("SEARXNG_URL", "https://search.example/search");
 	vi.stubEnv("SERPER_API_KEY", "serper-test");
 	vi.stubEnv("BRAVE_SEARCH_API_KEY", "brave-test");
-	vi.stubEnv("BITWARDEN_ACCESS_KEY", "");
+	vi.stubEnv("BITWARDEN_ACCESS_KEY", ""); vi.stubEnv("FIRECRAWL_API_KEY", ""); vi.stubEnv("BROWSERBASE_API_KEY", "");
 	exec.mockClear(); resetGatewayCredentialCacheForTest();
 });
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); resetGatewayCredentialCacheForTest(); });
@@ -115,6 +115,13 @@ describe("bounded search acquisition", () => {
 		const fetch = vi.fn(); vi.stubGlobal("fetch", fetch);
 		await expect(createSearch(exec)({ query: "topic", count: 5, provider: "brave", kind: "images" })).rejects.toMatchObject({ kind: "unsupported" });
 		expect(fetch).not.toHaveBeenCalled(); expect(exec).not.toHaveBeenCalled();
+	});
+	it("reaches Firecrawl only after existing providers fail, without turning valid empty results into failure", async () => {
+		vi.stubEnv("FIRECRAWL_API_KEY", "fixture-auto-search");
+		const fetch = vi.fn().mockResolvedValueOnce(json({}, 503)).mockResolvedValueOnce(json({}, 503)).mockResolvedValueOnce(json({}, 503))
+			.mockResolvedValueOnce(json({ success: true, data: { web: [] } })); vi.stubGlobal("fetch", fetch);
+		expect(await createSearch(exec)({ query: "topic", count: 5 })).toMatchObject({ backend: "firecrawl", results: [] });
+		expect(fetch.mock.calls[3][0]).toBe("https://api.firecrawl.dev/v2/search"); expect(fetch).toHaveBeenCalledTimes(4);
 	});
 	it("classifies exhausted-credit responses without exposing raw error bodies", async () => {
 		const fetch = vi.fn().mockResolvedValueOnce(json({}, 503))

@@ -144,6 +144,15 @@ export function createSearch(exec: Exec) {
 				failures.push(`${provider}:${error.kind}${error.kind === "challenge" ? " (CAPTCHA)" : ""}`);
 			}
 		}
+		if (!strict) {
+			budget.signal.throwIfAborted();
+			try { const result = await searchFirecrawl(input, budget); return { ...result, recovery: failures.join("; ") }; }
+			catch (cause) {
+				budget.signal.throwIfAborted();
+				if (!(cause instanceof SearchAcquisitionError) || !cause.eligible) throw cause;
+				failures.push(`firecrawl:${cause.kind}`);
+			}
+		}
 		throw new SearchAcquisitionError("unavailable", `No search provider available: ${failures.join("; ")}`);
 	};
 }

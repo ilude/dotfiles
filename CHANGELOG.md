@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-14: Reach Firecrawl discovery after existing search failures
+
+- Append eligible Firecrawl search after SearXNG and existing configured fallbacks, within the same 20-second acquisition budget and shared search/scrape credit state. Preserve kind, filters and strict explicit selection; no hit scraping, premium mode or eager credential lookup is introduced.
+- Return valid empty or partial results immediately. Screening remains after acquisition and never triggers another provider request.
+
 ## 2026-11-14: Add acquisition-only Firecrawl fallback
 
 - Separate fetch acquisition from screening/approval and append suitable Firecrawl retrieval after eligible existing gateway, workstation and Jina failures. Do not cut the gateway chain short to reserve cloud time. Preserve useful partial data, strict provider requests, caller cancellation and public/private boundaries.
