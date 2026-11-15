@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-14: Fix GitHub Actions workflow validation
+
+- Move the default Pi job's isolated home setup from job-level environment expressions into its first step. GitHub does not allow the `runner` context in job-level `env`, so it rejected the workflow before any jobs started.
+- Create the same temporary home and export `HOME` and `USERPROFILE` for subsequent steps through `GITHUB_ENV`, preserving isolation on Linux and Windows without changing the checks or runtime installation policy.
+
 ## 2026-11-14: Preauthorize confirmed abandoned-process cleanup
 
 - Record the operator's standing permission in the Windows performance skill to clean up confirmed abandoned local processes when found without another approval prompt. Retain exact-identity/state/dependency checks, evidence preservation, removal verification and protection of active or uncertain processes. No continuous monitoring or unrelated process termination is authorized.
