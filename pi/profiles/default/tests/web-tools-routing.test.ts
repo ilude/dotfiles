@@ -1,7 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { AcquisitionError } from "../extensions/web-tools/acquisition.ts";
 import { createFetch } from "../extensions/web-tools/fetch.ts";
 import { GatewayError } from "../extensions/web-tools/gateway.ts";
 const gateway = vi.hoisted(() => vi.fn());
+const render = vi.hoisted(() => vi.fn());
+vi.mock("../extensions/web-tools/browserbase-render.ts", () => ({ renderBrowserbase: render }));
 vi.mock("../extensions/web-tools/gateway.ts", async original => ({ ...await original(), requestGateway: gateway }));
 const failure = (kind = "unavailable") => ({ code: 1, killed: false, stdout: "", stderr: JSON.stringify({ error: { kind, message: `Local ${kind}` }, attempts: [{ backend: "local", outcome: "failed" }, { backend: "jina", outcome: "failed" }] }) });
 const local = { code: 0, killed: false, stderr: "", stdout: JSON.stringify({ version: 1, backend: "local", content: "Partial page", finalUrl: "https://8.8.8.8/", truncated: true, attempts: [{ backend: "local", outcome: "partial" }] }) };
@@ -11,6 +14,7 @@ beforeEach(() => {
 	vi.stubEnv("WEB_FETCH_GATEWAY_TOKEN", "fixture-gateway"); vi.stubEnv("WEB_FETCH_GATEWAY_URL", "https://gateway.example");
 	vi.stubEnv("FIRECRAWL_API_KEY", `fixture-route-${++key}`); vi.stubEnv("BROWSERBASE_API_KEY", ""); vi.stubEnv("BITWARDEN_ACCESS_KEY", "");
 	gateway.mockReset().mockRejectedValue(new GatewayError("availability", "offline"));
+	render.mockReset().mockRejectedValue(new AcquisitionError("credentials", "Browserbase credential unavailable"));
 });
 afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 describe("automatic fetch acquisition", () => {
@@ -31,6 +35,14 @@ describe("automatic fetch acquisition", () => {
 		expect(fetch.mock.calls[0][0]).toBe("https://api.browserbase.com/v1/fetch");
 		expect((await createFetch(vi.fn(async () => failure()))({ url: "https://8.8.8.8/", maxChars: 8000, render: true })).backend).toBe("firecrawl");
 		expect(fetch.mock.calls[1][0]).toBe("https://api.firecrawl.dev/v2/scrape"); expect(fetch).toHaveBeenCalledTimes(2);
+	});
+	it("can reach owned rendering after an eligible charged cloud failure without a one-cloud cap", async () => {
+		vi.stubEnv("BROWSERBASE_API_KEY", "fixture-render-route");
+		const fetch = vi.fn().mockResolvedValue(json({}, 503)); vi.stubGlobal("fetch", fetch);
+		render.mockResolvedValue({ backend: "browserbase-rendered", content: "Rendered page", finalUrl: "https://8.8.8.8/", truncated: false, session: { id: "owned", released: true }, attempts: [{ backend: "browserbase-rendered", outcome: "useful" }] });
+		const result = await createFetch(vi.fn(async () => failure()))({ url: "https://8.8.8.8/", maxChars: 8000, render: true });
+		expect(result.backend).toBe("browserbase-rendered"); expect(result.session?.released).toBe(true);
+		expect(fetch.mock.calls[0][0]).toBe("https://api.firecrawl.dev/v2/scrape"); expect(fetch).toHaveBeenCalledOnce(); expect(render).toHaveBeenCalledOnce();
 	});
 	it("returns partial local data without consuming another allowance", async () => {
 		const fetch = vi.fn(); vi.stubGlobal("fetch", fetch);

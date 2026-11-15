@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-14: Reach owned rendering after eligible retrieval failures
+
+- Permit automatic public-page Browserbase rendering after suitable existing/static/Firecrawl acquisition paths fail. Rendering requirements skip static Fetch, failed cloud calls do not impose a one-cloud-attempt lock, and useful partial data never triggers another session.
+- Reuse the same fresh-session ownership, bounded navigation/parser work and explicit release path as strict rendered requests. Keep browser availability independent from other meters, local/authenticated state untouched, and caller cancellation/screening outside escalation.
+
 ## 2026-11-14: Add capability-aware static cloud retrieval fallback
 
 - After suitable existing gateway/workstation/Jina routes, try Browserbase raw/static HTTP before a new dynamic Firecrawl scrape. This ordering reflects the requested work, not an assumption that free allowances or provider coverage are interchangeable.

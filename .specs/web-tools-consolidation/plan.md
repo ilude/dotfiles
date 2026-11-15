@@ -393,11 +393,16 @@ and never retry a screening decision as an acquisition failure.
     assumption of equal free quotas. Rendering requirements skip it. Typecheck
     and three affected files pass 33/33 cases; partial results stop the chain.
 
-- [ ] **W09e: Automatic Browserbase rendered retrieval fallback**
+- [x] **W09e: Automatic Browserbase rendered retrieval fallback**
   - Depends on: W08 and the agreed retrieval capability/deadline contract.
   - Add bounded public rendered acquisition after suitable earlier mechanisms.
   - Done when: an eligible request can reach rendering without borrowing login
     state, leaking sessions, or making either cloud account mandatory.
+  - Evidence: owned rendering follows suitable static/dynamic acquisition failures,
+    not a completeness heuristic. Explicit rendering skips irrelevant static
+    calls; failed cloud acquisition can reach another allowed mechanism. Owned
+    lifecycle is covered independently. Typecheck and three focused files pass
+    27/27 cases, with no live browser session or allowance consumption.
 
 - [x] **W10a: Native SearXNG image/news discovery and result shapes**
   - Depends on: W02's search contract, not a cloud provider implementation.
@@ -506,7 +511,7 @@ and schema edits. Dependencies above, not phase ordering alone, determine readin
 ## Current handoff
 
 - Status: W01–W04 implemented directly by the parent in the existing task
-  worktree, with W06–W07 also complete; 4 implementation tasks remain. W01–W08, W09a–d and W10a–c are complete; automatic routing, explicit structured extraction and closeout remain. Continue ready tasks while the narrow W05 contract lookup completes. Full scope and acceptance remain
+  worktree, with W06–W07 also complete; 3 implementation tasks remain. W01–W10 are complete; automatic routing, explicit structured extraction and closeout remain. Continue ready tasks while the narrow W05 contract lookup completes. Full scope and acceptance remain
   unchanged; orchestration repairs no longer block feature implementation.
 - Completed: current code/tests/provider-doc reconnaissance and two Opus high
   design consultations. The full path retains Browserbase, automatic fallback,
