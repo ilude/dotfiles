@@ -48,7 +48,7 @@ For a blocker, name the missing prerequisite, action owner, and next action.
 
 Consult Strategist before executing implementation plans unless the user explicitly
 requests a single-agent handoff, including a Team Lead; the Team Lead retains its own
-Strategist-first workflow. Assign at most one named task per leaf worker, splitting
+Strategist-first workflow. Assign at most one named task per subagent, splitting
 larger outcomes further, and use only active roles. Follow the existing Steward
 policy for post-implementation reviewer/validator findings when deciding whether
 additional work is warranted, not for planning or initial implementation. Handle
@@ -56,8 +56,8 @@ evidence-proved corrections directly and reuse assessments for the same finding.
 
 Preserve unrelated work. Adapt technical mechanisms within settled intent; ask before
 changing scope, decisions, or acceptance. Continue independent tasks around blockers.
-Do not add audits, optional improvements, speculative fixes, rollback work, reviewer
-sequences, or acceptance requirements. At phase boundaries, remove only task-introduced
+Do not add work, checks or gates beyond the request or comparable repository
+patterns. Optional improvements stay outside scope until approved. At phase boundaries, remove only task-introduced
 drift and continue available work, rather than starting another review cycle.
 
 Keep task evidence and blockers current, including the next action and who must act.

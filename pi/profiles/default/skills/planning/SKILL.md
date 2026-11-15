@@ -39,15 +39,14 @@ are authoritative, including when an older draft disagrees.
    system. Include the existing [delegation policy](../../docs/subagents.md#roles-guidance-and-councils):
    consult Strategist before executing implementation plans, with the explicit
    single-agent handoff exception; a Team Lead retains its own Strategist-first
-   workflow. Assign at most one named plan task per leaf worker and use active roles.
+   workflow. Assign at most one named plan task per subagent and use active roles.
    Consult Steward for post-implementation reviewer/validator findings when assessing
    whether more work is warranted, not for planning or initial implementation; handle
    evidence-proved corrections directly and reuse assessments for the same finding.
 6. Specify the stopping point: implement settled scope, fix demonstrated task-related
    failures, and stop when agreed checks pass. Continue independent work around
-   blockers; ask before changing scope, decisions, or acceptance. Do not add optional
-   improvements, audits, speculative fixes, rollback work, reviewer sequences, or
-   acceptance gates. Pending operator manual/live testing is a non-blocking
+   blockers; ask before changing scope, decisions, or acceptance. Do not add work or gates beyond the request or comparable repository
+   patterns, including speculative fixes, recovery machinery or reviewer sequences. Pending operator manual/live testing is a non-blocking
    verification limit, not a reason to keep implementation active.
 7. Record worktree/integration coordinates and closeout steps only when the selected
    workflow uses them. If execution uses `/do-it`, link its
