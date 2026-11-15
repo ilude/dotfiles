@@ -10,7 +10,7 @@ import { gfm } from "turndown-plugin-gfm";
 const args = process.argv.slice(2);
 const url = args[0];
 if (!url || url.startsWith("-")) {
-	console.error("Usage: fetch.js <url> [--max-chars N]");
+	console.error("Usage: fetch.js <url> [--max-chars N] [--json]");
 	process.exit(1);
 }
 
@@ -30,6 +30,9 @@ const controller = new AbortController();
 const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(Math.ceil(budgetMs))]);
 for (const event of ["SIGTERM", "SIGINT"]) process.once(event, () => controller.abort());
 const remaining = () => Math.max(1, Math.floor(deadline - performance.now()));
+const attempts = [];
+let actualBackend = selectedBackend === "jina" ? "jina" : "local";
+let finalUrl = null;
 
 let maxChars = DEFAULT_MAX_CHARS;
 const maxCharsIndex = args.indexOf("--max-chars");
@@ -157,7 +160,7 @@ async function fetchText(targetUrl, allowCurl = true) {
 			currentUrl = nextUrl;
 			continue;
 		}
-		if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText ?? "target error"}`);
+		if (!response.ok) throw Object.assign(new Error(`HTTP ${response.status}: target error`), { kind: [404, 410].includes(response.status) ? "not-found" : [401, 403].includes(response.status) ? "authentication" : response.status === 429 ? "rate-limit" : "unavailable" });
 		return { text: nativeCurl ? response.text : nodeText, url: currentUrl,
 			contentType: response.headers.get("content-type") ?? "", nativeCurl };
 	}
@@ -165,7 +168,17 @@ async function fetchText(targetUrl, allowCurl = true) {
 }
 
 async function extractWithReadability(targetUrl) {
-	const response = await fetchText(targetUrl);
+	let response;
+	if (args.includes("--html-stdin")) {
+		const chunks = []; let bytes = 0;
+		for await (const chunk of process.stdin) {
+			signal.throwIfAborted(); bytes += chunk.length;
+			if (bytes > MAX_RESPONSE_BYTES) throw new Error("HTML input exceeded the extraction byte limit");
+			chunks.push(chunk);
+		}
+		response = { text: Buffer.concat(chunks, bytes).toString("utf8"), url: targetUrl, contentType: "text/html", nativeCurl: false };
+	} else response = await fetchText(targetUrl);
+	finalUrl = response.url;
 	const html = response.text;
 	const provenance = `Source: ${response.url}${response.nativeCurl ? "\nTransport: native curl after Node transport failure" : ""}`;
 	if (/^(text\/(plain|markdown|csv)|application\/(json|[^;]+\+json|xml))/i.test(response.contentType)) {
@@ -207,6 +220,10 @@ async function extractWithJina(targetUrl) {
 	if (!(await allowJinaFallback(targetUrl))) {
 		throw new Error("Jina fallback is disabled for local or private URLs.");
 	}
+	actualBackend = "jina";
+	// The relay URL is not the target page\'s final URL. Reader text does not
+	// provide a verified redirect receipt, so leave that fact unknown.
+	finalUrl = null;
 	const parsed = new URL(targetUrl);
 	const readerUrl = `https://r.jina.ai/${parsed.protocol}//${parsed.host}${parsed.pathname}${parsed.search}`;
 	return (await fetchText(readerUrl, false)).text;
@@ -216,20 +233,31 @@ try {
 	await assertFetchUrl(url);
 	if (!["auto", "direct", "jina"].includes(selectedBackend)) throw new Error("Backend requires a configured gateway");
 	let output;
+	let started = performance.now();
 	try {
 		output = selectedBackend === "jina" ? await extractWithJina(url) : await extractWithReadability(url);
+		attempts.push({ backend: actualBackend, outcome: "useful", elapsedMs: Math.round(performance.now() - started) });
 	} catch (primaryError) {
+		attempts.push({ backend: actualBackend, outcome: "failed", elapsedMs: Math.round(performance.now() - started) });
 		signal.throwIfAborted();
-		if (selectedBackend !== "auto") throw primaryError;
+		if (selectedBackend !== "auto" || ["not-found", "authentication"].includes(primaryError.kind)) throw primaryError;
 		try {
+			started = performance.now();
 			output = await extractWithJina(url);
+			attempts.push({ backend: "jina", outcome: "useful", elapsedMs: Math.round(performance.now() - started) });
 			output = `<!-- Fetched via Jina Reader fallback after primary extraction failed: ${primaryError.message} -->\n\n${output}`;
 		} catch (fallbackError) {
-			throw new Error(`${primaryError.message}; Jina fallback failed: ${fallbackError.message}`);
+			if (actualBackend === "jina") attempts.push({ backend: "jina", outcome: "failed", elapsedMs: Math.round(performance.now() - started) });
+			throw Object.assign(new Error(`${primaryError.message}; Jina fallback failed: ${fallbackError.message}`), { kind: fallbackError.kind ?? primaryError.kind ?? "unavailable" });
 		}
 	}
-	console.log(truncate(output));
+	if (args.includes("--json")) {
+		const content = output.replace(/^Source: [^\r\n]+\r?\n(?:\r?\n)?/, "");
+		console.log(JSON.stringify({ version: 1, content: truncate(content), backend: actualBackend,
+			finalUrl, truncated: content.length > maxChars, attempts }));
+	} else console.log(truncate(output));
 } catch (e) {
-	console.error(`Error: ${e.message}`);
+	if (args.includes("--json")) console.error(JSON.stringify({ error: { kind: e.kind ?? (/metadata endpoints|local or private|Invalid URL|HTTP\\(S\\)/i.test(e.message) ? "invalid-request" : /empty|extract readable/i.test(e.message) ? "empty" : "unavailable"), message: e.message }, attempts }));
+	else console.error(`Error: ${e.message}`);
 	process.exit(1);
 }

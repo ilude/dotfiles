@@ -41,7 +41,8 @@ it("feeds transport-failure curl recovery through the existing extractor and val
   const directory = mkdtempSync(join(tmpdir(), "pi-curl-test-")); directories.push(directory);
   const preload = join(directory, "node-failure.mjs");
   const script = fileURLToPath(new URL("../extensions/web-tools/fetch.js", import.meta.url));
-  const run = (url: string) => promisify(execFile)(process.execPath, ["--import", pathToFileURL(preload).href, script, url], { timeout: 10000 });
+  // This imports the same jsdom extractor whose measured cold startup was 13.7s.
+  const run = (url: string) => promisify(execFile)(process.execPath, ["--import", pathToFileURL(preload).href, script, url], { timeout: 20000 });
   for (const failure of [
     'globalThis.fetch = async () => { throw new TypeError("Synthetic Node transport failure"); };',
     'globalThis.fetch = async () => new Response(new ReadableStream({ start(c) { c.error(new TypeError("Synthetic body transport failure")); } }));',
@@ -51,4 +52,4 @@ it("feeds transport-failure curl recovery through the existing extractor and val
     expect(result.stdout).toContain("Transport: native curl"); expect(result.stdout).toContain("Literal path: /article");
   }
   await expect(run(base + "/metadata")).rejects.toThrow(/Cloud metadata endpoints are not allowed/);
-});
+}, 60_000);

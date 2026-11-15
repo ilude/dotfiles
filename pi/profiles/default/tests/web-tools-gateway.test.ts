@@ -20,7 +20,7 @@ afterEach(() => { vi.clearAllMocks(); vi.unstubAllEnvs(); });
 const reply = { ok: true, request_id: "fixture", requested_url: "https://8.8.8.8/", final_url: "https://8.8.8.8/", fetched_at: new Date().toISOString(), elapsed_ms: 5, attempts: [{ backend: "trawl", revision: "test", elapsed_ms: 5, outcome: "useful", reason: null, http_status: 200, tier: 3 }], backend: "trawl", title: "Page", content: "Readable article", format: "markdown", quality: "useful", truncated: false, warnings: [] };
 function tool() {
   let fetchTool: any;
-  const exec = vi.fn(async () => ({ code: 0, killed: false, stdout: "Local content", stderr: "" }));
+  const exec = vi.fn(async () => ({ code: 0, killed: false, stdout: JSON.stringify({ version: 1, backend: "local", content: "Local content", finalUrl: null, truncated: false, attempts: [{ backend: "local", outcome: "useful" }] }), stderr: "" }));
   webTools({ registerTool: (t: any) => { if (t.name === "web_fetch") fetchTool = t; }, exec } as any);
   complete.mockResolvedValue({ stopReason: "stop", content: [{ type: "text", text: '{"suspicious":false,"excerpts":[]}' }] });
   vi.stubEnv("WEB_FETCH_GATEWAY_URL", "https://gateway.example.com"); vi.stubEnv("WEB_FETCH_GATEWAY_TOKEN", "test-token");
@@ -78,7 +78,7 @@ describe("Pi gateway integration", () => {
     const { run, exec } = tool(); gateway.mockResolvedValue(reply);
     const result = await run();
     expect(result.content[0].text).toBe("webfetch: https://8.8.8.8/\n# Page\n\nReadable article"); expect(exec).not.toHaveBeenCalled();
-    expect(result.details).toMatchObject({ backend: "trawl", quality: "useful", finalUrl: "https://8.8.8.8/" });
+    expect(result.details).toMatchObject({ backend: "trawl", quality: "useful", finalUrl: "https://8.8.8.8/", truncated: false, attempts: [{ backend: "trawl", outcome: "useful", elapsedMs: 5, status: 200 }] });
     expect(complete).toHaveBeenCalledTimes(1); expect(complete.mock.calls[0][1].messages[0].content).toBe("# Page\n\nReadable article");
   });
   it("uses immediate local recovery, then skips an open gateway circuit", async () => {

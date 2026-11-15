@@ -73,7 +73,7 @@ and proposed provider modules are under `pi/profiles/default/extensions/web-tool
 Runtime `lib/...` and `tests/...` references are relative to
 `pi/profiles/default/`, not the repository root.
 
-- Root/target: `C:/Users/mglenn/.dotfiles`, branch `main`, observed `54f67341` on
+- Root/target: `C:/Users/mglenn/.dotfiles`, branch `main`, observed `2faf9891` on
   2026-11-14. Recheck current state; preserve concurrent and retirement changes.
 - Runtime owner: `pi/profiles/default/extensions/web-tools/` and associated profile
   tests/skills. Planning profile verified as `default`; intended execution profile
@@ -93,9 +93,11 @@ Runtime `lib/...` and `tests/...` references are relative to
   into the execution worktree or override Git exclusions.
 - T3 created task branch `feat/web-tools-consolidation` at
   `C:/Users/mglenn/.t3/worktrees/.dotfiles/t3-21398b41-8fc7cb522677218f`.
-  Parent T3 metadata verified these coordinates; the coordinator stopped before
-  independently verifying Git state or implementing W01. Do not claim implementation
-  or branch commits from worktree creation alone.
+  Parent T3 metadata and Git verified these coordinates. The parent now implements
+  directly here after the idle coordinator stalled on harness/setup issues. The
+  operator stashes and unrelated work remain protected. The apparent
+  `modules/t3code` deletion was a Windows long-path status artifact: read-only
+  `git -c core.longpaths=true status` reports it clean; no file was restored.
 
 ## Verified starting behavior and evidence limits
 
@@ -205,7 +207,7 @@ The path incorporates two Opus high consultations and the operator's subsequent
 decisions. These are full-goal delivery boundaries, not implementation authorization
 or a shortened scope.
 
-- [ ] **W01: Truthful fetch provenance**
+- [x] **W01: Truthful fetch provenance**
   - Depends on: none. Files: `fetch.js`, `index.ts`, relevant web-tools tests.
   - Return machine-readable acquisition source/final URL from local retrieval,
     including Jina recovery, while preserving human-readable helper compatibility
@@ -216,8 +218,15 @@ or a shortened scope.
     error/deadline/metadata helpers consumed by real paths, not a provider framework.
   - Done when: native output distinguishes actual local retrieval from Jina and
     retains existing private/local routing, bounds and cancellation behavior.
+  - Evidence: versioned helper JSON preserves actual local/Jina backend, known
+    final URL, bounded attempt facts and truncation; the default text CLI remains.
+    Gateway attempt/truncation facts are projected without raw payload fields.
+    Profile typecheck passed; five focused files passed 50/50 tests. Timeouts were
+    not increased. A cold jsdom import took 13.7s in a local diagnostic, exceeding
+    the pre-existing fixture subprocess window; the subsequent redirect helper
+    completed in about 2s and the suite passed. No live provider call was made.
 
-- [ ] **W02: Reliable existing search fallback**
+- [x] **W02: Reliable existing search fallback**
   - Depends on: the search failure/deadline contract above, not a new provider.
   - Files: search paths in `index.ts` or proposed operation-local module; current
     credentials helper and search tests only as needed.
@@ -229,16 +238,30 @@ or a shortened scope.
     Do not change screening incidentally.
   - Done when: finite offline cases exercise the agreed failure/timeout transitions
     and describe the selected backend/fallback reason accurately.
+  - Evidence: operation-local search uses a 20s acquisition budget, 6s network
+    attempts and lazy 2s credential windows; strict providers/engines never
+    substitute. Failed credentials do not poison subsequent lookups. Reported
+    rate backoff, credential-scoped reopening, valid empty/partial responses,
+    transport/outage/quota transitions and cancellation have offline coverage.
+    Typecheck and six focused files passed 59/59 tests. A measured 13.7s cold
+    jsdom startup justified a 20s local-fixture subprocess window; the native
+    60s fetch limit and production acquisition behavior are unchanged.
 
-- [ ] **W03: Apply the shared reading-approval system to search**
+- [x] **W03: Apply the shared reading-approval system to search**
   - Depends on: no unresolved policy; the screening contract above is approved.
     Files: `screen.ts`, operation finish/UI paths and their existing tests.
   - Add fetch's response-specific reading approval to search and correct its
     description. Preserve fetch's behavior and legitimate documentation distinction.
   - Done when: flagged/unavailable/ordinary-documentation/cancellation outcomes
     match the selected contract, with screening outside acquisition fallback.
+  - Evidence: search and fetch share the response-specific reading prompt;
+    approval is neither cached nor execution authority. Search schema and compact
+    presentation report flagged-approved content. Existing unavailable/no-UI
+    behavior is retained. Typecheck and six focused files pass 61/61 cases,
+    including approval/denial, no screening-driven reacquisition, ordinary setup
+    prose and cancellation during approval. Provider/model calls are fixtures.
 
-- [ ] **W04: Native Firecrawl one-page retrieval**
+- [x] **W04: Native Firecrawl one-page retrieval**
   - Depends on: W01's provenance result; use the agreed cost/caching semantics.
   - Files: proposed Firecrawl provider module, `credentials.ts`, `index.ts`, focused
     provider/tool tests. Generalize only credential/request helpers this needs.
@@ -247,15 +270,31 @@ or a shortened scope.
     in this increment; no gateway API or running-service change is needed.
   - Done when: explicit retrieval and quota/unavailable/cancel paths work through
     the native tool using fixtures, without extra formats or paid options.
+  - Evidence: strict native Markdown scraping uses basic proxy, no enhanced
+    retries, no OCR/LLM/interactive formats and the provider default cache age.
+    Known target failures stay distinct from API success; unknown final redirects
+    remain unknown. Shared fetch finishing screens projected content once.
+    Named BWS lookup reuses the workstation locator, captures only the selected
+    key and keeps environment changes child-local. Typecheck passed; 80/81 cases
+    passed initially, then the affected curl file passed 3/3 after its outer
+    fixture window was aligned with its three bounded cold-start subprocesses.
+    These are fixture/local checks, not authenticated provider validation.
 
-- [ ] **W05: Native Firecrawl search**
+- [x] **W05: Native Firecrawl search**
   - Depends on: W04's Firecrawl credential/client and W02's search contract.
   - Reuse that client for explicit native search, retaining query/filter semantics
     and discovery-only behavior. Do not implicitly scrape each result.
   - Done when: native search returns normalized source results and handles the
     actual shared Firecrawl allowance without a second credential mechanism.
+  - Evidence: explicit v2 discovery sends the composed query with one source,
+    no scrapeOptions, no Highlights/LLM enrichment and no domain-tool discovery.
+    Shared credit backoff covers search/scrape under the same key; rate/capability
+    backoff stays scoped. Empty/partial results and provider warnings retain the
+    shared screening policy. Typecheck and affected tests pass (50 cases in the
+    last two-file run). Contract evidence came from completed screened public
+    docs, not the later blocked reading prompt; no provider validation was run.
 
-- [ ] **W06: Native Browserbase search**
+- [x] **W06: Native Browserbase search**
   - Depends on: W02's search contract. Can proceed independently of W04/W05 after
     common credential/error interfaces are established; avoid overlapping edits.
   - Add a bounded explicit search adapter using the account's included modes;
@@ -263,15 +302,26 @@ or a shortened scope.
     interface usable by static Fetch and rendered-session creation.
   - Done when: native search provides truthful results, capability errors and
     scoped quota/rate handling without browser-session creation.
+  - Evidence: explicit Parallel fast search uses the native HTTP client and shared
+    named credentials. Unsupported query lengths/structured filters are reported
+    before spending; returned deep modes are rejected. Search retry state is
+    isolated from Fetch/browser meters and reopens without reload. Typecheck
+    passed; 65 focused cases passed across initial checks and the affected-file
+    rerun. No account balance, paid mode or live provider/session was probed.
 
-- [ ] **W07: Native Browserbase static retrieval**
+- [x] **W07: Native Browserbase static retrieval**
   - Depends on: W01's provenance and W06's Browserbase credential/client.
   - Add bounded explicit Fetch support, distinguish raw/static extraction from
     rendering, and honor supported free-plan output modes.
   - Done when: the native tool can select this backend accurately without
     pretending it executes JavaScript or borrowing authenticated contexts.
+  - Evidence: explicit static Fetch requests raw content, then reuses the isolated
+    Readability process through bounded stdin. It does not consume Extract/LLM
+    output incidentally. Redirects are followed only after public-target checks;
+    cookies, contexts and TLS/proxy bypasses are not forwarded. Typecheck and
+    three affected files passed 43/43 fixture/local cases. No live account call.
 
-- [ ] **W08: Native Browserbase read-only rendered retrieval**
+- [x] **W08: Native Browserbase read-only rendered retrieval**
   - Depends on: W01 and W06's client/credential interface. May run alongside W07
     with distinct provider modules/tests and one integration owner.
   - Use a fresh owned public-page session for bounded navigation/rendered content
@@ -284,6 +334,13 @@ or a shortened scope.
   - Done when: rendered retrieval reports its capability/provenance and releases
     only its owned session on success, failure and cancellation, with useful
     fallback on unavailable allowance.
+  - Evidence: native rendered reads reuse CdpConnection and the isolated parser,
+    create a fresh bounded session without contexts/proxies/CAPTCHA solving,
+    deny downloads, validate public requests, and read DOM from an isolated world.
+    Explicit release uses the exact created ID/key even on cancellation; failed
+    release is visible and never creates a replacement session. Typecheck and
+    three affected files passed 48/48 cases using REST/CDP fixtures. No SDK was
+    installed, local Brave transport widened, or live session created.
 
 Automatic routing is delivered in independent small increments, not one final
 switch after every provider is implemented. Each uses the agreed escalation
@@ -292,73 +349,121 @@ quota state with W05's second Firecrawl operation, not an unused registry in W01
 Keep existing mechanisms first, avoid repeated attempts, preserve useful output,
 and never retry a screening decision as an acquisition failure.
 
-- [ ] **W09a: Automatic Firecrawl retrieval fallback**
+- [x] **W09a: Automatic Firecrawl retrieval fallback**
   - Depends on: W04 and the agreed escalation/deadline contract.
   - Append suitable Firecrawl retrieval after the existing eligible mechanisms.
   - Done when: unavailable/exhausted Firecrawl does not make ordinary fetch fail,
     and eligible acquisition failures can reach it within the overall budget.
+  - Evidence: acquisition is separate from screening and appends Firecrawl only
+    after eligible gateway/workstation/Jina failure. Terminal target/private/auth
+    failures never spend another allowance; partial data returns immediately.
+    Existing gateway contract and its full acquisition window are unchanged.
+    Typecheck and five focused files passed 77/77 fixture/local cases.
 
-- [ ] **W09b: Automatic Firecrawl search fallback**
+- [x] **W09b: Automatic Firecrawl search fallback**
   - Depends on: W02, W05 and the agreed search escalation/deadline contract.
   - Keep SearXNG and existing configured fallbacks first. Share the real Firecrawl
     allowance with scrape; preserve empty results and strict explicit selection.
   - Done when: search can use Firecrawl when earlier providers cannot satisfy the
     request, without adding scraping, premium options or new credential lookup.
+  - Evidence: only eligible acquisition failures reach Firecrawl after existing
+    providers; engine/provider selections remain strict and valid empty/partial
+    responses stop acquisition. Shared credits, source kinds and filters are
+    retained. Typecheck and three focused files pass 65/65 cases.
 
-- [ ] **W09c: Automatic Browserbase search fallback**
+- [x] **W09c: Automatic Browserbase search fallback**
   - Depends on: W06, W09b and the search routing contract.
   - Add eligible included search capabilities after earlier suitable providers.
   - Done when: this adapter's unavailable quota does not disable Browserbase
     static Fetch or browser minutes, or force search to stop unnecessarily.
 
-- [ ] **W09d: Automatic Browserbase static retrieval fallback**
+  - Evidence for W09c: eligible included-mode Browserbase follows existing
+    providers and Firecrawl, without a one-cloud-attempt restriction. Unsupported
+    kinds/filters are rejected before spending and the meter stays independent.
+    Typecheck and three focused files passed 57/57 cases.
+
+- [x] **W09d: Automatic Browserbase static retrieval fallback**
   - Depends on: W07 and the agreed retrieval capability/deadline contract.
   - Make static Fetch eligible for appropriate static requests without pretending
     it renders JavaScript. Choose its ordered position deliberately, not from an
     unsupported assertion that all free services have equal cost or coverage.
   - Done when: static requests can use the adapter where suitable, while requests
     requiring rendering skip it rather than consume an irrelevant call.
+  - Evidence: after suitable existing routes, raw/static cloud HTTP is tried
+    before a dynamic Firecrawl scrape, based on capability/work rather than an
+    assumption of equal free quotas. Rendering requirements skip it. Typecheck
+    and three affected files pass 33/33 cases; partial results stop the chain.
 
-- [ ] **W09e: Automatic Browserbase rendered retrieval fallback**
+- [x] **W09e: Automatic Browserbase rendered retrieval fallback**
   - Depends on: W08 and the agreed retrieval capability/deadline contract.
   - Add bounded public rendered acquisition after suitable earlier mechanisms.
   - Done when: an eligible request can reach rendering without borrowing login
     state, leaking sessions, or making either cloud account mandatory.
+  - Evidence: owned rendering follows suitable static/dynamic acquisition failures,
+    not a completeness heuristic. Explicit rendering skips irrelevant static
+    calls; failed cloud acquisition can reach another allowed mechanism. Owned
+    lifecycle is covered independently. Typecheck and three focused files pass
+    27/27 cases, with no live browser session or allowance consumption.
 
-- [ ] **W10a: Native SearXNG image/news discovery and result shapes**
+- [x] **W10a: Native SearXNG image/news discovery and result shapes**
   - Depends on: W02's search contract, not a cloud provider implementation.
   - Establish explicit query-kind and typed source/provenance fields with the
     existing SearXNG image/news categories. Publish these shapes for other clients.
   - Done when: image/news discovery can use the existing primary without spending
     new cloud allowance, preserving filters and distinguishing source/image URLs.
+  - Evidence: explicit kind selects SearXNG categories and preserves composed
+    filters/engine selection. Native source/image/thumbnail/publication fields
+    are separately bounded and screened; unknown source pages remain unknown.
+    Known output clipping is reported rather than triggering another request.
+    Typecheck and three affected files passed 52/52 cases; no live API calls.
 
-- [ ] **W10b: Serper image/news discovery**
+- [x] **W10b: Serper image/news discovery**
   - Depends on: W10a's result/capability contract.
   - Adapt Serper's appropriate endpoints under existing credentials/allowance.
     Add Brave vertical support only where the current account actually includes it.
   - Done when: existing eligible search fallbacks retain the requested result kind;
     unsupported capabilities do not silently downgrade to web results.
+  - Evidence: Serper uses its image/news endpoints and preserves composed filters,
+    source/image URLs, dimensions and publication fields. Brave verticals remain
+    unsupported without evidence of account entitlement. Typecheck and two
+    affected files passed 43/43 cases; no API calls or image downloads.
 
-- [ ] **W10c: Cloud image/news discovery**
+- [x] **W10c: Cloud image/news discovery**
   - Depends on: W05/W06 clients and W10a's result/capability contract.
   - Map supported Firecrawl/Browserbase source kinds into the same native contract,
     retaining cheaper eligible existing providers first and no implicit scraping.
   - Done when: supported cloud verticals work through native search and unsupported
     ones are skipped/reported accurately rather than simulated by browser search.
+  - Evidence: Firecrawl uses exactly the requested web/image/news source, with
+    actual image dimensions and dated news snippets mapped into the native shape.
+    Browserbase has no documented image/news mode and rejects/skips it rather
+    than treating incidental result images as image search. Typecheck and three
+    focused files pass 45/45 cases; no result scraping or live validation.
 
-- [ ] **W11a: Explicit Firecrawl single-page structured extraction**
+- [x] **W11a: Explicit Firecrawl single-page structured extraction**
   - Depends on: W04's fetch client and agreed extraction request semantics.
   - Establish explicit schema-based extraction and valid bounded structured output;
     screen untrusted field content without rewriting the requested data.
   - Done when: requested included extraction produces schema-shaped results and
     truthful provenance, while ordinary reads remain plain Markdown/text.
+  - Evidence: explicit JSON/schema requests use the existing TypeBox JSON Schema
+    validator without cleaning/coercion; all returned fields are screened as the
+    serialized object. Oversize output returns an honest partial view, omits the
+    full structured object and never buys another answer. Ordinary reads remain
+    Markdown. Typecheck passed and two focused files passed 35/35 cases.
 
-- [ ] **W11b: Browserbase single-page structured extraction**
+- [x] **W11b: Browserbase single-page structured extraction**
   - Depends on: W07 and W11a's structured-result contract.
   - Reuse the supported native JSON/schema capability within actual free-plan
     entitlements and its correct allowance meter, not a session/agent substitute.
   - Done when: supported requests work and unsupported/over-limit requests leave
     ordinary retrieval usable without adding LLM work to plain reads.
+  - Evidence: explicit static JSON/schema extraction uses the same validator and
+    reading policy, with Extract availability independent from raw Fetch. It does
+    not substitute a browser agent for rendered schema extraction. Automatic
+    supported-schema alternatives preserve the same schema and failure trace;
+    ordinary reads stay raw/local-extracted. Typecheck and three focused files
+    pass 51/51 cases, without authenticated provider calls.
 
 - [ ] **W12: Native-tool guidance, finite checks and closeout**
   - Depends on: W01–W08, W09a–e, W10a–c and W11a–b.
@@ -415,37 +520,66 @@ and schema edits. Dependencies above, not phase ordering alone, determine readin
   🔵 merge intentionally skipped and 🟡 cleanup pending, with reason/action first
   when blocked. Planning readiness is not implementation completion.
 
-## Current handoff
+## Execution receipt
 
-- Status: nested-delegation repair passes offline checks; idle coordinator reload
-  and live nested launch remain before W01. No web-tools implementation started.
-- Completed: current code/tests/provider-doc reconnaissance and two Opus high
-  design consultations. The full path retains Browserbase, automatic fallback,
-  image/news and structured extraction rather than making explicit Firecrawl the
-  endpoint. Advice was integrated selectively, not treated as implementation authority.
-- Settled since consultation: both tools will use fetch's existing one-shot
-  reading-approval system for screened content; W03's policy is no longer blocked.
-- Settled result handling: the requesting agent judges sufficiency and decides
-  whether another request is needed; partial data does not itself trigger more
-  cloud requests. Return honest quality/truncation/provenance information.
-- Settled caching: provider-cached pages are allowed; do not require fresh reads
-  by default. Report only known cache/freshness metadata.
-- Execution attempt: top-level Strategist consultation and isolated Team Lead
-  launch succeeded. The Team Lead's nested Strategist call failed with
-  `Callable injected T3 delegate_task unavailable`; no implementation worker ran.
-- Parent baseline: profile typecheck passed. Five-file Vitest run had 47/48 pass
-  with one curl test timing out during concurrent typecheck; that file passed
-  3/3 when rerun alone. No cause or code fix is claimed.
-- Authorized prerequisite repair: exact installed-bridge dependencies are active
-  but hidden behind named wrappers; frozen authority and once-only grants remain
-  unchanged. Three focused T3 test files pass 26 cases, including an installed-Pi
-  coordinator regression; profile typecheck passes. Live repair is not yet claimed.
-- Next action: reload only the idle owned Team Lead, resume its mandatory nested
-  Strategist launch, then continue W01 and the full plan if successful. Do not
-  silently use raw/generic/native delegation or broaden role permissions.
-- Product-design readiness: no open policy decisions. Remaining prerequisite:
-  live nested delegation after supported reload. Preserve the task worktree,
-  main's unrelated work, both operator stashes and the unrelated
-  `fix/commit-workflow` worktree.
-- Separate retirement blocker: gateway application source-home decision. This does
-  not prevent planning or independent native-tool implementation after authorization.
+- W01–W11b are committed in 18 usable implementation increments. Native guidance
+  and the material CHANGELOG are consolidated for the full endpoint, not only the
+  first provider. W12 stays unchecked until actual integration/cleanup.
+- Final agent-owned checks on 2026-11-14: profile typecheck passed; all 11 affected
+  web-tools test files passed **129/129** sequentially with `--maxWorkers=1` and
+  `PI_WEB_LIVE=0`. Verified Node 26.13.0 and pnpm 11.23.0.
+- Earlier failed fixture attempts remain evidence, not acceptance. A measured
+  13.7-second cold jsdom import exceeded the old 10-second child/15-second outer
+  windows. Affected child windows are now 20 seconds and multi-child outer cases
+  60 seconds. Concurrency was an earlier hypothesis, not the established cause.
+  Production acquisition budgets were not increased by that fixture change.
+- The parent completed implementation directly after the coordinator stalled.
+  The separately authorized nested-bridge prerequisite is committed at
+  `2faf9891` and was live-verified by an idle coordinator reload/nested launch.
+  A separate owned-thread follow-up guard fix preserves fail-closed task-scoped
+  operations; its two focused T3 files passed 25 cases and typecheck passed.
+  Calling-runtime adoption still requires an idle supported reload, not another
+  feature prerequisite or broader role permission.
+- No authenticated Firecrawl/Browserbase API, cloud browser session, account
+  balance, deployment or image refresh was used for acceptance. Public vendor
+  contracts and fixtures are not evidence of account entitlement or live-site
+  success. Manual/live validation is non-blocking.
+- Preserve the operator stashes `e869b39a7e75e75ee29266a5e5eea4c6d6b0d4c8` and
+  `d7367423f1bccfa67cdfc198da66df6bfbdecc08`, the separate
+  `fix/commit-workflow` worktree, current unrelated main/submodule work and all
+  ignored private locator/data artifacts. Apparent task-submodule dirt disappears
+  under read-only long-path-aware Git status; no restoration/reset was performed.
+- No product-policy question remains. Gateway source-home/retirement work stays
+  separate. The retained local homelab-infra values/Git metadata and Onclave's
+  `feature/v2-broker-core` branch must remain untouched.
+
+## Closeout state
+
+- [x] All 18 native implementation tasks, guidance and finite checks complete.
+- [x] Whole spec archived and included in the task-branch closeout commit.
+- [ ] Task commit integrated into the recorded main target.
+- [ ] Final target verification and completion metadata committed.
+- [ ] Owned task worktree removed without unrelated data loss; task branch retained.
+- [ ] Authorized publication verified; existing stashes/worktrees/private data preserved.
+
+## Current integration blocker
+
+- The requested Integrator dispatch was rejected before launch: its manifest
+  validator accepts only repository-local `.worktrees/`, not this T3-created
+  external task worktree. No alternate path, replacement checkout or harness
+  repair was introduced. The plan permits parent-owned direct closeout.
+- Parent integration into main then stopped safely because a concurrent Hatchery
+  workflow added uncommitted `CHANGELOG.md` content. That edit and unrelated
+  `modules/hatchery` dirt are preserved. No stash, restoration or merge occurred.
+- A following target check ran against unchanged main, not the feature: typecheck
+  and seven existing files/73 cases passed. This is not final feature acceptance;
+  the complete task worktree run remains 11 files/129 cases. Check command exit
+  status and matched file counts before accepting post-merge verification.
+- Required decision, owner **operator**: authorize temporary preservation of only
+  the concurrent `CHANGELOG.md` edit in a named exact-OID stash, followed by merge
+  and exact restoration. Existing stashes and all Hatchery files stay untouched.
+  Ordinary parent-owned Git workflow requires that approval before removal.
+- After approval, owner **parent**: integrate the committed task, restore/verify
+  the exact preserved edit, rerun the finite target checks, complete metadata,
+  remove only the owned clean worktree and publish. W12 and all outstanding
+  closeout checkboxes stay unchecked until those steps actually finish.

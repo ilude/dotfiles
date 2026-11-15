@@ -1,6 +1,9 @@
 import { dirname, join } from "node:path";
+import { readFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { DEFAULT_GATEWAY_URL, GATEWAY_SECRET_ID } from "./gateway-config.ts";
+import { withinSignal } from "./acquisition.ts";
 
 const directory = dirname(fileURLToPath(import.meta.url));
 
@@ -68,12 +71,63 @@ export async function searchApiKey(exec: Exec, name: keyof typeof SEARCH_SECRET_
 		searchKeyPending.set(name, request);
 	}
 	try {
-		const key = await request;
+		const key = signal ? await withinSignal(request, signal) : await request;
 		searchKeyCache.set(name, key);
 		return key;
 	} finally {
-		searchKeyPending.delete(name);
+		if (searchKeyPending.get(name) === request) searchKeyPending.delete(name);
 	}
+}
+
+type ProviderKey = "FIRECRAWL_API_KEY" | "BROWSERBASE_API_KEY";
+const providerKeys = new Map<ProviderKey, string>();
+const providerPending = new Map<ProviderKey, Promise<string>>();
+
+async function namedProviderKey(name: ProviderKey, signal?: AbortSignal): Promise<string> {
+	// The source checkout owns the ignored workstation locator. Never copy it
+	// into an execution worktree or create a provider-specific credential store.
+	const value: unknown = JSON.parse(await readFile(join(directory, "../../../../../config/bws/settings.local.json"), { encoding: "utf8", signal }));
+	if (!value || typeof value !== "object" || !("bws" in value) || !value.bws || typeof value.bws !== "object"
+		|| !("project_id" in value.bws) || typeof value.bws.project_id !== "string" || !value.bws.project_id
+		|| !("api_server" in value.bws) || typeof value.bws.api_server !== "string") throw new Error("BWS workstation locator unavailable");
+	const project = value.bws.project_id;
+	const server = new URL(value.bws.api_server);
+	if (!["https:", "http:"].includes(server.protocol) || server.username || server.password) throw new Error("Invalid BWS workstation locator");
+	const stdout = await new Promise<string>((resolve, reject) => {
+		// A direct child can be cancelled without leaving a uv/Python/BWS
+		// grandchild. Environment changes remain child-local.
+		execFile("bws", ["secret", "list", project, "--output", "json"], {
+			encoding: "utf8", signal, timeout: 20_000, maxBuffer: 2 * 1024 * 1024,
+			env: { ...process.env, BWS_ACCESS_TOKEN: process.env.BITWARDEN_ACCESS_KEY, BWS_SERVER_URL: server.href.replace(/\/$/, "").replace(/\/api$/, "") },
+		}, (error, stdout) => error ? reject(new Error(`BWS ${name} unavailable`)) : resolve(stdout));
+	});
+	const records: unknown = JSON.parse(stdout);
+	if (!Array.isArray(records)) throw new Error("Invalid BWS provider response");
+	const matches = records.filter((record: unknown): record is { key: string; value: unknown } =>
+		record !== null && typeof record === "object" && "key" in record && record.key === name && "value" in record);
+	if (matches.length !== 1 || typeof matches[0].value !== "string" || !matches[0].value) throw new Error(`Expected one nonempty ${name} record`);
+	return matches[0].value;
+}
+
+export function invalidateProviderApiKey(name: ProviderKey, rejectedKey: string): void {
+	if (providerKeys.get(name) === rejectedKey) providerKeys.delete(name);
+}
+
+export async function providerApiKey(name: ProviderKey, signal?: AbortSignal): Promise<string | undefined> {
+	const environment = process.env[name];
+	if (environment) return environment;
+	if (!process.env.BITWARDEN_ACCESS_KEY) return undefined;
+	const cached = providerKeys.get(name);
+	if (cached) return cached;
+	let pending = providerPending.get(name);
+	if (!pending) {
+		pending = namedProviderKey(name, signal).catch(() => { throw new Error(`BWS ${name} unavailable; check the workstation locator and CLI`); });
+		providerPending.set(name, pending);
+	}
+	try {
+		const key = signal ? await withinSignal(pending, signal) : await pending;
+		providerKeys.set(name, key); return key;
+	} finally { if (providerPending.get(name) === pending) providerPending.delete(name); }
 }
 
 export function resetGatewayCredentialCacheForTest(): void {
@@ -81,4 +135,5 @@ export function resetGatewayCredentialCacheForTest(): void {
 	pending = undefined;
 	searchKeyCache.clear();
 	searchKeyPending.clear();
+	providerKeys.clear(); providerPending.clear();
 }
