@@ -1,7 +1,7 @@
 ---
 created: 2026-11-14
-status: in-progress
-completed: null
+status: completed
+completed: 2026-11-14
 ---
 
 # Incremental native web search and retrieval consolidation
@@ -465,7 +465,7 @@ and never retry a screening decision as an acquisition failure.
     ordinary reads stay raw/local-extracted. Typecheck and three focused files
     pass 51/51 cases, without authenticated provider calls.
 
-- [ ] **W12: Native-tool guidance, finite checks and closeout**
+- [x] **W12: Native-tool guidance, finite checks and closeout**
   - Depends on: W01–W08, W09a–e, W10a–c and W11a–b.
   - Consolidate relevant web-tools/provider skills and presentation to reflect
     actual final capabilities and preserved browser boundaries. Each earlier
@@ -524,7 +524,7 @@ and schema edits. Dependencies above, not phase ordering alone, determine readin
 
 - W01–W11b are committed in 18 usable implementation increments. Native guidance
   and the material CHANGELOG are consolidated for the full endpoint, not only the
-  first provider. W12 stays unchecked until actual integration/cleanup.
+  first provider. W12 is complete after verified integration, checks and cleanup.
 - Final agent-owned checks on 2026-11-14: profile typecheck passed; all 11 affected
   web-tools test files passed **129/129** sequentially with `--maxWorkers=1` and
   `PI_WEB_LIVE=0`. Verified Node 26.13.0 and pnpm 11.23.0.
@@ -558,9 +558,9 @@ and schema edits. Dependencies above, not phase ordering alone, determine readin
 - [x] All 18 native implementation tasks, guidance and finite checks complete.
 - [x] Whole spec archived and included in the task-branch closeout commit.
 - [x] Task commit integrated into the recorded main target.
-- [ ] Final target verification and completion metadata committed.
-- [ ] Owned task worktree removed without unrelated data loss; task branch retained.
-- [ ] Authorized publication verified; existing stashes/worktrees/private data preserved.
+- [x] Final target verification and completion metadata committed.
+- [x] Owned task worktree removed without unrelated data loss; task branch retained.
+- [x] Authorized publication verified; existing stashes/worktrees/private data preserved.
 
 ## Integration evidence
 
@@ -582,9 +582,22 @@ and schema edits. Dependencies above, not phase ordering alone, determine readin
   An intervening main typecheck failed on a concurrent Bedrock signature change;
   its owning workflow resolved it before the successful rerun. No unrelated
   Bedrock or planning edits were changed for this task.
-- All seven task submodule checkouts are clean under long-path-aware Git, including
-  ignored-path inspection. The task root contains only its two known generated
-  dependency directories as ignored data. Five task-created peer junctions target
-  main's runtime dependencies and will be unlinked without traversing targets.
-- Integration and final checks are verified. Owned-worktree cleanup, final
-  completion metadata and publication verification remain to be recorded below.
+- Before cleanup, all seven task submodule checkouts were clean under long-path-
+  aware Git, including ignored-path inspection. Only the two task-generated
+  dependency directories were ignored at the task root. The five known peer
+  junctions were removed non-recursively after exact target checks; all main
+  runtime dependency targets remain present.
+- Long-path-aware Git removed only the exact owned task worktree; its directory
+  and registration are absent. Force was needed for the initialized clean
+  submodules/generated dependencies, not to discard source work. Task branch
+  `feat/web-tools-consolidation` remains at `ec3bb15a`. The separate worktree
+  remains at `30945051`, both stash OIDs remain, retained homelab-infra values/Git
+  metadata exist, and Onclave still tracks `origin/feature/v2-broker-core` on
+  `feature/v2-broker-core`. Concurrent main planning/Hatchery work was left alone.
+- A fresh origin fetch verified the implementation merge is already published
+  through `63ac0940`; no new submodule pins require publication. Final closeout
+  metadata accompanies the authorized main publication. The active spec path is
+  absent, and this archive is the completed canonical record for all 19 tasks.
+- New tool definitions and the thread-resume closure need an idle supported Pi
+  reload for the calling runtime. Live provider/account validation remains a
+  non-blocking verification limit, not a claim of account entitlement.
