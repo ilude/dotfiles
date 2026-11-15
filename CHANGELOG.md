@@ -2,6 +2,8 @@
 
 ## 2026-11-14: Keep nested T3 role delegation callable
 
+- Allow follow-up messages to an authenticated owned thread after an automatic continuation advances beyond the latest parent task receipt. Keep task-specific inspection/cancellation fail-closed and persist only actual new follow-up receipts, rather than borrowing a historical task ID. Two focused T3 files pass 25 cases; caller adoption requires an idle supported reload.
+
 - Keep authorized named-role wrappers' exact installed-bridge dependencies active and callable while hiding them from model declarations through Pi's loadout projection. This fixes nested delegation failing after a coordinator's frozen loadout removed the underlying direct bridge tool.
 - Preserve frozen role permissions, installed-bridge identity checks, normal tool hooks and exact once-only wrapper grants. Direct/raw calls, substituted tool sources and undeclared role operations remain blocked. An installed-Pi offline coordinator regression covers repeated nested launches without exposing bridge declarations; no package upgrade or delegation fallback is introduced.
 

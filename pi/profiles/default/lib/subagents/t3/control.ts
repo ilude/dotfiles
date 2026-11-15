@@ -23,6 +23,19 @@ export function registerT3RoleControl(pi: ExtensionAPI, runtime: T3RoleRuntime, 
       const thread = record(response.thread, "child thread");
       if (thread.threadId !== first.childThreadId || thread.parentThreadId !== identity.threadId) throw new Error("T3 child lineage ownership mismatch");
       if (p.action === "read") return result(await services.call(ctx, id, "t3_thread_read", { threadId: first.childThreadId }, signal, update));
+      // Follow-ups address the owned thread, not a prior task. Automatic child-result
+      // continuations can advance its run without producing a parent-side receipt.
+      if (p.action === "message") {
+        const data = await services.call(ctx, id, "t3_thread_send", { threadId: first.childThreadId, message: text(p.message, "message"), mode: p.mode ?? "auto", ...(p.freshContext === undefined ? {} : { freshContext: p.freshContext }), clientRequestId: requestId(ctx, id) }, signal, update);
+        if (data.threadId !== first.childThreadId) throw new Error("T3 follow-up returned a different child thread");
+        const taskId = optionalText(data.taskId);
+        if (taskId) {
+          const followup: T3RoleOwnershipReceipt = { version: 1, launchId: first.launchId, ownerThreadId: identity.threadId, ownerPiSessionId: ctx.sessionManager.getSessionId(), childThreadId: first.childThreadId, taskId, runId: text(data.runId, "follow-up run"), childLink: optionalText(data.link) ?? first.childLink, operation: "follow-up" };
+          await services.store.receipt(followup); pi.appendEntry(T3_ROLE_RECEIPT_ENTRY, followup);
+          return result(await roleResult(services.store, followup, data));
+        }
+        return result({ ...data, launchId: first.launchId, t3Status: data.status });
+      }
       const historical = p.action === "inspect" ? receipts.find(item => item.taskId === p.id) : undefined;
       if (historical) return result(await roleResult(services.store, historical, await services.call(ctx, id, "task_status", { taskId: historical.taskId }, signal, update)));
       const all = (await services.store.receipts(identity.threadId)).filter(receipt => receipt.childThreadId === first.childThreadId && receipt.launchId === first.launchId);
@@ -39,17 +52,6 @@ export function registerT3RoleControl(pi: ExtensionAPI, runtime: T3RoleRuntime, 
         return result(await services.call(ctx, id, "t3_pending_request", args, signal, update));
       }
       if (p.action === "cancel") return result(await services.call(ctx, id, "task_cancel", { taskId: receipt.taskId, clientRequestId: requestId(ctx, id), ...(p.message ? { reason: p.message } : {}) }, signal, update));
-      if (p.action === "message") {
-        const data = await services.call(ctx, id, "t3_thread_send", { threadId: receipt.childThreadId, message: text(p.message, "message"), mode: p.mode ?? "auto", ...(p.freshContext === undefined ? {} : { freshContext: p.freshContext }), clientRequestId: requestId(ctx, id) }, signal, update);
-        if (data.threadId !== receipt.childThreadId) throw new Error("T3 follow-up returned a different child thread");
-        const taskId = optionalText(data.taskId);
-        if (taskId) {
-          const followup: T3RoleOwnershipReceipt = { version: 1, launchId: receipt.launchId, ownerThreadId: identity.threadId, ownerPiSessionId: ctx.sessionManager.getSessionId(), childThreadId: receipt.childThreadId, taskId, runId: text(data.runId, "follow-up run"), childLink: optionalText(data.link) ?? receipt.childLink, operation: "follow-up" };
-          await services.store.receipt(followup); pi.appendEntry(T3_ROLE_RECEIPT_ENTRY, followup);
-          return result(await roleResult(services.store, followup, data));
-        }
-        return result({ ...data, launchId: receipt.launchId, taskId: receipt.taskId, t3Status: data.status });
-      }
       if (p.action === "wait") {
         if (!p.blockingReason?.trim()) throw new Error("wait requires blockingReason");
         const data = await services.call(ctx, id, "t3_thread_wait", { threadId: receipt.childThreadId, ...(currentRun ? { runId: currentRun } : {}), untilDelegatedWorkSettled: true, ...(p.timeoutMs !== undefined ? { timeoutMs: p.timeoutMs } : {}) }, signal, update);
