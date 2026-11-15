@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-14: Add explicit Browserbase static schema extraction
+
+- Use Browserbase’s native static JSON/schema format only when extraction is explicitly requested, with the same unchanged-value validation and reading policy as Firecrawl. Keep ordinary reads on raw Fetch plus local extraction and do not substitute a browser agent for unsupported rendered schema work.
+- Keep Extract availability separate from raw Fetch, Search and browser minutes. Eligible schema requests may use another supported provider with the identical schema and a concrete failure trace; partial/oversize output does not trigger extra spending. Account/format limitations remain reported rather than prompting upgrades.
+
 ## 2026-11-14: Add explicit one-page Firecrawl schema extraction
 
 - Make JSON extraction an explicit format/schema request, separate from ordinary Markdown reads. Validate returned values against the requested JSON Schema using the installed TypeBox library, without cleaning, coercing or rewriting source data, then screen all serialized fields through the shared reading policy.

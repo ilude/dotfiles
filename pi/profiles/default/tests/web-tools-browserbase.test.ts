@@ -24,6 +24,32 @@ function tools() {
 	return { search: (params: Record<string, unknown> = {}, signal?: AbortSignal) => registered.get("web_search").execute("id", { query: "topic", provider: "browserbase", ...params }, signal),
 		page: (params: Record<string, unknown> = {}, signal?: AbortSignal) => registered.get("web_fetch").execute("id", { url: "https://8.8.8.8/docs", backend: "browserbase-static", ...params }, signal), exec };
 }
+describe("Browserbase schema extraction", () => {
+	const schema = { type: "object", properties: { title: { type: "string" } }, required: ["title"] };
+	it("uses the native static JSON/schema API without a browser or raw/LLM fallback on ordinary reads", async () => {
+		const fetch = vi.fn().mockResolvedValue(json({ statusCode: 200, content: { title: "Exact value" } })); vi.stubGlobal("fetch", fetch);
+		const result = await tools().page({ format: "json", schema });
+		expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual({ url: "https://8.8.8.8/docs", format: "json", schema, allowRedirects: false, allowInsecureSsl: false, proxies: false });
+		expect(result.structuredContent).toMatchObject({ format: "json", data: { title: "Exact value" }, backend: "browserbase-static" });
+		expect(complete.mock.calls[0][1].messages[0].content).toBe(JSON.stringify({ title: "Exact value" }, null, 2)); expect(fetch).toHaveBeenCalledOnce();
+	});
+	it("can use a second supported schema provider while preserving the failure trace", async () => {
+		vi.stubEnv("FIRECRAWL_API_KEY", `fixture-schema-fallback-${key}`);
+		const fetch = vi.fn().mockResolvedValueOnce(json({}, 402)).mockResolvedValueOnce(json({ statusCode: 200, content: { title: "Fallback value" } })); vi.stubGlobal("fetch", fetch);
+		const result = await tools().page({ backend: "auto", format: "json", schema });
+		expect(result.structuredContent).toMatchObject({ backend: "browserbase-static", data: { title: "Fallback value" }, recovery: "firecrawl:quota" });
+		expect(result.structuredContent.attempts.map((value: { backend: string }) => value.backend)).toEqual(["firecrawl", "browserbase-static"]); expect(fetch).toHaveBeenCalledTimes(2);
+	});
+	it("leaves raw retrieval usable when the Extract allowance is unavailable", async () => {
+		const fetch = vi.fn().mockResolvedValueOnce(json({}, 402)).mockResolvedValueOnce(json({ statusCode: 200, contentType: "text/plain", content: "Raw readable text" })); vi.stubGlobal("fetch", fetch);
+		const { page } = tools(); await expect(page({ format: "json", schema })).rejects.toMatchObject({ kind: "quota" });
+		expect((await page()).structuredContent.content).toBe("Raw readable text"); expect(fetch).toHaveBeenCalledTimes(2);
+	});
+	it("does not substitute a browser agent for unsupported rendered schema extraction", async () => {
+		const fetch = vi.fn(); vi.stubGlobal("fetch", fetch);
+		await expect(tools().page({ format: "json", schema, backend: "browserbase-rendered" })).rejects.toMatchObject({ kind: "unsupported" }); expect(fetch).not.toHaveBeenCalled();
+	});
+});
 describe("Browserbase static retrieval", () => {
 	it("uses raw Fetch and the isolated local extractor without executing page JavaScript", async () => {
 		const fetch = vi.fn().mockResolvedValue(json({ statusCode: 200, contentType: "text/html", encoding: "utf8", content: "<html><title>Static page</title><main>Useful static text.</main><script>throw new Error('not executed')</script></html>", headers: { "set-cookie": "not forwarded" } })); vi.stubGlobal("fetch", fetch);

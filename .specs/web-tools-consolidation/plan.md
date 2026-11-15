@@ -451,12 +451,18 @@ and never retry a screening decision as an acquisition failure.
     full structured object and never buys another answer. Ordinary reads remain
     Markdown. Typecheck passed and two focused files passed 35/35 cases.
 
-- [ ] **W11b: Browserbase single-page structured extraction**
+- [x] **W11b: Browserbase single-page structured extraction**
   - Depends on: W07 and W11a's structured-result contract.
   - Reuse the supported native JSON/schema capability within actual free-plan
     entitlements and its correct allowance meter, not a session/agent substitute.
   - Done when: supported requests work and unsupported/over-limit requests leave
     ordinary retrieval usable without adding LLM work to plain reads.
+  - Evidence: explicit static JSON/schema extraction uses the same validator and
+    reading policy, with Extract availability independent from raw Fetch. It does
+    not substitute a browser agent for rendered schema extraction. Automatic
+    supported-schema alternatives preserve the same schema and failure trace;
+    ordinary reads stay raw/local-extracted. Typecheck and three focused files
+    pass 51/51 cases, without authenticated provider calls.
 
 - [ ] **W12: Native-tool guidance, finite checks and closeout**
   - Depends on: W01–W08, W09a–e, W10a–c and W11a–b.
@@ -516,7 +522,7 @@ and schema edits. Dependencies above, not phase ordering alone, determine readin
 ## Current handoff
 
 - Status: W01–W04 implemented directly by the parent in the existing task
-  worktree, with W06–W07 also complete; 2 implementation tasks remain. W01–W11a are complete; automatic routing, explicit structured extraction and closeout remain. Continue ready tasks while the narrow W05 contract lookup completes. Full scope and acceptance remain
+  worktree, with W06–W07 also complete; Only W12 closeout remains. W01–W11 are complete; automatic routing, explicit structured extraction and closeout remain. Continue ready tasks while the narrow W05 contract lookup completes. Full scope and acceptance remain
   unchanged; orchestration repairs no longer block feature implementation.
 - Completed: current code/tests/provider-doc reconnaissance and two Opus high
   design consultations. The full path retains Browserbase, automatic fallback,

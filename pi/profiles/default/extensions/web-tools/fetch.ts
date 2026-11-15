@@ -36,8 +36,21 @@ export function createFetch(exec: Exec) {
 		const extraction = prepareExtraction(input.format, input.schema, input.maxChars);
 		if (extraction) {
 			if (destination.privateOrLocal) throw new AcquisitionError("invalid-request", "Remote extraction is disabled for local/private URLs");
-			if (backend !== "auto" && backend !== "firecrawl") throw new AcquisitionError("unsupported", "Selected backend does not support schema extraction");
-			return fetchFirecrawl(input.url, input.maxChars, budget, extraction);
+			if (backend === "firecrawl") return fetchFirecrawl(input.url, input.maxChars, budget, extraction);
+			if (backend === "browserbase-static" && !input.render) return fetchBrowserbase(input.url, input.maxChars, budget, extraction);
+			if (backend !== "auto") throw new AcquisitionError("unsupported", "Selected backend does not support the requested schema/rendering combination");
+			const candidates: Array<{ backend: FetchReceipt["backend"]; acquire: () => Promise<FetchReceipt> }> = [{ backend: "firecrawl", acquire: () => fetchFirecrawl(input.url, input.maxChars, budget, extraction) }];
+			if (!input.render) candidates.push({ backend: "browserbase-static", acquire: () => fetchBrowserbase(input.url, input.maxChars, budget, extraction) });
+			const failures: string[] = [], trace: FetchAttempt[] = [];
+			for (const provider of candidates) {
+				const started = performance.now();
+				try { const result = await provider.acquire(); return { ...result, attempts: [...trace, ...result.attempts], ...(failures.length ? { recovery: failures.join("; ") } : {}) }; }
+				catch (cause) {
+					budget.signal.throwIfAborted(); if (!(cause instanceof AcquisitionError) || !cause.eligible) throw cause;
+					failures.push(`${provider.backend}:${cause.kind}`); trace.push({ backend: provider.backend, outcome: "failed", elapsedMs: Math.round(performance.now() - started) });
+				}
+			}
+			throw new AcquisitionError("unavailable", `No schema extraction available: ${failures.join("; ")}`);
 		}
 		if (backend === "firecrawl") return fetchFirecrawl(input.url, input.maxChars, budget);
 		if (backend === "browserbase-static") return fetchBrowserbase(input.url, input.maxChars, budget);

@@ -1,6 +1,7 @@
 import { AcquisitionError, AllowanceBackoff, acquisitionBudget, readJsonResponse, retryAfterMilliseconds, withinSignal } from "./acquisition.ts";
 import { invalidateProviderApiKey, providerApiKey } from "./credentials.ts";
 import type { SearchResponse, SearchResult } from "./search.ts";
+import type { Extraction } from "./structured.ts";
 import type { FetchReceipt } from "./fetch-result.ts";
 import { classifyUrl } from "./destinations.js";
 import { parseHtml } from "./local-parser.ts";
@@ -47,12 +48,12 @@ export async function requestBrowserbase(path: string, body: Record<string, unkn
 		backoff.note(meter, key, error); throw error;
 	}
 }
-export async function fetchBrowserbase(url: string, maxChars: number, budget: Budget): Promise<FetchReceipt> {
+export async function fetchBrowserbase(url: string, maxChars: number, budget: Budget, extraction?: Extraction): Promise<FetchReceipt> {
 	const started = performance.now(); let current = url;
 	for (let redirects = 0; redirects <= 5; redirects++) {
 		const destination = await withinSignal(classifyUrl(current), budget.signal);
 		if (destination.privateOrLocal) throw new AcquisitionError("invalid-request", "Remote backends are disabled for local/private URLs");
-		const data = await requestBrowserbase("/v1/fetch", { url: current, format: "raw", allowRedirects: false, allowInsecureSsl: false, proxies: false }, budget, "raw-fetch");
+		const data = await requestBrowserbase("/v1/fetch", { url: current, format: extraction ? "json" : "raw", ...(extraction ? { schema: extraction.schema } : {}), allowRedirects: false, allowInsecureSsl: false, proxies: false }, budget, extraction ? "extract" : "raw-fetch");
 		const status = data.statusCode;
 		if (typeof status !== "number" || !Number.isInteger(status) || status < 100 || status > 599) throw new AcquisitionError("invalid-response", "Browserbase returned no valid target status");
 		if ([301, 302, 303, 307, 308].includes(status)) {
@@ -62,6 +63,10 @@ export async function fetchBrowserbase(url: string, maxChars: number, budget: Bu
 			current = new URL(location, current).href; continue;
 		}
 		if (status >= 400) throw new AcquisitionError(status === 404 || status === 410 ? "not-found" : status === 401 || status === 403 ? "authentication" : "unavailable", `Browserbase target HTTP ${status}`);
+		if (extraction) {
+			const structured = extraction.result(data.content);
+			return { backend: "browserbase-static", finalUrl: current, ...structured, attempts: [{ backend: "browserbase-static", outcome: structured.truncated ? "partial" : "useful", status, elapsedMs: Math.round(performance.now() - started) }] };
+		}
 		if (data.encoding === "base64" || typeof data.content !== "string" || /pdf|octet-stream|^image\//i.test(String(data.contentType ?? ""))) throw new AcquisitionError("unsupported", "Browserbase static response is not supported readable text");
 		if (!data.content.trim()) throw new AcquisitionError("empty", "Browserbase returned empty content");
 		const html = /html/i.test(String(data.contentType ?? "")) || /^\s*</.test(data.content);
