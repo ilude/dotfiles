@@ -381,13 +381,17 @@ and never retry a screening decision as an acquisition failure.
     kinds/filters are rejected before spending and the meter stays independent.
     Typecheck and three focused files passed 57/57 cases.
 
-- [ ] **W09d: Automatic Browserbase static retrieval fallback**
+- [x] **W09d: Automatic Browserbase static retrieval fallback**
   - Depends on: W07 and the agreed retrieval capability/deadline contract.
   - Make static Fetch eligible for appropriate static requests without pretending
     it renders JavaScript. Choose its ordered position deliberately, not from an
     unsupported assertion that all free services have equal cost or coverage.
   - Done when: static requests can use the adapter where suitable, while requests
     requiring rendering skip it rather than consume an irrelevant call.
+  - Evidence: after suitable existing routes, raw/static cloud HTTP is tried
+    before a dynamic Firecrawl scrape, based on capability/work rather than an
+    assumption of equal free quotas. Rendering requirements skip it. Typecheck
+    and three affected files pass 33/33 cases; partial results stop the chain.
 
 - [ ] **W09e: Automatic Browserbase rendered retrieval fallback**
   - Depends on: W08 and the agreed retrieval capability/deadline contract.
@@ -502,7 +506,7 @@ and schema edits. Dependencies above, not phase ordering alone, determine readin
 ## Current handoff
 
 - Status: W01–W04 implemented directly by the parent in the existing task
-  worktree, with W06–W07 also complete; 5 implementation tasks remain. W01–W08, W09a–c and W10a–c are complete; automatic routing, explicit structured extraction and closeout remain. Continue ready tasks while the narrow W05 contract lookup completes. Full scope and acceptance remain
+  worktree, with W06–W07 also complete; 4 implementation tasks remain. W01–W08, W09a–d and W10a–c are complete; automatic routing, explicit structured extraction and closeout remain. Continue ready tasks while the narrow W05 contract lookup completes. Full scope and acceptance remain
   unchanged; orchestration repairs no longer block feature implementation.
 - Completed: current code/tests/provider-doc reconnaissance and two Opus high
   design consultations. The full path retains Browserbase, automatic fallback,

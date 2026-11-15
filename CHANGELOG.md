@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-14: Add capability-aware static cloud retrieval fallback
+
+- After suitable existing gateway/workstation/Jina routes, try Browserbase raw/static HTTP before a new dynamic Firecrawl scrape. This ordering reflects the requested work, not an assumption that free allowances or provider coverage are interchangeable.
+- Skip static Fetch when rendering is required, keep strict backend selection, and return partial readable data without another cloud request. Raw Fetch availability remains separate from Extract, Search and browser minutes.
+
 ## 2026-11-14: Retain Browserbase as an automatic search alternative
 
 - Try eligible included-mode Browserbase search after existing providers and Firecrawl fail acquisition. A failed cloud attempt does not impose an arbitrary one-cloud limit; every attempt remains within the shared deadline and actual capability/allowance boundaries.

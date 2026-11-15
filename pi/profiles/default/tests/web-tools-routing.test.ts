@@ -21,7 +21,16 @@ describe("automatic fetch acquisition", () => {
 		const fetch = vi.fn(async () => { events.push("firecrawl"); return json({ success: true, data: { markdown: "Cloud page", metadata: { statusCode: 200 } } }); }); vi.stubGlobal("fetch", fetch);
 		const result = await createFetch(exec)({ url: "https://8.8.8.8/", maxChars: 8000 });
 		expect(events).toEqual(["gateway", "local/jina", "firecrawl"]); expect(result.backend).toBe("firecrawl");
-		expect(result.attempts.map(attempt => attempt.backend)).toEqual(["local", "jina", "firecrawl"]);
+		expect(result.attempts.map(attempt => attempt.backend)).toEqual(["local", "jina", "browserbase-static", "firecrawl"]);
+	});
+	it("uses raw static cloud retrieval first and skips it for a rendering requirement", async () => {
+		vi.stubEnv("BROWSERBASE_API_KEY", "fixture-static-route");
+		const fetch = vi.fn().mockResolvedValueOnce(json({ statusCode: 200, contentType: "text/plain", content: "Static page" }))
+			.mockResolvedValueOnce(json({ success: true, data: { markdown: "Rendered-capable scrape", metadata: { statusCode: 200 } } })); vi.stubGlobal("fetch", fetch);
+		expect((await createFetch(vi.fn(async () => failure()))({ url: "https://8.8.8.8/", maxChars: 8000 })).backend).toBe("browserbase-static");
+		expect(fetch.mock.calls[0][0]).toBe("https://api.browserbase.com/v1/fetch");
+		expect((await createFetch(vi.fn(async () => failure()))({ url: "https://8.8.8.8/", maxChars: 8000, render: true })).backend).toBe("firecrawl");
+		expect(fetch.mock.calls[1][0]).toBe("https://api.firecrawl.dev/v2/scrape"); expect(fetch).toHaveBeenCalledTimes(2);
 	});
 	it("returns partial local data without consuming another allowance", async () => {
 		const fetch = vi.fn(); vi.stubGlobal("fetch", fetch);

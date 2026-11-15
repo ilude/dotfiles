@@ -76,7 +76,11 @@ export function createFetch(exec: Exec) {
 		attempts.push(...failed.attempts);
 		if (backend !== "auto" || destination.privateOrLocal || !failed.error.eligible) throw failed.error;
 		reasons.push(failed.error.message);
-		const providers = [{ backend: "firecrawl" as const, acquire: () => fetchFirecrawl(input.url, input.maxChars, budget) }];
+		const providers: Array<{ backend: FetchReceipt["backend"]; acquire: () => Promise<FetchReceipt> }> = [];
+		// Static HTTP is suitable before a new dynamic scrape, without assuming
+		// the accounts have interchangeable quotas or dollar costs.
+		if (!input.render) providers.push({ backend: "browserbase-static", acquire: () => fetchBrowserbase(input.url, input.maxChars, budget) });
+		providers.push({ backend: "firecrawl", acquire: () => fetchFirecrawl(input.url, input.maxChars, budget) });
 		for (const provider of providers) {
 			budget.signal.throwIfAborted(); const started = performance.now();
 			try { return attach(await provider.acquire()); }
