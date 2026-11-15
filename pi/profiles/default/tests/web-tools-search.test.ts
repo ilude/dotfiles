@@ -123,6 +123,13 @@ describe("bounded search acquisition", () => {
 		expect(await createSearch(exec)({ query: "topic", count: 5 })).toMatchObject({ backend: "firecrawl", results: [] });
 		expect(fetch.mock.calls[3][0]).toBe("https://api.firecrawl.dev/v2/search"); expect(fetch).toHaveBeenCalledTimes(4);
 	});
+	it("retains another cloud alternative after Firecrawl quota without creating a session", async () => {
+		vi.stubEnv("FIRECRAWL_API_KEY", "fixture-auto-exhausted"); vi.stubEnv("BROWSERBASE_API_KEY", "fixture-auto-browserbase");
+		const fetch = vi.fn().mockResolvedValueOnce(json({}, 503)).mockResolvedValueOnce(json({}, 503)).mockResolvedValueOnce(json({}, 503))
+			.mockResolvedValueOnce(json({}, 402)).mockResolvedValueOnce(json({ results: [] })); vi.stubGlobal("fetch", fetch);
+		expect(await createSearch(exec)({ query: "topic", count: 5 })).toMatchObject({ backend: "browserbase", results: [] });
+		expect(fetch.mock.calls[4][0]).toBe("https://api.browserbase.com/v1/search"); expect(fetch).toHaveBeenCalledTimes(5);
+	});
 	it("classifies exhausted-credit responses without exposing raw error bodies", async () => {
 		const fetch = vi.fn().mockResolvedValueOnce(json({}, 503))
 			.mockResolvedValueOnce(new Response("credit quota exhausted; opaque raw payload", { status: 403 }))

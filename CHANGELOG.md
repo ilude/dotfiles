@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-14: Retain Browserbase as an automatic search alternative
+
+- Try eligible included-mode Browserbase search after existing providers and Firecrawl fail acquisition. A failed cloud attempt does not impose an arbitrary one-cloud limit; every attempt remains within the shared deadline and actual capability/allowance boundaries.
+- Keep Search backoff independent from raw Fetch, Extract and browser minutes. Unsupported result kinds/filters remain explicit limitations, not downgraded web queries or browser sessions. Valid empty/partial data still stops acquisition.
+
 ## 2026-11-14: Reach Firecrawl discovery after existing search failures
 
 - Append eligible Firecrawl search after SearXNG and existing configured fallbacks, within the same 20-second acquisition budget and shared search/scrape credit state. Preserve kind, filters and strict explicit selection; no hit scraping, premium mode or eager credential lookup is introduced.

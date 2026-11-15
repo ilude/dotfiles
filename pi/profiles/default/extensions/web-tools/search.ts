@@ -146,11 +146,15 @@ export function createSearch(exec: Exec) {
 		}
 		if (!strict) {
 			budget.signal.throwIfAborted();
-			try { const result = await searchFirecrawl(input, budget); return { ...result, recovery: failures.join("; ") }; }
-			catch (cause) {
+			const cloud = [{ name: "firecrawl", acquire: () => searchFirecrawl(input, budget) }, { name: "browserbase", acquire: () => searchBrowserbase(input, budget) }];
+			for (const provider of cloud) {
 				budget.signal.throwIfAborted();
-				if (!(cause instanceof SearchAcquisitionError) || !cause.eligible) throw cause;
-				failures.push(`firecrawl:${cause.kind}`);
+				try { const result = await provider.acquire(); return { ...result, recovery: failures.join("; ") }; }
+				catch (cause) {
+					budget.signal.throwIfAborted();
+					if (!(cause instanceof SearchAcquisitionError) || !cause.eligible) throw cause;
+					failures.push(`${provider.name}:${cause.kind}`);
+				}
 			}
 		}
 		throw new SearchAcquisitionError("unavailable", `No search provider available: ${failures.join("; ")}`);

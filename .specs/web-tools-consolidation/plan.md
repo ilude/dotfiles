@@ -370,11 +370,16 @@ and never retry a screening decision as an acquisition failure.
     responses stop acquisition. Shared credits, source kinds and filters are
     retained. Typecheck and three focused files pass 65/65 cases.
 
-- [ ] **W09c: Automatic Browserbase search fallback**
+- [x] **W09c: Automatic Browserbase search fallback**
   - Depends on: W06, W09b and the search routing contract.
   - Add eligible included search capabilities after earlier suitable providers.
   - Done when: this adapter's unavailable quota does not disable Browserbase
     static Fetch or browser minutes, or force search to stop unnecessarily.
+
+  - Evidence for W09c: eligible included-mode Browserbase follows existing
+    providers and Firecrawl, without a one-cloud-attempt restriction. Unsupported
+    kinds/filters are rejected before spending and the meter stays independent.
+    Typecheck and three focused files passed 57/57 cases.
 
 - [ ] **W09d: Automatic Browserbase static retrieval fallback**
   - Depends on: W07 and the agreed retrieval capability/deadline contract.
@@ -497,7 +502,7 @@ and schema edits. Dependencies above, not phase ordering alone, determine readin
 ## Current handoff
 
 - Status: W01–W04 implemented directly by the parent in the existing task
-  worktree, with W06–W07 also complete; 6 implementation tasks remain. W01–W08, W09a–b and W10a–c are complete; automatic routing, explicit structured extraction and closeout remain. Continue ready tasks while the narrow W05 contract lookup completes. Full scope and acceptance remain
+  worktree, with W06–W07 also complete; 5 implementation tasks remain. W01–W08, W09a–c and W10a–c are complete; automatic routing, explicit structured extraction and closeout remain. Continue ready tasks while the narrow W05 contract lookup completes. Full scope and acceptance remain
   unchanged; orchestration repairs no longer block feature implementation.
 - Completed: current code/tests/provider-doc reconnaissance and two Opus high
   design consultations. The full path retains Browserbase, automatic fallback,
