@@ -57,6 +57,15 @@ describe("delegation prompt composition", () => {
     expect([...definitions.entries()]).toEqual(before);
   });
 
+  it.each(["native", "t3"] as const)("shares native Grok routing with the %s caller and council", backend => {
+    for (const audience of ["caller", "council"] as const) {
+      const prompt = delegationContext({ audience, definitions, backend });
+      expect(prompt).toContain('model: "grok"');
+      expect(prompt).toContain("amazon-bedrock/us.xai.grok-4.7");
+      expect(prompt).toContain("not Mantle, direct xAI or T3's separate");
+    }
+  });
+
   it("keeps ordinary leaf instructions unchanged and injects no delegation context", () => {
     expect(composedAgentPrompt(leaf, definitions)).toBe(leaf.prompt);
     expect(delegationContext({ audience: "leaf", definitions })).toBe("");

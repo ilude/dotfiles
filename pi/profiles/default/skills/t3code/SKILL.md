@@ -34,6 +34,8 @@ When managing T3 scheduled tasks, review existing tasks in the current workflow 
 
 T3 discovers Pi model names through RPC `get_available_models` and selected state through `get_state`. The synthetic `default` model, displayed as **Pi default**, means inherit Pi's baseline, not a resolved model label. To make the choice explicit, use a provider-qualified model ID and its thinking option in T3's model selection. Do not equate saved defaults with a running or resumed thread's selection.
 
+The live model picker and exact named-role launch can be newer than `~/.t3/caches/pi.json`. An old cache file alone does not establish that a model is unavailable or that another provider refresh is required.
+
 Local environment settings normally live at `~/.t3/userdata/settings.json`; desktop appearance settings at `~/.t3/userdata/client-settings.json`. Inspect only relevant non-secret fields. Prefer a supported settings control; make targeted file changes only when authorized, preserve unrelated values, and verify loaded behavior separately from saved JSON. Do not edit live SQLite databases or start another server against live userdata.
 
 Pi terminal footers are not T3 chat UI. Pi `notify` calls become T3 system notices, and terminal color escapes can appear as garbled text. Keep feature data plain and delegate host-specific formatting or suppression to the adapter; changing a notice's visibility is a behavior decision, not an automatic consequence of detecting T3.

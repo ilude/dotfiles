@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-15: Verify native Grok delegation through T3
+
+- Confirm a Pi-enforced T3 child executed on `amazon-bedrock/us.xai.grok-4.7`, called `read`, and answered from the tool result. Remove the stale catalog-refresh blocker from the operational docs: an older on-disk T3 cache did not prevent the live launch, and no additional provider refresh was needed.
+- Clarify native Grok selection in the shared caller/council routing instructions without changing role authority, defaults or unrelated roles' prompt budgets. Keep the stale-cache distinction in the on-demand T3 skill rather than adding a global instruction or another refresh gate.
+
 ## 2026-11-14: Stop Claude repository-root recursive grep
 
 - Reject Claude Bash recursive grep against the current repository root, including pipelines and worktree roots, through the existing Damage Control hook. Direct the caller to tracked-file or ignore-aware searches after a source review crawled ignored dependencies and runtime history.
@@ -9,7 +14,7 @@
 
 - Add explicit disposable-worker TTL/absolute expiry, later-only extension, due-only ownership-checked cleanup and retained expiry reasons. Create retries retain the first deadline; nonexpiring version-1 records remain unchanged. Deadline-bound attached operations prevent indefinite cleanup blocking. Sample controller timer units are opt-in and are not installed or enabled by this change.
 - Add `pnpm site plan --impact` through the existing native stack request/result path. Reuse file/service plan observations for will/may/unknown activation annotations, retain native replacements and explicit unknowns for uncovered resources/Actions, and leave default plan shapes unchanged. No extra remote observations, secret reads, shell inference or execution policy is added.
-- Keep worker-owned jobs and streaming incomplete pending the operator's output-cap policy. Local checks do not establish production deployment, automatic cleanup activation or live hard-expiry acceptance. Preserve earlier site changes and commits made independently while this work was in progress.
+- Worker-owned jobs and streaming remain unfinished; the agent-added output storage cap is not an operator requirement or prerequisite. Record the operator's proposed generic work queue/scheduler direction for discussion rather than treating TTL-oriented safety gates as the goal. Local checks do not establish production deployment, automatic cleanup activation or live hard-expiry acceptance. Preserve earlier site changes and commits made independently while this work was in progress.
 
 ## 2026-11-14: Use the existing native AWS Grok route
 

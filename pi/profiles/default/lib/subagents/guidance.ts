@@ -24,6 +24,8 @@ const MODEL_ROUTING_GUIDANCE = `## Model routing
 
 Work Opus uses Bedrock; personal Opus prefers ccyl. Role-bound ccyl needs return to the orchestrator; never silently switch accounts.`;
 
+const GROK_ROUTING_GUIDANCE = `Use \`model: "grok"\` for native AWS US Grok (\`amazon-bedrock/us.xai.grok-4.7\` currently), not Mantle, direct xAI or T3's separate \`grok\` provider.`;
+
 const CALLER_GUIDANCE = `## Delegation guidance
 
 Consult \`subagent\` with \`agent: "strategist"\` for implementation-plan execution or user-authorized work suited to parallel subagents or Team Leads. Delegate a standalone job to a single subagent or Team Lead only when the user explicitly requests it or delegation conserves context; explain the context-conservation reason when applicable, and skip the Strategist consultation in either case. Otherwise work directly, including when Strategist recommends one worker without an exception. An explicit single-agent handoff also bypasses consultation when handing off plan work. When the user requests delegation while you continue another discussion, launch the requested agent in the background and continue the discussion.
@@ -93,7 +95,8 @@ export function delegationContext(options: DelegationContextOptions): string {
           ? COUNCIL_GUIDANCE
           : CALLER_GUIDANCE;
   const routing = options.audience === "strategist" ? "" : `\n\n${MODEL_ROUTING_GUIDANCE}`;
-  const text = `${guidance}${routing}\n\n${catalog}\n${entries || "- none"}`;
+  const grokRouting = options.audience === "caller" || options.audience === "council" ? `\n\n${GROK_ROUTING_GUIDANCE}` : "";
+  const text = `${guidance}${routing}${grokRouting}\n\n${catalog}\n${entries || "- none"}`;
   return options.backend === "t3" ? t3ToolReferences(text) : text;
 }
 
