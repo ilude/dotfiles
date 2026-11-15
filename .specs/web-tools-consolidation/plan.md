@@ -404,12 +404,17 @@ and never retry a screening decision as an acquisition failure.
     unsupported without evidence of account entitlement. Typecheck and two
     affected files passed 43/43 cases; no API calls or image downloads.
 
-- [ ] **W10c: Cloud image/news discovery**
+- [x] **W10c: Cloud image/news discovery**
   - Depends on: W05/W06 clients and W10a's result/capability contract.
   - Map supported Firecrawl/Browserbase source kinds into the same native contract,
     retaining cheaper eligible existing providers first and no implicit scraping.
   - Done when: supported cloud verticals work through native search and unsupported
     ones are skipped/reported accurately rather than simulated by browser search.
+  - Evidence: Firecrawl uses exactly the requested web/image/news source, with
+    actual image dimensions and dated news snippets mapped into the native shape.
+    Browserbase has no documented image/news mode and rejects/skips it rather
+    than treating incidental result images as image search. Typecheck and three
+    focused files pass 45/45 cases; no result scraping or live validation.
 
 - [ ] **W11a: Explicit Firecrawl single-page structured extraction**
   - Depends on: W04's fetch client and agreed extraction request semantics.
@@ -483,7 +488,7 @@ and schema edits. Dependencies above, not phase ordering alone, determine readin
 ## Current handoff
 
 - Status: W01–W04 implemented directly by the parent in the existing task
-  worktree, with W06–W07 also complete; 9 implementation tasks remain. W01–W08 and W10a–b are complete; automatic routing, cloud verticals, explicit structured extraction and closeout remain. Continue ready tasks while the narrow W05 contract lookup completes. Full scope and acceptance remain
+  worktree, with W06–W07 also complete; 8 implementation tasks remain. W01–W08 and W10a–c are complete; automatic routing, explicit structured extraction and closeout remain. Continue ready tasks while the narrow W05 contract lookup completes. Full scope and acceptance remain
   unchanged; orchestration repairs no longer block feature implementation.
 - Completed: current code/tests/provider-doc reconnaissance and two Opus high
   design consultations. The full path retains Browserbase, automatic fallback,

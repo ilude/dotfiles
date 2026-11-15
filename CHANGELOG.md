@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-14: Add supported cloud image/news discovery
+
+- Map Firecrawl’s explicit image/news sources into the same native result contract, keeping source-page URLs distinct from image assets and retaining supplied dimensions and dates. Request only the selected source and do not scrape hits.
+- Keep Browserbase image/news discovery unsupported because its documented Search interface is web-only. Incidental image metadata is not simulated as an image search, and no browser session is substituted for a missing search capability. Existing cheaper search routes remain ahead of cloud escalation when automatic routing is enabled.
+
 ## 2026-11-14: Add explicit Firecrawl discovery with shared credit availability
 
 - Add native discovery-only Firecrawl search using the same credential/client as scraping. Preserve composed query refinements, request one source kind, and omit result scraping, Highlights enrichment and domain-tool discovery. Return valid empty/partial data without another request and screen provider warnings even when there are no hits.

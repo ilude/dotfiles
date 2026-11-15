@@ -46,15 +46,20 @@ export async function requestFirecrawl(path: "/scrape" | "/search", input: Recor
 }
 
 export async function searchFirecrawl(input: { query: string; count: number; kind?: SearchKind }, budget: Budget): Promise<SearchResponse> {
-	if (input.kind && input.kind !== "web") throw new AcquisitionError("unsupported", "Firecrawl vertical search is not yet enabled");
-	const response = await requestFirecrawl("/search", { query: input.query, limit: input.count, sources: ["web"], highlights: false, domainTools: false }, budget);
+	const kind = input.kind ?? "web";
+	const response = await requestFirecrawl("/search", { query: input.query, limit: input.count, sources: [kind], highlights: false, domainTools: false }, budget);
 	const data = record(response.data);
-	if (!Array.isArray(data?.web)) throw new AcquisitionError("invalid-response", "Firecrawl returned invalid web results");
-	return { backend: "firecrawl", ...(typeof response.warning === "string" ? { warning: response.warning.slice(0, 2000) } : {}), results: data.web.map((value): SearchResult => {
+	const hits = data?.[kind];
+	if (!Array.isArray(hits)) throw new AcquisitionError("invalid-response", `Firecrawl returned invalid ${kind} results`);
+	return { backend: "firecrawl", ...(typeof response.warning === "string" ? { warning: response.warning.slice(0, 2000) } : {}), results: hits.map((value): SearchResult => {
 		const item = record(value) ?? {};
 		return { title: typeof item.title === "string" ? item.title : "(untitled)", url: typeof item.url === "string" ? item.url : "", engine: "firecrawl",
-			...(typeof item.description === "string" ? { content: item.description } : {}) };
-	}).filter(item => item.url) };
+			...(typeof (kind === "news" ? item.snippet : item.description) === "string" ? { content: String(kind === "news" ? item.snippet : item.description) } : {}),
+			...(kind === "images" && typeof item.imageUrl === "string" ? { imageUrl: item.imageUrl } : {}),
+			...(typeof item.imageWidth === "number" && Number.isSafeInteger(item.imageWidth) && item.imageWidth > 0 ? { width: item.imageWidth } : {}),
+			...(typeof item.imageHeight === "number" && Number.isSafeInteger(item.imageHeight) && item.imageHeight > 0 ? { height: item.imageHeight } : {}),
+			...(kind === "news" && typeof item.date === "string" ? { publishedDate: item.date } : {}) };
+	}).filter(item => item.url || item.imageUrl) };
 }
 
 export async function fetchFirecrawl(url: string, maxChars: number, budget: Budget): Promise<FetchReceipt> {

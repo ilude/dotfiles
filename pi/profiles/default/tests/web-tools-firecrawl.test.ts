@@ -34,6 +34,14 @@ describe("Firecrawl discovery and shared allowance", () => {
 		expect(result.structuredContent).toMatchObject({ backend: "firecrawl", items: [{ title: "Source", url: "https://example.com", content: "Snippet", engine: "firecrawl" }] });
 		expect(JSON.stringify(result)).not.toContain("not returned"); expect(exec).not.toHaveBeenCalled(); expect(fetch).toHaveBeenCalledOnce();
 	});
+	it.each(["images", "news"])("maps %s source fields without requesting result scraping", async kind => {
+		const fetch = vi.fn().mockResolvedValue(json({ success: true, data: { [kind]: [{ title: "Source", url: "https://example.com", imageUrl: "https://images.example.com/full.png", imageWidth: 1200, imageHeight: 800, snippet: "News", date: "2026-11-13" }] } })); vi.stubGlobal("fetch", fetch);
+		const result = await tool().search({ kind }); expect(JSON.parse(fetch.mock.calls[0][1].body).sources).toEqual([kind]);
+		expect(result.structuredContent.kind).toBe(kind);
+		if (kind === "images") expect(result.structuredContent.items[0]).toMatchObject({ imageUrl: "https://images.example.com/full.png", width: 1200, height: 800 });
+		else expect(result.structuredContent.items[0]).toMatchObject({ content: "News", publishedDate: "2026-11-13" });
+		expect(fetch).toHaveBeenCalledOnce();
+	});
 	it("retains and screens provider warnings even for empty results", async () => {
 		const fetch = vi.fn().mockResolvedValue(json({ success: true, warning: "Partial provider results", data: { web: [] } })); vi.stubGlobal("fetch", fetch);
 		const result = await tool().search(); expect(result.structuredContent).toMatchObject({ items: [], warning: "Partial provider results", screening: "screened" });
