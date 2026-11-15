@@ -1,4 +1,4 @@
-import { AcquisitionError, acquisitionBudget, withinSignal } from "./acquisition.ts";
+import { AcquisitionError, acquisitionBudget, readJsonResponse, retryAfterMilliseconds, withinSignal } from "./acquisition.ts";
 import { invalidateProviderApiKey, providerApiKey } from "./credentials.ts";
 import type { FetchReceipt } from "./fetch-result.ts";
 
@@ -7,34 +7,6 @@ const api = "https://api.firecrawl.dev/v2";
 function record(value: unknown): Record<string, unknown> | undefined {
 	return value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
 }
-function retryAfter(response: Response): number | undefined {
-	const value = response.headers.get("retry-after");
-	if (!value) return undefined;
-	const seconds = Number(value);
-	const ms = Number.isFinite(seconds) && seconds >= 0 ? seconds * 1000 : Date.parse(value) - Date.now();
-	return Number.isFinite(ms) && ms >= 0 ? ms : undefined;
-}
-async function responseJson(response: Response, signal: AbortSignal): Promise<unknown> {
-	const reader = response.body?.getReader();
-	if (!reader) throw new AcquisitionError("invalid-response", "Firecrawl returned an empty response");
-	let bytes = 0;
-	const chunks: Uint8Array[] = [];
-	try {
-		while (true) {
-			const next = await withinSignal(reader.read(), signal);
-			if (next.done) break;
-			bytes += next.value.byteLength;
-			if (bytes > 2 * 1024 * 1024) throw new AcquisitionError("invalid-response", "Firecrawl response exceeded the acquisition byte limit");
-			chunks.push(next.value);
-		}
-		try { return JSON.parse(Buffer.concat(chunks, bytes).toString("utf8")); }
-		catch { throw new AcquisitionError("invalid-response", "Firecrawl returned invalid JSON"); }
-	} finally {
-		void reader.cancel().catch(() => {});
-		reader.releaseLock();
-	}
-}
-
 /** API requests only; no Interact, actions, crawler, profile, proxy retries or account changes. */
 export async function requestFirecrawl(path: "/scrape" | "/search", input: Record<string, unknown>, budget: Budget): Promise<Record<string, unknown>> {
 	const credentialSignal = budget.attempt(10_000);
@@ -57,9 +29,9 @@ export async function requestFirecrawl(path: "/scrape" | "/search", input: Recor
 			void response.body?.cancel().catch(() => {});
 			const kind = response.status === 402 ? "quota" : response.status === 429 ? "rate-limit" : response.status === 401 ? "credentials"
 				: response.status === 403 ? "unsupported" : response.status === 400 || response.status === 422 ? "invalid-request" : "unavailable";
-			throw new AcquisitionError(kind, `Firecrawl API HTTP ${response.status}`, retryAfter(response));
+			throw new AcquisitionError(kind, `Firecrawl API HTTP ${response.status}`, retryAfterMilliseconds(response));
 		}
-		const data = record(await responseJson(response, signal));
+		const data = record(await readJsonResponse(response, signal, "Firecrawl"));
 		if (!data || data.success !== true) throw new AcquisitionError("unavailable", "Firecrawl reported unsuccessful acquisition");
 		return data;
 	} catch (error) {

@@ -24,7 +24,7 @@ const SearchItemSchema = Type.Object({
 const ScreeningSchema = Type.Union([Type.Literal("screened"), Type.Literal("not-screened"), Type.Literal("no-results"), Type.Literal("flagged-approved")]);
 const WebSearchOutputSchema = Type.Object({
 	query: Type.String(), items: Type.Array(SearchItemSchema), screening: ScreeningSchema,
-	backend: Type.Union([Type.Literal("searxng"), Type.Literal("serper"), Type.Literal("brave")]),
+	backend: Type.Union([Type.Literal("searxng"), Type.Literal("serper"), Type.Literal("brave"), Type.Literal("browserbase")]),
 	warning: Type.Optional(Type.String()), recovery: Type.Optional(Type.String()),
 });
 const WebFetchOutputSchema = Type.Object({
@@ -110,7 +110,7 @@ export default function webTools(pi: ExtensionAPI) {
 
 	pi.registerTool({
 		name: "web_search", label: "Web Search",
-		description: "Search SearXNG, then configured Serper and Brave on acquisition failures, within a 20-second budget. Explicit provider or engines stays strict; engines are SearXNG-only. Empty or partial results do not trigger another search. Returns backend and fallback reasons. Luna screens acquired results; a user may approve reading a flagged response once as untrusted material. Without approval it stays blocked. Output is limited to 45KB/1800 lines.",
+		description: "Search SearXNG, then configured Serper and Brave on acquisition failures, within a 20-second budget. Browserbase included fast web search is explicitly selectable; auto does not yet use it. Browserbase has no documented structured filters. Explicit provider or engines stays strict; engines are SearXNG-only. Empty or partial results do not trigger another search. Returns backend and fallback reasons. Luna screens acquired results; a user may approve reading a flagged response once as untrusted material. Without approval it stays blocked. Output is limited to 45KB/1800 lines.",
 		promptSnippet: "Search the web for current information and documentation",
 		outputSchema: WebSearchOutputSchema,
 		parameters: Type.Object({
@@ -119,7 +119,7 @@ export default function webTools(pi: ExtensionAPI) {
 			exclude_terms: Type.Optional(Type.Array(Type.String())),
 			site: Type.Optional(Type.String({ description: "Optional domain or site URL" })),
 			num_results: Type.Optional(Type.Integer({ minimum: 1, maximum: 20, description: "Default: 5" })),
-			provider: Type.Optional(Type.Union([Type.Literal("auto"), Type.Literal("searxng"), Type.Literal("serper"), Type.Literal("brave")], { description: "Default auto; an explicit provider never substitutes another. engines is only valid with auto or searxng." })),
+			provider: Type.Optional(Type.Union([Type.Literal("auto"), Type.Literal("searxng"), Type.Literal("serper"), Type.Literal("brave"), Type.Literal("browserbase")], { description: "Default auto; an explicit provider never substitutes another. engines is only valid with auto or searxng." })),
 			engines: Type.Optional(Type.Array(Type.String({ minLength: 1 }), { description: "SearXNG engine names, e.g. google, brave, github. Defaults to the endpoint engines setting or server defaults. Empty array uses server defaults." })),
 		}),
 		renderCall(args, theme) {
@@ -140,7 +140,7 @@ export default function webTools(pi: ExtensionAPI) {
 			const query = searchQuery(params);
 			if (!query) throw new Error("Search query must not be empty");
 			const count = params.num_results ?? 5;
-			const search = await acquireSearch({ query, count, provider: params.provider, engines: params.engines }, signal);
+			const search = await acquireSearch({ query, count, provider: params.provider, engines: params.engines, filters: Boolean(params.site || params.exact_phrases?.length || params.exclude_terms?.length) }, signal);
 			const recovery: { recovery?: string } = search.recovery ? { recovery: search.recovery } : {};
 			const results = search.results.slice(0, count);
 			const header = `websearch: ${query}\n`;

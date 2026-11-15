@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-14: Add explicit native Browserbase web search
+
+- Select Browserbase’s included Parallel fast mode through `web_search` without creating a browser, scraping hits or enabling deep modes. Preserve backend/excerpt provenance and report unsupported structured filters or query lengths instead of silently dropping them.
+- Share bounded HTTP parsing and credential ownership with the existing clients. Keep Search retry state separate from Fetch and browser allowances, honor reported retry intervals, and use temporary backoff rather than invented reset times or reload-only lockouts. Automatic search remains on the existing providers in this increment; no account calls were used for validation.
+
 ## 2026-11-14: Add explicit native Firecrawl page retrieval
 
 - Add a strict `web_fetch` Firecrawl backend using bounded Markdown scraping with basic proxy mode, no enhanced retries, no OCR/LLM/interactive formats, and the provider’s normal accepted cache age. Preserve the existing automatic chain in this increment; no gateway contract or deployment changes are needed.

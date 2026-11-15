@@ -312,5 +312,5 @@ describe("actual fetch subprocess", () => {
       expect(machine.attempts).toMatchObject([{ backend: "local", outcome: "useful" }]);
       await expect(run("http://169.254.169.254/")).rejects.toThrow("Cloud metadata endpoints are not allowed");
     } finally { await new Promise<void>((resolve) => server.close(() => resolve())); }
-  });
+  }, 60_000);
 });

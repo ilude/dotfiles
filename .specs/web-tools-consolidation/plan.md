@@ -286,7 +286,7 @@ or a shortened scope.
   - Done when: native search returns normalized source results and handles the
     actual shared Firecrawl allowance without a second credential mechanism.
 
-- [ ] **W06: Native Browserbase search**
+- [x] **W06: Native Browserbase search**
   - Depends on: W02's search contract. Can proceed independently of W04/W05 after
     common credential/error interfaces are established; avoid overlapping edits.
   - Add a bounded explicit search adapter using the account's included modes;
@@ -294,6 +294,12 @@ or a shortened scope.
     interface usable by static Fetch and rendered-session creation.
   - Done when: native search provides truthful results, capability errors and
     scoped quota/rate handling without browser-session creation.
+  - Evidence: explicit Parallel fast search uses the native HTTP client and shared
+    named credentials. Unsupported query lengths/structured filters are reported
+    before spending; returned deep modes are rejected. Search retry state is
+    isolated from Fetch/browser meters and reopens without reload. Typecheck
+    passed; 65 focused cases passed across initial checks and the affected-file
+    rerun. No account balance, paid mode or live provider/session was probed.
 
 - [ ] **W07: Native Browserbase static retrieval**
   - Depends on: W01's provenance and W06's Browserbase credential/client.
@@ -449,7 +455,7 @@ and schema edits. Dependencies above, not phase ordering alone, determine readin
 ## Current handoff
 
 - Status: W01–W04 implemented directly by the parent in the existing task
-  worktree; 15 implementation tasks remain. Continue W05 and independent W06. Full scope and acceptance remain
+  worktree, with W06 also complete; 14 implementation tasks remain. Continue W05/W07. Full scope and acceptance remain
   unchanged; orchestration repairs no longer block feature implementation.
 - Completed: current code/tests/provider-doc reconnaissance and two Opus high
   design consultations. The full path retains Browserbase, automatic fallback,

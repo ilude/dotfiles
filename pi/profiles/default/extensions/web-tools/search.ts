@@ -1,39 +1,34 @@
-import { AcquisitionError as SearchAcquisitionError, acquisitionBudget, withinSignal } from "./acquisition.ts";
+import { AcquisitionError as SearchAcquisitionError, acquisitionBudget, retryAfterMilliseconds, withinSignal } from "./acquisition.ts";
 export { AcquisitionError as SearchAcquisitionError } from "./acquisition.ts";
 import { searchApiKey } from "./credentials.ts";
+import { searchBrowserbase } from "./browserbase.ts";
 
-export type SearchProvider = "searxng" | "serper" | "brave";
+type ExistingSearchProvider = "searxng" | "serper" | "brave";
+export type SearchProvider = ExistingSearchProvider | "browserbase";
 export type SearchSelection = "auto" | SearchProvider;
 export type SearchResult = { title: string; url: string; content?: string; publishedDate?: string; engine: string };
 export type SearchResponse = { results: SearchResult[]; warning?: string; backend: SearchProvider; recovery?: string };
 type FailureKind = "transport" | "timeout" | "rate-limit" | "quota" | "credentials" | "unavailable" | "challenge" | "invalid-response" | "invalid-request";
-type SearchRequest = { query: string; count: number; provider?: SearchSelection; engines?: string[] };
+type SearchRequest = { query: string; count: number; provider?: SearchSelection; engines?: string[]; filters?: boolean };
 type Exec = Parameters<typeof searchApiKey>[0];
 const labels = { searxng: "SearXNG", serper: "Serper", brave: "Brave Search" };
 const defaultSearx = "https://searxng.ilude.com/search";
 const serperUrl = "https://google.serper.dev/search";
 const braveUrl = "https://api.search.brave.com/res/v1/web/search";
-const providers: SearchProvider[] = ["searxng", "serper", "brave"];
+const providers: ExistingSearchProvider[] = ["searxng", "serper", "brave"];
 
 function record(value: unknown): Record<string, unknown> | undefined {
 	return typeof value === "object" && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
 }
 function text(value: unknown): string | undefined { return typeof value === "string" && value.trim() ? value : undefined; }
-function retryAfter(response: Response): number | undefined {
-	const value = response.headers?.get("retry-after");
-	if (!value) return undefined;
-	const seconds = Number(value);
-	const milliseconds = Number.isFinite(seconds) && seconds >= 0 ? seconds * 1000 : Date.parse(value) - Date.now();
-	return Number.isFinite(milliseconds) && milliseconds >= 0 ? milliseconds : undefined;
-}
-function httpError(provider: SearchProvider, response: Response, body: string): SearchAcquisitionError {
+function httpError(provider: ExistingSearchProvider, response: Response, body: string): SearchAcquisitionError {
 	const status = response.status;
 	const kind: FailureKind = status === 429 ? "rate-limit" : status === 402 || (status === 403 && /credit|quota|limit|exhaust/i.test(body)) ? "quota" : status === 408 || status === 504 ? "timeout"
 		: status === 400 || status === 422 ? "invalid-request" : "unavailable";
-	return new SearchAcquisitionError(kind, `${labels[provider]} HTTP ${status}`, retryAfter(response));
+	return new SearchAcquisitionError(kind, `${labels[provider]} HTTP ${status}`, retryAfterMilliseconds(response));
 }
 
-async function request(provider: SearchProvider, input: SearchRequest, key: string | undefined, signal: AbortSignal): Promise<SearchResponse> {
+async function request(provider: ExistingSearchProvider, input: SearchRequest, key: string | undefined, signal: AbortSignal): Promise<SearchResponse> {
 	let url: URL;
 	const options: RequestInit = { signal };
 	if (provider === "searxng") {
@@ -96,9 +91,10 @@ export function createSearch(exec: Exec) {
 		parent?.throwIfAborted();
 		const selected = input.provider ?? "auto";
 		if (input.engines !== undefined && selected !== "auto" && selected !== "searxng") throw new SearchAcquisitionError("invalid-request", "engines can only be used with SearXNG");
-		const strict = selected !== "auto" || input.engines !== undefined;
-		const order: SearchProvider[] = selected !== "auto" ? [selected] : input.engines !== undefined ? ["searxng"] : providers;
 		const budget = acquisitionBudget(20_000, parent);
+		if (selected === "browserbase") return searchBrowserbase(input, budget);
+		const strict = selected !== "auto" || input.engines !== undefined;
+		const order: ExistingSearchProvider[] = selected !== "auto" ? [selected] : input.engines !== undefined ? ["searxng"] : providers;
 		const failures: string[] = [];
 		for (const provider of order) {
 			budget.signal.throwIfAborted();
