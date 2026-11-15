@@ -1,24 +1,27 @@
 import { Type } from "typebox";
 
 export const FetchAttemptSchema = Type.Object({
-	backend: Type.Union([Type.Literal("local"), Type.Literal("direct"), Type.Literal("trawl"), Type.Literal("jina")]),
+	backend: Type.Union([Type.Literal("local"), Type.Literal("direct"), Type.Literal("trawl"), Type.Literal("jina"), Type.Literal("firecrawl")]),
 	outcome: Type.Union([Type.Literal("useful"), Type.Literal("partial"), Type.Literal("failed"), Type.Literal("cancelled")]),
 	elapsedMs: Type.Optional(Type.Number({ minimum: 0 })),
 	status: Type.Optional(Type.Integer({ minimum: 100, maximum: 599 })),
 });
 export type FetchAttempt = {
-	backend: "local" | "direct" | "trawl" | "jina";
+	backend: "local" | "direct" | "trawl" | "jina" | "firecrawl";
 	outcome: "useful" | "partial" | "failed" | "cancelled";
 	elapsedMs?: number;
 	status?: number;
 };
-export type LocalFetchResult = {
-	backend: "local" | "jina";
+export type FetchReceipt = {
+	backend: FetchAttempt["backend"];
 	content: string;
 	finalUrl: string | null;
 	truncated: boolean;
 	attempts: FetchAttempt[];
+	quality?: string;
+	cache?: { state?: "hit" | "miss"; cachedAt?: string };
 };
+export type LocalFetchResult = FetchReceipt & { backend: "local" | "jina" };
 function record(value: unknown): Record<string, unknown> | undefined {
 	return value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
 }
@@ -28,7 +31,7 @@ export function fetchAttempts(value: unknown): FetchAttempt[] {
 	if (!Array.isArray(value) || value.length > 3) throw new Error("Invalid fetch attempts");
 	return value.map((value): FetchAttempt => {
 		const attempt = record(value);
-		if (!attempt || (attempt.backend !== "local" && attempt.backend !== "direct" && attempt.backend !== "trawl" && attempt.backend !== "jina")
+		if (!attempt || (attempt.backend !== "local" && attempt.backend !== "direct" && attempt.backend !== "trawl" && attempt.backend !== "jina" && attempt.backend !== "firecrawl")
 			|| (attempt.outcome !== "useful" && attempt.outcome !== "partial" && attempt.outcome !== "failed" && attempt.outcome !== "cancelled")) throw new Error("Invalid fetch attempt");
 		const elapsed = attempt.elapsedMs ?? attempt.elapsed_ms;
 		const status = attempt.status ?? attempt.http_status;

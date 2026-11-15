@@ -1,0 +1,103 @@
+import { AcquisitionError, acquisitionBudget, withinSignal } from "./acquisition.ts";
+import { invalidateProviderApiKey, providerApiKey } from "./credentials.ts";
+import type { FetchReceipt } from "./fetch-result.ts";
+
+type Budget = ReturnType<typeof acquisitionBudget>;
+const api = "https://api.firecrawl.dev/v2";
+function record(value: unknown): Record<string, unknown> | undefined {
+	return value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
+}
+function retryAfter(response: Response): number | undefined {
+	const value = response.headers.get("retry-after");
+	if (!value) return undefined;
+	const seconds = Number(value);
+	const ms = Number.isFinite(seconds) && seconds >= 0 ? seconds * 1000 : Date.parse(value) - Date.now();
+	return Number.isFinite(ms) && ms >= 0 ? ms : undefined;
+}
+async function responseJson(response: Response, signal: AbortSignal): Promise<unknown> {
+	const reader = response.body?.getReader();
+	if (!reader) throw new AcquisitionError("invalid-response", "Firecrawl returned an empty response");
+	let bytes = 0;
+	const chunks: Uint8Array[] = [];
+	try {
+		while (true) {
+			const next = await withinSignal(reader.read(), signal);
+			if (next.done) break;
+			bytes += next.value.byteLength;
+			if (bytes > 2 * 1024 * 1024) throw new AcquisitionError("invalid-response", "Firecrawl response exceeded the acquisition byte limit");
+			chunks.push(next.value);
+		}
+		try { return JSON.parse(Buffer.concat(chunks, bytes).toString("utf8")); }
+		catch { throw new AcquisitionError("invalid-response", "Firecrawl returned invalid JSON"); }
+	} finally {
+		void reader.cancel().catch(() => {});
+		reader.releaseLock();
+	}
+}
+
+/** API requests only; no Interact, actions, crawler, profile, proxy retries or account changes. */
+export async function requestFirecrawl(path: "/scrape" | "/search", input: Record<string, unknown>, budget: Budget): Promise<Record<string, unknown>> {
+	const credentialSignal = budget.attempt(10_000);
+	let key: string | undefined;
+	try { key = await withinSignal(providerApiKey("FIRECRAWL_API_KEY", credentialSignal), credentialSignal); }
+	catch { budget.signal.throwIfAborted(); throw new AcquisitionError("credentials", "Firecrawl credential unavailable"); }
+	budget.signal.throwIfAborted();
+	if (!key) throw new AcquisitionError("credentials", "Firecrawl credential unavailable");
+	const milliseconds = Math.min(45_000, budget.remaining() - 250);
+	if (milliseconds < 1000) throw new AcquisitionError("timeout", "Insufficient acquisition time for Firecrawl's minimum request timeout");
+	const signal = budget.attempt(milliseconds + 250);
+	const body = path === "/scrape" ? { ...input, timeout: milliseconds } : input;
+	try {
+		const response = await withinSignal(fetch(`${api}${path}`, {
+			method: "POST", redirect: "error", signal,
+			headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" }, body: JSON.stringify(body),
+		}), signal);
+		if (!response.ok) {
+			if (response.status === 401) invalidateProviderApiKey("FIRECRAWL_API_KEY", key);
+			void response.body?.cancel().catch(() => {});
+			const kind = response.status === 402 ? "quota" : response.status === 429 ? "rate-limit" : response.status === 401 ? "credentials"
+				: response.status === 403 ? "unsupported" : response.status === 400 || response.status === 422 ? "invalid-request" : "unavailable";
+			throw new AcquisitionError(kind, `Firecrawl API HTTP ${response.status}`, retryAfter(response));
+		}
+		const data = record(await responseJson(response, signal));
+		if (!data || data.success !== true) throw new AcquisitionError("unavailable", "Firecrawl reported unsuccessful acquisition");
+		return data;
+	} catch (error) {
+		budget.signal.throwIfAborted();
+		if (error instanceof AcquisitionError) throw error;
+		throw new AcquisitionError(signal.aborted ? "timeout" : "transport", "Firecrawl request unavailable");
+	}
+}
+
+export async function fetchFirecrawl(url: string, maxChars: number, budget: Budget): Promise<FetchReceipt> {
+	const started = performance.now();
+	const response = await requestFirecrawl("/scrape", {
+		url, formats: ["markdown"], onlyMainContent: true, proxy: "basic", parsers: [],
+		// Preserve the provider's default accepted cache age. Do not request
+		// LLM cleanup, screenshots, PDF/image OCR or force a fresh scrape.
+	}, budget);
+	const data = record(response.data);
+	if (!data) throw new AcquisitionError("invalid-response", "Firecrawl returned no page data");
+	const metadata = record(data.metadata);
+	const reportedStatus = metadata?.statusCode;
+	const status = typeof reportedStatus === "number" && Number.isInteger(reportedStatus) && reportedStatus >= 100 && reportedStatus <= 599 ? reportedStatus : undefined;
+	if (typeof status === "number" && status >= 400) {
+		const kind = status === 404 || status === 410 ? "not-found" : status === 401 || status === 403 ? "authentication" : status === 429 ? "rate-limit" : "unavailable";
+		throw new AcquisitionError(kind, `Firecrawl target HTTP ${status}`);
+	}
+	if (typeof data.markdown !== "string" || !data.markdown.trim()) throw new AcquisitionError("empty", "Firecrawl returned no readable page content");
+	const title = typeof metadata?.title === "string" ? metadata.title.slice(0, 500) : "";
+	const warning = typeof response.warning === "string" ? response.warning : typeof data.warning === "string" ? data.warning : "";
+	const page = [title ? `# ${title}` : "", data.markdown, warning ? `Provider warning: ${warning.slice(0, 2000)}` : ""].filter(Boolean).join("\n\n");
+	const truncated = page.length > maxChars || data.truncated === true;
+	const cache: NonNullable<FetchReceipt["cache"]> = {};
+	if (metadata?.cacheState === "hit" || metadata?.cacheState === "miss") cache.state = metadata.cacheState;
+	if (typeof metadata?.cachedAt === "string" && /^\d{4}-\d\d-\d\dT/.test(metadata.cachedAt) && Number.isFinite(Date.parse(metadata.cachedAt))) cache.cachedAt = new Date(metadata.cachedAt).toISOString();
+	return {
+		backend: "firecrawl", content: page.slice(0, maxChars) + (truncated ? "\n\n[Truncated by acquisition]" : ""),
+		// sourceURL is the requested source, not a verified final redirect URL.
+		finalUrl: null, truncated,
+		attempts: [{ backend: "firecrawl", outcome: truncated ? "partial" : "useful", elapsedMs: Math.round(performance.now() - started), ...(typeof status === "number" ? { status } : {}) }],
+		...(cache.state || cache.cachedAt ? { cache } : {}),
+	};
+}

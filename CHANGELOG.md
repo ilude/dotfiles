@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-11-14: Add explicit native Firecrawl page retrieval
+
+- Add a strict `web_fetch` Firecrawl backend using bounded Markdown scraping with basic proxy mode, no enhanced retries, no OCR/LLM/interactive formats, and the provider’s normal accepted cache age. Preserve the existing automatic chain in this increment; no gateway contract or deployment changes are needed.
+- Separate provider API failures from reported target HTTP failures, preserve unknown final redirects rather than substituting the requested source URL, and screen content through the shared reading-approval path. Expose only bounded acquisition facts and supplied cache metadata, not arbitrary provider payloads.
+- Resolve named provider credentials from the existing environment or workstation BWS locator using a cancellable direct child with child-local environment. Cache only successful keys and discard rejected cached authentication values without retrying the failed request. No credential files, new packages or live provider validation are introduced.
+
 ## 2026-11-14: Share response-specific reading approval across web tools
 
 - Let users read a flagged search response once through the same approval system as fetch. Keep the response untrusted, show its flagged excerpts, and preserve blocking when approval or interactive UI is absent. Approval is not permission to execute source instructions and never applies to later responses.

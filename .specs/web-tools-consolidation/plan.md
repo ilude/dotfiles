@@ -260,7 +260,7 @@ or a shortened scope.
     including approval/denial, no screening-driven reacquisition, ordinary setup
     prose and cancellation during approval. Provider/model calls are fixtures.
 
-- [ ] **W04: Native Firecrawl one-page retrieval**
+- [x] **W04: Native Firecrawl one-page retrieval**
   - Depends on: W01's provenance result; use the agreed cost/caching semantics.
   - Files: proposed Firecrawl provider module, `credentials.ts`, `index.ts`, focused
     provider/tool tests. Generalize only credential/request helpers this needs.
@@ -269,6 +269,15 @@ or a shortened scope.
     in this increment; no gateway API or running-service change is needed.
   - Done when: explicit retrieval and quota/unavailable/cancel paths work through
     the native tool using fixtures, without extra formats or paid options.
+  - Evidence: strict native Markdown scraping uses basic proxy, no enhanced
+    retries, no OCR/LLM/interactive formats and the provider default cache age.
+    Known target failures stay distinct from API success; unknown final redirects
+    remain unknown. Shared fetch finishing screens projected content once.
+    Named BWS lookup reuses the workstation locator, captures only the selected
+    key and keeps environment changes child-local. Typecheck passed; 80/81 cases
+    passed initially, then the affected curl file passed 3/3 after its outer
+    fixture window was aligned with its three bounded cold-start subprocesses.
+    These are fixture/local checks, not authenticated provider validation.
 
 - [ ] **W05: Native Firecrawl search**
   - Depends on: W04's Firecrawl credential/client and W02's search contract.
@@ -439,8 +448,8 @@ and schema edits. Dependencies above, not phase ordering alone, determine readin
 
 ## Current handoff
 
-- Status: W01–W03 implemented directly by the parent in the existing task
-  worktree; 16 implementation tasks remain. W04 is next. Full scope and acceptance remain
+- Status: W01–W04 implemented directly by the parent in the existing task
+  worktree; 15 implementation tasks remain. Continue W05 and independent W06. Full scope and acceptance remain
   unchanged; orchestration repairs no longer block feature implementation.
 - Completed: current code/tests/provider-doc reconnaissance and two Opus high
   design consultations. The full path retains Browserbase, automatic fallback,
@@ -468,7 +477,7 @@ and schema edits. Dependencies above, not phase ordering alone, determine readin
   developer: two focused T3 files pass 25 cases and typecheck passes. The calling
   runtime has not reloaded that changed closure. This does not block direct work;
   no raw/generic/native delegation fallback or role broadening is introduced.
-- Next action: implement W04 directly, then continue ready tasks without another
+- Next action: implement W05/W06 directly, then continue ready tasks without another
   coordinator launch, repair gate or repeated design consultation.
 - Product-design readiness: no open policy decisions. Preserve the task worktree,
   main's unrelated work, both operator stashes and the unrelated

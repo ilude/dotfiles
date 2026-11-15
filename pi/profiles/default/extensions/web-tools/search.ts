@@ -1,4 +1,5 @@
-import { acquisitionBudget, withinSignal } from "./acquisition.ts";
+import { AcquisitionError as SearchAcquisitionError, acquisitionBudget, withinSignal } from "./acquisition.ts";
+export { AcquisitionError as SearchAcquisitionError } from "./acquisition.ts";
 import { searchApiKey } from "./credentials.ts";
 
 export type SearchProvider = "searxng" | "serper" | "brave";
@@ -14,14 +15,6 @@ const serperUrl = "https://google.serper.dev/search";
 const braveUrl = "https://api.search.brave.com/res/v1/web/search";
 const providers: SearchProvider[] = ["searxng", "serper", "brave"];
 
-export class SearchAcquisitionError extends Error {
-	readonly kind: FailureKind;
-	readonly retryAfterMs: number | undefined;
-	constructor(kind: FailureKind, message: string, retryAfterMs?: number) {
-		super(message); this.kind = kind; this.retryAfterMs = retryAfterMs;
-	}
-	get eligible(): boolean { return this.kind !== "invalid-request"; }
-}
 function record(value: unknown): Record<string, unknown> | undefined {
 	return typeof value === "object" && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
 }
