@@ -9,9 +9,10 @@ import { fetchAttempts, parseLocalFetch, type FetchReceipt, type FetchAttempt } 
 import { fetchFirecrawl } from "./firecrawl.ts";
 import { fetchBrowserbase } from "./browserbase.ts";
 import { renderBrowserbase } from "./browserbase-render.ts";
+import { prepareExtraction } from "./structured.ts";
 export type FetchSelection = "auto" | "direct" | "trawl" | "jina" | "firecrawl" | "browserbase-static" | "browserbase-rendered";
 type Exec = Parameters<typeof gatewayCredentials>[0];
-type Request = { url: string; maxChars: number; backend?: FetchSelection; render?: boolean };
+type Request = { url: string; maxChars: number; backend?: FetchSelection; render?: boolean; format?: "markdown" | "json"; schema?: Record<string, unknown> };
 const directory = dirname(fileURLToPath(import.meta.url));
 function record(value: unknown): Record<string, unknown> | undefined { return value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : undefined; }
 function failureKind(value: unknown): value is AcquisitionFailure { return typeof value === "string" && ["transport", "timeout", "rate-limit", "quota", "credentials", "unavailable", "challenge", "empty", "invalid-response", "invalid-request", "unsupported", "not-found", "authentication"].includes(value); }
@@ -32,6 +33,12 @@ export function createFetch(exec: Exec) {
 		budget.signal.throwIfAborted();
 		if (input.render && ["direct", "browserbase-static"].includes(backend)) throw new AcquisitionError("unsupported", "Selected backend does not render JavaScript");
 		if (destination.privateOrLocal && (input.render || !["auto", "direct"].includes(backend))) throw new AcquisitionError("invalid-request", "Remote backends are disabled for local/private URLs");
+		const extraction = prepareExtraction(input.format, input.schema, input.maxChars);
+		if (extraction) {
+			if (destination.privateOrLocal) throw new AcquisitionError("invalid-request", "Remote extraction is disabled for local/private URLs");
+			if (backend !== "auto" && backend !== "firecrawl") throw new AcquisitionError("unsupported", "Selected backend does not support schema extraction");
+			return fetchFirecrawl(input.url, input.maxChars, budget, extraction);
+		}
 		if (backend === "firecrawl") return fetchFirecrawl(input.url, input.maxChars, budget);
 		if (backend === "browserbase-static") return fetchBrowserbase(input.url, input.maxChars, budget);
 		if (backend === "browserbase-rendered") return renderBrowserbase(input.url, input.maxChars, budget);

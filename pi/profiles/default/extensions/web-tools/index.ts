@@ -24,6 +24,7 @@ const WebSearchOutputSchema = Type.Object({
 const WebFetchOutputSchema = Type.Object({
 	url: Type.String(), content: Type.String(), screening: Type.Union([Type.Literal("screened"), Type.Literal("not-screened"), Type.Literal("flagged-approved")]),
 	backend: Type.Union([Type.Literal("local"), Type.Literal("direct"), Type.Literal("trawl"), Type.Literal("jina"), Type.Literal("firecrawl"), Type.Literal("browserbase-static"), Type.Literal("browserbase-rendered")]),
+	format: Type.Optional(Type.Union([Type.Literal("markdown"), Type.Literal("json")])), data: Type.Optional(Type.Unknown()), dataOmittedReason: Type.Optional(Type.Literal("size-limit")),
 	quality: Type.Optional(Type.String()), finalUrl: Type.Union([Type.String(), Type.Null()]),
 	recovery: Type.Optional(Type.String()),
 	truncated: Type.Optional(Type.Boolean()), attempts: Type.Array(FetchAttemptSchema),
@@ -97,7 +98,8 @@ export default function webTools(pi: ExtensionAPI) {
 		const metadata = {
 			backend: receipt.backend, finalUrl: receipt.finalUrl, attempts: receipt.attempts,
 			truncated: receipt.truncated || body !== receipt.content || content !== screened,
-			...(receipt.quality ? { quality: receipt.quality } : {}),
+			...(receipt.quality ? { quality: receipt.quality } : {}), ...(receipt.format ? { format: receipt.format } : {}),
+			...(receipt.data === undefined ? {} : { data: receipt.data }), ...(receipt.dataOmittedReason ? { dataOmittedReason: receipt.dataOmittedReason } : {}),
 			...(receipt.cache ? { cache: receipt.cache } : {}), ...(receipt.session ? { session: receipt.session } : {}), ...(recovery ? { recovery } : {}),
 		};
 		return { ...finished, details: { ...finished.details, ...metadata }, structuredContent: { url, content, screening: finished.details.screening, ...metadata } };
@@ -192,12 +194,14 @@ export default function webTools(pi: ExtensionAPI) {
 	});
 	pi.registerTool({
 		name: "web_fetch", label: "Web Fetch",
-		description: "Fetch readable HTTP(S) content through the optional adaptive gateway or workstation retrieval, or explicitly select Firecrawl Markdown, Browserbase static Fetch, or a fresh public Browserbase rendered read. Rendered reads release only their owned session and never borrow local/authenticated profiles. Browserbase static uses raw HTTP plus local extraction and does not execute JavaScript. Auto keeps suitable existing gateway/workstation/Jina routes first, then eligible Browserbase raw/static Fetch and Firecrawl. Rendering-required requests skip static Fetch. Eligible acquisition failure may finally reach a fresh Browserbase rendered read; useful partial data never triggers escalation. Public Jina fallback is remote; output identifies the actual backend, known final URL, attempts and truncation. Local/private URLs stay local. Auto mode recovers through the workstation on gateway outages; explicit backends stay strict. Luna flags possible prompt injection; an interactive user may approve reading that response once as untrusted source material. Without approval it stays blocked. Default 8000 chars; max 50000 chars and 45KB/1800 lines.",
+		description: "Fetch readable HTTP(S) content through the optional adaptive gateway or workstation retrieval, or explicitly select Firecrawl Markdown, Browserbase static Fetch, or a fresh public Browserbase rendered read. Rendered reads release only their owned session and never borrow local/authenticated profiles. Browserbase static uses raw HTTP plus local extraction and does not execute JavaScript. Auto keeps suitable existing gateway/workstation/Jina routes first, then eligible Browserbase raw/static Fetch and Firecrawl. Rendering-required requests skip static Fetch. Eligible acquisition failure may finally reach a fresh Browserbase rendered read; useful partial data never triggers escalation. Public Jina fallback is remote; output identifies the actual backend, known final URL, attempts and truncation. Local/private URLs stay local. Auto mode recovers through the workstation on gateway outages; explicit backends stay strict. Luna flags possible prompt injection; an interactive user may approve reading that response once as untrusted source material. Without approval it stays blocked. JSON extraction is explicit and schema-validated; ordinary reads never request LLM formats. Oversize JSON returns a marked partial view without unvalidated structured data. Default 8000 chars; max 50000 chars and 45KB/1800 lines.",
 		promptSnippet: "Fetch a web page as readable text",
 		outputSchema: WebFetchOutputSchema,
 		parameters: Type.Object({
 			url: Type.String({ description: "HTTP or HTTPS URL" }),
 			max_chars: Type.Optional(Type.Integer({ minimum: 1, maximum: 50_000 })),
+			format: Type.Optional(Type.Union([Type.Literal("markdown"), Type.Literal("json")], { description: "Default Markdown. JSON is explicit schema-based extraction and may consume the provider extraction allowance." })),
+			schema: Type.Optional(Type.Record(Type.String(), Type.Unknown(), { description: "JSON Schema for explicit extraction; required for format json. A schema alone also explicitly requests extraction." })),
 			render: Type.Optional(Type.Boolean({ description: "Require a rendering-capable route; static HTTP backends are not eligible." })),
 			backend: Type.Optional(Type.Union([Type.Literal("auto"), Type.Literal("direct"), Type.Literal("trawl"), Type.Literal("jina"), Type.Literal("firecrawl"), Type.Literal("browserbase-static"), Type.Literal("browserbase-rendered")], { description: "Default auto; explicit backend selection never substitutes another backend." })),
 		}),
@@ -218,7 +222,7 @@ export default function webTools(pi: ExtensionAPI) {
 		},
 		async execute(_id, params, signal, _onUpdate, ctx) {
 			const approve = readingApproval(params.url, ctx, signal);
-			const receipt = await acquireFetch({ url: params.url, maxChars: params.max_chars ?? 8000, backend: params.backend, render: params.render }, signal);
+			const receipt = await acquireFetch({ url: params.url, maxChars: params.max_chars ?? 8000, backend: params.backend, render: params.render, format: params.format, schema: params.schema }, signal);
 			return finishFetch(params.url, receipt, signal, approve, receipt.recovery);
 		},
 	});

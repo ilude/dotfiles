@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-14: Add explicit one-page Firecrawl schema extraction
+
+- Make JSON extraction an explicit format/schema request, separate from ordinary Markdown reads. Validate returned values against the requested JSON Schema using the installed TypeBox library, without cleaning, coercing or rewriting source data, then screen all serialized fields through the shared reading policy.
+- Return the unchanged structured object only when its full view fits the output bounds. Oversize responses remain marked partial views with the full object explicitly omitted, not malformed JSON presented as valid data or a trigger for another paid request. Keep basic proxy/cache/privacy settings and actual account limitations intact.
+
 ## 2026-11-14: Reach owned rendering after eligible retrieval failures
 
 - Permit automatic public-page Browserbase rendering after suitable existing/static/Firecrawl acquisition paths fail. Rendering requirements skip static Fetch, failed cloud calls do not impose a one-cloud-attempt lock, and useful partial data never triggers another session.

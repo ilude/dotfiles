@@ -439,12 +439,17 @@ and never retry a screening decision as an acquisition failure.
     than treating incidental result images as image search. Typecheck and three
     focused files pass 45/45 cases; no result scraping or live validation.
 
-- [ ] **W11a: Explicit Firecrawl single-page structured extraction**
+- [x] **W11a: Explicit Firecrawl single-page structured extraction**
   - Depends on: W04's fetch client and agreed extraction request semantics.
   - Establish explicit schema-based extraction and valid bounded structured output;
     screen untrusted field content without rewriting the requested data.
   - Done when: requested included extraction produces schema-shaped results and
     truthful provenance, while ordinary reads remain plain Markdown/text.
+  - Evidence: explicit JSON/schema requests use the existing TypeBox JSON Schema
+    validator without cleaning/coercion; all returned fields are screened as the
+    serialized object. Oversize output returns an honest partial view, omits the
+    full structured object and never buys another answer. Ordinary reads remain
+    Markdown. Typecheck passed and two focused files passed 35/35 cases.
 
 - [ ] **W11b: Browserbase single-page structured extraction**
   - Depends on: W07 and W11a's structured-result contract.
@@ -511,7 +516,7 @@ and schema edits. Dependencies above, not phase ordering alone, determine readin
 ## Current handoff
 
 - Status: W01–W04 implemented directly by the parent in the existing task
-  worktree, with W06–W07 also complete; 3 implementation tasks remain. W01–W10 are complete; automatic routing, explicit structured extraction and closeout remain. Continue ready tasks while the narrow W05 contract lookup completes. Full scope and acceptance remain
+  worktree, with W06–W07 also complete; 2 implementation tasks remain. W01–W11a are complete; automatic routing, explicit structured extraction and closeout remain. Continue ready tasks while the narrow W05 contract lookup completes. Full scope and acceptance remain
   unchanged; orchestration repairs no longer block feature implementation.
 - Completed: current code/tests/provider-doc reconnaissance and two Opus high
   design consultations. The full path retains Browserbase, automatic fallback,

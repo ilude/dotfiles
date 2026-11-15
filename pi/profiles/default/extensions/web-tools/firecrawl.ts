@@ -1,5 +1,6 @@
 import { AcquisitionError, AllowanceBackoff, acquisitionBudget, readJsonResponse, retryAfterMilliseconds, withinSignal } from "./acquisition.ts";
 import { invalidateProviderApiKey, providerApiKey } from "./credentials.ts";
+import type { Extraction } from "./structured.ts";
 import type { FetchReceipt } from "./fetch-result.ts";
 import type { SearchResponse, SearchResult, SearchKind } from "./search.ts";
 
@@ -62,10 +63,10 @@ export async function searchFirecrawl(input: { query: string; count: number; kin
 	}).filter(item => item.url || item.imageUrl) };
 }
 
-export async function fetchFirecrawl(url: string, maxChars: number, budget: Budget): Promise<FetchReceipt> {
+export async function fetchFirecrawl(url: string, maxChars: number, budget: Budget, extraction?: Extraction): Promise<FetchReceipt> {
 	const started = performance.now();
 	const response = await requestFirecrawl("/scrape", {
-		url, formats: ["markdown"], onlyMainContent: true, proxy: "basic", parsers: [],
+		url, formats: extraction ? [{ type: "json", schema: extraction.schema }] : ["markdown"], onlyMainContent: true, proxy: "basic", parsers: [],
 		// Preserve the provider's default accepted cache age. Do not request
 		// LLM cleanup, screenshots, PDF/image OCR or force a fresh scrape.
 	}, budget);
@@ -77,6 +78,10 @@ export async function fetchFirecrawl(url: string, maxChars: number, budget: Budg
 	if (typeof status === "number" && status >= 400) {
 		const kind = status === 404 || status === 410 ? "not-found" : status === 401 || status === 403 ? "authentication" : status === 429 ? "rate-limit" : "unavailable";
 		throw new AcquisitionError(kind, `Firecrawl target HTTP ${status}`);
+	}
+	if (extraction) {
+		const structured = extraction.result(data.json, typeof data.warning === "string" ? data.warning : typeof response.warning === "string" ? response.warning : undefined);
+		return { backend: "firecrawl", finalUrl: null, ...structured, attempts: [{ backend: "firecrawl", outcome: structured.truncated ? "partial" : "useful", elapsedMs: Math.round(performance.now() - started), ...(status === undefined ? {} : { status }) }] };
 	}
 	if (typeof data.markdown !== "string" || !data.markdown.trim()) throw new AcquisitionError("empty", "Firecrawl returned no readable page content");
 	const title = typeof metadata?.title === "string" ? metadata.title.slice(0, 500) : "";

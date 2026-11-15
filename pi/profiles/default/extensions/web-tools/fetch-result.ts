@@ -1,4 +1,5 @@
 import { Type } from "typebox";
+import type { JsonData } from "./structured.ts";
 
 export const FetchAttemptSchema = Type.Object({
 	backend: Type.Union([Type.Literal("local"), Type.Literal("direct"), Type.Literal("trawl"), Type.Literal("jina"), Type.Literal("firecrawl"), Type.Literal("browserbase-static"), Type.Literal("browserbase-rendered")]),
@@ -19,6 +20,9 @@ export type FetchReceipt = {
 	truncated: boolean;
 	attempts: FetchAttempt[];
 	quality?: string;
+	format?: "markdown" | "json";
+	data?: JsonData;
+	dataOmittedReason?: "size-limit";
 	session?: { id: string; released: boolean };
 	cache?: { state?: "hit" | "miss"; cachedAt?: string };
 };
