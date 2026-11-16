@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-16: Keep the work stand-up prompt in dotfiles
+
+- Store the approved EISA, gitlab-helm and MPS stand-up instructions in `config/t3-code/tasks/stand-up.md`, with schedule reference notes. The existing work-machine T3 task reads the file each run, so prompt edits have one repository-owned source.
+- Preserve the weekday 11:20 a.m. Eastern schedule, holiday exclusions, reporting window, parallel read-only evidence lookup and work-item bullets with trailing state and optional blocker/detail sub-bullets. Keep active scheduling and conversation bindings in local T3 state; pulling dotfiles or running setup does not create tasks on other machines.
+
 ## 2026-11-16: Document the reviewed Hatchery queue and scheduler proposal
 
 - Record independent Sol and ccyl Opus high designs, fresh adversarial reviews from both models, and parent synthesis for reusable work scheduling and lifecycle-owning executors. Keep one-shot scheduling, observable worker outcomes, cancellation semantics, requested output retrieval and job-owned allocation binding distinct from TTL cleanup or speculative safeguards.

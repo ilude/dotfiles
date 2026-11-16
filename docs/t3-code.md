@@ -162,6 +162,19 @@ thread for the configured launch/model defaults. Setup itself does not restart
 T3 or Pi, reload a conversation, authenticate providers, or verify loaded UI
 behavior. General browser preferences do not enable remote access.
 
+## Machine-local scheduled prompts
+
+The stand-up prompt lives in
+[`config/t3-code/tasks/stand-up.md`](../config/t3-code/tasks/stand-up.md).
+The existing task on `DEV-WKS-MGLENN` reads that file on each run. Edit the file
+to change its instructions without copying the full prompt into T3 settings.
+
+The file documents the weekday 11:20 a.m. Eastern schedule and holiday rules.
+The active schedule and conversation binding remain local to T3; schedule changes
+must also be applied through T3's scheduling controls. Neither pulling dotfiles
+nor workstation setup installs the task on another machine. No T3 database,
+session state, or task installation hook is tracked.
+
 ## Local source checkout and build
 
 [`modules/t3code`](../modules/t3code) is a Git submodule of
