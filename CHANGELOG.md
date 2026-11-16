@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-16: Document the reviewed Hatchery queue and scheduler proposal
+
+- Record independent Sol and ccyl Opus high designs, fresh adversarial reviews from both models, and parent synthesis for reusable work scheduling and lifecycle-owning executors. Keep one-shot scheduling, observable worker outcomes, cancellation semantics, requested output retrieval and job-owned allocation binding distinct from TTL cleanup or speculative safeguards.
+- Recommend a local SQLite ledger and one dispatcher without claiming consensus over the reviewers' locked-JSON/oneshot alternative. Keep data and completion defaults proposed rather than approved. The separate Sol Steward confirmed existing TTL restrictions and advised source preservation during design, not additional gates or a TTL repair framework. No runtime implementation, deployment, tests of a queue, publication or source cleanup is implied.
+
 ## 2026-11-15: Verify native Grok delegation through T3
 
 - Confirm a Pi-enforced T3 child executed on `amazon-bedrock/us.xai.grok-4.7`, called `read`, and answered from the tool result. Remove the stale catalog-refresh blocker from the operational docs: an older on-disk T3 cache did not prevent the live launch, and no additional provider refresh was needed.
