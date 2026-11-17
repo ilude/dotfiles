@@ -12,6 +12,7 @@ The active Pi profile is the configuration directory used by the running Pi proc
 - Read the installed Pi documentation and examples for the affected API. Resolve uncertainty against installed source/types, not assumptions from other extension systems.
 - Follow comparable active-profile extensions, matching purpose and operating environment. Reuse their helpers where applicable.
 - Keep tool descriptions, schemas, and model guidance with the owning tool. Enforce required behavior in code, not prompt instructions alone.
+- Registered tool inputs must use an object root without top-level `anyOf`, `oneOf`, or `allOf` for Bedrock compatibility. Keep operation-specific validation internal, and preserve `tests/tool-schemas.test.ts` when rewriting tools or profiles; it checks all default extension tools, including deferred tools, at startup and reload.
 - For native `tool_search` and `codemode`, treat discovery as availability, not authority: deferred tools are searchable, direct tools are not, and the active role's registered callable set still limits scripts. Scripted calls pass through normal validation and `tool_call`/`tool_result` hooks. Do not infer that a structured error value means success or that a completed external side effect is rolled back when a script fails.
 - Use typed `outputSchema` plus matching `structuredContent` for composable data, while keeping model-facing content and rendered details compatible. Screen and project results before returning structured data; native codemode does not validate tool outputs against their schemas.
 

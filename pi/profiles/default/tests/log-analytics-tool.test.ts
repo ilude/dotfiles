@@ -23,6 +23,7 @@ describe("log_analytics registered tool", () => {
 		const result = await execute({ operation: "catalog" });
 		expectStructured(result);
 		expect(pi._getTool("log_analytics")?.exposure).toBe("deferred");
+		expect(Check(pi._getTool("log_analytics")!.parameters, { operation: "catalog" })).toBe(true);
 		expect(pi.getActiveTools()).not.toContain("log_analytics");
 		expect(result.details.sources.map((item: { source: string }) => item.source)).toEqual(["session_entries", "bedrock_usage", "codex_cache_observations"]);
 		expect(resolver).not.toHaveBeenCalled();

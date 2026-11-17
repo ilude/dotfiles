@@ -42,7 +42,7 @@ const commonQuery = {
 	profiles, sources: Type.Array(StringEnum(SOURCE_IDS), { minItems: 1, maxItems: 3, uniqueItems: true }), sessionRefs,
 	sql: Type.String({ minLength: 1, maxLength: 32_000 }),
 	parameters: Type.Optional(Type.Record(Type.String(), Type.Union([Type.String(), Type.Number(), Type.Boolean(), Type.Null()]))),
-	execution: Type.Optional(StringEnum(["standard", "large"] as const)),
+	execution: Type.Optional(Type.Enum(["standard", "large"], { type: "string" })),
 	maxRows: Type.Optional(Type.Integer({ minimum: 1, maximum: 1000 })),
 	maxBytes: Type.Optional(Type.Integer({ minimum: 1, maximum: 256 * 1024 })),
 };
@@ -91,7 +91,7 @@ const coverageResult = Type.Object({
 }, { additionalProperties: false });
 
 /** Operation-specific schemas keep model-generated fields from crossing operation boundaries. */
-export const analyticsSchema = Type.Union([
+const analyticsRequestSchema = Type.Union([
 	Type.Object({ operation: Type.Literal("catalog") }, { additionalProperties: false }),
 	Type.Object({ operation: Type.Literal("sessions"), profiles, ...locationScope, sessionIds: Type.Optional(Type.Array(Type.String({ minLength: 1, maxLength: 256 }), { minItems: 1, maxItems: 1000 })), maxRows: Type.Optional(Type.Integer({ minimum: 1, maximum: 1000 })), cursor: Type.Optional(Type.String({ minLength: 1, maxLength: 1024 })) }, { additionalProperties: false }),
 	Type.Object({ operation: Type.Literal("query"), ...commonQuery }, { additionalProperties: false }),
@@ -99,7 +99,24 @@ export const analyticsSchema = Type.Union([
 	Type.Object({ operation: Type.Literal("follow_up"), occurrence, before: Type.Optional(Type.Integer({ minimum: 0, maximum: 20 })), after: Type.Optional(Type.Integer({ minimum: 0, maximum: 20 })) }, { additionalProperties: false }),
 	Type.Object({ operation: Type.Literal("session_lineage"), ...lineage }, { additionalProperties: false }),
 ]);
-export type LogAnalyticsInput = Static<typeof analyticsSchema>;
+export type LogAnalyticsInput = Static<typeof analyticsRequestSchema>;
+
+// Bedrock requires a plain object input: even an explicit object root cannot
+// contain top-level anyOf/oneOf/allOf. Keep operation checks in execute().
+export const analyticsSchema = Type.Object({
+	operation: StringEnum(["catalog", "sessions", "query", "search", "follow_up", "session_lineage"] as const),
+	profiles, sessionRefs, ...locationScope, interval, filters,
+	sources: Type.Optional(commonQuery.sources), sql: Type.Optional(commonQuery.sql),
+	parameters: commonQuery.parameters, execution: commonQuery.execution,
+	maxRows: commonQuery.maxRows, maxBytes: commonQuery.maxBytes,
+	sessionId: Type.Optional(lineage.sessionId),
+	sessionIds: Type.Optional(Type.Array(Type.String({ minLength: 1, maxLength: 256 }), { minItems: 1, maxItems: 1000 })),
+	maxResults: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
+	cursor: Type.Optional(Type.String({ minLength: 1, maxLength: 1024 })),
+	occurrence: Type.Optional(occurrence),
+	before: Type.Optional(Type.Integer({ minimum: 0, maximum: 20 })),
+	after: Type.Optional(Type.Integer({ minimum: 0, maximum: 20 })),
+}, { additionalProperties: false });
 
 /** Per-operation contracts preserve the dynamic SQL row shape without leaking unbounded internals. */
 export const analyticsOutputSchema = Type.Union([
@@ -163,7 +180,7 @@ export function registerLogAnalytics(pi: ExtensionAPI, resolveProfiles: () => Pr
 		exposure: "deferred", renderCall: renderAnalyticsCall, renderResult: renderAnalyticsResult,
 		async execute(_id, params, signal) {
 			// Hooks may mutate tool arguments after Pi validation.
-			if (!Check(analyticsSchema, params)) throw new Error("invalid log_analytics arguments");
+			if (!Check(analyticsRequestSchema, params)) throw new Error("invalid log_analytics arguments");
 			let details: unknown;
 			if (params.operation === "catalog") details = { sources: analyticsCatalog(),
 				defaults: { execution: "automatic when omitted", profiles: "active registered profile", threads: 2, memoryLimit: "2GB", maxRows: 1000, maxRowBytes: 262144,

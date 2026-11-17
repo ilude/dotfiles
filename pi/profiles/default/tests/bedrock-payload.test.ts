@@ -7,6 +7,7 @@ import { anthropicMessagesApi } from "@earendil-works/pi-ai/compat";
 import { getBuiltinModels } from "@earendil-works/pi-ai/providers/all";
 import { buildBedrockModelRoutes, createBedrockRoutingStream } from "../lib/bedrock/provider.ts";
 import { codexHistory, discoveredClaudeIds } from "./fixtures/bedrock-cross-provider.ts";
+import { analyticsSchema } from "../extensions/log-analytics-tool.js";
 
 // Keep discovery controlled for the older Mantle protocol cases. The real
 // native model definitions, routing policy, and payload serializers stay intact;
@@ -128,7 +129,9 @@ describe("Bedrock real adapter serialization", () => {
 			const target = { ...route.target, baseUrl: `http://127.0.0.1:${(server.address() as AddressInfo).port}` };
 			const stream = createBedrockRoutingStream(async () => { throw new Error("Runtime must not use Mantle auth"); }, () => ({ ...route, target }));
 			const options: SimpleStreamOptions = { reasoning: "low", maxTokens: 128, signal: AbortSignal.timeout(5000), env: { AWS_BEDROCK_SKIP_AUTH: "1", AWS_BEDROCK_FORCE_HTTP1: "1", NO_PROXY: "127.0.0.1", AWS_REGION: "us-east-1" } };
-			const result = await stream(route.model, normalizeContext(structuredClone(codexHistory)), options).result();
+			const context = structuredClone(codexHistory);
+			context.tools!.push({ name: "log_analytics", description: "Read-only Pi history analytics", parameters: analyticsSchema });
+			const result = await stream(route.model, normalizeContext(context), options).result();
 			expect(result.errorMessage).toContain("intercepted serialized request");
 			expect(requests).toHaveLength(1);
 			expect(decodeURIComponent(requests[0].url)).toContain(`/model/${route.target.id}/converse-stream`);
@@ -136,6 +139,9 @@ describe("Bedrock real adapter serialization", () => {
 			expectCompatibleMessages(payload);
 			expect(payload.additionalModelRequestFields).toMatchObject({ thinking: { type: "adaptive" }, output_config: { effort: "low" } });
 			expect(payload.inferenceConfig.maxTokens).toBe(128);
+			const analyticsTool = payload.toolConfig.tools.find((tool: { toolSpec?: { name: string } }) => tool.toolSpec?.name === "log_analytics");
+			expect(analyticsTool.toolSpec.inputSchema.json).toEqual(JSON.parse(JSON.stringify(analyticsSchema)));
+			expect(analyticsTool.toolSpec.inputSchema.json.type).toBe("object");
 		} finally {
 			server.closeAllConnections();
 			await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));

@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-11-17: Restore Bedrock-compatible analytics tool inputs
+
+- Restore a plain-object `log_analytics` input while preserving strict operation-specific execution validation. Loading the deferred tool and then switching to native Fable exposed a root union that Bedrock rejected before inference; AWS credentials were not the cause. The September 4 fix and its schema assertion had not survived the default-profile rewrite, and the September 10 analytics expansion reintroduced the union.
+- Check every default-profile extension tool's serialized input at startup and reload, including deferred tools, for an object root without top-level `anyOf`, `oneOf` or `allOf`. This runs in the existing test suite without starting sessions or calling services. Restore the compatibility constraint and the cross-tool test reference in the existing Pi extension skill. Also cover the actual analytics schema in the installed Bedrock request serializer, rather than checking only a hand-written tool fixture.
+- Confirm native `amazon-bedrock/us.anthropic.claude-fable-5-1` accepts the corrected analytics definition in `us-east-2` and returns a capped reply. Existing sessions need an idle runtime reload to replace the loaded tool definition; no account, authentication, model-route or legacy-profile changes are made.
+
 ## 2026-11-17: Implement Hatchery template building and fast multi-OS clones
 
 - Record separate requirements to build a clean, updated Windows template from an ISO when needed, then quickly create linked or full clones for the intended machine lifetime. Apply the same build-and-clone workflow to Fedora, Ubuntu, Debian, Arch Linux and NixOS rather than treating Debian support as Linux-wide coverage.
