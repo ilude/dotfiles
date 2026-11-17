@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-17: Expose app options inside browser snapshot listboxes
+
+- Traverse custom listbox contents so visible app names and uniquely identified options appear in full-page and focused snapshots. Previously the browser tool reported only regional resource groups, hiding their app tiles even without truncation.
+- Keep native input, textarea, select and contenteditable values suppressed, including native selects and editors with a listbox role. Preserve exact-target browser control and existing observation budgets; no browser launch, window or interaction behavior changes.
+
 ## 2026-11-16: Select S3-primary analytics and larger data defaults
 
 - Select S3-primary analytical storage with a bounded local cache, keeping bulk storage on the larger storage host and indexing/query compute on the AVX2-capable host. Preserve durable local metadata, separate diagnostics, application semantics and independent archive/orchestration lifecycle policies.

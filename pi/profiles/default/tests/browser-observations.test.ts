@@ -44,6 +44,28 @@ describe("browser observation projections", () => {
     expect(text).toContain('"name":"Password"'); expect(text).toContain('"selector":"#password"'); expect(text).toContain("?topic=token"); expect(text).toContain("Token documentation");
     for (const secret of ["hidden-secret", "textarea-secret", "select-secret", "editable-secret"]) expect(text).not.toContain(secret);
   });
+  it.each([undefined, "#arizona", "#virginia"])("projects listbox resource options and unique selectors with subtree %s", selector => {
+    const apps = ["Edge", "Logoff", "Outlook", "Teams", "Army Desktop"];
+    const regions = ["arizona", "virginia"];
+    const dom = browserDom(regions.map(region => `<div id="${region}" role="listbox" aria-label="Resources - ${region}">${apps.map(app => `<div role="option"><span>${app}</span></div>`).join("")}<input value="input-secret"><textarea>textarea-secret</textarea><select role="listbox"><option>select-secret</option></select><div contenteditable role="listbox">editable-secret</div></div>`).join(""));
+    const text = dom.evaluate(browserTextExpression(selector)) as string;
+    const records = text.split("\n").filter(line => line.startsWith("[control] ")).map(line => JSON.parse(line.slice(10)));
+    const options = records.filter(record => record.role === "option");
+    expect(options).toHaveLength(apps.length * (selector ? 1 : regions.length));
+    expect(text).toContain("[text]\n" + apps.join("\n"));
+    for (const [index, option] of options.entries()) {
+      expect(option).toMatchObject({ name: apps[index % apps.length], disabled: false, visible: true });
+      expect(option.selector).not.toBeNull();
+      const nodes = dom.window.document.querySelectorAll(option.selector);
+      expect(nodes).toHaveLength(1);
+      expect(nodes[0].textContent).toBe(option.name);
+    }
+    for (const region of selector ? [selector.slice(1)] : regions) {
+      expect(records).toContainEqual(expect.objectContaining({ role: "listbox", name: `Resources - ${region}`, selector: `#${region}` }));
+    }
+    for (const secret of ["input-secret", "textarea-secret", "select-secret", "editable-secret"]) expect(text).not.toContain(secret);
+    expect(text).toContain('"text":false,"controls":false,"facts":false');
+  });
   it("uniquely identifies no-id buttons, repeated names/IDs, links and supported interactive roles in the full exact document", () => {
     const dom = browserDom('<section><button id="duplicate" name="same">First</button><a href="/first">First link</a></section><section><button id="duplicate" name="same">Second</button><a href="/second">Second link</a><div role="tab" aria-label="Details" aria-disabled="true"></div><button style="display:none">Hidden</button><fieldset disabled><input aria-label="Unavailable"></fieldset></section>');
     const text = dom.evaluate(BROWSER_TEXT_EXPRESSION) as string;

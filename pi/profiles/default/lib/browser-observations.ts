@@ -53,7 +53,8 @@ export function browserTextExpression(selector?: string): string {
   ${selector === undefined ? "" : `let roots; try { roots = document.querySelectorAll(${JSON.stringify(selector)}); } catch { return { error: 'selector_invalid' }; }
   if (roots.length !== 1) return { error: roots.length ? 'selector_ambiguous' : 'selector_missing' }; root = roots[0];`}
   const bounded = (value, limit) => { value = String(value || ''); if (value.length > limit) factsTruncated = true; return value.slice(0, limit); };
-  const field = node => ['INPUT','TEXTAREA','SELECT'].includes(node.tagName) || node.hasAttribute('contenteditable') || ['textbox','searchbox','combobox','listbox','spinbutton','slider'].includes(node.getAttribute('role'));
+  // Composite listboxes contain observable options; native/select and editable values remain opaque.
+  const field = node => ['INPUT','TEXTAREA','SELECT'].includes(node.tagName) || node.hasAttribute('contenteditable') || ['textbox','searchbox','combobox','spinbutton','slider'].includes(node.getAttribute('role'));
   const nameText = node => {
     const parts = [], stack = [node]; let size = 0;
     while (stack.length && size < 161) {
