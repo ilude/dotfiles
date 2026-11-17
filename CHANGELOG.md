@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-11-17: Implement Hatchery template building and fast multi-OS clones
+
+- Record separate requirements to build a clean, updated Windows template from an ISO when needed, then quickly create linked or full clones for the intended machine lifetime. Apply the same build-and-clone workflow to Fedora, Ubuntu, Debian, Arch Linux and NixOS rather than treating Debian support as Linux-wide coverage.
+- Implement local Windows ISO/update/Sysprep, Debian/Ubuntu/Fedora/Arch cloud-image preparation and native NixOS minimal-ISO installation, with separate identity-only clone initialization. Add resumable template/machine commands, readiness timestamps, private per-resource media and dependency protection for linked/unfinished copies. Full copies become independent only after completion; the existing native full-clone default is preserved.
+- Add real-user Windows detached jobs with Limited interactive/profile proof, native process-tree completion/cancellation, binary transfers/log cursors and full-width exit codes. A proven pre-execution failure finishes without inventing an exit status; uncertain execution remains unknown. Template jobs can explicitly retain their new machine independently of clone mode, without adopting manual machines or changing legacy disposable release behavior.
+- Keep generic facilities in Hatchery, private bindings/credentials with their owner, and installation/update work off the clone fast path. Share pure Proxmox field helpers so finite factory steps do not repeatedly load the Alchemy SDK. No activation prerequisite, evaluation reset, arbitrary expiry, storage cap, automatic command replay or warm-pool service is added.
+- Pass both owning Node 26 typechecks, 127 Windows tests (13 Linux-only skips), 45 Linux checks, 40 focused compute tests and actual private-ISO packaging fixtures. This is local implementation, not six-OS installation/boot, Windows desktop, measured clone-speed or deployment acceptance. No new commit/push or live-operation authority is inferred.
+
 ## 2026-11-17: Resolve subagent models through working provider availability
 
 - Resolve bare subagent model names and role defaults from fresh, provider-scoped chat availability, preferring configured OpenAI access before Bedrock Mantle and native Bedrock. The old OpenAI-only alias gate relied on cached authentication state and could reject a working subscription session when another provider prevented that cache from refreshing.
