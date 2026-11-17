@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-11-16: Add Hatchery saved jobs and one-shot scheduling
+
+- Implement the approved queue with one native SQLite ledger, one dispatcher and a small reusable executor interface. The first executor creates a distinct job-owned worker, keeps work running across caller disconnects, collects requested files and releases the worker on confirmed completion, including known command failure. Failed retrieval or uncertain execution retains it for observation, explicit retry or deliberate release.
+- Add submit/list/status/cancel/logs/retrieve/release commands, submitted-file snapshots, immediate/delayed starts, stable worker systemd handles and persistent completion records. Keep cancellation intent and command, retrieval and release outcomes separate; uncertain commands are observed, not automatically replayed. Wait for workload descendants before publishing durable completion, rather than trusting an early main-process exit after unit loss. Logs stay private and worker-local unless explicitly retrieved before release.
+- Preserve manual commands and existing opt-in TTL behavior. No worker-log storage cap, queue runtime deadline, recurring schedule or permanent guest agent is added. Supply an opt-in dispatcher service and ordinary usage documentation without installing or enabling it. Node 26 local checks cover SQLite, CLI/flock, shell wrappers and simulated lifecycle boundaries; they do not establish live Proxmox/worker-systemd acceptance or deployment.
+
 ## 2026-11-16: Reduce running ClickHouse diagnostic generation
 
 - Hot-reload information-level server/text logging and disable automatic per-query processor profiles and CPU/wall-clock sampling without restarting the engine. Keep ordinary query logging, existing retention, analytical data and raw archives unchanged.
