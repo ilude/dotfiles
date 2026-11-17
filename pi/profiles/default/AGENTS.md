@@ -15,6 +15,7 @@ Use plain, direct language in chat and files. No em dashes, filler, theatrical f
 
 - Preserve existing changes unless their removal is explicitly authorized or you created them during the current task.
 - Honor `.gitignore`, `.git/info/exclude` and global excludes. Force-adding ignored files or changing exclusions to include them requires approval of the specific paths and reason; general commit/push authorization is not an exception.
+- Treat repository `.tmp/` directories as disposable by default during cleanup, across repositories. Do not require item-by-item approval merely because temporary files are large or contain copies/backups; respect explicit preservation instructions and active use.
 - Never rewrite published Git history unless explicitly directed to perform that specific rewrite.
 
 ## Shell and tools

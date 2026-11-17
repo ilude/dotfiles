@@ -1,5 +1,32 @@
 # Changelog
 
+## 2026-11-16: Reduce running ClickHouse diagnostic generation
+
+- Hot-reload information-level server/text logging and disable automatic per-query processor profiles and CPU/wall-clock sampling without restarting the engine. Keep ordinary query logging, existing retention, analytical data and raw archives unchanged.
+- Add optional generic renderer controls and select the quieter settings in the private site source. In three matched smoke queries, diagnostic text rows fell from 48 to zero and processor-profile rows from 27 to zero; the engine process identity stayed unchanged and temporary observation grants were removed. This bounded check is not a long-term storage-growth measurement.
+- Keep the three-filesystem migration unimplemented and the proposed 24-hour expiry as a fallback rather than enabling it incidentally. Updating managed source does not publish or deploy a new controller release.
+
+## 2026-11-16: Reaffirm durable diagnostic-log and data isolation
+
+- Record the Hatchery requirement for separate diagnostic-log and application-data filesystems, including database-internal diagnostic tables. The current ClickHouse guest separates only OS and service data; its system-log tables exhausted the analytical data filesystem.
+- Mark that deployed layout as an implementation gap rather than treating log purging or shorter retention as equivalent isolation. No storage migration, log purge or retention-policy change is applied by this documentation update.
+- Separately complete the authorized ClickHouse diagnostic-only purge, recovering about 22.3 GiB while preserving analytical tables, raw archives and local session originals. Restore temporary maintenance privileges and the original filesystem reserve afterwards.
+- Coordinate the proposed three-domain layout, in-place migration and disk/partition/filesystem expansion in the private homelab-config storage-isolation plan. Keep routine diagnostic retention pending operator selection; no new storage layout or automatic expiry is implemented.
+
+## 2026-11-16: Import legacy Pi sessions with remote read-back verification
+
+- Add an explicit Onclave import for native session JSONL in the legacy profile's `sessions/` and `history/` directories, preserving profile/path attribution without activating that runtime or changing ordinary background source selection.
+- Reuse the default runtime's upload identity and checkpoints, then compare every remote byte with local originals. Support verification-only runs for default sessions; retain all local history and keep raw archival separate from default-only ClickHouse projections and their indexing coverage.
+
+## 2026-11-16: Treat repository temporary directories as disposable
+
+- Clarify the default Pi cleanup preference across repositories: `.tmp/` contents are disposable without item-by-item approval, including temporary copies and backups. Preserve explicit protection instructions and active use.
+
+## 2026-11-16: Document Windhawk as the current taskbar customization
+
+- Remove the obsolete ExplorerPatcher migration note now that the workstation uses Windhawk. Record the observed Windhawk mods, updated versions and settings in `docs/windhawk.md`.
+- Clarify that Windhawk settings remain machine-local and are not automatically synchronized by dotfiles. Describe settings-only tracking without committing installed binaries or treating local installation metadata as portable configuration; no installer or registry changes are made.
+
 ## 2026-11-16: Keep the work stand-up prompt in dotfiles
 
 - Store the approved EISA, gitlab-helm and MPS stand-up instructions in `config/t3-code/tasks/stand-up.md`, with schedule reference notes. The existing work-machine T3 task reads the file each run, so prompt edits have one repository-owned source.
