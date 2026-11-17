@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-11-16: Select S3-primary analytics and larger data defaults
+
+- Select S3-primary analytical storage with a bounded local cache, keeping bulk storage on the larger storage host and indexing/query compute on the AVX2-capable host. Preserve durable local metadata, separate diagnostics, application semantics and independent archive/orchestration lifecycle policies.
+- Set service-data partitions to a default minimum of 64 GiB. Require use-case-specific evidence of long-term growth and working-space viability for a 32 GiB exception. Default S3 backing data storage to 128 GiB or larger; bucket quotas and cache limits are not filesystem allocations, and larger existing allocations remain intact.
+- Revise the private coordinating plan for engine-managed S3 migration, indexer relocation, bounded-cache acceptance and rollback that retains remote access until parts are moved back. End-to-end execution was subsequently authorized, conditional on passing isolated validation before production cutover; no unrelated fleet resizing or expiry changes are included.
+- Implement the initial reusable disk prerequisites locally: stable named additional attachments, identity-preserving growth and a retained serial-selected GPT/ext4 guest-volume provider. Focused Node 26 fixtures and owning typechecks passed; actual disk/S3 migration acceptance remains separate from local implementation.
+
 ## 2026-11-16: Add Hatchery saved jobs and one-shot scheduling
 
 - Implement the approved queue with one native SQLite ledger, one dispatcher and a small reusable executor interface. The first executor creates a distinct job-owned worker, keeps work running across caller disconnects, collects requested files and releases the worker on confirmed completion, including known command failure. Failed retrieval or uncertain execution retains it for observation, explicit retry or deliberate release.
