@@ -25,6 +25,12 @@ Every profile-owned extension command, plus commands from adapters explicitly in
 
 The command registry registers no model-facing tools and does not alter the active tool set. `/commit` captures its push choice from the command arguments and presents progress, ignore questions, errors, and results directly. Escape or session shutdown cancels waiting/running work; cleanup removes temporary status and input listeners. The existing ignore dialog shows the repository-relative candidate, reason, and proposed `.gitignore` rule. Answering resumes the same private task, with its active-work timer paused during the question. This command does not restrict ordinary shell permissions or introduce a slash-only authorization requirement for conversational Git requests.
 
+## Subagent model selection
+
+Use a bare family such as `model: "sol"` or `model: "luna"`, or omit `model` for the role default. Launches check fresh, provider-scoped chat availability rather than cached authentication flags. Native launches, coordinator delegates and T3 role launches prefer configured OpenAI access, then Bedrock Mantle, then native Bedrock. Sol stays pinned to 6.1, including AWS-prefixed IDs; another family or an older Sol is not substituted.
+
+An unavailable or failing availability lookup can advance to the next allowed provider before launch. A running assignment is not replayed on another provider. Explicit `provider/model` requests remain exact. Opus stays on the AWS routes inside Pi, and Grok uses native US Bedrock. The caller prefers the task's configured subscription route while preserving project/account identity. Claude subscription access belongs to the separate Claude Code/ccyl client, not a Pi provider; an assignment requiring Pi-specific role enforcement stays on the Pi/AWS route rather than silently losing that enforcement. Direct Anthropic API access still requires an explicit provider override. No credentials are copied between clients.
+
 ## Add a command
 
 Prompt-backed profile commands use the registry below. Direct runtime commands, such as `/clear`, `/exit`, `/effort`, and terminal launchers, can instead define their own handler in `extensions/` when they need Pi command context methods; all profile-owned handlers register through `registerProfileCommand`. `/clear` checks the same reload monitor used by the footer and calls the runtime reload flow in the replacement session when the monitor has marked reload as needed. Native Pi prompt templates can be added as `prompts/<name>.md` with frontmatter.

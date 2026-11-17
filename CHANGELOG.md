@@ -1,9 +1,24 @@
 # Changelog
 
+## 2026-11-17: Resolve subagent models through working provider availability
+
+- Resolve bare subagent model names and role defaults from fresh, provider-scoped chat availability, preferring configured OpenAI access before Bedrock Mantle and native Bedrock. The old OpenAI-only alias gate relied on cached authentication state and could reject a working subscription session when another provider prevented that cache from refreshing.
+- Apply the same selection at native, coordinator and T3 role launch boundaries. Keep requested families, the Sol 6.1 pin (including native AWS namespaces), exact provider-qualified requests, cancellation and existing Opus/Grok provider restrictions. Availability failures may advance to the next allowed provider before launch; running assignments are not replayed.
+- Clarify the ordinary tool interface: omit the model for its role default or provide a bare family, without guessing provider IDs. Claude subscriptions remain on the separate Claude Code/ccyl client route; no credential copying, new login requirement or direct-Anthropic fallback is introduced.
+
 ## 2026-11-17: Expose app options inside browser snapshot listboxes
 
 - Traverse custom listbox contents so visible app names and uniquely identified options appear in full-page and focused snapshots. Previously the browser tool reported only regional resource groups, hiding their app tiles even without truncation.
 - Keep native input, textarea, select and contenteditable values suppressed, including native selects and editors with a listbox role. Preserve exact-target browser control and existing observation budgets; no browser launch, window or interaction behavior changes.
+
+## 2026-11-17: Implement local analytical storage configuration prerequisites
+
+- Add optional native ClickHouse S3-primary/cache configuration with durable local metadata, protected credentials and a legacy local volume retained for engine-managed migration and reversal. Require separately mounted diagnostics, route selected internal logs and preserve existing retention unless explicitly selected.
+- Add protected stdin to native CLI configuration and a bucket-scoped SeaweedFS identity helper that avoids rewriting static identities or restarting the shared storage service. Private composition opts into a distinct analytical bucket/identity and checks the existing backing-capacity floor without resizing its LVM layout or changing raw/archive/orchestration lifecycles.
+- Wire the private host composition to grow its existing data filesystem to at least 64 GiB, prepare a named diagnostic attachment and consume native S3/cache settings through protected runtime capabilities. Route host journal, container stdout and engine system logs separately; retain original OS logs and existing retention. The diagnostic bind is a required normal-boot filesystem, and user units check live mounts rather than depend on system-manager mount units.
+- Add independently selected private database access and worker catalog entries. A credential-free relay reuses the app's installed image and private container network, restricts ingress to the worker source and does not rewrite or restart PostgreSQL. These are local integration changes; cross-guest connectivity and cutover remain unaccepted.
+- Split private API and indexer composition: preserve the API's existing resource identities and reader environment, and give the independent worker only its selected database/raw-S3/analytical-writer inputs. Keep the worker identity and daily update policy, with an explicit initial image digest for the new target. Five worker/API binding tests and the private typecheck pass; connectivity, relocation and retirement of the old launcher remain deployment work.
+- Pass 58 focused Hatchery tests (one Windows-specific skipped), and 42 private tests and all three owning Node 26 typechecks. A read-only live probe confirms the pinned server's native identity CLI is available. These are local implementation and bounded observation results, not isolated mutation/persistence acceptance or production cutover. No new TTL or production storage migration is applied.
 
 ## 2026-11-16: Select S3-primary analytics and larger data defaults
 

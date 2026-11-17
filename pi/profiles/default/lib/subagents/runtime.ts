@@ -6,7 +6,7 @@ import type { AgentDefinition, AgentEffort } from "./definitions.ts";
 import { VisibleChild } from "./visible.ts";
 import { RpcChild, type ChildRecord, type LaunchSpec } from "./rpc.ts";
 import { dispatchOperation, withDispatchMetadata, type InputDisposition } from "./control-result.ts";
-import { EFFORTS, resolveAgentEffort, resolveDelegationModel, resolveSkills } from "./options.ts";
+import { EFFORTS, resolveAgentEffort, resolveAvailableDelegationModel, resolveSkills } from "./options.ts";
 import { workspaceRoot } from "./workspace.ts";
 import { NameAllocator } from "./names.ts";
 import { SubagentLayout } from "./layout.ts";
@@ -340,7 +340,7 @@ if(this.pending.get(id)?.origin!==origin)return;this.pending.delete(id);this.que
    for(const key of ["cwd","model","providerOverride","effort"] as const)if(payload[key]!==undefined&&typeof payload[key]!=="string")throw new Error(`Invalid ${key}`);
    if(payload.effort!==undefined&&!EFFORTS.includes(payload.effort as AgentEffort))throw new Error("Invalid effort");
    if(payload.surface!==undefined&&payload.surface!=="visible"&&payload.surface!=="headless")throw new Error("Invalid surface");
-   const resolved=resolveDelegationModel(payload.model as string|undefined,definition.model,context.input.modelRegistry,payload.providerOverride as string|undefined),model=`${resolved.provider}/${resolved.id}`;
+   const resolved=await resolveAvailableDelegationModel(payload.model as string|undefined,definition.model,context.input.modelRegistry,payload.providerOverride as string|undefined),model=`${resolved.provider}/${resolved.id}`;
    const cwd=resolve(context.input.cwd,(payload.cwd as string|undefined)??".");
    return this.launch({definition,instructions:payload.instructions,cwd,model,effort:resolveAgentEffort(definition.name,model,payload.effort as AgentEffort|undefined,definition.effort),skills:resolveSkills(context.profile,definition.skills,payload.skills,{cwd,projectTrusted:context.input.projectTrusted}),origin:identity.origin,retained:payload.retain===true,parentId:identity.child,surface:(payload.surface as "headless"|"visible"|undefined)??context.input.surface,catalog:context.catalog,modelRegistry:context.input.modelRegistry,projectTrusted:context.input.projectTrusted},context.profile,context.extension,true,undefined,payload.background===true?"background":"attached");
   }

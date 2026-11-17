@@ -112,7 +112,7 @@ describe("delegation prompt composition", () => {
       for (const tools of [rootTools, coordinatorTools]) {
         expect(tools.get("subagent")!.parameters).not.toHaveProperty("properties.retain");
         expect(tools.get("subagent")!.parameters).toHaveProperty("properties.providerOverride");
-        expect(tools.get("subagent")!.parameters).toHaveProperty("properties.model.description", expect.stringContaining("Opus defaults to AWS Bedrock"));
+        expect(tools.get("subagent")!.parameters).toHaveProperty("properties.model.description", expect.stringContaining("Opus uses AWS inside Pi"));
         expect(tools.get("subagent")!.description.startsWith(SUBAGENT_LAUNCH_DESCRIPTION)).toBe(true);
         expect(tools.get("subagent_control")!.description.startsWith(SUBAGENT_CONTROL_DESCRIPTION)).toBe(true);
       }

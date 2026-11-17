@@ -1,7 +1,7 @@
 import { describe, expect, expectTypeOf, it, vi } from "vitest";
 import type { Api, Model } from "@earendil-works/pi-ai";
 import type { ModelRegistry, ModelRuntime } from "@earendil-works/pi-coding-agent";
-import { resolveLatestCodexModelFromRegistry, resolveLatestCodexModelFromRuntime, resolveLatestShortcutModel, resolvePreferredModel } from "../lib/model-selection.ts";
+import { resolveAvailablePreferredModel, resolveLatestCodexModelFromRegistry, resolveLatestCodexModelFromRuntime, resolveLatestShortcutModel, resolvePreferredModel } from "../lib/model-selection.ts";
 import { modelFixture, registryFixture } from "./helpers/model-selection.ts";
 
 const models = [
@@ -53,6 +53,60 @@ describe("Grok AWS routing", () => {
 	});
 });
 
+describe("fresh subscription-first delegation resolution", () => {
+	it("uses working OpenAI availability even when the cached auth snapshot is false", async () => {
+		const sol = modelFixture("openai", "gpt-6.1-sol");
+		const registry = registryFixture([sol], ["openai"]);
+		vi.mocked(registry.hasConfiguredAuth).mockReturnValue(false);
+		await expect(resolveAvailablePreferredModel("sol", registry)).resolves.toBe(sol);
+		expect(registry.hasConfiguredAuth).not.toHaveBeenCalled();
+		expect(registry.getAvailableOfType).toHaveBeenCalledExactlyOnceWith("chat", "openai", { signal: undefined });
+	});
+
+	it.each(["empty", "failed"])("uses Mantle when OpenAI availability is %s", async state => {
+		const sol = modelFixture("bedrock-mantle", "openai.gpt-6.1-sol");
+		const registry = registryFixture([sol], ["bedrock-mantle"]);
+		if (state === "failed") vi.mocked(registry.getAvailableOfType).mockImplementation(async (_type, provider) => {
+			if (provider === "openai") throw new Error("provider unavailable");
+			return [sol];
+		});
+		await expect(resolveAvailablePreferredModel("sol", registry)).resolves.toBe(sol);
+		expect(resolvePreferredModel("sol", registry)).toBe(sol);
+	});
+
+	it("recognizes the pinned native AWS Sol namespace without choosing an older Sol", async () => {
+		const sol = modelFixture("amazon-bedrock", "us.openai.gpt-6.1-sol");
+		const registry = registryFixture([modelFixture("openai", "gpt-6-sol"), sol], ["openai", "amazon-bedrock"]);
+		await expect(resolveAvailablePreferredModel("sol", registry)).resolves.toBe(sol);
+		expect(resolvePreferredModel("sol", registry)).toBe(sol);
+	});
+
+	it("keeps the requested family and reports checked routes rather than claiming a missing login", async () => {
+		const registry = registryFixture([modelFixture("openai", "gpt-6.1-terra")], ["openai"]);
+		await expect(resolveAvailablePreferredModel("sol", registry)).rejects.toThrow(/No available.*sol.*openai, bedrock-mantle, amazon-bedrock/);
+	});
+
+	it("keeps Opus and Grok on their allowed AWS routes", async () => {
+		const opus = modelFixture("bedrock-mantle", "anthropic.claude-opus-5-5");
+		const grok = modelFixture("amazon-bedrock", "us.xai.grok-4.7");
+		const registry = registryFixture([opus, grok], ["bedrock-mantle", "amazon-bedrock"]);
+		await expect(resolveAvailablePreferredModel("opus", registry)).resolves.toBe(opus);
+		await expect(resolveAvailablePreferredModel("grok", registry)).resolves.toBe(grok);
+		expect(registry.getAvailableOfType).not.toHaveBeenCalledWith("chat", "openai", expect.anything());
+	});
+
+	it("propagates cancellation rather than falling back to a paid route", async () => {
+		const controller = new AbortController();
+		const registry = registryFixture([], []);
+		vi.mocked(registry.getAvailableOfType).mockImplementation(async () => {
+			controller.abort();
+			throw controller.signal.reason;
+		});
+		await expect(resolveAvailablePreferredModel("sol", registry, controller.signal)).rejects.toThrow();
+		expect(registry.getAvailableOfType).toHaveBeenCalledTimes(1);
+	});
+});
+
 describe("latest authenticated OpenAI family resolution", () => {
 	it("keeps registry and runtime contracts separate at compile time", () => {
 		expectTypeOf<ModelRegistry>().not.toExtend<Parameters<typeof resolveLatestCodexModelFromRuntime>[1]>();
@@ -85,7 +139,7 @@ describe("latest authenticated OpenAI family resolution", () => {
 		const older = [modelFixture("openai", "gpt-5.6-sol"), modelFixture("openai", "gpt-6-sol")];
 		const registry = registryFixture(older, ["openai"]);
 		const runtime = { getAvailable: vi.fn<ModelRuntime["getAvailable"]>().mockResolvedValue(older) };
-		expect(() => resolvePreferredModel("sol", registry)).toThrow(/No authenticated openai sol model/);
+		expect(() => resolvePreferredModel("sol", registry)).toThrow(/No configured subscription or AWS model/);
 		await expect(resolveLatestCodexModelFromRuntime("sol", runtime)).rejects.toThrow(/No authenticated openai sol model/);
 	});
 

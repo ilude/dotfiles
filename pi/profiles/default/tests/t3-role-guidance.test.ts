@@ -53,7 +53,7 @@ describe("T3 full request guidance composition", () => {
     expect(full).toContain("Keep generic visual behavior");
     expect(full).not.toContain("use your native tool");
     expect(full).not.toContain("private role body");
-    expect(full).toContain("Work Opus uses Bedrock; personal Opus prefers ccyl");
+    expect(full).toContain("Prefer subscriptions, then AWS");
     expect(full).toContain("any authorized task type");
     expect(full).toContain("existing Git identity");
     expect(full).toContain("claude_usage");
@@ -104,7 +104,7 @@ describe("T3 full request guidance composition", () => {
     expect(full).toContain('target.providerInstanceId: "ccyl"');
     expect(full).toContain('target.options.effort: "high"');
     expect(full).toContain("read its effective Claude settings");
-    expect(full).toContain("personal-project Opus preference");
+    expect(full).toContain("subscription-first routing selects the task's configured Claude access");
     expect(full).toContain("ccyl may handle any authorized task type");
     expect(full).toContain("orchestrator owns the ccyl Opus seat");
     expect(full).toContain("shared five-hour/weekly quota and resets");

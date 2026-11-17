@@ -85,7 +85,7 @@ export function resolvePreferredModel(
 
 	const alias = trimmed.toLowerCase();
 	if (alias === "astra" || alias === "sol" || alias === "terra" || alias === "luna") {
-		return resolveLatestCodexModelFromRegistry(alias, registry);
+		return resolveLatestFamilyModel(alias, registry);
 	}
 	if (alias === "fable") return resolveLatestFamilyModel("fable", registry);
 	if (alias === "opus") return resolveLatestFamilyModel("opus", registry, AWS_PROVIDER_LADDER);
@@ -115,8 +115,43 @@ export function resolvePreferredModel(
 	throw new Error(`No configured ${providerLadder === AWS_PROVIDER_LADDER ? "AWS Bedrock" : "subscription or AWS"} model matches "${requested}"`);
 }
 
+/** Resolve against current, provider-scoped availability, not the registry's cached auth snapshot. */
+export async function resolveAvailablePreferredModel(
+	requested: string,
+	registry: Pick<ModelRegistry, "getAvailableOfType">,
+	signal?: AbortSignal,
+): Promise<Model<Api>> {
+	const trimmed = requested.trim();
+	if (!trimmed || trimmed.includes("/")) throw new Error(`Expected a bare model name, received ${requested}`);
+	const alias = trimmed.toLowerCase();
+	const providers = alias === "grok" ? [["amazon-bedrock"]] : alias === "opus" || modelFamilyVersion(trimmed)?.family === "opus" ? AWS_PROVIDER_LADDER : PROVIDER_LADDER;
+	const failures: string[] = [];
+	for (const tier of providers) {
+		for (const provider of tier) {
+			signal?.throwIfAborted();
+			let models: readonly Model<Api>[];
+			try {
+				models = await registry.getAvailableOfType("chat", provider, { signal });
+			} catch {
+				signal?.throwIfAborted();
+				failures.push(provider);
+				continue;
+			}
+			signal?.throwIfAborted();
+			// Selection policy is shared with shortcuts and synchronous catalog callers.
+			// Only this provider's fresh, available chat models enter that policy.
+			if (models.length === 0) continue;
+			try { return resolvePreferredModel(trimmed, { getAll: () => [...models], hasConfiguredAuth: () => true }); }
+			catch (error) {
+				if (!(error instanceof Error) || !error.message.startsWith("No configured ")) throw error;
+			}
+		}
+	}
+	throw new Error(`No available subscription or AWS chat model matches "${requested}". Checked ${providers.flat().join(", ")}.${failures.length ? ` Availability lookup failed for ${failures.join(", ")}.` : ""}`);
+}
+
 function latestFamilyModel(family: OpenAIFamily | "fable" | "opus", models: readonly Model<Api>[]): Model<Api> | undefined {
-	if (family === "sol") return models.find(model => model.id === PINNED_SOL_MODEL || model.id === `openai.${PINNED_SOL_MODEL}`);
+	if (family === "sol") return models.find(model => model.id === PINNED_SOL_MODEL || /^(?:(?:us|eu|apac|global)\.)?openai\.gpt-6\.1-sol$/.test(model.id));
 	return models.flatMap(model => {
 		const parsed = modelFamilyVersion(model.id);
 		return parsed?.family === family ? [{ model, version: parsed.version }] : [];

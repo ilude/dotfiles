@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import { getAgentDir, type ExtensionAPI, type ExtensionToolContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { resolveRoleSnapshot } from "../authority.ts";
+import { resolveRoleSnapshotForLaunch } from "../authority.ts";
 import { DELEGATION_MODEL_DESCRIPTION, EFFORTS, PROVIDER_OVERRIDE_DESCRIPTION } from "../options.ts";
 import type { T3RoleRuntime } from "./bootstrap.ts";
 import { callT3, failure, optionalText, record, result, text, t3ToolNames } from "./call.ts";
@@ -58,7 +58,7 @@ export function registerT3RoleTools(pi: ExtensionAPI, runtime: T3RoleRuntime, op
     async execute(id, p, signal, update, ctx) { try {
       const authority = runtime.authority();
       if (authority && !authority.canonicalTools.includes("subagent")) throw new Error("Role cannot delegate");
-      const snapshot = resolveRoleSnapshot({ agent: p.agent, backend: "t3", profile, cwd: ctx.cwd, projectTrusted: ctx.isProjectTrusted(), model: p.model, providerOverride: p.providerOverride, effort: p.effort, skills: p.skills, parentDelegates: authority?.delegates, modelRegistry: ctx.modelRegistry });
+      const snapshot = await resolveRoleSnapshotForLaunch({ agent: p.agent, backend: "t3", profile, cwd: ctx.cwd, projectTrusted: ctx.isProjectTrusted(), model: p.model, providerOverride: p.providerOverride, effort: p.effort, skills: p.skills, parentDelegates: authority?.delegates, modelRegistry: ctx.modelRegistry }, signal);
       const strategist = snapshot.definition.name === "strategist";
       const background = strategist ? false : p.background ?? false;
       if (!background && !strategist && !p.blockingReason?.trim()) throw new Error("Non-Strategist foreground launch requires blockingReason");

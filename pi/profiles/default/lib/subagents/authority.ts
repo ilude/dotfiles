@@ -4,7 +4,7 @@ import type { ModelRegistry } from "@earendil-works/pi-coding-agent";
 import { resolvePiClient } from "../herdr-host.ts";
 import { loadDefinitions, type AgentDefinition } from "./definitions.ts";
 import { composedAgentPrompt } from "./guidance.ts";
-import { EFFORTS, resolveAgentEffort, resolveDelegationModel, resolveSkills, type AgentEffort } from "./options.ts";
+import { EFFORTS, resolveAgentEffort, resolveAvailableDelegationModel, resolveDelegationModel, resolveSkills, type AgentEffort } from "./options.ts";
 
 export type SubagentBackend = "native" | "t3";
 export interface BackendSelectionInput {
@@ -59,13 +59,25 @@ export interface ResolveRoleOptions {
   parentDelegates?: readonly string[];
   modelRegistry?: ModelRegistry;
 }
-/** Uses the same trusted catalog, tombstones, aliases, constraints and skill precedence as native launch. */
-export function resolveRoleSnapshot(options: ResolveRoleOptions): RoleResolutionSnapshot {
+function roleInputs(options: ResolveRoleOptions) {
   const catalog = loadDefinitions(options.cwd, options.projectTrusted, options.profile);
   const definition = catalog.agents.get(options.agent);
   if (!definition) throw new Error(`Unknown or invalid agent ${options.agent}. ${catalog.errors.join("; ")}`);
   if (options.parentDelegates && !options.parentDelegates.includes(definition.name)) throw new Error("Delegation is outside frozen authority");
-  const model = resolveDelegationModel(options.model, definition.model, options.modelRegistry, options.providerOverride);
+  return { catalog, definition };
+}
+/** Synchronous snapshot construction for callers that already own catalog/auth state. */
+export function resolveRoleSnapshot(options: ResolveRoleOptions): RoleResolutionSnapshot {
+  const { catalog, definition } = roleInputs(options);
+  return buildRoleSnapshot(options, catalog, definition, resolveDelegationModel(options.model, definition.model, options.modelRegistry, options.providerOverride));
+}
+/** Launches use the same fresh provider-scoped resolution as native and descendant delegation. */
+export async function resolveRoleSnapshotForLaunch(options: ResolveRoleOptions, signal?: AbortSignal): Promise<RoleResolutionSnapshot> {
+  const { catalog, definition } = roleInputs(options);
+  const model = await resolveAvailableDelegationModel(options.model, definition.model, options.modelRegistry, options.providerOverride, signal);
+  return buildRoleSnapshot(options, catalog, definition, model);
+}
+function buildRoleSnapshot(options: ResolveRoleOptions, catalog: ReturnType<typeof loadDefinitions>, definition: AgentDefinition, model: { provider: string; id: string }): RoleResolutionSnapshot {
   const qualified = `${model.provider}/${model.id}`;
   const skills = resolveSkills(options.profile, definition.skills, options.skills ?? [], { cwd: options.cwd, projectTrusted: options.projectTrusted });
   const names = [...new Set([...definition.skills, ...(options.skills ?? [])])];

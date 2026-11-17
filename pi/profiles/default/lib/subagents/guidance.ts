@@ -22,7 +22,7 @@ const WRITING_GUIDANCE = `Reviewer and validator are read-only: use them for evi
 
 const MODEL_ROUTING_GUIDANCE = `## Model routing
 
-Work Opus uses Bedrock; personal Opus prefers ccyl. Role-bound ccyl needs return to the orchestrator; never silently switch accounts.`;
+Prefer subscriptions, then AWS. Honor project/account identity. Claude subscriptions use ccyl; Pi Opus uses AWS. Return role-bound ccyl to the orchestrator.`;
 
 const GROK_ROUTING_GUIDANCE = `Use \`model: "grok"\` for native AWS US Grok (\`amazon-bedrock/us.xai.grok-4.7\` currently), not Mantle, direct xAI or T3's separate \`grok\` provider.`;
 
@@ -34,7 +34,7 @@ ${STEWARD_GUIDANCE}
 
 ${WRITING_GUIDANCE}
 
-ccyl may handle any authorized task type. Use project context/existing Git identity; ask if unclear. Explicit routes win. Pi model: "opus" stays Bedrock; "high" sets effort. AWS Grok is permitted for either project category.
+ccyl may handle any authorized task type. Use project context/existing Git identity; ask if unclear. Explicit routes win; "high" sets effort. AWS Grok is permitted for either project category.
 
 For ccyl, check claude_usage using its Claude config directory for shared five-hour/weekly quota and resets. Reuse recent readings; refresh after substantial work. Unknown quota is unavailable.
 

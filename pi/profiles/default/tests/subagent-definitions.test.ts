@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 import { loadDefinitions, resolveAgentEffort, resolveModel } from "../lib/subagents/definitions.ts";
-import { resolveDelegationModel } from "../lib/subagents/options.ts";
+import { resolveAvailableDelegationModel, resolveDelegationModel } from "../lib/subagents/options.ts";
 import { modelFixture as model, registryFixture as registry } from "./helpers/model-selection.ts";
 const roots:string[]=[];const old=process.env.PI_CODING_AGENT_DIR;
 afterEach(()=>{process.env.PI_CODING_AGENT_DIR=old;for(const r of roots.splice(0))rmSync(r,{recursive:true,force:true})});
@@ -42,11 +42,18 @@ describe("subagent definitions",()=>{
  it.each(["ccyl","ccyl/claude-opus-5-5"])("rejects treating %s as a Pi model",(name)=>{
   expect(()=>resolveDelegationModel(name,undefined)).toThrow(/separate Claude Code client/);
  });
+ it("validates raw provider requests before fresh resolution",async()=>{
+  const source=registry([model("openai","gpt-6.1-sol")],["openai"]);
+  await expect(resolveAvailableDelegationModel("sol",undefined,source,"openai")).rejects.toThrow(/must match/);
+  await expect(resolveAvailableDelegationModel("ccyl",undefined,source)).rejects.toThrow(/separate Claude Code client/);
+  await expect(resolveAvailableDelegationModel("anthropic/claude-opus-5-5",undefined,source)).rejects.toThrow(/providerOverride/);
+  await expect(resolveAvailableDelegationModel("openai/exact-request","sol",source)).resolves.toEqual({provider:"openai",id:"exact-request"});
+ });
  it("reports preferred-provider not-found errors",()=>{
   expect(()=>resolveModel("missing",undefined,registry([model("openai","gpt")],["openai"]))).toThrow(/No configured subscription or AWS model/);
  });
  it("does not resolve a similar model from an unapproved provider",()=>{
-  expect(()=>resolveModel("sol",undefined,registry([model("openrouter","upstage/solar-pro4")],["openrouter"]))).toThrow(/No authenticated openai sol model/);
+  expect(()=>resolveModel("sol",undefined,registry([model("openrouter","upstage/solar-pro4")],["openrouter"]))).toThrow(/No configured subscription or AWS model/);
  });
  it.each(["astra", "terra", "luna"])("resolves the latest %s default from the supplied registry", family=>{
   const source=registry([model("openai",`gpt-6-${family}`),model("openai",`gpt-7-${family}`)],["openai"]);
