@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-17: Default Pi and T3 to Sol 6.2 at high effort
+
+- Select Sol 6.2 for new default-profile Pi sessions and T3 threads, retaining high reasoning effort and each client's existing provider route. Enable the native Pi model in the profile's model list and save T3's choice in its portable preferences and local settings.
+- Leave existing/resumed sessions, model shortcuts, named-role model pins and unrelated preferences unchanged. These are startup defaults, not a runtime model switch or an authentication check.
+
 ## 2026-11-17: Restore Bedrock-compatible analytics tool inputs
 
 - Restore a plain-object `log_analytics` input while preserving strict operation-specific execution validation. Loading the deferred tool and then switching to native Fable exposed a root union that Bedrock rejected before inference; AWS credentials were not the cause. The September 4 fix and its schema assertion had not survived the default-profile rewrite, and the September 10 analytics expansion reintroduced the union.
