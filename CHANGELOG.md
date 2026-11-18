@@ -4,6 +4,10 @@
 
 - Adapt Codex's completion and reader guidance in the default Pi profile. Lead with material work that is unfinished or unverified, write for readers who did not see tool output, and continue useful authorized work instead of treating successful checks as delivery. “Do it” and “make it so” include the agreed change's normal rollout and live verification when the target and authority are clear. Explicit delivery limits, runtime permissions, tools, and scheduling are unchanged.
 
+## 2026-11-18: Clarify standing approval for Windows spike follow-ups
+
+- The Windows performance skill now allows bounded local workload and alert checks, followed by a controlled repeat when the workload is identified and security triage is clear. Neither requires a new approval. New recordings and Defender changes are outside this approval.
+
 ## 2026-11-18: Distinguish analytics insert failures from storage checks
 
 - Indexer warnings distinguish failed schema checks, version reads, and occurrence inserts, with a bounded reason when ClickHouse supplies a recognized exception code. Logs still omit SQL, response bodies, credentials, and archive content. This makes repeat failures diagnosable without changing batch sizes, retry policy, or checkpoints.
