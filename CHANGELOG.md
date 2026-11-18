@@ -4,6 +4,11 @@
 
 - Run `/task-clean` in a T3 Code Pi thread to remove finished one-shot tasks from Scheduled tasks across the current project. The same cleanup runs before `/reload-runtime` and after a successful manual `/compact` in T3, without a notice when there is nothing to remove. It leaves pending, paused, recurring, webhook, and running tasks alone and keeps thread history.
 
+## 2026-11-18: Clarify Hatchery worker commands and recover interrupted cleanup
+
+- Add target discovery and command help without changing JSON framing. Distinguish saved allocation records from live health, and show when saved jobs lack a dispatcher or still need worker cleanup.
+- Resume a recorded job release after dispatcher interruption, undo a newly created Firecracker TAP when marking it fails, and distinguish a lost execution reply from a confirmed guest exit. Explain host-owned expiry and how to configure its timer separately. No rollout of these changes.
+
 ## 2026-11-18: Verify Windows template clone and job use
 
 - Pin the Hatchery runner fixes for Windows Limited-token detection, atomic job results and pinned SFTP staging. Linked/full clone use, queued results, release and full-clone independence passed against an isolated Windows 11 reference image. The build needed assisted Audit Mode, so unattended factory acceptance remains open. No controller deployment.
