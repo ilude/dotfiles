@@ -2,6 +2,14 @@
   "favorites": [
     {
       "provider": "pi",
+      "model": "openai-codex/gpt-6.2-sol"
+    },
+    {
+      "provider": "pi",
+      "model": "openai-codex/gpt-6.2-astra"
+    },
+    {
+      "provider": "pi",
       "model": "openai-codex/gpt-6-astra"
     },
     {

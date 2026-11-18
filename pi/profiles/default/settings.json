@@ -17,6 +17,7 @@
   "deviceId": "0c81cbc1-c1fc-4f3e-91be-b1310b86a0a5",
   "doubleEscapeAction": "none",
   "enabledModels": [
+    "openai/gpt-6.2-astra",
     "openai/gpt-6-astra",
     "openai/gpt-6.2-sol",
     "openai/gpt-6.1-sol",

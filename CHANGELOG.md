@@ -4,6 +4,7 @@
 
 - Select Sol 6.2 for new default-profile Pi sessions and T3 threads, retaining high reasoning effort and each client's existing provider route. Enable the native Pi model in the profile's model list and save T3's choice in its portable preferences and local settings.
 - Leave existing/resumed sessions, model shortcuts, named-role model pins and unrelated preferences unchanged. These are startup defaults, not a runtime model switch or an authentication check.
+- Add Sol 6.2 and Astra 6.2 to the Pi provider's T3 favorites in portable and local settings, and enable Astra 6.2 in Pi alongside Sol 6.2. Preserve older favorites and the Sol 6.2 high default.
 
 ## 2026-11-17: Restore Bedrock-compatible analytics tool inputs
 
