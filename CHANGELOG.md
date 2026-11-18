@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-18: Fix remote Firecracker failure handling
+
+- Cancel stalled uploads so an unresponsive transfer cannot hold the worker lock indefinitely. Fence job release before the route is published, and verify operation-specific acknowledgments before recording destruction or publishing downloads.
+- Preserve Unicode job arguments and late command stderr. Report oversized requests as not sent, reject downloads to special files, and clarify SSH setup errors and route-record compatibility. No production rollout.
+
 ## 2026-11-18: Resolve new GPT releases in Pi named roles
 
 - Exact GPT IDs can use Pi's configured `openai-codex` route before AWS, without switching to the Codex client or substituting another release. Sol family requests follow the catalog rather than a 6.1 pin, and resumed sessions no longer downgrade to that pin.
@@ -58,7 +63,7 @@
 
 ## 2026-11-17: Exercise and correct Hatchery's live template factory
 
-- Record explicit authorization for owned live acceptance, fixes and module-first publication after completion. Test exact task source in a private controller prefix, using existing coordinated state without replacing the installed release or packaging unrelated dirty changes.
+- Record explicit authorization for owned live acceptance, fixes and module-first publication after completion. Test exact task source in a private controller prefix, using existing coordinated state without replacing the installed release or packaging unrelated dirty changes. Finish the current Windows acceptance run in place; route new Windows test work to the other configured PVE host without hardcoding live placement in generic code.
 - Complete five Linux build/update/seal paths and linked/full real-user command, transfer, log and cancellation checks. Prove retained template-job release, unchanged binary snapshots and standalone full disks. Keep Windows and final cleanup/publication acceptance open rather than presenting local fixtures as live success.
 - Correct import versus ISO placement, storage-format filenames, qcow2 linked support and pre-entry lock contention. Advance existing reservations without holding a global guest-readiness lock. Prepare Fedora's native SELinux management entrypoint without disabling enforcement; use NixOS's real system profile for sealing and command units while preserving existing worker environments.
 - Diagnose Windows QGA MSI failure during specialize and move its one-time bootstrap after Setup, preserving SYSTEM continuation, normal UAC and Limited submitted tests. Do not replay uncertain installs or native operations; use fresh owned attempts and retain evidence.
