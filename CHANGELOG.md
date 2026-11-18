@@ -7,7 +7,7 @@
 ## 2026-11-18: Clarify Hatchery worker commands and recover interrupted cleanup
 
 - Add target discovery and command help without changing JSON framing. Distinguish saved allocation records from live health, and show when saved jobs lack a dispatcher or still need worker cleanup.
-- Resume a recorded job release after dispatcher interruption, undo a newly created Firecracker TAP when marking it fails, and distinguish a lost execution reply from a confirmed guest exit. Explain host-owned expiry and how to configure its timer separately. No rollout of these changes.
+- Resume a recorded job release after dispatcher interruption, undo a newly created Firecracker TAP when marking it fails, and distinguish a lost execution reply from a confirmed guest exit. Explain host-owned expiry and how to configure its timer separately. Deployed `877cb1f` to the production controller and Firecracker host. Live CLI, worker lifecycle, confirmed guest exit 255, binary transfers, and a manually dispatched job passed. No unattended dispatcher or expiry timer was enabled.
 
 ## 2026-11-18: Verify Windows template clone and job use
 
