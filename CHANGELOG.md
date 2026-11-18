@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-11-18: Recover expired Codex WebSockets in Pi
+
+- Let the default Pi profile use Pi's native retry once per run when the Codex WebSocket hits its connection lifetime. Retry on a fresh connection without replaying completed tools or changing the configured transport. A second expiry still fails the run, and disabling Pi's automatic retries still disables recovery.
+
 ## 2026-11-18: Harden the analytics worker's retry and recovery behavior
 
 - Cancel stalled worker raw-archive HTTP requests. Record a safe failure stage and category, cool down failed manifests, and carry the bounded pass cursor forward before wrapping to retry lower hashes.
