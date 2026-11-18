@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-11-18: Deploy the Firecracker-capable Hatchery release
+
+- Activate pinned Hatchery `ac42318` and enable the BWS-backed `firecracker` target on the production controller. Keep both Proxmox targets and tokens unchanged. The dedicated host runs a controller-only, host-key-pinned SSH receiver separate from management SSH. Manual lifecycle, binary transfers, and queued execution with output collection and worker release passed through the production controller. Bootstrap reapplied without changes.
+
+## 2026-11-18: Show context usage in T3 Code
+
+- Enable Context window in Thread details through the portable T3 desktop preferences. The dotfiles installer and T3 setup apply it without enabling the separate Usage limits row.
+
+## 2026-11-18: Give failed analytics indexing jobs a regular turn
+
+- Let the Onclave indexer retry a bounded set of the oldest eligible failed or interrupted jobs without waiting for the fresh-work queue to wrap. Keep the one-minute failure cooldown, the existing concurrency and pass limits, and all completed checkpoints. Deployed to the existing worker. After further write failures with two jobs at a time, switched the worker to one job at a time without changing shared services. The first 20 tracked retries under that setting completed and concurrent analytics reads passed. The remaining backlog is still draining.
+
 ## 2026-11-18: Recover expired Codex WebSockets in Pi
 
 - Let the default Pi profile use Pi's native retry once per run when the Codex WebSocket hits its connection lifetime. Retry on a fresh connection without replaying completed tools or changing the configured transport. A second expiry still fails the run, and disabling Pi's automatic retries still disables recovery.
@@ -75,7 +87,7 @@
 - Record explicit authorization for owned live acceptance, fixes and module-first publication after completion. Test exact task source in a private controller prefix, using existing coordinated state without replacing the installed release or packaging unrelated dirty changes. Finish the current Windows acceptance run in place; route new Windows test work to the other configured PVE host without hardcoding live placement in generic code.
 - Complete five Linux build/update/seal paths and linked/full real-user command, transfer, log and cancellation checks. Prove retained template-job release, unchanged binary snapshots and standalone full disks. Keep Windows and final cleanup/publication acceptance open rather than presenting local fixtures as live success.
 - Correct import versus ISO placement, storage-format filenames, qcow2 linked support and pre-entry lock contention. Advance existing reservations without holding a global guest-readiness lock. Prepare Fedora's native SELinux management entrypoint without disabling enforcement; use NixOS's real system profile for sealing and command units while preserving existing worker environments.
-- Diagnose Windows QGA MSI failure during specialize and move its one-time bootstrap after Setup, preserving SYSTEM continuation, normal UAC and Limited submitted tests. Do not replay uncertain installs or native operations; use fresh owned attempts and retain evidence.
+- Diagnose Windows QGA MSI failure during specialize and move its one-time bootstrap after Setup, preserving SYSTEM continuation, normal UAC and Limited submitted tests. Restrict generated private SSH host keys to SYSTEM ownership and SYSTEM/Administrators access after the administrative bootstrap exposed permissions rejected by sshd, replacing the DACL atomically rather than temporarily restoring inherited access. Complete DHCP lease acquisition before Windows Update after a startup retained APIPA despite DHCP being enabled. Decode PVE's byte-string guest markers as UTF-8, including Windows BOMs, rather than hiding genuine failures behind JSON errors. Require Windows' documented generalize-to-OOBE state after Sysprep returns: reserved-storage pre-validation failed despite a zero process exit; do not retain a false sealed flag or mistake it for a successful template. Do not replay uncertain installs or native operations; use fresh owned attempts or bounded corrections of proven failed stages and retain evidence.
 
 ## 2026-11-17: Implement Hatchery template building and fast multi-OS clones
 
