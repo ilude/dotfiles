@@ -1,10 +1,32 @@
 # Changelog
 
+## 2026-11-18: Close analytical storage workload acceptance
+
+- Confirm all 167 frozen historical indexing failures and both additional observed session incidents completed through ordinary retry, retaining all 10,394 original completed checkpoint keys. No checkpoint reset, corpus rebuild, second indexer or history deletion was needed; exact transient causes remain unproven.
+- Pass the final eight concurrent bounded signed queries and raw read in 3.760 seconds total. Six stable results and all 6,242 referenced raw bytes match baseline; additional usage occurrences grow with ongoing backfill, not deduplicated billing. The same ready worker, selected image/config and engine/API/PostgreSQL/shared-storage identities remain, with no restart and zero failed checkpoints at the closing observation.
+- Complete T9 and align the private runbook and application status. Full backfill/coverage, broad-query guarantees, legacy analytics, production restore and deletion of local originals remain outside this finite acceptance. Temporary diagnostic access stays removed, and all changes other than the authorized concurrency feature remain uncommitted.
+
+## 2026-11-17: Add Hatchery controller access to Firecracker workers
+
+- Let the existing CLI and queue select a remote Firecracker target over restricted SSH with a pinned host key. The controller remembers allocation routes; the dedicated host owns worker lifecycle and expiry. Transfers stream bytes without exposing controller paths to the host. Preserve Proxmox and local Firecracker targets.
+- Verify manual and queued operations, binary transfers, exit codes, host expiry, and recovery from dropped connections in an isolated controller setup. Reject delayed create after release, verify cleanup, and remove temporary test access. No production rollout.
+
+## 2026-11-17: Use the personal Git identity for personal Forgejo repositories
+
+- Match SSH remotes under the personal Forgejo namespace so Hatchery and other personal submodules use the existing personal identity instead of Git's placeholder fallback. The rule references the existing identity file without adding a name or email to the rule or changing work-repository settings.
+
 ## 2026-11-17: Default Pi and T3 to Sol 6.2 at high effort
 
 - Select Sol 6.2 for new default-profile Pi sessions and T3 threads, retaining high reasoning effort and each client's existing provider route. Enable the native Pi model in the profile's model list and save T3's choice in its portable preferences and local settings.
 - Leave existing/resumed sessions, model shortcuts, named-role model pins and unrelated preferences unchanged. These are startup defaults, not a runtime model switch or an authentication check.
 - Add Sol 6.2 and Astra 6.2 to the Pi provider's T3 favorites in portable and local settings, and enable Astra 6.2 in Pi alongside Sol 6.2. Preserve older favorites and the Sol 6.2 high default.
+
+## 2026-11-17: Enable optional two-job analytics indexing
+
+- Add an opt-in two-manifest limit inside the existing supervised Onclave worker. Keep serial behavior by default, one candidate dispatcher, independent bounded batches and existing worker/checkpoint/replay identities. Do not add another indexer process or distributed claims.
+- Verify distinct admission and the pass limit, independent failure/replay, stop without false completion, and draining an active peer before surfacing a control-store failure. Sixteen focused application tests, six private worker-binding tests and owning application/private Node 26 typechecks pass.
+- Wire the optional private worker setting without changing the API environment or default worker delivery. After explicit permission for the bounded Onclave commit/push, publish `ba1c8fc` through the normal successful CI/image pipeline and adopt only the worker. BWS selects two concurrent manifests and the verified image digest, preserving its ID, limits, other inventory and the existing daily update policy. Other repository changes remain uncommitted.
+- Verify two distinct active manifests, original completed checkpoints, unchanged engine/API/PostgreSQL/shared-storage identities, bounded memory and zero OOM events. Eight concurrent API operations pass with empty filesystem cache and again warmed; stable results and exact raw bytes match. Separate three-minute samples show higher native write throughput, but differing inputs do not establish a controlled or universal speedup. Worker reapply is unchanged with no restart; temporary diagnostic access is removed again. The fixed historical-failure cohort subsequently passed retry closure on 2026-11-18.
 
 ## 2026-11-17: Implement and test Hatchery Firecracker Linux workers
 
@@ -17,6 +39,24 @@
 - Restore a plain-object `log_analytics` input while preserving strict operation-specific execution validation. Loading the deferred tool and then switching to native Fable exposed a root union that Bedrock rejected before inference; AWS credentials were not the cause. The September 4 fix and its schema assertion had not survived the default-profile rewrite, and the September 10 analytics expansion reintroduced the union.
 - Check every default-profile extension tool's serialized input at startup and reload, including deferred tools, for an object root without top-level `anyOf`, `oneOf` or `allOf`. This runs in the existing test suite without starting sessions or calling services. Restore the compatibility constraint and the cross-tool test reference in the existing Pi extension skill. Also cover the actual analytics schema in the installed Bedrock request serializer, rather than checking only a hand-written tool fixture.
 - Confirm native `amazon-bedrock/us.anthropic.claude-fable-5-1` accepts the corrected analytics definition in `us-east-2` and returns a capped reply. Existing sessions need an idle runtime reload to replace the loaded tool definition; no account, authentication, model-route or legacy-profile changes are made.
+
+## 2026-11-17: Accept durable analytical storage and worker relocation
+
+- Pass owned isolated acceptance for the exact ClickHouse 26.8.36.3 / SeaweedFS 4.41 pairing: identity-preserving data/diagnostic growth and no-op reapply, native forward/reverse part movement, replay preservation, bounded-cache eviction/repopulation and restart, diagnostic exhaustion, missing-mount boot refusal/recovery and a container-only remote outage. Remove the owned test guest/disks/seed, bucket/identity/objects and protected test credentials afterwards.
+- Correct pinned diagnostic-engine compatibility without adding retention: a stock explicit log engine rejects a separate storage-policy field, so the recipe accepts a complete caller-owned native clause and the private selection preserves the stock keys and absent TTL.
+- Begin the authorized production cutover only after isolated acceptance. Grow the retained data filesystem, add independent diagnostics and root journal routing, select the combined engine/worker budget, and provision the separate BWS-backed analytical capability without restarting shared SeaweedFS or PostgreSQL. Keep initial bucket provisioning explicit because existing bucket configuration resources adopt/configure rather than create buckets.
+- Retire the former worker's generated launcher before replacement startup, preserving its protected files and original worker ID. Move all 16 quiesced analytical parts natively with unchanged checksums and full replay fingerprints, then accept one ready relocated worker retaining all 10,394 original completed checkpoint keys and progressing to 10,411. Include the pinned lazily created S3 queue log and native suffixed variants in diagnostic routing/cleanup; no analytical table is recreated.
+- Pass all six selected production stacks' unchanged plan/apply/status checks with 50 noop plan rows and unchanged engine/worker/API/PostgreSQL/shared-storage identities. Restore original users/grants exactly, reject the temporary login and remove protected maintenance files. Verify independent native S3 bytes, scoped credential persistence, six bounded signed operation results, nonempty tool/usage aggregates and an exact raw byte reference.
+- Reopen workload closure after the initial acceptance missed cold concurrent timeouts and left failed-indexing causes unverified. Reproduce all eight selected requests failing from an empty cache, then correct native cache range alignment from the pinned 4 MiB default to a BWS-selected 64 KiB. Add one optional generic recipe setting, preserving other callers' defaults and all query/scan/memory bounds. After restart and empty-cache eviction, all eight selected concurrent requests pass with the worker running; warmed requests pass too. Seven recipe tests, three private selection tests and all three owning Node 26 typechecks pass.
+- Confirm remaining failed checkpoint attempts predate relocation, while new writes complete without recorded exceptions and every original completed key remains. Verify a fixed cohort of historical failures through normal retry rather than resetting checkpoints or claiming complete backfill; this follow-up subsequently closed on 2026-11-18 after that cohort and both additional observed retry incidents completed. Keep native-reversal and in-place growth procedures and physical-capacity constraints in the private runbook. No universal cold-query performance or production restore claim is added.
+- Preserve local sessions, raw archives/manifests, analytical history and API/replay semantics. Keep existing quieter logging, expiry, query limits and incomplete/unknown coverage unchanged. Cache contents are disposable, not durable metadata or a complete restore artifact.
+
+## 2026-11-17: Exercise and correct Hatchery's live template factory
+
+- Record explicit authorization for owned live acceptance, fixes and module-first publication after completion. Test exact task source in a private controller prefix, using existing coordinated state without replacing the installed release or packaging unrelated dirty changes.
+- Complete five Linux build/update/seal paths and linked/full real-user command, transfer, log and cancellation checks. Prove retained template-job release, unchanged binary snapshots and standalone full disks. Keep Windows and final cleanup/publication acceptance open rather than presenting local fixtures as live success.
+- Correct import versus ISO placement, storage-format filenames, qcow2 linked support and pre-entry lock contention. Advance existing reservations without holding a global guest-readiness lock. Prepare Fedora's native SELinux management entrypoint without disabling enforcement; use NixOS's real system profile for sealing and command units while preserving existing worker environments.
+- Diagnose Windows QGA MSI failure during specialize and move its one-time bootstrap after Setup, preserving SYSTEM continuation, normal UAC and Limited submitted tests. Do not replay uncertain installs or native operations; use fresh owned attempts and retain evidence.
 
 ## 2026-11-17: Implement Hatchery template building and fast multi-OS clones
 

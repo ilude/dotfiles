@@ -138,6 +138,8 @@
   path = ~/.gitconfig-personal
 [includeIf "hasconfig:remote.*.url:github.com-personal:*/**"]
   path = ~/.gitconfig-personal
+[includeIf "hasconfig:remote.*.url:git@forgejo:mike/**"]
+  path = ~/.gitconfig-personal
 
 # Work repos
 [includeIf "hasconfig:remote.*.url:git@github.com:mtg-eagletg/**"]
