@@ -1,6 +1,6 @@
 # Amazon Bedrock
 
-The default profile registers `bedrock-mantle` as **Amazon Bedrock** and leaves Pi's native `amazon-bedrock` provider unchanged. Authenticate with `/login bedrock-mantle`.
+The default profile registers `bedrock-mantle` as **Amazon Bedrock** for consolidated Claude/GPT routing. Pi's native `amazon-bedrock` provider retains its own AWS authentication, streaming, and model identities. Authenticate separately with `/login bedrock-mantle` or `/login amazon-bedrock`; one provider's login does not configure the other.
 
 ## Work-account SSO setup
 
@@ -44,7 +44,11 @@ Runtime requests use Pi's native Bedrock transport and its provider-scoped AWS r
 
 ## Routes and commands
 
-Discovery selects the newest supported Fable, Opus, Sonnet, and Haiku releases, plus tiers of the newest supported GPT release. Claude prefers an advertised Mantle route for the selected release and otherwise uses a Runtime inference profile. GPT uses Mantle Responses. A failed request is not replayed on another transport.
+Consolidated discovery selects the newest supported Fable, Opus, Sonnet, and Haiku releases, plus tiers of the newest supported GPT release. Claude prefers an advertised Mantle route for the selected release and otherwise uses a Runtime inference profile. GPT uses Mantle Responses. A failed request is not replayed on another transport.
+
+Grok already exists in Pi's native catalog. Select it with `/model amazon-bedrock/us.xai.grok-4.7`, or use `model: "grok"` for the newest authenticated native US Grok subagent model. It uses native Runtime Converse, not a `bedrock-mantle` alias, a global inference profile, or the direct xAI API. Configure `/login amazon-bedrock` → **AWS profile** with the intended existing AWS profile. That stores only a provider-scoped profile reference, not copied AWS keys or a machine-wide environment change. Model filtering preserves the native provider's authentication and descriptors, and keeps Grok visible even when saved Claude discovery excludes it. `/refresh-models amazon-bedrock` refreshes the native provider and keeps Grok's native identity in model cycling rather than redirecting it to Mantle. T3's separate `grok` provider is unrelated.
+
+Existing Pi sessions need an idle supported resource reload to load source changes and the native login. T3 can cache provider model lists, but an older on-disk cache is not proof that the current route is unavailable; refresh Pi under Settings → Providers only when current discovery or launch shows it is needed. On 2026-11-14, installed Pi 1.5.1's full default profile successfully used native Grok 4.7 to call `read`, consume its result, and return the requested answer with priced usage, using provider-scoped AWS authentication without a shell profile override. On 2026-11-15, a T3 named-role child also completed the read-tool round trip; T3 reported executed model `amazon-bedrock/us.xai.grok-4.7`. No additional provider refresh was needed for that test. Image input remains unverified.
 
 - `/bedrock` shows non-secret target configuration, current curated routes, and this month's estimate.
 - `/bedrock refresh` refreshes only `bedrock-mantle` inventory through Pi's native provider cache lifecycle.

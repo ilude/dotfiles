@@ -70,12 +70,13 @@ describe("Bedrock accounting", () => {
 		["anthropic.claude-opus-5", "global.anthropic.claude-opus-5", [5, 25, 0.5, 6.25]],
 		["anthropic.claude-haiku-4-5", "global.anthropic.claude-haiku-4-5-20251001-v1:0", [1, 5, 0.1, 1.25]],
 		["eu.anthropic.claude-opus-5", "eu.anthropic.claude-opus-5", [5.5, 27.5, 0.55, 6.875]],
+		["us.xai.grok-4.7", "us.xai.grok-4.7", [2.2, 6.6, 0.55, 0]],
 	] as const)("prices %s using its explicit catalog target", (target, catalogTarget, rates) => {
 		const price = estimateUsage(target, { input: 1_000_000, output: 1_000_000, cacheRead: 1_000_000, cacheWrite: 1_000_000 });
 		expect(price.status).toBe("estimated");
 		expect(price.catalogTarget).toBe(catalogTarget);
 		expect(price.components).toEqual({ input: rates[0], output: rates[1], cacheRead: rates[2], cacheWrite: rates[3] });
-		expect(price.total).toBeCloseTo(rates.reduce((sum, rate) => sum + rate, 0));
+		expect(price.total).toBeCloseTo(rates.reduce<number>((sum, rate) => sum + rate, 0));
 	});
 	it.each([
 		["anthropic.claude-opus-5-5", undefined, 5],
@@ -110,6 +111,7 @@ describe("Bedrock accounting", () => {
 	it.each([
 		["amazon-bedrock", "bedrock-converse-stream", "us.anthropic.claude-opus-5-5", "runtime"],
 		["bedrock-mantle", "bedrock-converse-stream", "us.anthropic.claude-opus-5-5", "runtime"],
+		["amazon-bedrock", "bedrock-converse-stream", "us.xai.grok-4.7", "runtime"],
 		["bedrock-mantle", "anthropic-messages", "anthropic.claude-opus-5-5", "mantle-anthropic"],
 		["bedrock-mantle", "openai-responses", "openai.gpt-5.6-luna", "mantle-openai"],
 	])("labels %s %s accounting by its transport", async (provider, api, target, transport) => {

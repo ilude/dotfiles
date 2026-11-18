@@ -1,9 +1,11 @@
 import { existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import type { ModelRegistry } from "@earendil-works/pi-coding-agent";
-import { resolvePreferredModel } from "../model-selection.ts";
+import { resolveAvailablePreferredModel, resolvePreferredModel } from "../model-selection.ts";
 export const EFFORTS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
 export type AgentEffort = typeof EFFORTS[number];
+export const DELEGATION_MODEL_DESCRIPTION = 'Omit for the role default, or use a bare model/family such as "sol", "luna", "opus" or "grok". Pi checks fresh availability: configured OpenAI access first, then AWS Bedrock, keeping the requested family and Sol 6.1 pin. Opus uses AWS inside Pi; Claude subscription work uses the separate ccyl client route. Use provider/model only for a user-requested provider, not an inferred workaround.';
+export const PROVIDER_OVERRIDE_DESCRIPTION = 'Provider explicitly requested by the user; must match a provider-qualified model. Required for direct anthropic overrides. Do not set for an ordinary Opus request or for ccyl.';
 export function resolveModel(model: string | undefined, fallback: string | undefined, registry?: ModelRegistry): { provider: string; id: string } {
  const value=model??fallback;
  if(!value||value!==value.trim())throw new Error(`Explicit provider/model required, received ${value??"none"}`);
@@ -15,6 +17,25 @@ export function resolveModel(model: string | undefined, fallback: string | undef
  const [provider,...rest]=value.split("/"),id=rest.join("/");
  if(!provider.trim()||!id.trim())throw new Error(`Explicit provider/model required, received ${value}`);
  return{provider,id};
+}
+function validateDelegationRequest(model: string | undefined, providerOverride?: string): void {
+ if (model === "ccyl" || model?.startsWith("ccyl/") || providerOverride === "ccyl") throw new Error("ccyl is a separate Claude Code client, not a Pi model provider. Use the host\'s explicit ccyl client route, not a named Pi role.");
+ if (providerOverride !== undefined && (!model?.includes("/") || providerOverride !== model.split("/")[0])) throw new Error("providerOverride must match an explicit provider/model requested by the user");
+}
+/** Tool boundary: keep trusted role defaults, but require deliberate direct-Anthropic overrides. */
+export function resolveDelegationModel(model: string | undefined, fallback: string | undefined, registry?: ModelRegistry, providerOverride?: string): { provider: string; id: string } {
+ validateDelegationRequest(model, providerOverride);
+ const resolved = resolveModel(model, fallback, registry);
+ if (model !== undefined && resolved.provider === "anthropic" && providerOverride !== "anthropic") throw new Error('Direct Anthropic requires providerOverride: "anthropic" and an explicit user request for that provider. For Opus without ccyl, pass model: "opus" to use AWS Bedrock. Do not request Anthropic login for an unintended route.');
+ return resolved;
+}
+/** Launches use fresh availability; explicit provider/model requests remain exact. */
+export async function resolveAvailableDelegationModel(model: string | undefined, fallback: string | undefined, registry?: ModelRegistry, providerOverride?: string, signal?: AbortSignal): Promise<{ provider: string; id: string }> {
+ validateDelegationRequest(model, providerOverride);
+ const value = model ?? fallback;
+ if (!value || value !== value.trim() || value.includes("/") || !registry) return resolveDelegationModel(model, fallback, registry, providerOverride);
+ const resolved = await resolveAvailablePreferredModel(value, registry, signal);
+ return { provider: resolved.provider, id: resolved.id };
 }
 export function resolveAgentEffort(name:string,model:string,requested:AgentEffort|undefined,fallback:AgentEffort|undefined):AgentEffort{
  const effort=requested??fallback??"low";

@@ -26,9 +26,15 @@ For requested Windows desktop checks, use [open-thread.ps1](scripts/open-thread.
 
 T3 browser-preview automation controls preview web content, not necessarily the Electron app shell or the user's chat window. Capture only the requested app/window and keep transient artifacts in system temp or a verified ignored repository directory. Screen-rectangle capture includes overlapping windows and requires a non-minimized, on-desktop target. The tested edit/reload/probe/capture sequence worked, but a subsequent provider-stream error and Pi exit remain an unresolved installed-runtime caveat; report visible failures even when CLI replies say completed.
 
+## Scheduled-task cleanup
+
+When managing T3 scheduled tasks, review existing tasks in the current workflow and remove those that no longer serve a purpose, such as checks for completed work, superseded reminders, or tasks targeting resources that no longer exist. Use supported T3 scheduling controls. Age alone does not make a task obsolete; preserve still-useful tasks and respect thread ownership.
+
 ## Models and presentation
 
 T3 discovers Pi model names through RPC `get_available_models` and selected state through `get_state`. The synthetic `default` model, displayed as **Pi default**, means inherit Pi's baseline, not a resolved model label. To make the choice explicit, use a provider-qualified model ID and its thinking option in T3's model selection. Do not equate saved defaults with a running or resumed thread's selection.
+
+The live model picker and exact named-role launch can be newer than `~/.t3/caches/pi.json`. An old cache file alone does not establish that a model is unavailable or that another provider refresh is required.
 
 Local environment settings normally live at `~/.t3/userdata/settings.json`; desktop appearance settings at `~/.t3/userdata/client-settings.json`. Inspect only relevant non-secret fields. Prefer a supported settings control; make targeted file changes only when authorized, preserve unrelated values, and verify loaded behavior separately from saved JSON. Do not edit live SQLite databases or start another server against live userdata.
 

@@ -24,7 +24,7 @@ For contributor and coding-agent onboarding, start with `AGENTS.md`.
 
 ## Installation
 
-Recursive cloning requires access to the private Forgejo submodules `git@forgejo:mike/homelab-infra.git`, `git@forgejo:mike/onclave.git`, and `git@forgejo:mike/hatchery.git`. Configure a machine-local `forgejo` SSH alias and your authorized personal key first. Onclave tracks `feature/v2-broker-core`; other historical branches remain only in its GitHub repository, which stays unarchived. Keep the actual service address in local SSH configuration, not this repository. The submodule's [hosting instructions](modules/homelab-infra/README.md#repository-hosting) include a public-safe example.
+Recursive cloning requires access to the private Forgejo submodules `git@forgejo:mike/onclave.git`, `git@forgejo:mike/hatchery.git`, `git@forgejo:mike/story-workshop.git`, and `git@forgejo:mike/research-vault.git`. Configure a machine-local `forgejo` SSH alias and your authorized personal key first; see the [Git identity setup](#git-identity-system). Onclave tracks `feature/v2-broker-core`; other historical branches remain only in its GitHub repository, which stays unarchived. Keep the actual service address in local SSH configuration, not this repository. The retired homelab-infra repository is not initialized by clone or install.
 
 > **Note:** Dotbot uses `force: true` for symlinks, which will overwrite existing files at target locations (including `~/.claude/`). Back up any existing configuration before running the installer for the first time.
 
@@ -46,7 +46,7 @@ Normal Bash and PowerShell installers configure only default through
 runtime loading and the native/default launch configuration offline. A successful
 install does not prove account access: it reports authentication as unverified.
 Use `/login` in Pi and an authenticated request to verify the subscription.
-See [Pi setup and acceptance](pi/README.md#default-installation-and-acceptance).
+See [Pi setup](pi/profiles/default/docs/setup.md).
 
 ### Windows PowerShell
 
@@ -97,17 +97,40 @@ reboot requirements. Exit codes are `0` for success, `1` for failures, `2` for f
 or cancelled elevation, and `3010` for reboot-required completion without other
 failures. Elevated runs propagate the child exit code. No automatic reboot occurs.
 
+### Research vault
+
+Research notes live in the private Forgejo repository
+`git@forgejo:mike/research-vault.git`, mounted as a submodule at
+[`docs/research/obsidian-vault/`](docs/research/obsidian-vault/README.md).
+The path is unchanged, so existing Obsidian vault registrations, local links and
+research output paths still work. This Markdown vault is separate from Onclave's
+content-ingestion and search service.
+
+After pulling the migration into an existing checkout, initialize the vault:
+
+```sh
+git submodule update --init -- docs/research/obsidian-vault
+```
+
+New recursive clones include it automatically. Read its `AGENTS.md` and applicable
+topic instructions before writing notes. Commit research changes inside the vault,
+then commit its updated gitlink in dotfiles. When publishing, push the vault commit
+before the dotfiles commit that references it. See the vault's
+[repository workflow](docs/research/obsidian-vault/README.md#repository-workflow)
+for standalone use and history provenance.
+
 ### Forgejo CLI (`fj`)
 
 For the configured Forgejo URL, use this read-only BWS lookup from the dotfiles
 root rather than searching infrastructure source files:
 
 ```sh
-uv run python modules/homelab-infra/scripts/bws-snapshot.py --settings modules/homelab-infra/settings.local.json lookup forgejo_root_url
+uv run python scripts/bws-lookup.py forgejo_root_url
 ```
 
-It requires the existing BWS access environment, prints only that field, and
-starts no tooling container.
+It uses the ignored workstation locator at `config/bws/settings.local.json` and
+the existing BWS access environment, prints only that field, and starts no tooling
+container. See [workstation BWS setup](config/bws/README.md).
 
 Normal installation includes `fj` from the
 [`forgejo-cli` project](https://codeberg.org/forgejo-contrib/forgejo-cli):
@@ -165,8 +188,10 @@ its configuration and workflows remain unchanged.
 
 Normal installation adds the T3 Code desktop app on Windows/macOS and its CLI on
 supported platforms, then configures the existing default Pi profile as a T3
-provider and applies the portable preferences tracked in `config/t3-code/`.
-Herdr installation, configuration and running sessions remain unchanged.
+provider through a repository-owned adapter and applies the portable preferences
+tracked in `config/t3-code/`. T3's Pi-provider updates also refresh the matching
+profile runtime links, without patching or rebuilding T3. Herdr installation,
+configuration and running sessions remain unchanged.
 On Windows, the desktop app comes from the latest published GitHub nightly release
 in `pingdotgg/t3code`, not WinGet stable. The separate CLI keeps its official stable
 installer; macOS/Linux behavior is unchanged. Existing stable desktop installations
@@ -218,7 +243,7 @@ Windows uses `%USERPROFILE%\.ssh\authorized_keys` for standard users and normall
 `%ProgramData%\ssh\administrators_authorized_keys` for administrators, with the
 permissions described there. Never copy the private key to the server. Test
 `ssh <user>@<host>` from the intended client before using Herdr remote attachment.
-See the [remote workstation access runbook](modules/homelab-infra/docs/remote-workstation-access.md)
+See the [remote workstation access runbook](docs/remote-workstation-access.md)
 for network policy and verification limits.
 
 macOS and Linux often include SSH clients, but their servers may also require
@@ -307,6 +332,7 @@ Automatic identity switching based on directory or remote URL:
 | `install.d/` | End-of-install temporary hooks (`*.py` common, `*.sh`/`*.ps1` platform-specific) |
 | `wsl/` | WSL installer, packages, and validation |
 | `install.conf.yaml` | Dotbot symlink configuration |
+| `docs/research/obsidian-vault/` | Private Forgejo research-vault submodule |
 | `zsh/env.d/` | Environment modules (WINHOME, locale, PATH) |
 | `zsh/rc.d/` | Interactive modules (completions, plugins, prompt, aliases) |
 | `powershell/profile.ps1` | PowerShell profile |
@@ -319,8 +345,15 @@ Automatic identity switching based on directory or remote URL:
 | `plugins/` | Zsh plugins (auto-downloaded) |
 | `dotbot/` | Dotbot submodule |
 | `modules/onclave/` | Onclave product and Pi adapter submodule |
-| `modules/hatchery/` | Hatchery disposable-compute product submodule; currently PRD, architecture, and agent guidance |
-| `modules/homelab-infra/` | Homelab infrastructure submodule with a nested private `values/` repository |
+| `modules/hatchery/` | Hatchery generic compute, configuration and service facilities |
+| `config/bws/` | Workstation BWS locator example and setup; actual locator stays ignored |
+| `modules/story-workshop/` | Private story, book, and shared-universe brainstorming submodule |
+
+Live site composition, deployment/backup commands and local operation-image build
+source are maintained in the independent private `homelab-config` repository.
+An existing ignored `modules/homelab-infra/` checkout is retained locally because
+its nested independent private `values/` repository holds backups/artifacts.
+Removing the submodule does not delete, relocate or replace that data store.
 
 ## Agent Surfaces
 

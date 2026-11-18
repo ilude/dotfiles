@@ -25,5 +25,6 @@ export function registryFixture(models: Model<Api>[], authenticated: string[]): 
 	const registry = new ModelRegistry(runtime);
 	vi.spyOn(registry, "getAll").mockReturnValue(models);
 	vi.spyOn(registry, "hasConfiguredAuth").mockImplementation(model => authenticated.includes(model.provider));
+	vi.spyOn(registry, "getAvailableOfType").mockImplementation(async (_type, provider) => models.filter(model => model.provider === provider && authenticated.includes(model.provider)));
 	return registry;
 }

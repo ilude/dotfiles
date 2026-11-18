@@ -86,6 +86,12 @@ export function validateCommitPlan(input: unknown, status: string, expectedRepo 
 			errors.push(`Rename/copy paths must stay in the same commit or both be excluded: ${JSON.stringify(entry.source)}, ${JSON.stringify(entry.path)}.`);
 		if (/U|AA|DD/.test(entry.xy)) errors.push(`Unresolved conflict: ${JSON.stringify(entry.path)}.`);
 	}
+	for (const [path, group] of assigned) {
+		for (const [parent, parentGroup] of assigned) {
+			if (path.startsWith(`${parent}/`) && group !== parentGroup)
+				errors.push(`Directory replacement paths must stay in the same commit or all be excluded: ${JSON.stringify(parent)}, ${JSON.stringify(path)}.`);
+		}
+	}
 	return errors.length ? { ok: false, errors } : { ok: true, plan };
 }
 
@@ -121,11 +127,16 @@ export async function executeCommitPlan(exec: ExtensionAPI["exec"], repository: 
 		// could silently include a hook's edits or overwrite index-only contents.
 		const tree = (await git(["write-tree"])).trim();
 		let before = await head();
-		const resetIndex = async () => { await git(before ? ["read-tree", before] : ["read-tree", "--empty"]); };
+		// Single-tree -m preserves stat data for unchanged entries. Plain read-tree
+		// clears it, forcing the next status to reread every tracked file.
+		const resetIndex = async () => { await git(before ? ["read-tree", "-m", before] : ["read-tree", "--empty"]); };
 		if (!plan.commits.length) await resetIndex();
 		for (const group of plan.commits) {
 			await resetIndex();
-			await git(["--literal-pathspecs", "restore", "--source", tree, "--staged", "--", ...group.paths]);
+			// Restoring a directory replacement through its root also removes its old
+			// descendants. Those deleted paths cannot be resolved beneath a gitlink.
+			const roots = group.paths.filter(path => !group.paths.some(parent => path.startsWith(`${parent}/`)));
+			await git(["--literal-pathspecs", "restore", "--source", tree, "--staged", "--", ...roots]);
 			const staged = nulPaths(await git(["diff", "--cached", "--no-renames", "--name-only", "-z"]));
 			if (!samePaths(staged, group.paths)) throw new Error(`Staged paths do not match reviewed group ${JSON.stringify(group.subject)}: ${JSON.stringify(staged)}.`);
 			// Even a failing post-commit command can leave a new HEAD. Observe it

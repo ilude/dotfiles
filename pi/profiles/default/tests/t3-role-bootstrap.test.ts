@@ -75,6 +75,10 @@ it("grants only the exact nested operation, issued wrapper ID and arguments once
     const event = { toolName: "mcp__t3__delegate_task", toolCallId: "issued/1", parentToolCallId: "issued", input: { task: "other" } };
     expect(await f.emit("tool_call", event)).toMatchObject({ block: true });
     event.input.task = "exact";
+    const registered = f.pi.getAllTools();
+    f.pi.getAllTools.mockReturnValue(registered.map(tool => tool.name === event.toolName ? { ...tool, sourceInfo: { source: "extension", origin: "top-level", path: "/foreign.ts" } } : tool));
+    expect(await f.emit("tool_call", event)).toMatchObject({ block: true });
+    f.pi.getAllTools.mockReturnValue(registered);
     expect(await f.emit("tool_call", event)).toBeUndefined();
     expect(await f.emit("tool_call", event)).toMatchObject({ block: true });
   });

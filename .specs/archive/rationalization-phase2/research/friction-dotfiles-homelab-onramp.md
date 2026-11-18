@@ -34,6 +34,11 @@
 
 ## 3. Pi extension process churn
 
+Diagnostic/workflow findings migrated to Onclave improvement note
+`21de9f0a3e47744da52e4958b263818a56ce9a04649b8c1a7dc545e065f4f9cb` on 2026-11-14.
+Retrieve with `onclave_improvement` (`operation: "get"`); this section remains
+historical research synthesis, not current policy.
+
 **Context:** Dotfiles/Pi runtime, 2026-06-25; the user was investigating high Local Session Manager CPU and unexplained Git, validator, Python, and MSYS process churn.
 
 **Incident summary:** The assistant found the main cause and made useful targeted fixes, but the workflow still drifted toward option-setting and incremental optimization rather than a compact audit-and-fix pass. The user had to choose among implementation options for a straightforward cache improvement and later requested each hot path separately. The friction was mostly process overhead, not a wrong technical diagnosis.

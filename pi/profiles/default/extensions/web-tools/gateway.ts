@@ -1,4 +1,5 @@
 import https from "node:https";
+import type { AcquisitionFailure } from "./acquisition.ts";
 
 export type FetchBackend = "auto" | "direct" | "trawl" | "jina";
 export type GatewayReply = {
@@ -10,7 +11,8 @@ export type GatewayReply = {
 };
 export class GatewayError extends Error {
 	readonly kind: "availability" | "configuration" | "acquisition";
-	constructor(kind: GatewayError["kind"], message: string) { super(message); this.kind = kind; }
+	readonly failure: AcquisitionFailure | undefined;
+	constructor(kind: GatewayError["kind"], message: string, failure?: AcquisitionFailure) { super(message); this.kind = kind; this.failure = failure; }
 }
 export function validateGatewayReply(value: unknown): GatewayReply {
 	const reply = value as GatewayReply;
@@ -29,13 +31,7 @@ export function validateGatewayReply(value: unknown): GatewayReply {
 		throw new GatewayError("availability", "Gateway returned an invalid error");
 	return reply;
 }
-export async function withinSignal<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
-	let cancel: () => void = () => {};
-	const aborted = new Promise<never>((_, reject) => { cancel = () => reject(signal.reason); signal.addEventListener("abort", cancel, { once: true }); });
-	const pending = Promise.race([work, aborted]);
-	if (signal.aborted) cancel();
-	try { return await pending; } finally { signal.removeEventListener("abort", cancel); }
-}
+export { withinSignal } from "./acquisition.ts";
 export async function requestGateway(endpoint: string, token: string,
 	input: { url: string; max_chars: number; backend: FetchBackend }, signal: AbortSignal): Promise<GatewayReply> {
 	let url: URL;
@@ -67,7 +63,10 @@ export async function requestGateway(endpoint: string, token: string,
 					if (!reply.ok) {
 						if (["backend_unavailable", "overloaded"].includes(reply.error!.code)) throw new GatewayError("availability", "Gateway unavailable or overloaded");
 						if (reply.error!.code === "invalid_request") throw new GatewayError("configuration", `Gateway request rejected: ${reply.error!.code}`);
-						throw new GatewayError("acquisition", `Web fetch failed: ${reply.error!.message} (${reply.error!.code})`);
+						const code = reply.error!.code;
+						const terminal = reply.attempts.some(attempt => attempt.http_status === 404 || attempt.http_status === 410) ? "not-found" : reply.attempts.some(attempt => attempt.http_status === 401) ? "authentication" : undefined;
+						const failures: Record<string, AcquisitionFailure> = { restricted_destination: "invalid-request", not_found: "not-found", rate_limited: "rate-limit", challenge: "challenge", js_shell: "challenge", access_limited: "authentication", unsupported_content: "unsupported", timeout: "timeout", extraction_failed: "empty" };
+						throw new GatewayError("acquisition", `Web fetch failed: ${reply.error!.message} (${code})`, terminal ?? failures[code]);
 					}
 					if (status !== 200) throw new GatewayError("availability", "Gateway HTTP status contradicts its result");
 					resolve(reply);

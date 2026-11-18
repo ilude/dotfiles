@@ -1,7 +1,8 @@
 #!/usr/bin/env bun
 import { homedir } from "node:os";
-import { resolve } from "node:path";
-import { realpath } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
+import { access, realpath } from "node:fs/promises";
+import { samePlatformPath } from "../../../pi/profiles/default/lib/path-identity.ts";
 import { analyzeRequest } from "../../../pi/profiles/default/lib/damage-control/analysis.ts";
 import { decide } from "../../../pi/profiles/default/lib/damage-control/engine.ts";
 import type { Evidence } from "../../../pi/profiles/default/lib/damage-control/types.ts";
@@ -12,6 +13,20 @@ import { nativeRealpath, type PathFacts } from "../../../pi/profiles/default/lib
 
 const profile = resolve(import.meta.dir, "../../../pi/profiles/default");
 const deny = (reason: string) => process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: reason.slice(0, 3000) } }));
+async function repositoryRoot(cwd: string): Promise<string | undefined> {
+  for (let directory = resolve(cwd);;) {
+    try {
+      await access(resolve(directory, ".git"));
+      return await realpath(directory);
+    } catch (error) {
+      if (!error || typeof error !== "object" || !("code" in error) || !["ENOENT", "ENOTDIR"].includes(String(error.code))) throw error;
+    }
+    const parent = dirname(directory);
+    if (parent === directory) return undefined;
+    directory = parent;
+  }
+}
+
 const main = async () => {
   let data: Record<string, unknown>;
   try {
@@ -32,6 +47,16 @@ const main = async () => {
     if (tool === "bash") await requireGrammars();
     const facts: PathFacts = { platform: process.platform === "win32" ? "win32" : "posix", home: homedir(), cwd: resolve(data.cwd), profile, repo: resolve(data.cwd), realpath: nativeRealpath };
     const { analysis } = await analyzeRequest(adapted.request, facts, { wasCreated: () => false, wasDockerCreated: () => false }, loaded);
+    for (const search of analysis.internal?.searches ?? []) {
+      if (search.executable !== "grep") continue;
+      const effect = analysis.effects.find(item => item.id === search.effectId);
+      if (!effect || effect.context.language !== "bash") continue;
+      const root = await repositoryRoot(effect.context.cwd);
+      if (root && effect.targets.some(target => target.resolution === "static" && samePlatformPath(target.path, root))) {
+        deny("Recursive grep at the repository root also scans ignored dependencies and runtime logs. Use git grep for tracked files, the ignore-aware Grep tool, or a narrower directory.");
+        return;
+      }
+    }
     const evidence: Evidence = { callId: adapted.request.callId, operation: tool, operator: [], pendingCall: { tool, input: adapted.request.input, cwd: adapted.request.cwd }, untrusted: { effects: analysis.effects, matches: analysis.matches, uncertainties: analysis.uncertainties }, omissions: [] };
     const decision = decide(analysis, evidence);
     if (decision.outcome === "block") deny(decision.reason);

@@ -5,6 +5,7 @@ import { compact, type ExtensionAPI, type ExtensionContext, type SessionBeforeCo
 import { HANDOFF_INSTRUCTIONS, registerCompaction, unifiedPreparation } from "../extensions/compaction.ts";
 import * as accounting from "../lib/bedrock/accounting.ts";
 import * as backend from "../lib/subagents/authority.ts";
+import type { GoalAdmission } from "../lib/goal/runtime.ts";
 
 const model: Model<"openai-completions"> = { id: "fixture", name: "Fixture", provider: "fixture", api: "openai-completions", baseUrl: "https://unused.invalid", reasoning: false, input: ["text"], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 32000, maxTokens: 4096 };
 const usage = { input: 10, output: 5, cacheRead: 0, cacheWrite: 0, totalTokens: 15, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
@@ -23,7 +24,7 @@ function event(history = true): SessionBeforeCompactEvent {
 }
 function transport(stopReason: "stop" | "length" = "stop") {
   const requests: Context[] = [];
-  const stream: StreamFn = (_model, context) => {
+  const stream = (_model: Parameters<StreamFn>[0], context: Context) => {
     requests.push(context);
     const result = createAssistantMessageEventStream();
     const message: AssistantMessage = { role: "assistant", content: [{ type: "text", text: "## Goal\nImplement the approved correction." }], api: model.api, provider: model.provider, model: model.id, usage, stopReason, timestamp: 1 };
@@ -97,14 +98,39 @@ describe("unified compaction", () => {
     } finally { account.mockRestore(); }
   });
 
-  it("blocks an actual T3 compaction helper request before the provider is called", async () => {
+  it("quietly cancels a denied T3 compaction before the provider is called", async () => {
     const selected = vi.spyOn(backend, "selectedSubagentBackend").mockReturnValue("t3");
     try {
-      const { handler, ctx } = fixture(compact);
+      const { handler, ctx, notify } = fixture(compact);
       const start = vi.fn();
       ctx.modelRegistry.streamSimple = start;
       expect(await handler(event(), ctx)).toEqual({ cancel: true });
       expect(start).not.toHaveBeenCalled();
+      expect(notify).not.toHaveBeenCalled();
+    } finally { selected.mockRestore(); }
+  });
+
+  it.each(["manual", "threshold", "overflow"] as const)("compacts after goal completion without reporting its summary as a %s failure", async reason => {
+    const selected = vi.spyOn(backend, "selectedSubagentBackend").mockReturnValue("t3");
+    const account = vi.spyOn(accounting, "accountBedrockMessage").mockResolvedValue(undefined);
+    try {
+      const { handler, ctx, notify } = fixture(compact, { allowed: false, completed: true, reason: "The authorized migration is complete." });
+      const { stream } = transport();
+      ctx.modelRegistry.streamSimple = vi.fn(stream);
+      expect((await handler({ ...event(), reason }, ctx))?.compaction?.summary).toContain("Implement the approved correction.");
+      expect(ctx.modelRegistry.streamSimple).toHaveBeenCalledTimes(1);
+      expect(account).toHaveBeenCalledTimes(1);
+      expect(notify).not.toHaveBeenCalled();
+    } finally { account.mockRestore(); selected.mockRestore(); }
+  });
+
+  it("still reports actual provider failures after goal completion", async () => {
+    const selected = vi.spyOn(backend, "selectedSubagentBackend").mockReturnValue("t3");
+    try {
+      const { handler, ctx, notify } = fixture(compact, { allowed: false, completed: true, reason: "Done." });
+      ctx.modelRegistry.streamSimple = () => { throw new Error("provider unavailable"); };
+      expect(await handler(event(), ctx)).toEqual({ cancel: true });
+      expect(notify).toHaveBeenCalledWith("Compaction failed: provider unavailable", "error");
     } finally { selected.mockRestore(); }
   });
 
@@ -123,9 +149,9 @@ describe("unified compaction", () => {
   });
 });
 
-function fixture(summarize: typeof compact) {
+function fixture(summarize: typeof compact, admission: GoalAdmission = { allowed: false, reason: "Owning goal paused" }) {
   let handler: ((event: SessionBeforeCompactEvent, ctx: ExtensionContext) => Promise<void | { cancel?: boolean; compaction?: CompactionResult }>) | undefined;
-  const pi = { on: (_name: string, callback: typeof handler) => { handler = callback; }, getThinkingLevel: () => "low", events: { emit: (_name: string, event: { respond: (value: Promise<{ allowed: boolean; reason: string }>) => void }) => event.respond(Promise.resolve({ allowed: false, reason: "Owning goal paused" })) } } as unknown as ExtensionAPI;
+  const pi = { on: (_name: string, callback: typeof handler) => { handler = callback; }, getThinkingLevel: () => "low", events: { emit: (_name: string, event: { respond: (value: Promise<GoalAdmission>) => void }) => event.respond(Promise.resolve(admission)) } } as unknown as ExtensionAPI;
   const notify = vi.fn();
   const ctx = { cwd: process.cwd(), isProjectTrusted: () => false, model, modelRegistry: { getApiKeyAndHeaders: async () => ({ ok: true, apiKey: "inert", headers: { "x-fixture": "header" }, baseUrl: "https://auth-route.invalid", env: { FIXTURE: "value" } }) }, ui: { notify } } as unknown as ExtensionContext;
   registerCompaction(pi, summarize);

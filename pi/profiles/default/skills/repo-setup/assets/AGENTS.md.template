@@ -1,0 +1,18 @@
+# __PROJECT_NAME__ agent guidance
+
+## Ownership and commands
+
+- __PROJECT_BOUNDARIES_AND_OWNER_DOCS__
+- Setup, current usage and focused checks: [README.md](README.md).
+- __STACK_SPECIFIC_TOOLING_CHOICE__
+
+## Local policy
+
+- Preserve existing work; Git commits, synchronization and publication are operator-directed.
+- Keep local credentials and raw evidence out of tracked files; __LOCAL_ARTIFACT_PATHS__.
+- __EXTERNAL_ACTION_BOUNDARY__
+
+## Documentation
+
+- README describes current behavior; investigations belong in agent notes.
+- Record material changes in CHANGELOG.md using [changelog](__CHANGELOG_SKILL_PATH__).

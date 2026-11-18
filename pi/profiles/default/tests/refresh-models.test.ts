@@ -636,6 +636,25 @@ describe("/refresh-models command", () => {
 		expect(settings.unrelated).toEqual({ preserved: true });
 	});
 
+	it("refreshes native Bedrock without an API key or Mantle redirect and keeps Grok's native scope", async () => {
+		const pi = createMockPi();
+		registerRefreshModelsCommand(pi as never);
+		const cmd = pi._commands.find(command => command.name === "refresh-models")!;
+		const models = ["us.xai.grok-4.6", "us.xai.grok-4.7"].map(id => ({ provider: "amazon-bedrock", id, name: id }));
+		const refresh = vi.fn(async () => ({ refreshed: new Set(["amazon-bedrock"]), errors: new Map() }));
+		const getApiKeyForProvider = vi.fn(async () => undefined);
+		const ctx = {
+			ui: { notify: vi.fn() }, reload: vi.fn(async () => undefined),
+			modelRegistry: { getAll: () => models, getProviderAuthStatus: provider => ({ configured: provider === "amazon-bedrock" }), refresh, getApiKeyForProvider },
+		};
+		await cmd.handler("amazon-bedrock", ctx as never);
+		expect(refresh).toHaveBeenCalledExactlyOnceWith({ providers: ["amazon-bedrock"], allowNetwork: true, force: true });
+		expect(getApiKeyForProvider).not.toHaveBeenCalled();
+		const settings = JSON.parse(fs.readFileSync(path.join(tempHome, ".pi", "agent", "settings.json"), "utf-8"));
+		expect(settings.enabledModels).toEqual(["openai/gpt-5.4", "amazon-bedrock/us.xai.grok-4.7"]);
+		expect(ctx.reload).toHaveBeenCalledOnce();
+	});
+
 	it("refreshes configured Bedrock models through the universal command", async () => {
 		const pi = createMockPi();
 		registerRefreshModelsCommand(pi as never);

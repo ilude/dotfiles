@@ -7,7 +7,7 @@ import { readRecords } from "../lib/bedrock/ledger.ts";
 import registerBedrockProvider from "../extensions/bedrock/provider.ts";
 import { createAssistantMessageEventStream } from "@earendil-works/pi-ai";
 import { getBuiltinModels } from "@earendil-works/pi-ai/providers/all";
-import { selectLatestClaudeModelIds } from "../lib/bedrock/model-policy.ts";
+import { selectLatestClaudeModelIds, selectLatestGrokModelIds } from "../lib/bedrock/model-policy.ts";
 
 let scratch: string | undefined;
 
@@ -18,6 +18,7 @@ describe("Bedrock provider routing", () => {
 		const registerProvider = vi.fn(); const registerCommand = vi.fn();
 		registerBedrockProvider({ registerProvider, registerCommand, on: vi.fn() } as any);
 		expect(registerProvider).toHaveBeenCalledOnce(); expect(registerCommand).not.toHaveBeenCalled();
+		expect(registerProvider.mock.calls[0][0].getModels().some((model: { id: string }) => model.id.includes("grok"))).toBe(false);
 	});
 	it("accounts and annotates finalized child responses without a status surface", async () => {
 		scratch = mkdtempSync(join(tmpdir(), "bedrock-child-accounting-")); vi.stubEnv("PI_CODING_AGENT_DIR", scratch);
@@ -48,6 +49,13 @@ describe("Bedrock provider routing", () => {
 		for (const id of expectedClaudeIds.filter(id => discoveredIds.includes(id))) {
 			expect(routes.find(route => route.model.id === id)).toMatchObject({ transport: "mantle-anthropic", target: { id } });
 		}
+	});
+	it("selects the newest supported US Grok without switching geography or model variants", () => {
+		expect(selectLatestGrokModelIds([
+			"us.xai.grok-4.6", "us.xai.grok-4.7", "us.xai.grok-4.10",
+			"global.xai.grok-5", "xai.grok-5", "us.xai.grok-5-fast", "us.xai.grok-5-preview",
+		])).toEqual(["us.xai.grok-4.10"]);
+		expect(selectLatestGrokModelIds(["global.xai.grok-4.7"])).toEqual([]);
 	});
 	it("preserves the materialized Runtime fallback versus advertised Mantle target", async () => {
 		const runtimeRoute = buildBedrockModelRoutes([]).find(route => route.model.id.startsWith("anthropic.claude-opus-"));

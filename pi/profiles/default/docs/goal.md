@@ -23,6 +23,21 @@ Load the extension in a fresh default-profile Pi process, or use `/reload` only 
 
 Pause a running goal before starting another. Resume continues the existing goal with its recorded budget, not a fresh allowance. A completed goal requires a new start. Goals require a durable native Pi session.
 
+## Full send
+
+```text
+/full-send [start] [--bedrock-usd N] [--codex-percent N] <task>
+/full-send
+/full-send status
+/full-send off
+```
+
+`/full-send <task>` starts a goal with the [full-send workflow](../skills/full-send/SKILL.md) and scoped local Damage Control preapproval. Bare `/full-send` arms the current running goal or resumes and arms an incomplete one; it does not infer a goal from conversation when none exists. Pause a running goal before replacing it with a new task. `status` shows its task, run, outcome and whether preapproval is active, suspended or off. `off` removes preapproval without cancelling or pausing the goal; use `/goal pause` to stop work.
+
+Preapproval applies only during running goal turns in the owning session. The independent Damage Control judge must establish task membership, and the call must meet the same local bypass eligibility used by `/dc off`. Hard blocks, human-only rules, protected paths, disclosure, shell modes, review failures and frozen role restrictions remain unchanged. Remote operations get the task's authority as review context, not a deterministic bypass or new deployment/publication permission. Children do not inherit preapproval; native browser controls remain unchanged. Task membership is model judgment, not a code-enforced resource sandbox.
+
+Completion, a replacement goal, disarming or a new session ends this authorization. Questions, blockers, budget pauses and interruption suspend it; resuming the same armed run with `/goal resume` reactivates it. Reload/session restoration/tree navigation restores the branch's arm suspended, never auto-restarts work, and requires explicit resume. Plain chat and `/skill:full-send` do not arm runtime permissions. Ordinary new `/goal` runs do not enable full send. No PR lifecycle is added.
+
 ## Scope and continuation
 
 The original goal and explicit user decisions remain authoritative. Durable goal context is supplied separately from operational notes, findings, and conversation summaries, so continuation and compaction do not turn discoveries into acceptance criteria. Only direct user instructions can revise acceptance.
@@ -30,6 +45,15 @@ The original goal and explicit user decisions remain authoritative. Durable goal
 The agent investigates facts before asking. If a consequential decision remains unresolved, it asks one focused question with a recommendation and stops for the answer. It reports concrete blockers rather than repeatedly retrying or polling. Optional discoveries are reported separately, not implemented as extra requirements. Defects necessary to meet the stated goal remain in scope; completion means meeting that goal, not inventing more work.
 
 The loop re-presents the same goal at healthy completion boundaries and continues in the current session until an explicit outcome stops it. Progress checkpoints preserve current work without adding requirements. This is not a scheduler or a new session. Questions, blockers, budget pauses, errors, interruption, and completion stop automatic continuation. `/goal status` shows the recorded outcome and reason; use `/goal resume [instruction]` when ready. A direct answer to a waiting question or blocker can also resume work. Asynchronous findings are not user answers.
+
+## Optional intent review
+
+For a bounded fresh-context check against the original request, explicitly request **intent review** in the goal text, or invoke `/skill:intent-review` on current changes. The [skill](../skills/intent-review/SKILL.md) looks for completion blockers and unnecessary task-created additions, with at most three review rounds by default. It reuses existing reviewer routing and goal limits; it does not run on every goal or require reviewer unanimity before completion.
+
+```text
+/goal Fix the CSV export regression, run the existing focused checks, then intent review.
+/skill:intent-review Review the current CSV export changes against my original request.
+```
 
 ## Optional budgets
 

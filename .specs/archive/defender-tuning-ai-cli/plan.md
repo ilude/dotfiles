@@ -53,6 +53,11 @@ Current state (what the plan starts from):
   above (still hardcode npm/pnpm/.claude\projects entries). T0 reconciles
   this before Wave 1 begins. See B1 in `review-1/synthesis.md`.
 
+Historical diagnostic findings were migrated to Onclave improvement note
+`fb63d88399ad19846d6fc27d6d6d193076fe12c86d4cfcae9dc7d5ac2097d36c` on 2026-11-14.
+Retrieve it with `onclave_improvement` (`operation: "get"`). The summary below
+remains part of this archived plan's context, not current remediation policy.
+
 Investigation history that informed this plan (summary):
 - Earlier in the session we tracked an orphaned `find.exe` (Git for
   Windows POSIX find, not System32 find) running 7+ minutes recursively

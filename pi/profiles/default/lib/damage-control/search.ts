@@ -76,7 +76,7 @@ export function parseSearchArguments(executable: "grep" | "rg", args: readonly S
   const patternFiles: SearchArgument[] = [];
   const inventoryArgs = ["--files", "--null"];
   const metadataOnly = executable === "rg" && args.some(item => item.known && item.value === "--files");
-  const recursive = args.some(item => item.known && (item.value === "--recursive" || /^-[^-]*[rR]/.test(item.value)));
+  let recursive = false;
   let hasPattern = metadataOnly;
   let unresolvedPattern: SearchArgument | undefined;
   let literal = false;
@@ -111,6 +111,9 @@ export function parseSearchArguments(executable: "grep" | "rg", args: readonly S
     else if (/^-[ef].+/.test(arg)) {
       hasPattern = true;
       if (arg[1] === "f") patternFiles.push({ known: true, value: arg.slice(2) });
+    } else if (executable === "grep" && (arg === "--recursive" || arg === "--dereference-recursive" || /^-[^-]*[rR]/.test(arg))) {
+      recursive = true;
+      safeInventory = false;
     } else if (scopeFlags.has(arg)) inventoryArgs.push(arg);
     else if (dataFlags.has(arg) || /^-[ABCmj]\d+$/.test(arg)) continue;
     else if (/^-[nHiwFvscqlNazoxSIPUubL]+$/.test(arg)) {
@@ -124,7 +127,7 @@ export function parseSearchArguments(executable: "grep" | "rg", args: readonly S
 }
 
 export function rgInventoryArgs(search: ShellSearch, root: string): string[] | undefined {
-  return search.inventoryArgs ? [...search.inventoryArgs, "--", root] : undefined;
+  return search.executable === "rg" && search.inventoryArgs ? [...search.inventoryArgs, "--", root] : undefined;
 }
 
 export async function enumerateShellRg(search: ShellSearch, root: string, cwd: string, profile: string, signal?: AbortSignal): Promise<SearchInventory> {

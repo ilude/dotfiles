@@ -1,0 +1,6 @@
+{
+  "bws": {
+    "project_id": "00000000-0000-0000-0000-000000000000",
+    "api_server": "https://vault.example.internal/api"
+  }
+}

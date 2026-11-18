@@ -20,6 +20,12 @@ Do not consult Steward before starting requested implementation, including user-
 
 const WRITING_GUIDANCE = `Reviewer and validator are read-only: use them for evidence-based findings returned through their normal results, never filesystem output. You correlate and integrate results unless synthesis is explicitly assigned. Use writer when the delegated outcome is a prose artifact; give a natural-language brief and applicable skills as useful suggestions, not required fields. Do not repeat established synthesis just to write it. Preserve disjoint write ownership.`;
 
+const MODEL_ROUTING_GUIDANCE = `## Model routing
+
+Prefer subscriptions, then AWS. Honor project/account identity. Claude subscriptions use ccyl; Pi Opus uses AWS. Return role-bound ccyl to the orchestrator.`;
+
+const GROK_ROUTING_GUIDANCE = `Use \`model: "grok"\` for native AWS US Grok (\`amazon-bedrock/us.xai.grok-4.7\` currently), not Mantle, direct xAI or T3's separate \`grok\` provider.`;
+
 const CALLER_GUIDANCE = `## Delegation guidance
 
 Consult \`subagent\` with \`agent: "strategist"\` for implementation-plan execution or user-authorized work suited to parallel subagents or Team Leads. Delegate a standalone job to a single subagent or Team Lead only when the user explicitly requests it or delegation conserves context; explain the context-conservation reason when applicable, and skip the Strategist consultation in either case. Otherwise work directly, including when Strategist recommends one worker without an exception. An explicit single-agent handoff also bypasses consultation when handing off plan work. When the user requests delegation while you continue another discussion, launch the requested agent in the background and continue the discussion.
@@ -28,7 +34,11 @@ ${STEWARD_GUIDANCE}
 
 ${WRITING_GUIDANCE}
 
-Assign at most one named plan task per subagent; split larger tasks further. Run ready independent assignments concurrently. Integrate prerequisites before dependent work. Ask only about interpretations changing behavior, scope, or acceptance.`;
+ccyl may handle any authorized task type. Use project context/existing Git identity; ask if unclear. Explicit routes win; "high" sets effort. AWS Grok is permitted for either project category.
+
+For ccyl, check claude_usage using its Claude config directory for shared five-hour/weekly quota and resets. Reuse recent readings; refresh after substantial work. Unknown quota is unavailable.
+
+Assign at most one named plan task per subagent; split larger tasks further. Run ready independent assignments concurrently. Integrate prerequisites before dependent work.`;
 
 function coordinatorGuidance(taskSizing = "Assign at most one named plan task per subagent; split larger tasks into independently verifiable outcomes."): string {
   return `## Delegation guidance
@@ -56,7 +66,7 @@ Inspect the subagent's evidence and prerequisites before retrying. Retry the sam
 
 const COUNCIL_GUIDANCE = `## Council guidance
 
-Run a council only when the user explicitly requested one. Use non-writing members for independent openings, focused rebuttal, and synthesis. Use follow-up messages to reopen the same members for rebuttal. Report strongest arguments, changed positions, disagreements, and evidence gaps without forcing agreement or implementation.`;
+Run a council only when the user explicitly requested one. Use follow-up messages to reopen the same members for rebuttal.`;
 
 function catalogEntries(definitions: ReadonlyMap<string, AgentDefinition>, permitted?: readonly string[]): string {
   const allowed = permitted ? new Set(permitted) : undefined;
@@ -84,7 +94,9 @@ export function delegationContext(options: DelegationContextOptions): string {
         : options.audience === "council"
           ? COUNCIL_GUIDANCE
           : CALLER_GUIDANCE;
-  const text = `${guidance}\n\n${catalog}\n${entries || "- none"}`;
+  const routing = options.audience === "strategist" ? "" : `\n\n${MODEL_ROUTING_GUIDANCE}`;
+  const grokRouting = options.audience === "caller" || options.audience === "council" ? `\n\n${GROK_ROUTING_GUIDANCE}` : "";
+  const text = `${guidance}${routing}${grokRouting}\n\n${catalog}\n${entries || "- none"}`;
   return options.backend === "t3" ? t3ToolReferences(text) : text;
 }
 
@@ -92,7 +104,7 @@ export function delegationContext(options: DelegationContextOptions): string {
 export function composedIntegratorSuccessorPrompt(): string {
   return `Perform only the authorized local closeout described by the runtime-issued manifest. Follow the plan-integration skill. Use closeout_successor_handoff for staged integration and metadata, integration readiness, exact originating-session handoff, and cleanup. INTEGRATION READY is not whole-run completion: keep the worktree until the orchestrator finishes its explicitly authorized obligations, releases the handoff, and the runtime observes its exact retirement. Do not select or shut down panes yourself.
 
-Accept native operator input and ask consequential questions here with exact evidence and a recommendation. Before retirement, blocked integration or a consequential decision preserves both panes and the task worktree; do not choose between consequential edits. Own the final operator report in this surviving pane and remain available afterward. Never push, deploy, delete the task branch, rewrite published history, delegate, or expand the manifest scope.
+Accept native operator input and ask consequential questions here with exact evidence and a recommendation. Before retirement, blocked integration or a consequential decision preserves both panes and the task worktree; do not choose between consequential edits. Own the final operator report in this surviving pane and remain available afterward. Push and deployment belong to the orchestrator, not this local-closeout role. Do not delete the task branch, rewrite published history, delegate, or expand the manifest scope.
 
 Start the report with one outcome: 🟢 **COMPLETED**, 🔴 **NOT COMPLETE: MERGE BLOCKED**, 🔴 **NOT COMPLETE: USER INPUT REQUIRED**, or 🟡 **CLEANUP PENDING**. COMPLETED requires verified integration, completion metadata, and task-worktree removal. After delivery, retirement/removal failure is CLEANUP PENDING, not rollback or orchestrator recreation. For blocked or cleanup-pending outcomes, put **Reason** and **Action needed** before successes, naming the exact issue, owner and next action. Report checks, archive/active-spec evidence, target/task commits, preservation state, and exact retained paths; distinguish verified delivery from unfinished cleanup.`;
 }

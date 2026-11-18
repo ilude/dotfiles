@@ -2,6 +2,7 @@ import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext, Extension
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import goalExtension, { parseGoalCommand } from "../extensions/goal.ts";
 import { GOAL_ENTRY_TYPE } from "../lib/goal/contract.ts";
+import { fullSendAuthorization, FULL_SEND_ENTRY, restoreFullSend } from "../lib/goal/full-send.ts";
 import { getSubagentRuntime, resetSubagentRuntime } from "../lib/subagents/runtime.ts";
 import * as selection from "../lib/subagents/authority.ts";
 import * as t3Goals from "../lib/subagents/t3/goal.ts";
@@ -44,10 +45,12 @@ function harness() {
   goalExtension(api);
   const emit = (name: string, event: Record<string, unknown> = {}) => handlers.get(name)?.(event, ctx);
   const command = (args: string) => commands.get("goal")!.handler(args, ctx);
+  const fullSend = (args: string) => commands.get("full-send")!.handler(args, ctx);
+  const authorization = (sessionId = "owner") => fullSendAuthorization(events, sessionId);
   const control = (input: ControlInput) => tools.get("goal_control")!.execute("control", input, new AbortController().signal, undefined, toolCtx);
   const state = () => branch.filter((e): e is { data: { runId: string; outcome: string; authority: { decisions: string[] } }; customType: string } => !!e && typeof e === "object" && "customType" in e && e.customType === GOAL_ENTRY_TYPE).at(-1)?.data;
   emit("session_start");
-  return { emit, command, control, branch, state, send, abort, notify, events };
+  return { emit, command, fullSend, authorization, control, branch, state, send, abort, notify, events };
 }
 beforeEach(() => { vi.stubEnv("PI_SUBAGENT_AUTHORITY", ""); readUsage.mockReset(); });
 afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); });
@@ -60,6 +63,88 @@ describe("goal command syntax", () => {
     expect(() => parseGoalCommand("--codex-percent 101 Build")).toThrow();
   });
 });
+describe("full-send goal lifecycle", () => {
+  it("arms only an explicit command and projects authority, not findings, into the owning session", async () => {
+    const h = harness();
+    await h.command("Fix compiler");
+    expect(h.authorization()).toBeUndefined();
+    await h.emit("input", { source: "interactive", text: "Discuss the full send skill" });
+    expect(h.authorization()).toBeUndefined();
+    await h.fullSend("");
+    expect(h.authorization()).toMatchObject({ source: "/full-send", task: { goal: "Fix compiler" } });
+    expect(h.authorization("child")).toBeUndefined();
+    await h.control({ action: "checkpoint", summary: "Check tests", findings: ["UNTRUSTED FINDING"] });
+    expect(JSON.stringify(h.authorization())).not.toContain("UNTRUSTED FINDING");
+    const context = await h.emit("context", { messages: [] }) as { messages: { content: string }[] };
+    expect(context.messages[0].content).toContain("# Full send");
+  });
+  it("starts with existing budget parsing, reports status, and disarms without stopping the goal", async () => {
+    const h = harness();
+    readUsage.mockResolvedValue({ codex: { status: "unavailable", reason: "not configured", observedAt: Date.now() } });
+    await h.fullSend("--codex-percent 30 Fix compiler");
+    // A budget cannot start without usage evidence, so use an unbudgeted goal next.
+    expect(h.state()?.outcome).toBe("budget");
+    expect(h.authorization()).toBeUndefined();
+    await h.fullSend("Fix compiler");
+    expect(h.authorization()?.runId).toBe(h.state()?.runId);
+    await h.fullSend("status");
+    expect(h.notify).toHaveBeenLastCalledWith(expect.stringContaining("Full send: active"), "info");
+    await h.fullSend("off");
+    expect(h.authorization()).toBeUndefined();
+    expect(h.state()?.outcome).toBe("running");
+    await h.fullSend("status");
+    expect(h.notify).toHaveBeenLastCalledWith(expect.stringContaining("Full send: off"), "info");
+  });
+  it("suspends on questions and restoration, then resumes only with the existing goal controls", async () => {
+    const h = harness();
+    await h.fullSend("Fix compiler");
+    const runId = h.state()!.runId;
+    await h.control({ action: "question", summary: "Which compiler?" });
+    expect(h.authorization()).toBeUndefined();
+    await h.fullSend("status");
+    expect(h.notify).toHaveBeenLastCalledWith(expect.stringContaining("armed, suspended"), "info");
+    await h.emit("input", { source: "extension", text: "Use v2" });
+    expect(h.authorization()).toBeUndefined();
+    await h.emit("input", { source: "interactive", text: "Use v2; no deployment" });
+    expect(h.authorization()?.task.decisions).toEqual(["Use v2; no deployment"]);
+    await h.emit("session_start", { reason: "reload" });
+    expect(h.authorization()).toBeUndefined();
+    expect(h.state()?.outcome).toBe("interrupted");
+    await h.command("resume");
+    expect(h.authorization()?.runId).toBe(runId);
+    await h.command("pause");
+    expect(h.authorization()).toBeUndefined();
+    await h.fullSend("");
+    expect(h.authorization()?.runId).toBe(runId);
+  });
+  it("rejects malformed and foreign-session arms instead of falling back to an old approval", async () => {
+    const h = harness();
+    await h.fullSend("Fix compiler");
+    const stateEntry = h.branch.find(e => !!e && typeof e === "object" && "customType" in e && e.customType === GOAL_ENTRY_TYPE) as { data: Parameters<typeof restoreFullSend>[1] };
+    const latest = { type: "custom", customType: FULL_SEND_ENTRY, data: { version: 1, sessionId: "other-session", runId: h.state()!.runId, armed: true } };
+    expect(restoreFullSend([...h.branch, latest], stateEntry.data)).toBeUndefined();
+    expect(restoreFullSend([...h.branch, { ...latest, data: { armed: "true" } }], stateEntry.data)).toBeUndefined();
+    expect(restoreFullSend(h.branch, undefined)).toBeUndefined();
+  });
+  it("ends on complete or replacement and restores the branch's latest disarm", async () => {
+    const h = harness();
+    await h.fullSend("Fix compiler");
+    await h.control({ action: "complete", summary: "Compiler checks pass" });
+    expect(h.authorization()).toBeUndefined();
+    await h.fullSend("");
+    expect(h.authorization()).toBeUndefined();
+    await h.fullSend("Second task");
+    await h.fullSend("off");
+    await h.emit("session_tree");
+    await h.command("resume");
+    expect(h.authorization()).toBeUndefined();
+    await h.fullSend("");
+    await h.command("pause");
+    await h.command("Third task");
+    expect(h.authorization()).toBeUndefined();
+    expect(h.branch.some(e => !!e && typeof e === "object" && "customType" in e && e.customType === FULL_SEND_ENTRY)).toBe(true);
+  });
+});
 describe("goal extension lifecycle", () => {
   it("does not create a native manager or run root goal side effects in a T3 role child", async () => {
     vi.spyOn(selection, "selectedSubagentBackend").mockReturnValue("t3");
@@ -69,6 +154,8 @@ describe("goal extension lifecycle", () => {
     const h = harness();
     await h.emit("session_start");
     await h.command("Fix compiler");
+    await h.fullSend("Fix compiler");
+    expect(h.authorization()).toBeUndefined();
     await h.emit("before_agent_start", { systemPromptOptions: { sections: {} } });
     await h.emit("agent_before_settle", { outcome: "completed", context: { canContinue: true } });
     await h.emit("agent_settled", { aborted: true });

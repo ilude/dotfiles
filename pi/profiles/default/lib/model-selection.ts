@@ -1,6 +1,7 @@
 import type { Api, Model } from "@earendil-works/pi-ai";
 import type { ModelRegistry, ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { compareModelVersions, modelFamilyVersion } from "./model-family.ts";
+import { selectLatestGrokModelIds } from "./bedrock/model-policy.ts";
 
 const PROVIDER_LADDER = [
 	["openai"],
@@ -8,10 +9,13 @@ const PROVIDER_LADDER = [
 	["amazon-bedrock"],
 ] as const;
 
+const AWS_PROVIDER_LADDER = PROVIDER_LADDER.slice(1);
+
 const MODEL_ALIASES: Readonly<Record<string, string>> = {
 	astra: "astra",
 	fable: "claude-fable",
 	luna: "luna",
+	opus: "claude-opus",
 	sol: "sol",
 	terra: "terra",
 };
@@ -81,13 +85,22 @@ export function resolvePreferredModel(
 
 	const alias = trimmed.toLowerCase();
 	if (alias === "astra" || alias === "sol" || alias === "terra" || alias === "luna") {
-		return resolveLatestCodexModelFromRegistry(alias, registry);
+		return resolveLatestFamilyModel(alias, registry);
 	}
 	if (alias === "fable") return resolveLatestFamilyModel("fable", registry);
+	if (alias === "opus") return resolveLatestFamilyModel("opus", registry, AWS_PROVIDER_LADDER);
 	const target = trimmed;
 	const authenticated = registry.getAll().filter(model => registry.hasConfiguredAuth(model));
+	if (alias === "grok") {
+		const native = authenticated.filter(model => model.provider === "amazon-bedrock");
+		const [id] = selectLatestGrokModelIds(native.map(model => model.id));
+		const selected = native.find(model => model.id === id);
+		if (selected) return selected;
+		throw new Error('No configured native AWS Bedrock model matches "grok"');
+	}
 
-	for (const providers of PROVIDER_LADDER) {
+	const providerLadder = modelFamilyVersion(trimmed)?.family === "opus" ? AWS_PROVIDER_LADDER : PROVIDER_LADDER;
+	for (const providers of providerLadder) {
 		const candidates = authenticated
 			.filter(model => (providers as readonly string[]).includes(model.provider))
 			.map(model => {
@@ -99,11 +112,46 @@ export function resolvePreferredModel(
 		if (candidates.length > 0) return candidates[0].model;
 	}
 
-	throw new Error(`No configured subscription or AWS model matches "${requested}"`);
+	throw new Error(`No configured ${providerLadder === AWS_PROVIDER_LADDER ? "AWS Bedrock" : "subscription or AWS"} model matches "${requested}"`);
+}
+
+/** Resolve against current, provider-scoped availability, not the registry's cached auth snapshot. */
+export async function resolveAvailablePreferredModel(
+	requested: string,
+	registry: Pick<ModelRegistry, "getAvailableOfType">,
+	signal?: AbortSignal,
+): Promise<Model<Api>> {
+	const trimmed = requested.trim();
+	if (!trimmed || trimmed.includes("/")) throw new Error(`Expected a bare model name, received ${requested}`);
+	const alias = trimmed.toLowerCase();
+	const providers = alias === "grok" ? [["amazon-bedrock"]] : alias === "opus" || modelFamilyVersion(trimmed)?.family === "opus" ? AWS_PROVIDER_LADDER : PROVIDER_LADDER;
+	const failures: string[] = [];
+	for (const tier of providers) {
+		for (const provider of tier) {
+			signal?.throwIfAborted();
+			let models: readonly Model<Api>[];
+			try {
+				models = await registry.getAvailableOfType("chat", provider, { signal });
+			} catch {
+				signal?.throwIfAborted();
+				failures.push(provider);
+				continue;
+			}
+			signal?.throwIfAborted();
+			// Selection policy is shared with shortcuts and synchronous catalog callers.
+			// Only this provider's fresh, available chat models enter that policy.
+			if (models.length === 0) continue;
+			try { return resolvePreferredModel(trimmed, { getAll: () => [...models], hasConfiguredAuth: () => true }); }
+			catch (error) {
+				if (!(error instanceof Error) || !error.message.startsWith("No configured ")) throw error;
+			}
+		}
+	}
+	throw new Error(`No available subscription or AWS chat model matches "${requested}". Checked ${providers.flat().join(", ")}.${failures.length ? ` Availability lookup failed for ${failures.join(", ")}.` : ""}`);
 }
 
 function latestFamilyModel(family: OpenAIFamily | "fable" | "opus", models: readonly Model<Api>[]): Model<Api> | undefined {
-	if (family === "sol") return models.find(model => model.id === PINNED_SOL_MODEL || model.id === `openai.${PINNED_SOL_MODEL}`);
+	if (family === "sol") return models.find(model => model.id === PINNED_SOL_MODEL || /^(?:(?:us|eu|apac|global)\.)?openai\.gpt-6\.1-sol$/.test(model.id));
 	return models.flatMap(model => {
 		const parsed = modelFamilyVersion(model.id);
 		return parsed?.family === family ? [{ model, version: parsed.version }] : [];
@@ -122,7 +170,7 @@ function resolveLatestFamilyModel(
 		const model = latestFamilyModel(family, authenticated.filter(candidate => providerTier.includes(candidate.provider)));
 		if (model) return model;
 	}
-	throw new Error(`No configured subscription or AWS model matches "${family}"`);
+	throw new Error(`No configured ${providers === AWS_PROVIDER_LADDER ? "AWS Bedrock" : "subscription or AWS"} model matches "${family}"`);
 }
 
 function latestCodexModel(family: OpenAIFamily, models: readonly Model<Api>[]): Model<Api> {
@@ -155,7 +203,7 @@ export function resolveLatestShortcutModel(
 	family: "astra" | "sol" | "terra" | "luna" | "fable" | "opus",
 	registry: Pick<ModelRegistry, "getAll" | "hasConfiguredAuth">,
 ): Model<Api> {
-	return resolveLatestFamilyModel(family, registry);
+	return resolveLatestFamilyModel(family, registry, family === "opus" ? AWS_PROVIDER_LADDER : PROVIDER_LADDER);
 }
 
 export function modelAliasNames(): readonly string[] {

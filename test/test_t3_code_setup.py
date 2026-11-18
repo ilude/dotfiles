@@ -41,6 +41,32 @@ def t3_setup(tmp_path):
     return settings, binary, run
 
 
+def test_default_setup_creates_a_repeatable_repo_owned_adapter(tmp_path):
+    home = tmp_path / "T3 home with spaces"
+    command = [
+        NODE,
+        str(ROOT / "scripts/t3-code-setup.mjs"),
+        "--base-dir",
+        str(home),
+        "--secrets-file",
+        str(tmp_path / "missing.env"),
+    ]
+    result = subprocess.run(command, capture_output=True, text=True, timeout=15)
+    assert result.returncode == 0, result.stdout + result.stderr
+    settings = json.loads((home / "userdata/settings.json").read_text())
+    launcher = Path(settings["providerInstances"]["pi"]["config"]["binaryPath"])
+    assert launcher.parent == home / "bin"
+    assert launcher.name in ("t3-pi", "t3-pi.cmd")
+    content = launcher.read_text()
+    assert str(ROOT / "scripts/t3-pi.mjs") in content
+    assert "pnpm" not in str(launcher).lower()
+    assert "global/v" not in content
+    before = launcher.read_bytes(), launcher.stat().st_mtime_ns
+    result = subprocess.run(command, capture_output=True, text=True, timeout=15)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert (launcher.read_bytes(), launcher.stat().st_mtime_ns) == before
+
+
 def test_creates_native_default_pi_configuration_and_is_repeatable(t3_setup):
     settings, binary, run = t3_setup
     result = run()

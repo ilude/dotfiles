@@ -12,7 +12,7 @@ $ErrorActionPreference = 'Stop'
 $key = $env:FIRECRAWL_API_KEY
 if (-not $key) {
     $root = (Get-Item $PSScriptRoot).Parent.Parent.Parent.Parent.Parent.Parent.FullName
-    $locatorPath = Join-Path $root 'modules/homelab-infra/settings.local.json'
+    $locatorPath = Join-Path $root 'config/bws/settings.local.json'
     $locator = (Get-Content -Raw $locatorPath | ConvertFrom-Json).bws
     if (-not $env:BITWARDEN_ACCESS_KEY) { throw 'Controller BITWARDEN_ACCESS_KEY is unavailable' }
     $priorToken = $env:BWS_ACCESS_TOKEN

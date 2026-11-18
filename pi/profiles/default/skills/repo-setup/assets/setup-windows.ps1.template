@@ -1,0 +1,115 @@
+<#
+.SYNOPSIS
+Prepare __REPOSITORY_NAME__'s Windows tools and project-local Python environments.
+.PARAMETER InstallTools
+Install missing Git/uv through WinGet. Existing tools are not upgraded.
+.PARAMETER IncludeAwsCli
+Also check AWS CLI, or install it when combined with -InstallTools.
+.PARAMETER ValidateOnly
+Check tool commands and project metadata without installing or syncing anything.
+.EXAMPLE
+.\setup-windows.ps1 -InstallTools
+.EXAMPLE
+.\setup-windows.ps1 -ValidateOnly
+#>
+#Requires -Version 5.1
+[CmdletBinding()]
+param(
+    [switch]$InstallTools,
+    [switch]$IncludeAwsCli,
+    [switch]$ValidateOnly
+)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+
+$RepositoryName = '__REPOSITORY_NAME__'
+$PythonProjects = @('__PYTHON_PROJECT__')
+$Tools = @(
+    @{ Name = 'Git'; Command = 'git'; PackageId = 'Git.Git' },
+    @{ Name = 'uv'; Command = 'uv'; PackageId = 'astral-sh.uv' }
+)
+if ($IncludeAwsCli) {
+    $Tools += @{ Name = 'AWS CLI'; Command = 'aws'; PackageId = 'Amazon.AWSCLI' }
+}
+
+function Update-ProcessPath {
+    # Keep caller-only entries as well as paths registered by a new installation.
+    $parts = @($env:Path -split ';')
+    $parts += [Environment]::GetEnvironmentVariable('Path', 'Machine') -split ';'
+    $parts += [Environment]::GetEnvironmentVariable('Path', 'User') -split ';'
+    if ($env:LOCALAPPDATA) {
+        $parts += Join-Path $env:LOCALAPPDATA 'Microsoft\WinGet\Links'
+    }
+    $env:Path = ($parts | Where-Object { $_ } | Select-Object -Unique) -join ';'
+}
+
+function Confirm-Tool {
+    param([hashtable]$Tool)
+
+    if (-not (Get-Command $Tool.Command -ErrorAction SilentlyContinue)) {
+        if ($ValidateOnly -or -not $InstallTools) {
+            throw "$($Tool.Name) is missing. Re-run with -InstallTools or install $($Tool.PackageId) manually."
+        }
+        if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
+            throw 'WinGet is missing. Install App Installer, then re-run setup.'
+        }
+        Write-Host "Installing $($Tool.Name)..."
+        & winget install --id $Tool.PackageId --exact --source winget --accept-package-agreements --accept-source-agreements
+        if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne -1978335189) {
+            throw "WinGet failed for $($Tool.Name) (exit $LASTEXITCODE)."
+        }
+        Update-ProcessPath
+        if (-not (Get-Command $Tool.Command -ErrorAction SilentlyContinue)) {
+            throw "$($Tool.Name) is not on PATH after installation. Restart the terminal and re-run setup."
+        }
+    }
+    & $Tool.Command --version
+    if ($LASTEXITCODE -ne 0) {
+        throw "$($Tool.Name) version check failed (exit $LASTEXITCODE)."
+    }
+}
+
+try {
+    if ($env:OS -ne 'Windows_NT') {
+        throw 'Use this setup entry point on Windows.'
+    }
+    Write-Host "$RepositoryName setup"
+    foreach ($tool in $Tools) {
+        Confirm-Tool $tool
+    }
+    foreach ($relative in $PythonProjects) {
+        $project = Join-Path $PSScriptRoot $relative
+        foreach ($name in @('pyproject.toml', 'uv.lock', '.python-version')) {
+            if (-not (Test-Path -LiteralPath (Join-Path $project $name) -PathType Leaf)) {
+                throw "Missing $relative/$name. Restore the project metadata before setup."
+            }
+        }
+        if ($ValidateOnly) {
+            Write-Host "[OK] $relative project metadata"
+            continue
+        }
+        Write-Host "Syncing $relative..."
+        Push-Location -LiteralPath $project
+        try {
+            & uv sync --locked
+            if ($LASTEXITCODE -ne 0) {
+                throw "Dependency sync failed for $relative (exit $LASTEXITCODE)."
+            }
+            & uv run --locked python --version
+            if ($LASTEXITCODE -ne 0) {
+                throw "Python check failed for $relative (exit $LASTEXITCODE)."
+            }
+        } finally {
+            Pop-Location
+        }
+    }
+    if ($ValidateOnly) {
+        Write-Host 'Prerequisite check passed. No installs, dependency sync or service authentication performed.'
+    } else {
+        Write-Host 'Setup complete. Use the project README for configuration and focused checks.'
+    }
+} catch {
+    Write-Error $_.Exception.Message -ErrorAction Continue
+    exit 1
+}

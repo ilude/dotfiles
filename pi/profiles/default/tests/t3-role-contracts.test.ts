@@ -4,7 +4,9 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import subagents from "../extensions/subagents.ts";
 import { createMockPi } from "./helpers/mock-pi.ts";
-import { backendToolNames, nativeSubagentAuthority, parseRoleSnapshot, resolveRoleSnapshot, selectedSubagentBackend, subagentAuthority } from "../lib/subagents/authority.ts";
+import { backendToolNames, nativeSubagentAuthority, parseRoleSnapshot, resolveRoleSnapshot, resolveRoleSnapshotForLaunch, selectedSubagentBackend, subagentAuthority } from "../lib/subagents/authority.ts";
+
+import { modelFixture, registryFixture } from "./helpers/model-selection.ts";
 
 const temporary: string[] = [];
 afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); for (const path of temporary.splice(0)) rmSync(path, { recursive: true, force: true }); });
@@ -49,6 +51,15 @@ describe("T1 selected backend", () => {
 });
 
 describe("T1 frozen role resolution boundary", () => {
+  it("uses fresh launch availability while preserving definition provenance", async () => {
+    const options = fixture();
+    writeFileSync(join(options.profile, "agents", "reader.md"), "---\nname: reader\ndescription: Inspect\ntools: [read]\nmodel: sol\neffort: low\n---\nInspect only.");
+    const modelRegistry = registryFixture([modelFixture("openai", "gpt-6.1-sol")], ["openai"]);
+    vi.mocked(modelRegistry.hasConfiguredAuth).mockReturnValue(false);
+    const snapshot = await resolveRoleSnapshotForLaunch({ ...options, modelRegistry });
+    expect(snapshot.model).toEqual({ provider: "openai", id: "gpt-6.1-sol", qualified: "openai/gpt-6.1-sol", source: "definition" });
+    expect(modelRegistry.hasConfiguredAuth).not.toHaveBeenCalled();
+  });
   it("freezes detached defaults, tool names and skill provenance", () => {
     const options = fixture(), snapshot = resolveRoleSnapshot(options);
     expect(snapshot.model).toEqual({ provider: "openai", id: "luna", qualified: "openai/luna", source: "definition" });

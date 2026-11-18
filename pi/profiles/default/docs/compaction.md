@@ -38,6 +38,13 @@ no static API key. It does not switch models or add retry policy. The native hel
 one-off summary request. No standing orchestrator instruction is added; only the
 compaction request and resulting checkpoint change. Live cache effects are unmeasured.
 
+In T3, every summary attempt still checks goal admission and accounts its actual
+response. Successful goal completion permits compaction as context maintenance,
+without resuming the goal or permitting other helpers or execution. Budget pauses,
+operator pauses, questions, and blockers still deny summary calls. Those policy
+refusals cancel compaction without an extra failure notification; actual provider
+and authentication failures remain visible.
+
 A hook exception would otherwise be logged and fall through to native generation.
 The extension instead reports a failed summary and returns cancellation, retaining
 the existing context rather than silently reverting to split summaries. User

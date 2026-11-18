@@ -2,6 +2,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
+import { modelFixture, registryFixture } from "./helpers/model-selection.ts";
 import type { ExtensionAPI, ExtensionToolContext, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { createMockPi } from "./helpers/mock-pi.ts";
 import { createT3RoleRuntime } from "../lib/subagents/t3/bootstrap.ts";
@@ -71,6 +72,31 @@ it("launches source-verified actual callable delegation with bootstrap prefix, r
   expect(output.details).toMatchObject({ threadId: "child", taskId: "task-one", runId: "child-run", childLink: "t3://child", t3Status: "running" });
   expect(await f.store.read((args as Record<string, string>).clientRequestId)).toMatchObject({ commissioner: { threadId: "parent", runId: "parent-run" } });
 });
+it("routes Opus high to the AWS model in the actual T3 launch target", async () => {
+  const f = await fixture();
+  const model = "bedrock-mantle/anthropic.claude-opus-5-5";
+  Object.assign(f.ctx, { modelRegistry: registryFixture([modelFixture("bedrock-mantle", "anthropic.claude-opus-5"), modelFixture("bedrock-mantle", "anthropic.claude-opus-5-5"), modelFixture("anthropic", "claude-opus-5-5")], ["bedrock-mantle", "anthropic"]) });
+  f.metadata.capabilities.mockResolvedValue({ inheritedProviderInstanceId: "pi-actual", providers: [{ driverKind: "pi", providerInstanceId: "pi-actual", canRunChildTask: true, models: [{ id: model, options: [{ id: "thinking", values: ["low", "high"] }] }] }] });
+  expect((await f.run("t3_delegate_role", { agent: "reader", instructions: "Inspect", model: "opus", effort: "high", background: true })).isError).not.toBe(true);
+  expect(f.executeTool.mock.calls[0][1]).toMatchObject({ target: { providerInstanceId: "pi-actual", model, options: { thinking: "high" } } });
+});
+it("rejects accidental direct Anthropic and ccyl-as-Pi before any launch or handoff", async () => {
+  const f = await fixture();
+  f.metadata.currentThread.mockClear(); // Ignore session-start identity discovery.
+  for (const model of ["anthropic/claude-opus-5-5", "ccyl/claude-opus-5-5"]) {
+    expect(await f.run("t3_delegate_role", { agent: "reader", instructions: "Inspect", model, background: true })).toMatchObject({ isError: true });
+  }
+  expect(f.executeTool).not.toHaveBeenCalled();
+  expect(f.metadata.currentThread).not.toHaveBeenCalled();
+  expect(await f.store.ownedHandoffs("parent")).toEqual([]);
+});
+it("retains a user-requested direct-Anthropic override without rerouting it", async () => {
+  const f = await fixture();
+  const model = "anthropic/claude-opus-5-5";
+  f.metadata.capabilities.mockResolvedValue({ inheritedProviderInstanceId: "pi-actual", providers: [{ driverKind: "pi", providerInstanceId: "pi-actual", canRunChildTask: true, models: [{ id: model, options: [{ id: "thinking", values: ["low", "high"] }] }] }] });
+  expect((await f.run("t3_delegate_role", { agent: "reader", instructions: "Inspect", model, providerOverride: "anthropic", background: true })).isError).not.toBe(true);
+  expect(f.executeTool.mock.calls[0][1]).toMatchObject({ target: { model } });
+});
 it("omits unadvertised T3 options while retaining the exact Pi bootstrap setting", async () => {
   const f = await fixture();
   const caps = await f.metadata.capabilities();
@@ -120,6 +146,50 @@ it("keeps owned history readable without guessing an external current assignment
   expect((await f.run("t3_role_control", { id: "task-one", action: "inspect" })).details).toMatchObject({ taskId: "task-one", t3Status: "completed" });
   expect((await f.run("t3_role_control", { id: "child", action: "read" })).isError).not.toBe(true);
   expect(await f.run("t3_role_control", { id: "child", action: "cancel" })).toMatchObject({ isError: true });
+});
+it("resumes an owned thread after an automatic continuation without guessing its current task", async () => {
+  const f = await fixture(); await f.launch();
+  const launch = (await f.store.receipts("parent"))[0];
+  await f.store.claim(launch.launchId, { identity: { threadId: "child", parentThreadId: "parent", cwd: f.profile, runId: "child-run" }, profile: f.profile, cwd: f.profile, actualParentThreadId: "parent" });
+  await f.run("t3_role_control", { id: launch.launchId, action: "message", message: "First follow-up" });
+  expect((await f.store.receipts("parent")).map(receipt => receipt.taskId)).toEqual(["task-one", "task-two"]);
+  f.child.latestRunId = "automatic-child-result-run";
+  f.executeTool.mockClear();
+  for (const action of ["inspect", "cancel"]) {
+    expect(await f.run("t3_role_control", { id: launch.launchId, action })).toMatchObject({ isError: true, content: [{ type: "text", text: "Current owned T3 task identity unavailable" }] });
+  }
+  expect(f.executeTool).not.toHaveBeenCalled();
+  expect((await f.run("t3_role_control", { id: launch.launchId, action: "read" })).isError).not.toBe(true);
+  f.domains.t3_thread_send = { threadId: "child", runId: "new-follow-run", taskId: "task-three", status: "running", delivery: "started" };
+  f.executeTool.mockClear();
+  const output = await f.run("t3_role_control", { id: launch.launchId, action: "message", message: "Resume after continuation", freshContext: true });
+  expect(output.isError).not.toBe(true);
+  expect(output.details).toMatchObject({ launchId: launch.launchId, threadId: "child", taskId: "task-three", runId: "new-follow-run" });
+  expect(f.executeTool.mock.calls.map(call => call.slice(0, 2))).toEqual([["mcp__t3_code__t3_thread_send", { threadId: "child", message: "Resume after continuation", mode: "auto", freshContext: true, clientRequestId: expect.any(String) }]]);
+  const receipts = await f.store.receipts("parent");
+  expect(receipts).toHaveLength(3);
+  expect(receipts[2]).toMatchObject({ launchId: launch.launchId, childThreadId: "child", taskId: "task-three", runId: "new-follow-run", operation: "follow-up" });
+  expect(f.entries.at(-1)).toMatchObject({ customType: "t3-role-receipt", data: { launchId: launch.launchId, taskId: "task-three", runId: "new-follow-run", operation: "follow-up" } });
+});
+it("does not invent a follow-up task receipt and rejects mismatched follow-up or server lineage", async () => {
+  const f = await fixture(); await f.launch();
+  const launch = (await f.store.receipts("parent"))[0];
+  await f.run("t3_role_control", { id: launch.launchId, action: "message", message: "First follow-up" });
+  f.child.latestRunId = "automatic-child-result-run";
+  const receipts = await f.store.receipts("parent");
+  f.domains.t3_thread_send = { threadId: "child", runId: "automatic-child-result-run", status: "running", delivery: "queued" };
+  const output = await f.run("t3_role_control", { id: launch.launchId, action: "message", message: "Queue follow-up", mode: "queue" });
+  expect(output.isError).not.toBe(true);
+  expect(output.details).toMatchObject({ launchId: launch.launchId, threadId: "child", delivery: "queued" });
+  expect(output.details).not.toHaveProperty("taskId");
+  expect(await f.store.receipts("parent")).toEqual(receipts);
+  f.domains.t3_thread_send = { threadId: "different-child", runId: "wrong-run", taskId: "wrong-task", status: "running" };
+  expect(await f.run("t3_role_control", { id: launch.launchId, action: "message", message: "Continue" })).toMatchObject({ isError: true, content: [{ type: "text", text: "T3 follow-up returned a different child thread" }] });
+  expect(await f.store.receipts("parent")).toEqual(receipts);
+  f.child.parentThreadId = "different-parent";
+  f.executeTool.mockClear();
+  expect(await f.run("t3_role_control", { id: launch.launchId, action: "message", message: "Continue" })).toMatchObject({ isError: true, content: [{ type: "text", text: "T3 child lineage ownership mismatch" }] });
+  expect(f.executeTool).not.toHaveBeenCalled();
 });
 it("uses UI input, persists intent, denies raw bypass, and records actual-run outcomes before wait returns a task receipt", async () => {
   const f = await fixture(); await f.launch();

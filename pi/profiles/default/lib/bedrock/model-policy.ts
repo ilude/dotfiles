@@ -62,6 +62,17 @@ export function selectLatestClaudeModelIds(
 	});
 }
 
+export function selectLatestGrokModelIds(modelIds: readonly string[]): string[] {
+	const candidates = modelIds.flatMap((id) => {
+		const match = /^us[.]xai[.]grok-(\d+(?:[.]\d+)*)$/.exec(id);
+		return match?.[1]
+			? [{ id, version: match[1].split(".").map(Number) }]
+			: [];
+	});
+	const selected = latest(candidates);
+	return selected ? [selected.id] : [];
+}
+
 export function selectLatestGptModelIds(
 	modelIds: readonly string[],
 	minimumVersion: readonly [number, number] = [5, 6],

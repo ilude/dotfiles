@@ -4,6 +4,7 @@ import { buildProviderModelDefinitions, buildCachedProviderModelDefinitions } fr
 import type { ModelLike, ProviderModelDef } from "../lib/models/types.ts";
 import { registerProfileCommand } from "../lib/profile-command.ts";
 import { PINNED_SOL_MODEL } from "../lib/model-selection.ts";
+import { selectLatestGrokModelIds } from "../lib/bedrock/model-policy.ts";
 import {
 	getConfiguredBedrockModelIds,
 	shouldHideModel,
@@ -276,14 +277,18 @@ export async function syncCuratedModelScope(
 			? availableOpenAI
 			: existingOpenAI;
 		const bedrock =
-			configured.has("amazon-bedrock") || configured.has("bedrock-mantle")
-				? orderProviderModels(bedrockModelIds.map((id) => ({ id }))).map(({ id }) => {
+			configured.has("bedrock-mantle")
+				? orderProviderModels(bedrockModelIds.filter(id => !/^(?:us[.])?xai[.]grok-/.test(id)).map((id) => ({ id }))).map(({ id }) => {
 						const logicalId = id
 							.replace(/^us[.]/, "")
 							.replace(/-\d{8}-v\d+:\d+$/, "");
 						return `bedrock-mantle/${logicalId}`;
 					})
 				: [];
+		const nativeBedrock = configured.has("amazon-bedrock")
+			? selectLatestGrokModelIds(available.filter(model => model.provider === "amazon-bedrock").map(model => model.id))
+				.map(id => `amazon-bedrock/${id}`)
+			: [];
 		const orderedProviders = [
 			...CURATED_PROVIDER_ORDER.filter((provider) => configured.has(provider)),
 			...[...new Set(available.map((model) => model.provider))]
@@ -306,7 +311,7 @@ export async function syncCuratedModelScope(
 					model.provider === provider && !shouldHideModel(provider, model),
 			)).map((model) => `${provider}/${model.id}`),
 		);
-		scope = [...new Set([...openai, ...bedrock, ...remaining])];
+		scope = [...new Set([...openai, ...bedrock, ...nativeBedrock, ...remaining])];
 		const latestSol = availableOpenAI.find((id) => id === `openai/${PINNED_SOL_MODEL}`);
 		const next = {
 			...settings,
@@ -411,11 +416,7 @@ export default function registerRefreshModelsCommand(pi: ExtensionAPI) {
 
 			const providers = [
 				...new Set(
-					requestedProviders
-						.filter(isRefreshSupportedProvider)
-						.map((provider) =>
-							provider === "amazon-bedrock" ? "bedrock-mantle" : provider,
-						),
+					requestedProviders.filter(isRefreshSupportedProvider),
 				),
 			];
 			const skipped = requestedProviders.filter(
@@ -469,11 +470,11 @@ export default function registerRefreshModelsCommand(pi: ExtensionAPI) {
 
 			for (const provider of providers) {
 				try {
-					if (provider === "openai") {
+					if (provider === "openai" || provider === "amazon-bedrock") {
 						const beforeIds = new Set((ctx.modelRegistry.getAll() as ModelLike[])
 							.filter((model) => model.provider === provider).map((model) => model.id));
-						// Native OpenAI owns its catalog and subscription authentication.
-						// It has no subscription /models transport; refresh its native lifecycle.
+						// Native providers own their catalogs and authentication. In particular,
+						// AWS profiles must not be treated as subscription /models API keys.
 						const refresh = await ctx.modelRegistry.refresh({
 							providers: [provider], allowNetwork: true, force: true,
 						});

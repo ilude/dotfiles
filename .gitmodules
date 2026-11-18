@@ -18,3 +18,11 @@
 	path = modules/t3code
 	url = https://github.com/ilude/t3code.git
 	branch = main
+[submodule "story-workshop"]
+	path = modules/story-workshop
+	url = git@forgejo:mike/story-workshop.git
+	branch = main
+[submodule "research-vault"]
+	path = docs/research/obsidian-vault
+	url = git@forgejo:mike/research-vault.git
+	branch = main

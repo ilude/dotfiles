@@ -24,7 +24,13 @@ export interface GoalRuntimeData {
   reason?: string;
   restoringBuildability: boolean;
 }
-export interface GoalAdmission { allowed: boolean; reason?: string; guidance?: string }
+export interface GoalAdmission {
+  allowed: boolean;
+  reason?: string;
+  guidance?: string;
+  /** Successful completion permits context maintenance, not further goal work. */
+  completed?: boolean;
+}
 export interface GoalRuntimeOptions {
   persistState: (state: GoalState) => void;
   persistRuntime: (data: GoalRuntimeData) => void;
@@ -181,7 +187,10 @@ export class GoalRuntime {
   admit(): Promise<GoalAdmission> {
     const check = async (): Promise<GoalAdmission> => {
       if (!this.state || !this.data) return { allowed: true };
-      if (this.state.outcome !== "running") return { allowed: false, reason: this.data.reason ?? `Goal is ${this.state.outcome}` };
+      if (this.state.outcome !== "running") return {
+        allowed: false, reason: this.data.reason ?? `Goal is ${this.state.outcome}`,
+        ...(this.state.outcome === "complete" ? { completed: true } : {}),
+      };
       const runId = this.state.runId;
       let result: GoalAdmission;
       try { result = await this.options.admit(this.state, this.data); }

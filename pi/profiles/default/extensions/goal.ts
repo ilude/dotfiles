@@ -1,9 +1,11 @@
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { readFileSync } from "node:fs";
+import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { registerProfileCommand } from "../lib/profile-command.ts";
 import { GOAL_ENTRY_TYPE, type GoalBudgetConfig } from "../lib/goal/contract.ts";
 import { renderGoalPrompt } from "../lib/goal/prompt.ts";
+import { FULL_SEND_ENTRY, FULL_SEND_QUERY, restoreFullSend, type FullSendArm, type FullSendAuthorization } from "../lib/goal/full-send.ts";
 import { GoalRuntime, GOAL_RUNTIME_ENTRY, type GoalRuntimeData } from "../lib/goal/runtime.ts";
 import { captureGoalBudgetBaseline, evaluateGoalBudget, type GoalBudgetBaseline } from "../lib/goal/budget.ts";
 import { readGoalUsage } from "../lib/goal/usage.ts";
@@ -56,6 +58,23 @@ export default function goalExtension(pi: ExtensionAPI): void {
   let current: ExtensionContext | undefined;
   let guidance: string | undefined;
   let goalTurn = false;
+  let fullSend: FullSendArm | undefined;
+  let fullSendSkill: string | undefined;
+  const loadFullSendSkill = () => fullSendSkill ??= readFileSync(new URL("../skills/full-send/SKILL.md", import.meta.url), "utf8").replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, "").trim();
+  const isFullSendArmed = () => !!fullSend?.armed && fullSend.sessionId === runtime.state?.sessionId && fullSend.runId === runtime.state.runId && runtime.state.outcome !== "complete";
+  const authorization = (): FullSendAuthorization | undefined => {
+    const state = runtime.state;
+    if (roleChild() || !state || !goalTurn || !isFullSendArmed() || state.outcome !== "running") return;
+    return { source: "/full-send", sessionId: state.sessionId, runId: state.runId,
+      task: { goal: state.authority.goal, scope: [...state.authority.scope], exclusions: [...state.authority.exclusions], decisions: [...state.authority.decisions] } };
+  };
+  const armFullSend = (armed: boolean) => {
+    const state = runtime.state;
+    if (!state || state.outcome === "complete") throw new Error("No incomplete goal. Use /full-send <task>.");
+    fullSend = { version: 1, sessionId: state.sessionId, runId: state.runId, armed };
+    pi.appendEntry(FULL_SEND_ENTRY, fullSend);
+    status();
+  };
   let goalBinding: GoalBinding | undefined;
   let goalOrigin: string | undefined;
   const t3 = selectedSubagentBackend() === "t3" ? createT3GoalBackend(pi) : undefined;
@@ -93,7 +112,7 @@ export default function goalExtension(pi: ExtensionAPI): void {
   const status = () => {
     if (!current) return;
     const state = runtime.state;
-    current.ui.setStatus("goal", state ? `goal: ${state.outcome}` : undefined);
+    current.ui.setStatus("goal", state ? `goal: ${state.outcome}${isFullSendArmed() ? " (full send)" : ""}` : undefined);
   };
   const runtime: GoalRuntime = new GoalRuntime({
     persistState: state => { pi.appendEntry(GOAL_ENTRY_TYPE, state); status(); },
@@ -125,9 +144,16 @@ export default function goalExtension(pi: ExtensionAPI): void {
       if (roleChild()) { current = undefined; goalTurn = false; return; }
     } else subagents = getSubagentRuntime();
     current = ctx; runtime.restore(ctx.sessionManager.getBranch(), ctx.sessionManager.getSessionId(), { stopDescendants: !t3 });
+    fullSend = restoreFullSend(ctx.sessionManager.getBranch(), runtime.state);
     guidance = undefined; goalTurn = false; accounted.clear(); await bind(); status();
   };
   const subscriptions = [
+    pi.events.on(FULL_SEND_QUERY, value => {
+      if (!value || typeof value !== "object") return;
+      const request = value as Record<string, unknown>;
+      const active = authorization();
+      if (active && request.sessionId === active.sessionId && typeof request.respond === "function") request.respond(active);
+    }),
     pi.events.on("goal-run-id", value => {
       if (!value || typeof value !== "object") return;
       const request = value as Record<string, unknown>;
@@ -150,7 +176,7 @@ export default function goalExtension(pi: ExtensionAPI): void {
   pi.on("session_shutdown", async event => {
     if (goalOrigin && goalBinding) subagents.unbindGoal(goalOrigin, goalBinding);
     if (t3 || event.reason === "quit" || event.reason === "reload") for (const unsubscribe of subscriptions) unsubscribe();
-    current?.ui.setStatus("goal", undefined); current = undefined; goalTurn = false;
+    current?.ui.setStatus("goal", undefined); current = undefined; goalTurn = false; fullSend = undefined;
     await t3?.close();
   });
   pi.on("input", async event => {
@@ -170,14 +196,14 @@ export default function goalExtension(pi: ExtensionAPI): void {
     }
     // A required question is resumed only by input, never by a child-result message.
     if (event.messageType === "custom" && !goalTurn && ["goal-start", "goal-continuation", "subagent-result"].includes(event.message.customType)) ctx.abort();
-    event.systemPromptOptions.sections.goal = `${renderGoalPrompt(runtime.state)}\n${CONTROL_GUIDANCE}${goalTurn ? "" : "\nThis goal is paused. Ordinary unrelated user requests may proceed; do not resume goal work without /goal resume."}`;
+    event.systemPromptOptions.sections.goal = `${renderGoalPrompt(runtime.state)}\n${CONTROL_GUIDANCE}${authorization() ? "\nFull send is active for this goal. Follow the full-send workflow in the goal authority context." : ""}${goalTurn ? "" : "\nThis goal is paused. Ordinary unrelated user requests may proceed; do not resume goal work without /goal resume."}`;
   });
   pi.on("context", event => {
     if (roleChild()) return;
     if (!runtime.state || runtime.state.outcome === "complete") return;
     return { messages: [
       ...event.messages.filter(m => !(m.role === "custom" && m.customType === CONTEXT_TYPE)),
-      { role: "custom" as const, customType: CONTEXT_TYPE, content: `${renderGoalPrompt(runtime.state)}\n${CONTROL_GUIDANCE}${guidance ? `\n${guidance}` : ""}`, display: false, timestamp: 0 },
+      { role: "custom" as const, customType: CONTEXT_TYPE, content: `${renderGoalPrompt(runtime.state)}\n${CONTROL_GUIDANCE}${authorization() ? `\n\n${loadFullSendSkill()}` : ""}${guidance ? `\n${guidance}` : ""}`, display: false, timestamp: 0 },
     ] };
   });
   pi.on("turn_start", async (_event, ctx) => {
@@ -238,6 +264,52 @@ export default function goalExtension(pi: ExtensionAPI): void {
       return new Text(theme.fg("text", detail ? `${detail.outcome}: ${detail.summary}` : "Goal checkpoint"), 0, 0);
     },
   });
+  const runGoal = async (command: GoalCommand, ctx: ExtensionCommandContext, enableFullSend = false) => {
+    await ctx.waitForIdle();
+    if (enableFullSend) loadFullSendSkill();
+    if (command.action === "start") {
+      const session = ctx.sessionManager.getSessionFile();
+      if (!session) throw new Error("Goals require a durable native Pi session");
+      if (runtime.state && runtime.state.outcome !== "running") await subagents.stopGoal(runtime.state.sessionId, runtime.state.runId);
+      runtime.start(ctx.sessionManager.getSessionId(), session, { goal: command.text, scope: [], exclusions: [], decisions: [] }, command.budget);
+    } else {
+      await runtime.waitForStops();
+      runtime.resume(command.text, command.restoringBuildability);
+    }
+    if (enableFullSend) armFullSend(true);
+    goalTurn = true;
+    const session = ctx.sessionManager.getSessionFile();
+    if (session) runtime.enroll(session);
+    await bind();
+    const decision = await runtime.admit();
+    if (!decision.allowed) { ctx.ui.notify(decision.reason ?? "Goal paused", "warning"); return; }
+    pi.sendMessage({ customType: "goal-start", content: command.action === "start" ? "Begin the user-authorized /goal in this session. Use the authoritative goal context and goal_control protocol." : "Resume the same /goal. Apply the recorded user instructions without expanding scope.", display: false }, { triggerTurn: true, deliverAs: "followUp" });
+  };
+  registerProfileCommand(pi, "full-send", {
+    description: "Complete a task as a goal with scoped local preapproval; bare invocation resumes the current goal, status inspects, off disarms",
+    handler: async (args, ctx) => {
+      if (roleChild()) { ctx.ui.notify("Role children cannot arm full send", "warning"); return; }
+      current = ctx;
+      try {
+        const text = args.trim();
+        if (text === "status") {
+          const state = runtime.state;
+          ctx.ui.notify(state ? `Full send: ${isFullSendArmed() ? (authorization() ? "active" : "armed, suspended") : "off"}\nRun: ${state.runId}\nTask: ${state.authority.goal}\nGoal: ${state.outcome}` : "Full send: off. Use /full-send <task>.", "info");
+          return;
+        }
+        if (text === "off") { armFullSend(false); ctx.ui.notify("Full send off; the goal is unchanged.", "info"); return; }
+        // Arming an already-running goal must not wait for its continuation loop to finish.
+        if (!text && runtime.state?.outcome === "running") {
+          loadFullSendSkill(); armFullSend(true);
+          pi.sendMessage({ customType: "full-send-start", content: "The user enabled full send for the current goal. Follow the full-send workflow in the goal authority context.", display: false }, { triggerTurn: true, deliverAs: "steer" });
+          return;
+        }
+        const command = parseGoalCommand(text || "resume");
+        if (command.action !== "start" && command.action !== "resume") throw new Error("Use /full-send [task] | /full-send status | /full-send off");
+        await runGoal(command, ctx, true);
+      } catch (error) { ctx.ui.notify(error instanceof Error ? error.message : String(error), "error"); }
+    },
+  });
   registerProfileCommand(pi, "goal", {
     description: "Start, resume, inspect, or pause a same-session goal with optional Bedrock dollar and Codex weekly ceilings",
     handler: async (args, ctx) => {
@@ -250,23 +322,7 @@ export default function goalExtension(pi: ExtensionAPI): void {
           return;
         }
         if (command.action === "pause") { ctx.abort(); await runtime.halt("interrupted", "Paused by user. Use /goal resume to continue."); goalTurn = false; status(); return; }
-        await ctx.waitForIdle();
-        if (command.action === "start") {
-          const session = ctx.sessionManager.getSessionFile();
-          if (!session) throw new Error("Goals require a durable native Pi session");
-          if (runtime.state && runtime.state.outcome !== "running") await subagents.stopGoal(runtime.state.sessionId, runtime.state.runId);
-          runtime.start(ctx.sessionManager.getSessionId(), session, { goal: command.text, scope: [], exclusions: [], decisions: [] }, command.budget);
-        } else {
-          await runtime.waitForStops();
-          runtime.resume(command.text, command.restoringBuildability);
-        }
-        goalTurn = true;
-        const session = ctx.sessionManager.getSessionFile();
-        if (session) runtime.enroll(session);
-        await bind();
-        const decision = await runtime.admit();
-        if (!decision.allowed) { ctx.ui.notify(decision.reason ?? "Goal paused", "warning"); return; }
-        pi.sendMessage({ customType: "goal-start", content: command.action === "start" ? "Begin the user-authorized /goal in this session. Use the authoritative goal context and goal_control protocol." : "Resume the same /goal. Apply the recorded user instructions without expanding scope.", display: false }, { triggerTurn: true, deliverAs: "followUp" });
+        await runGoal(command, ctx);
       } catch (error) { ctx.ui.notify(error instanceof Error ? error.message : String(error), "error"); }
     },
   });

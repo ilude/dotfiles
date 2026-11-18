@@ -137,7 +137,7 @@ export default function codexStatus(pi: ExtensionAPI): void {
       marker = ctx.sessionManager.getEntries().at(-1)?.id;
     } else if (event.reason !== "reload" || complete) marker = undefined;
     void refresh(ctx, marker ? { marker } : undefined);
-    if (createHostPresentation(ctx).client !== "t3code") poll(ctx);
+    poll(ctx);
   });
   pi.on("session_shutdown", () => {
     alive = false;

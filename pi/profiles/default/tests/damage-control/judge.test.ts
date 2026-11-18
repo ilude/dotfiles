@@ -122,6 +122,23 @@ describe("Luna review", () => {
     expect(complete).toHaveBeenCalledTimes(3);
   });
 
+  it("requires task membership only for runtime-issued full-send evidence", async () => {
+    const input = evidence();
+    input.taskAuthorization = { source: "/full-send", sessionId: "owner", runId: "run", task: { goal: "Rebuild generated output", scope: [], exclusions: ["No deployment"], decisions: [] } };
+    const ask = { verdict: "ask", reason: "Scoped cleanup still has consequences.", dismissedCandidates: [], taskAuthorized: true };
+    const complete = vi.fn().mockResolvedValue(textResponse(ask));
+    expect(await review(input, context(complete), settings, pending, () => 3)).toMatchObject({ status: "valid", verdict: "ask", taskAuthorized: true });
+    const payload = JSON.parse(complete.mock.calls[0][1].messages[0].content[0].text.split("EVIDENCE JSON:\n")[1]);
+    expect(payload.taskAuthorization).toEqual({ source: "/full-send", task: input.taskAuthorization.task });
+    for (const response of [valid, { ...ask, taskAuthorized: "true" }]) {
+      expect(await review(input, context(vi.fn().mockResolvedValue(textResponse(response))), settings, pending, () => 3)).toMatchObject({ status: "invalid" });
+    }
+    expect(await review(evidence(), context(vi.fn().mockResolvedValue(textResponse(ask))), settings, pending, () => 3)).toMatchObject({ status: "invalid" });
+    const allow = await review(input, context(vi.fn().mockResolvedValue(textResponse({ ...valid, taskAuthorized: true }))), settings, pending, () => 3);
+    expect(allow.status).toBe("valid");
+    expect(allow).not.toHaveProperty("taskAuthorized");
+  });
+
   it("rejects malformed, extra-field, unknown-ID, and confirmed override responses", async () => {
     const cases: Array<[Evidence, unknown]> = [
       [evidence(), { ...valid, extra: true }],

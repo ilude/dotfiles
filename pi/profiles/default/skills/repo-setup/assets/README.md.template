@@ -1,0 +1,22 @@
+# __PROJECT_NAME__
+
+__PURPOSE_AND_SCOPE__
+
+## Setup
+
+__SUPPORTED_PLATFORMS_AND_PREREQUISITES__
+
+```powershell
+.\setup-windows.ps1 -InstallTools
+.\setup-windows.ps1 -ValidateOnly
+```
+
+## Configuration and external actions
+
+__TRACKED_DEFAULTS_LOCAL_OVERRIDES_CREDENTIAL_SOURCE_AND_ACTION_BOUNDARIES__
+
+## Run and check
+
+__ACTUAL_ENTRYPOINTS_AND_FOCUSED_CHECK_COMMANDS__
+
+Agent guidance: [AGENTS.md](AGENTS.md). Material history: [CHANGELOG.md](CHANGELOG.md).

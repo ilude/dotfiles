@@ -160,10 +160,32 @@ describe("T3 role goal scope and canonical accounting", () => {
     f.roleLaunch.mockResolvedValue({ taskId: "real-task", status: "future-unknown" });
     expect(await f.backend.goalActive("owner", f.goal.runId)).toBe(true);
   });
+  it.each(["owner", "child"] as const)("allows only compaction after goal completion in the %s session", async target => {
+    const f = await fixture(), child = await f.launch("first", "parent", "child");
+    await child.emit("turn_start");
+    f.runtime.control({ action: "complete", summary: "Migration accepted and complete." });
+    const h = target === "owner" ? f.owner : child;
+    const { stream, message } = helperStream();
+    const start = vi.fn(() => stream);
+    await expect(gateT3GoalStream(h.pi, h.ctx, start).result()).rejects.toThrow("Migration accepted and complete.");
+    expect(start).not.toHaveBeenCalled();
+    expect(await gateT3GoalStream(h.pi, h.ctx, start, "compaction").result()).toBe(message);
+    expect(start).toHaveBeenCalledTimes(1);
+    expect(f.runtime.state?.outcome).toBe("complete");
+  });
+  it.each(["pause", "question", "blocker", "budget"] as const)("does not bypass a %s for compaction", async outcome => {
+    const f = await fixture(), child = await f.launch("first", "parent", "child");
+    if (outcome === "budget") await f.runtime.halt("budget", "Budget exhausted");
+    else f.runtime.control({ action: outcome, summary: "Waiting for the operator" });
+    const start = vi.fn(() => helperStream().stream);
+    await expect(gateT3GoalStream(child.pi, child.ctx, start, "compaction").result()).rejects.toThrow();
+    expect(start).not.toHaveBeenCalled();
+    await f.runtime.waitForStops();
+  });
   it("gates each helper attempt before provider stream creation and preserves its final response", async () => {
     const f = await fixture(), child = await f.launch("first", "parent", "child");
-    const message: AssistantMessage = { role: "assistant", content: [{ type: "text", text: "Summary" }], provider: "fixture", model: "fixture", api: "openai-completions", timestamp: Date.now(), stopReason: "stop", usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, totalTokens: 2, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } } };
-    const start = vi.fn(() => { const stream = createAssistantMessageEventStream(); stream.push({ type: "done", reason: "stop", message }); return stream; });
+    const { stream, message } = helperStream();
+    const start = vi.fn(() => stream);
     expect(await gateT3GoalStream(child.pi, child.ctx, start).result()).toBe(message);
     expect(start).toHaveBeenCalledTimes(1);
     await f.runtime.halt("interrupted", "User paused");
@@ -171,3 +193,10 @@ describe("T3 role goal scope and canonical accounting", () => {
     expect(start).toHaveBeenCalledTimes(1);
   });
 });
+
+function helperStream() {
+  const message: AssistantMessage = { role: "assistant", content: [{ type: "text", text: "Summary" }], provider: "fixture", model: "fixture", api: "openai-completions", timestamp: Date.now(), stopReason: "stop", usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, totalTokens: 2, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } } };
+  const stream = createAssistantMessageEventStream();
+  stream.push({ type: "done", reason: "stop", message });
+  return { stream, message };
+}

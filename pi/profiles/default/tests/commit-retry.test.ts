@@ -349,6 +349,53 @@ it.each(["fetch", "merge"])("returns a non-conflict %s failure to the agent befo
 	expect(result.text).toContain("Pushed.");
 });
 
+it("recovers transient status timeouts before review and after committing without entering repair", async () => {
+	changed.set("unfinished.txt", "M ");
+	const original = git.getMockImplementation()!, timedOut = new Set<string>();
+	git.mockImplementation(async (command, args, options) => {
+		const phase = commits.length ? "after commit" : "before review";
+		if (args[2] === "status" && !timedOut.has(phase)) {
+			timedOut.add(phase);
+			return { stdout: "", stderr: "", code: 1, killed: true, truncated: false };
+		}
+		return original(command, args, options);
+	});
+	responses.push({ message: message([submit("read retry")], "toolUse") });
+	const result = await start().run;
+	expect(commits).toEqual(["read retry"]); expect(result.text).toContain("abc0 read retry");
+	expect(requests).toHaveLength(1); expect(doubles.shell).not.toHaveBeenCalled();
+	expect(progress.filter(text => text.startsWith("Retrying timed-out Git status"))).toHaveLength(2);
+});
+
+it("stops persistent status timeouts during preparation without asking the reviewer to repair the repository", async () => {
+	const original = git.getMockImplementation()!;
+	let prepared = false;
+	git.mockImplementation(async (command, args, options) => {
+		if (args[2] === "add") prepared = true;
+		if (args[2] === "status" && prepared) return { stdout: "", stderr: "", code: 1, killed: true, truncated: false };
+		return original(command, args, options);
+	});
+	await expect(start().run).rejects.toThrow(/attempt 2\/2; timeout 15000ms/);
+	expect(doubles.stream).not.toHaveBeenCalled(); expect(doubles.shell).not.toHaveBeenCalled();
+	expect(commits).toEqual([]); expect(progress).not.toContain("Resolving commit problem…");
+});
+
+it("retains confirmed commits in the report when status remains unavailable after execution", async () => {
+	changed.set("unfinished.txt", "M ");
+	const original = git.getMockImplementation()!;
+	git.mockImplementation(async (command, args, options) => {
+		if (args[2] === "status" && commits.length) return { stdout: "", stderr: "", code: 1, killed: true, truncated: false };
+		return original(command, args, options);
+	});
+	responses.push({ message: message([submit("confirmed before timeout")], "toolUse") });
+	const error = await start().run.catch(error => error as Error);
+	expect(error).toBeInstanceOf(Error); expect(String(error)).toContain(JSON.stringify(root));
+	expect(String(error)).toContain("abc0 confirmed before timeout");
+	expect(String(error)).not.toContain("No commits created.");
+	expect(commits).toEqual(["confirmed before timeout"]); expect(requests).toHaveLength(1);
+	expect(doubles.shell).not.toHaveBeenCalled();
+});
+
 it("uses a longer timeout only for publication", async () => {
 	responses.push({ message: done() }); await start(undefined, true).run;
 	expect(git.mock.calls.find(([, args]) => args[2] === "push")?.[2]?.timeout).toBe(120_000);

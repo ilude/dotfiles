@@ -44,6 +44,16 @@ it("parses NUL records without trimming path data and rejects split renames", ()
 	expect(result.ok).toBe(false);
 	if (!result.ok) expect(result.errors.join("\n")).toContain("same commit");
 });
+it("keeps directory replacement paths in one commit or one exclusion", () => {
+	const replacement = "A  vault\0D  vault/note.md\0D  vault/nested/index.md\0";
+	expect(validateCommitPlan(proposal(["vault", "vault/note.md", "vault/nested/index.md"]), replacement).ok).toBe(true);
+	const split = validateCommitPlan({ repo: ".", commits: [{ subject: "link", paths: ["vault"] }, { subject: "delete", paths: ["vault/note.md", "vault/nested/index.md"] }], exclusions: [] }, replacement);
+	expect(split.ok).toBe(false);
+	if (!split.ok) expect(split.errors.join("\n")).toContain("Directory replacement paths must stay in the same commit");
+	const excluded = validateCommitPlan({ repo: ".", commits: [{ subject: "link", paths: ["vault"] }], exclusions: [{ path: "vault/note.md", reason: "operator" }, { path: "vault/nested/index.md", reason: "operator" }] }, replacement);
+	expect(excluded.ok).toBe(false);
+	expect(validateCommitPlan({ repo: ".", commits: [], exclusions: ["vault", "vault/note.md", "vault/nested/index.md"].map(path => ({ path, reason: "operator" })) }, replacement).ok).toBe(true);
+});
 it("normalizes repository IDs only according to the host platform", () => {
 	const result = validateCommitPlan({ ...proposal(), repo: "modules\\child" }, status, "modules/child");
 	expect(result.ok).toBe(process.platform === "win32");
@@ -89,6 +99,25 @@ it("commits multiple whole-file groups and leaves excluded contents unstaged", a
 	expect(readFileSync(join(root, "untracked"), "utf8")).toBe("excluded new\n");
 	expect(result.remaining).toEqual([{ xy: " M", path: "base" }, { xy: "??", path: "untracked" }]);
 });
+it.each([false, true])("preserves unchanged index stat information while reconstructing a plan (commit=%s)", async commit => {
+	init(root);
+	const paths = commit ? ["a"] : [];
+	if (commit) { writeFileSync(join(root, "a"), "reviewed\n"); git(root, "add", "--", "a"); }
+	const before = git(root, "ls-files", "--debug", "--", "base");
+	expect(before).not.toContain("mtime: 0:0");
+	const observed: string[] = [];
+	const observe: ExtensionAPI["exec"] = async (command, args, options) => {
+		// Inspect the metadata before status/commit can refresh it and hide the
+		// expensive full-file reread caused by a plain read-tree.
+		if (args[2] === "status" || args[2] === "diff") observed.push(git(root, "ls-files", "--debug", "--", "base"));
+		return exec(command, args, options);
+	};
+	const result = await executeCommitPlan(observe, root, undefined, { repo: ".", commits: commit ? [{ subject: "reviewed", paths }] : [], exclusions: [] });
+	expect(result.ok, result.error).toBe(true);
+	expect(observed.length).toBeGreaterThan(1);
+	for (const metadata of observed) expect(metadata).toBe(before);
+	expect(readFileSync(join(root, "base"), "utf8")).toBe("baseline\n");
+}, 45_000);
 it("does not alter the index or commit any part of an invalid plan", async () => {
 	init(root); writeFileSync(join(root, "a"), "a"); writeFileSync(join(root, "b"), "b"); git(root, "add", "-A");
 	const before = git(root, "write-tree"), head = git(root, "rev-parse", "HEAD");
@@ -131,6 +160,37 @@ it("includes a staged gitlink in coverage and the verified commit", async () => 
 	expect(result.commits[0]?.paths).toEqual(["child"]);
 	expect(git(root, "ls-tree", "HEAD", "child")).toContain(`160000 commit ${oid}`);
 });
+it("commits a tracked directory's replacement with a gitlink and the reverse without changing working files", async () => {
+	init(root);
+	const path = "docs/[vault]", child = join(root, path);
+	mkdirSync(join(child, "nested"), { recursive: true });
+	writeFileSync(join(child, "note.md"), "research\n");
+	writeFileSync(join(child, "nested", "index.md"), "index\n");
+	git(root, "add", "-A"); git(root, "commit", "--quiet", "-m", "tracked vault");
+	init(child, false); git(child, "add", "-A"); git(child, "commit", "--quiet", "-m", "independent vault");
+	const oid = git(child, "rev-parse", "HEAD").trim();
+	git(root, "rm", "-r", "--cached", "--", path); git(root, "add", "--", path);
+	writeFileSync(join(root, "base"), "excluded edit\n"); git(root, "add", "base");
+	const paths = [path, `${path}/note.md`, `${path}/nested/index.md`];
+	const result = await run({ ...proposal(paths), exclusions: [{ path: "base", reason: "operator" }] });
+	expect(result.ok, result.error).toBe(true);
+	expect(result.commits[0]?.paths.sort()).toEqual([...paths].sort());
+	expect(git(root, "ls-tree", "HEAD", "--", path)).toContain(`160000 commit ${oid}`);
+	expect(git(root, "ls-files", "--", path).trim()).toBe(path);
+	expect(git(child, "rev-parse", "HEAD").trim()).toBe(oid);
+	expect(readFileSync(join(child, "note.md"), "utf8")).toBe("research\n");
+	expect(git(root, "diff", "--cached", "--name-only")).toBe("");
+	expect(readFileSync(join(root, "base"), "utf8")).toBe("excluded edit\n");
+
+	// A gitlink-to-directory replacement needs the same indivisible path group.
+	rmSync(join(child, ".git"), { recursive: true });
+	git(root, "rm", "--cached", "--", path); git(root, "add", "--", path);
+	const reverse = await run({ ...proposal(paths), exclusions: [{ path: "base", reason: "operator" }] });
+	expect(reverse.ok, reverse.error).toBe(true);
+	expect(reverse.commits[0]?.paths.sort()).toEqual([...paths].sort());
+	expect(git(root, "ls-tree", "-r", "HEAD", "--", path)).not.toContain("160000");
+	expect(readFileSync(join(child, "nested", "index.md"), "utf8")).toBe("index\n");
+}, 45_000);
 it("reports completed commits and stops later groups after hook failure", async () => {
 	init(root); for (const path of ["a", "b", "c"]) writeFileSync(join(root, path), path); git(root, "add", "-A");
 	hook("if git diff --cached --name-only | grep '^b$'; then\n  echo hook-rejected >&2\n  exit 1\nfi\nexit 0");

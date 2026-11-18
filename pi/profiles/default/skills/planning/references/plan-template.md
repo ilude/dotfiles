@@ -8,149 +8,91 @@ completed: null
 
 ## Goal and scope
 
-- User requirements and settled decisions: <requested outcomes and preserved behavior>.
-- Non-goals: <important exclusions, not speculative restrictions>. Do not add rollback work unless requested.
-- Authorization: planning alone permits no implementation or Git operations. `/do-it` authorizes the selected plan's implementation, local worktrees, commits, and merge unless `--no-merge` is specified or the user restricts those actions. Record any restriction and separately authorized push/deployment; do not require another approval for local Git.
+- Requirements and settled decisions: <requested outcomes and preserved behavior>.
+- Non-goals: <important exclusions>.
+- Authorization: <what the user authorized and any restrictions; planning alone
+  authorizes no implementation or Git operations>.
 
-The user's request and subsequent changes are authoritative. Keep unapproved
-recommendations and optional work outside tasks and completion criteria.
+The user's request and subsequent decisions are authoritative. Keep unapproved
+recommendations and deferred work outside tasks, dependencies, and completion criteria.
 
 ## Fresh-context handoff
 
-All paths are relative to <repository root> unless stated otherwise. Read current
-applicable `AGENTS.md` files before acting.
+All paths are relative to <repository root> unless stated otherwise. Read applicable
+`AGENTS.md` files before acting.
 
-- Owning repositories and boundaries: <where changes belong>.
-- Required reading: <small relevant list; label proposed files>.
-- Verified starting behavior: <revision/date, facts, and evidence limits>.
-- Work to preserve: <known overlapping changes; recheck before editing>.
-- Worktree and integration target: <originating checkout/branch, proposed task path
-  and branch until execution records actual values>.
-- Profiles, when relevant: <verified planning profile, intended execution profile,
-  and dated actual runs kept distinct>.
+- Ownership and required reading: <repositories, boundaries, and a small relevant list>.
+- Verified starting behavior: <facts, revision/date where useful, and evidence limits>.
+- Work to preserve: <known overlapping changes>.
+- Profiles, if relevant: <verified planning profile, intended execution profile;
+  record actual runs separately by date, profile/path, scope, and result>.
+- Selected workflow, if relevant: <include worktree/integration coordinates and
+  closeout obligations only if used. For `/do-it`, follow its existing owning prompt
+  at `pi/profiles/default/prompts/do-it.md` in dotfiles; link that source rather than
+  duplicating command mechanics>.
 
 ## Decisions and implementation contract
 
-State fixed outcomes, interfaces, defaults, ownership, and behavior branches needed
-by later tasks. Distinguish them from adaptable technical approaches. Resolve
-consequential uncertainty within the selected executable scope while authoring.
-Investigate discoverable facts yourself. When user judgment is needed, keep
-`status: draft`, explain the choices and consequences, recommend one with reasons,
-and ask one consequential question at a time. Incorporate each answer, preserve
-settled decisions, and continue investigation and clarification until the plan is
-executable; then mark it ready without starting implementation. Stop earlier only
-for an intentionally requested draft or a genuine external blocker, recording the
-missing prerequisite, action owner, and next action. List explicitly deferred work
-separately, without making it an acceptance criterion or dependency of independent
-approved work. Leave routine implementation details adaptable.
+<Fixed outcomes, interfaces, defaults, and behavior branches consumed by tasks.
+Separate verified facts from proposals and adaptable technical approaches. Label
+future files as proposed.>
+
+Resolve consequential scope, architecture, and acceptance choices before marking
+ready. Investigate discoverable facts and choose ordinary technical details without
+asking. When user judgment is needed, explain the choices, recommend one with reasons,
+and ask one question at a time; preserve settled answers. Keep `status: draft` for
+unresolved choices, an intentionally requested draft, or a genuine external blocker.
+For a blocker, name the missing prerequisite, action owner, and next action.
 
 ## Execution guidance
 
-Create or resume the recorded dedicated task worktree and branch. Record the actual
-path, branch, and originating integration target before editing. If runtime-issued
-prepared-run context matches this plan, use those coordinates without creating a
-second worktree or taking the task branch as the target. Preserve unrelated
-work and carry task-owned uncommitted plan content without deleting its source.
+Consult Strategist before executing implementation plans unless the user explicitly
+requests a single-agent handoff, including a Team Lead; the Team Lead retains its own
+Strategist-first workflow. Assign at most one named task per subagent, splitting
+larger outcomes further, and use only active roles. Follow the existing Steward
+policy for post-implementation reviewer/validator findings when deciding whether
+additional work is warranted, not for planning or initial implementation. Handle
+evidence-proved corrections directly and reuse assessments for the same finding.
 
-Before delegating plan work, consult `strategist` unless the user explicitly requests
-a single-agent handoff, including a Team Lead. A Team Lead still follows its own
-Strategist-first workflow. Assign at most one named plan task per subagent, split
-larger tasks further, and use only roles from the active agent catalog.
+Preserve unrelated work. Adapt technical mechanisms within settled intent; ask before
+changing scope, decisions, or acceptance. Continue independent tasks around blockers.
+Do not add work, checks or gates beyond the request or comparable repository
+patterns. Optional improvements stay outside scope until approved. At phase boundaries, remove only task-introduced
+drift and continue available work, rather than starting another review cycle.
 
-Implement the settled intent through the agreed checks. Adapt technical mechanisms
-when repository evidence requires it, but do not change user intent, scope, settled
-decisions, or acceptance without approval. When blocked, continue independent tasks
-and ask only for the specific consequential input or external prerequisite. Do not
-add audits, optional improvements, speculative fixes, or acceptance requirements.
-At meaningful phase boundaries, remove only task-introduced drift and resume the
-next required step.
-
-Keep checkbox state, concise evidence, current blockers, and the next action accurate.
-Leave unfinished integration/cleanup checkboxes unchecked. For blockers, record the
-specific issue, next action, and who must act; archival and passing tests alone are
-not whole-plan completion.
-Do not stop at a phase boundary or substitute a promise for available work. Fix
-demonstrated task-relevant failures and stop testing when the finite agreed checks pass.
+Keep task evidence and blockers current, including the next action and who must act.
+Fix demonstrated task-related failures and stop when the finite agreed checks pass.
 
 ## Tasks
 
-- [ ] **T1: <specific outcome>**
+- [ ] **T1: <specific bounded outcome>**
   - Depends on: <none or task IDs and the specific prerequisite result>.
-  - Parallel with: <independent task IDs, if useful; omit otherwise>.
-  - Files/inputs: <existing or proposed paths; write ownership for parallel tasks>.
-  - Change: <bounded work and any contract consumed later>.
-  - Complexity / split hints: <difficult technical judgments, interacting contracts,
-    coordination needs, or independently verifiable split points; omit when not useful.
-    Describe the difficulty, leaving model and effort selection to Strategist>.
-  - Verify: <command and cwd, or exact comparison>.
+  - Parallel with: <independent tasks, if useful; omit otherwise>.
+  - Files/inputs: <existing or proposed paths; disjoint write ownership if parallel>.
+  - Change: <bounded work and contracts consumed later>.
+  - Complexity / split hints: <difficult judgments or independently verifiable
+    boundaries, if useful; leave staffing to Strategist>.
+  - Verify: <finite command and cwd, or exact comparison, with expected result>.
   - Done when: <observable result>.
-  - If blocked: <specific branch without guessing consequential intent>.
   - Evidence: Not started.
 
-<Repeat only as needed. Combine fields or sections when that improves clarity. Include
-an integration/closeout task when execution is authorized; do not create a second
-state registry, mandatory reviewer sequence, or user-acceptance gate.>
+<Repeat only as needed. Combine fields or sections when clearer. Do not manufacture
+extra tasks, a mandatory reviewer sequence, or a second state registry.>
 
-## Agreed validation and current handoff
+## Validation and stopping point
 
-List finite agent-owned checks tied to requirements, with expected results and actual
-profile where relevant. Record limitations honestly. Unperformed operator manual or
-live testing is a non-blocking verification limit, not remaining work or a reason to
-keep implementation active.
+<Finite agent-owned checks tied to requirements and their results. Record actual
+profiles where relevant. State the selected workflow's completion obligations only
+if they apply; do not assume a dedicated worktree, Integrator, archival, or merge.>
 
-- Status: <draft / ready / in progress / integration pending / completed>.
+- Status: <draft / ready / in progress / completed, or a relevant pending state>.
 - Completed work and evidence: <task IDs and concise results>.
-- Next: <first actionable unchecked task>.
-- Blockers/open decisions: <specific issues or none>.
-- Verification limits: <unverified behavior without claiming it passed>.
+- Next: <first actionable unchecked task, or none>.
+- Blockers/open decisions: <issue, action owner, and next action, or none>.
+- Verification limits: <unverified behavior; operator manual/live testing is
+  non-blocking and must not be described as passed>.
 
-## Closeout
-
-After implementation and agreed agent-owned checks pass, update task evidence and
-record integration as pending. Confirm `.specs/archive/<stub>/` does not contain
-another plan, then move this entire spec directory there in the task worktree and
-repair affected links. Commit the implementation and archived spec together on the
-task branch. Do not archive unfinished implementation.
-
-For authorized `/do-it` execution, after the task commit dispatch the Integrator
-from the recorded target checkout with the closeout manifest. The Integrator owns
-local integration and cleanup. Ordinary direct/run-here closeout keeps user questions
-and final reporting with the orchestrator. A runtime-prepared Herdr run uses the
-same-tab successor, which owns operator questions and final reporting: establish
-integration readiness, finish explicitly authorized orchestrator-only obligations,
-release the exact origin for graceful retirement, then clean up from the surviving
-Integrator pane. Readiness alone is not completion. Keep both panes and the worktree
-when blocked before retirement; after delivery report cleanup failures and the
-exact retained path without rollback or recreating the orchestrator. If integration is blocked, retain the worktree and report implementation
-and checks separately from pending delivery. If `--no-merge` applies, do not dispatch
-the Integrator for mutation; keep the committed worktree and report integration as
-intentionally pending.
-
-The Integrator verifies the target and archive, records the actual completion date,
-status, and evidence, commits that metadata, then removes the clean task worktree.
-It reports CLEANUP PENDING if integration or metadata succeeded but cleanup did not.
-Push and deployment require explicit user authorization, which may already be
-recorded in this plan; a later execution command does not revoke recorded
-authorization unless the user says so. Operator manual testing does not block closeout.
-
-### Final response
-
-Start with one overall outcome, using the colored symbol and explicit text together:
-
-- 🟢 **COMPLETED**: checks passed, integrated, completion metadata committed, and
-  task worktree cleanup verified.
-- 🔴 **NOT COMPLETE: MERGE BLOCKED**: implementation committed, integration blocked.
-- 🔴 **NOT COMPLETE: USER INPUT REQUIRED**: a consequential decision or prerequisite
-  prevents finishing; state the precise question and recommendation where applicable.
-- 🔵 **IMPLEMENTED: MERGE SKIPPED AS REQUESTED**: checks passed and changes committed
-  under `--no-merge`; retained worktree is intentional, not a failure or required fix.
-- 🟡 **CLEANUP PENDING**: changes and completion metadata are already on the target,
-  but worktree cleanup is unfinished.
-
-For blocked or cleanup-pending outcomes, immediately give **Reason** and
-**Action needed**, naming the issue, who must act, and the exact next action before successes.
-Do not imply automatic resumption or hand available agent-owned work to the user.
-If several issues remain, lead with the blocking outcome and list required actions.
-Then give concise checks, spec location, branch/commits, merge result, and retained
-worktree or cleanup remnants. Never rely on color alone or lead a blocked result
-with a success summary. These are response labels, not new frontmatter states.
+Report the actual outcome, checks, and any unfinished obligations. If blocked, lead
+with the reason and needed action rather than a success summary. Do not mark
+unfinished work complete or hand available agent-owned work to the user. Use a
+command-specific report format only when that workflow requires it.

@@ -782,6 +782,7 @@ async function processInvocation(
     if (files.length || recursive) {
       const effect = addEffect(state, "filesystem", metadataOnly ? "metadata" : "read", scope, language, executable, range, files.length ? targets(files, scope, state) : [staticTarget(".", scope.cwd, state.home)]);
       if (executable === "rg") state.searches.push({ effectId: effect.id, executable: "rg", inventoryArgs: scope.variables.has("RIPGREP_CONFIG_PATH") || scope.unknownVariables.has("RIPGREP_CONFIG_PATH") ? undefined : parsed.inventoryArgs });
+      else if (parsed.recursive) state.searches.push({ effectId: effect.id, executable: "grep" });
     }
     if (patternFiles.length) addEffect(state, "filesystem", "read", scope, language, executable, range, targets(patternFiles, scope, state));
     if (!hasPattern) addUnknown(state, scope, language, executable, range, `${executable} is missing a search pattern`, "<missing>");

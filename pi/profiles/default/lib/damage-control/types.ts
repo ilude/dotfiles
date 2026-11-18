@@ -74,7 +74,9 @@ export type DockerMetadataResult =
 export type DockerMetadataReader = (endpoint: DockerEndpoint, targets: readonly string[], signal?: AbortSignal) => Promise<DockerMetadataResult>;
 /** Parser internals stay local; only the bounded variable projection is copied into review evidence. */
 // Parser-resolved argv is local metadata input, never serialized for Luna.
-export type ShellSearch = { effectId: string; executable: "rg"; inventoryArgs?: string[] };
+export type ShellSearch =
+  | { effectId: string; executable: "rg"; inventoryArgs?: string[] }
+  | { effectId: string; executable: "grep" }; // Recursive grep only.
 export type ScriptSourceIdentity = { path: string; sha256: string; range: { start: number; end: number }; argv: string[]; source?: string; sourceOmission?: string };
 /** Inspection-only parser projection. Quoted arguments remain data, not command text. */
 export type InspectionInvocation = { executable: string; args: ({ known: true; value: string } | { known: false; expression: string; reason: string })[]; wrappers: string[]; language: Language; range: { start: number; end: number } };
@@ -88,6 +90,8 @@ export type SequenceEvidence = { kind: string; category?: string; summary: strin
 export type JudgeConversationMessage = { role: "user" | "assistant"; text: string };
 export type PendingJudgeCall = { tool: string; input: unknown; cwd: string };
 export type Evidence = {
+  /** Runtime-issued /full-send authority, independent of conversation summaries. */
+  taskAuthorization?: import("../goal/full-send.ts").FullSendAuthorization;
   callId: string;
   operation: string;
   operator: { source: "interactive" | "rpc"; text: string }[];
@@ -132,7 +136,7 @@ export type JudgeDiagnostic = {
   usage?: JudgeUsage;
 };
 export type ReviewResult =
-  | { status: "valid"; verdict: "allow" | "ask"; reason: string; dismissedCandidates: string[]; diagnostics?: JudgeDiagnostic }
+  | { status: "valid"; verdict: "allow" | "ask"; reason: string; dismissedCandidates: string[]; taskAuthorized?: boolean; diagnostics?: JudgeDiagnostic }
   | { status: "timeout" | "unavailable" | "invalid" | "cancelled"; reason: string; diagnostics?: JudgeDiagnostic };
 export type PendingCall = { callId: string; fingerprint: string; generation: number; signal?: AbortSignal };
 export type DockerCreation = { daemonId: string; containerId: string; timestamp: number; callId: string };

@@ -121,6 +121,7 @@ export type JudgeContext = {
   applicableRules: { ruleId: string; action: string; applicability: string; reason: string }[];
   omissions: string[];
   browser?: unknown;
+  taskAuthorization?: { source: "/full-send"; task: { goal: string; scope: string[]; exclusions: string[]; decisions: string[] } };
 };
 
 /** The one reduced, outbound-only view. Parser effects and all old history stay local. */
@@ -137,9 +138,15 @@ export function projectJudgeEvidence(evidence: Evidence): { status: "ready"; con
   const pendingCall = { tool: text(evidence.pendingCall.tool), input: input.value, cwd: browser ? "[local]" : text(evidence.pendingCall.cwd) };
   const applicableRules = evidence.untrusted.matches.map(match => ({ ruleId: identity(match.ruleId), action: match.action, applicability: match.applicability, reason: text(match.reason) }));
   if (identityLost) return { status: "needs-input", reason: "Sensitive rule identity was redacted; clarify the applicable rule before execution." };
+  const authorization = browser ? undefined : evidence.taskAuthorization;
+  const taskAuthorization: JudgeContext["taskAuthorization"] = authorization ? { source: "/full-send", task: {
+    goal: text(authorization.task.goal), scope: authorization.task.scope.map(text),
+    exclusions: authorization.task.exclusions.map(text), decisions: authorization.task.decisions.map(text),
+  } } : undefined;
   const omissions: string[] = [];
   if (lossy) omissions.push(REDACTION_OMISSION_NOTICE);
   const context: JudgeContext = { conversation, pendingCall, applicableRules, omissions,
+    ...(taskAuthorization ? { taskAuthorization } : {}),
     ...(browser ? { browser: {
       authority: browser.bindings.map(b => ({ basis: b.basis, scope: b.scope })),
       sources: browser.observations.filter(o => browser.effect.payload.kind === "redacted" && browser.effect.payload.sourceObservationIds.includes(o.id)).map(o => ({ id: o.id, trust: "untrusted", classification: o.classification, origin: o.origin, screening: o.screening })),
@@ -148,18 +155,21 @@ export function projectJudgeEvidence(evidence: Evidence): { status: "ready"; con
   return { status: "ready", context };
 }
 
-function parseResponse(text: string, candidateIds: ReadonlySet<string>, confirmedIds: ReadonlySet<string>): ReviewResult {
+function parseResponse(text: string, candidateIds: ReadonlySet<string>, confirmedIds: ReadonlySet<string>, fullSend: boolean): ReviewResult {
   if (!text.trim() || Buffer.byteLength(text, "utf8") > MAX_RESPONSE_BYTES) return { status: "invalid", reason: "Luna returned an empty or oversized response." };
   let value: unknown;
   try { value = JSON.parse(text); } catch { return { status: "invalid", reason: "Luna returned malformed JSON." }; }
   if (typeof value !== "object" || value === null || Array.isArray(value)) return { status: "invalid", reason: "Luna returned the wrong response shape." };
   const object = value as Record<string, unknown>;
-  if (Object.keys(object).sort().join(",") !== "dismissedCandidates,reason,verdict" || (object.verdict !== "allow" && object.verdict !== "ask") || typeof object.reason !== "string" || !object.reason.trim() || object.reason.length > MAX_REASON_CHARS || !Array.isArray(object.dismissedCandidates) || !object.dismissedCandidates.every((id): id is string => typeof id === "string")) return { status: "invalid", reason: "Luna returned an invalid review schema." };
+  const expectedKeys = fullSend ? "dismissedCandidates,reason,taskAuthorized,verdict" : "dismissedCandidates,reason,verdict";
+  if (fullSend && typeof object.taskAuthorized !== "boolean") return { status: "invalid", reason: "Luna did not establish full-send task membership." };
+  if (Object.keys(object).sort().join(",") !== expectedKeys || (object.verdict !== "allow" && object.verdict !== "ask") || typeof object.reason !== "string" || !object.reason.trim() || object.reason.length > MAX_REASON_CHARS || !Array.isArray(object.dismissedCandidates) || !object.dismissedCandidates.every((id): id is string => typeof id === "string")) return { status: "invalid", reason: "Luna returned an invalid review schema." };
   const dismissed = object.dismissedCandidates;
   if (new Set(dismissed).size !== dismissed.length || dismissed.some((id) => !candidateIds.has(id) || confirmedIds.has(id))) return { status: "invalid", reason: "Luna attempted to dismiss an unknown or confirmed rule." };
   const reason = redactOutbound(object.reason);
   if (reason.lossy) return { status: "invalid", reason: "Luna returned sensitive content in its explanation." };
-  return { status: "valid", verdict: object.verdict, reason: reason.text, dismissedCandidates: dismissed };
+  return { status: "valid", verdict: object.verdict, reason: reason.text, dismissedCandidates: dismissed,
+    ...(fullSend && object.verdict === "ask" ? { taskAuthorized: object.taskAuthorized === true } : {}) };
 }
 
 function safeErrorExplanation(error: unknown): string | undefined {
@@ -304,7 +314,7 @@ export async function review(
       const text = response.content.filter((part): part is { type: "text"; text: string } => part.type === "text").map((part) => part.text).join("\n");
       const candidates = new Set(evidence.untrusted.matches.filter((match) => match.applicability === "candidate").map((match) => match.ruleId));
       const confirmed = new Set(evidence.untrusted.matches.filter((match) => match.applicability === "confirmed").map((match) => match.ruleId));
-      return finish(parseResponse(text, candidates, confirmed), response);
+      return finish(parseResponse(text, candidates, confirmed, projection.context.taskAuthorization !== undefined), response);
     }
   } catch (error) {
     if (timedOut) return finish({ status: "timeout", reason: `Luna review exceeded its ${settings.judge.deadlineMs}ms deadline.` });

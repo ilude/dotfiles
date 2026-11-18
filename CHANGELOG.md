@@ -1,9 +1,469 @@
 # Changelog
 
+## 2026-11-17: Default Pi and T3 to Sol 6.2 at high effort
+
+- Select Sol 6.2 for new default-profile Pi sessions and T3 threads, retaining high reasoning effort and each client's existing provider route. Enable the native Pi model in the profile's model list and save T3's choice in its portable preferences and local settings.
+- Leave existing/resumed sessions, model shortcuts, named-role model pins and unrelated preferences unchanged. These are startup defaults, not a runtime model switch or an authentication check.
+- Add Sol 6.2 and Astra 6.2 to the Pi provider's T3 favorites in portable and local settings, and enable Astra 6.2 in Pi alongside Sol 6.2. Preserve older favorites and the Sol 6.2 high default.
+
+## 2026-11-17: Implement and test Hatchery Firecracker Linux workers
+
+- Record fast disposable Linux worker machines as the primary driver for the microVM path, rather than a container/process-first execution interface, and select Firecracker as its backend. Full Proxmox VMs remain supported. Subsequently approve implementation and isolated acceptance in a new dedicated Linux VM on PVE with nested KVM, without PVE-host setting changes, Firecracker installation on the hypervisor, production-controller rollout or Git publication. The selected new VM subsequently passed actual KVM VM creation and Firecracker lifecycle acceptance; the production controller release remains unchanged.
+- Implement an explicit local Firecracker target and a narrow worker-allocation adapter, preserving default Proxmox bindings/manifests and the existing locks, SSH, expiry and disposable-job executor. Version-4 Firecracker manifests retain backend identity rather than allowing older binaries to discard it. Keep rootfs preparation outside create; clone/inject the worker's public key, use an owned systemd unit/TAP/commented NAT rules, and remove runtime resources through ordinary destroy without replaying uncertain launches.
+- Pass isolated boot/SSH/sudo/outbound HTTPS, status/wait, unchanged retry PID, conflicting retry, binary transfer, expiry extension, repeated destruction and failed-launch cleanup. The existing queue retrieves binary/stdout/stderr outputs after a confirmed nonzero exit and releases its worker. Record request-to-usable timings separately from host/image preparation. Retain the dedicated test host and pinned images, with test microVMs removed. This is a root-operated colocated backend, not remote-host operation, production jailer/hostile-tenant isolation, bare-metal performance or a production rollout. After isolated acceptance, the operator separately authorized publishing the Firecracker changes and updated parent reference.
+
+## 2026-11-17: Restore Bedrock-compatible analytics tool inputs
+
+- Restore a plain-object `log_analytics` input while preserving strict operation-specific execution validation. Loading the deferred tool and then switching to native Fable exposed a root union that Bedrock rejected before inference; AWS credentials were not the cause. The September 4 fix and its schema assertion had not survived the default-profile rewrite, and the September 10 analytics expansion reintroduced the union.
+- Check every default-profile extension tool's serialized input at startup and reload, including deferred tools, for an object root without top-level `anyOf`, `oneOf` or `allOf`. This runs in the existing test suite without starting sessions or calling services. Restore the compatibility constraint and the cross-tool test reference in the existing Pi extension skill. Also cover the actual analytics schema in the installed Bedrock request serializer, rather than checking only a hand-written tool fixture.
+- Confirm native `amazon-bedrock/us.anthropic.claude-fable-5-1` accepts the corrected analytics definition in `us-east-2` and returns a capped reply. Existing sessions need an idle runtime reload to replace the loaded tool definition; no account, authentication, model-route or legacy-profile changes are made.
+
+## 2026-11-17: Implement Hatchery template building and fast multi-OS clones
+
+- Record separate requirements to build a clean, updated Windows template from an ISO when needed, then quickly create linked or full clones for the intended machine lifetime. Apply the same build-and-clone workflow to Fedora, Ubuntu, Debian, Arch Linux and NixOS rather than treating Debian support as Linux-wide coverage.
+- Implement local Windows ISO/update/Sysprep, Debian/Ubuntu/Fedora/Arch cloud-image preparation and native NixOS minimal-ISO installation, with separate identity-only clone initialization. Add resumable template/machine commands, readiness timestamps, private per-resource media and dependency protection for linked/unfinished copies. Full copies become independent only after completion; the existing native full-clone default is preserved.
+- Add real-user Windows detached jobs with Limited interactive/profile proof, native process-tree completion/cancellation, binary transfers/log cursors and full-width exit codes. A proven pre-execution failure finishes without inventing an exit status; uncertain execution remains unknown. Template jobs can explicitly retain their new machine independently of clone mode, without adopting manual machines or changing legacy disposable release behavior.
+- Keep generic facilities in Hatchery, private bindings/credentials with their owner, and installation/update work off the clone fast path. Share pure Proxmox field helpers so finite factory steps do not repeatedly load the Alchemy SDK. No activation prerequisite, evaluation reset, arbitrary expiry, storage cap, automatic command replay or warm-pool service is added.
+- Pass both owning Node 26 typechecks, 127 Windows tests (13 Linux-only skips), 45 Linux checks, 40 focused compute tests and actual private-ISO packaging fixtures. This is local implementation, not six-OS installation/boot, Windows desktop, measured clone-speed or deployment acceptance. No new commit/push or live-operation authority is inferred.
+
+## 2026-11-17: Resolve subagent models through working provider availability
+
+- Resolve bare subagent model names and role defaults from fresh, provider-scoped chat availability, preferring configured OpenAI access before Bedrock Mantle and native Bedrock. The old OpenAI-only alias gate relied on cached authentication state and could reject a working subscription session when another provider prevented that cache from refreshing.
+- Apply the same selection at native, coordinator and T3 role launch boundaries. Keep requested families, the Sol 6.1 pin (including native AWS namespaces), exact provider-qualified requests, cancellation and existing Opus/Grok provider restrictions. Availability failures may advance to the next allowed provider before launch; running assignments are not replayed.
+- Clarify the ordinary tool interface: omit the model for its role default or provide a bare family, without guessing provider IDs. Claude subscriptions remain on the separate Claude Code/ccyl client route; no credential copying, new login requirement or direct-Anthropic fallback is introduced.
+
+## 2026-11-17: Expose app options inside browser snapshot listboxes
+
+- Traverse custom listbox contents so visible app names and uniquely identified options appear in full-page and focused snapshots. Previously the browser tool reported only regional resource groups, hiding their app tiles even without truncation.
+- Keep native input, textarea, select and contenteditable values suppressed, including native selects and editors with a listbox role. Preserve exact-target browser control and existing observation budgets; no browser launch, window or interaction behavior changes.
+
+## 2026-11-17: Implement local analytical storage configuration prerequisites
+
+- Add optional native ClickHouse S3-primary/cache configuration with durable local metadata, protected credentials and a legacy local volume retained for engine-managed migration and reversal. Require separately mounted diagnostics, route selected internal logs and preserve existing retention unless explicitly selected.
+- Add protected stdin to native CLI configuration and a bucket-scoped SeaweedFS identity helper that avoids rewriting static identities or restarting the shared storage service. Private composition opts into a distinct analytical bucket/identity and checks the existing backing-capacity floor without resizing its LVM layout or changing raw/archive/orchestration lifecycles.
+- Wire the private host composition to grow its existing data filesystem to at least 64 GiB, prepare a named diagnostic attachment and consume native S3/cache settings through protected runtime capabilities. Route host journal, container stdout and engine system logs separately; retain original OS logs and existing retention. The diagnostic bind is a required normal-boot filesystem, and user units check live mounts rather than depend on system-manager mount units.
+- Add independently selected private database access and worker catalog entries. A credential-free relay reuses the app's installed image and private container network, restricts ingress to the worker source and does not rewrite or restart PostgreSQL. These are local integration changes; cross-guest connectivity and cutover remain unaccepted.
+- Split private API and indexer composition: preserve the API's existing resource identities and reader environment, and give the independent worker only its selected database/raw-S3/analytical-writer inputs. Keep the worker identity and daily update policy, with an explicit initial image digest for the new target. Five worker/API binding tests and the private typecheck pass; connectivity, relocation and retirement of the old launcher remain deployment work.
+- Pass 58 focused Hatchery tests (one Windows-specific skipped), and 42 private tests and all three owning Node 26 typechecks. A read-only live probe confirms the pinned server's native identity CLI is available. These are local implementation and bounded observation results, not isolated mutation/persistence acceptance or production cutover. No new TTL or production storage migration is applied.
+
+## 2026-11-16: Select S3-primary analytics and larger data defaults
+
+- Select S3-primary analytical storage with a bounded local cache, keeping bulk storage on the larger storage host and indexing/query compute on the AVX2-capable host. Preserve durable local metadata, separate diagnostics, application semantics and independent archive/orchestration lifecycle policies.
+- Set service-data partitions to a default minimum of 64 GiB. Require use-case-specific evidence of long-term growth and working-space viability for a 32 GiB exception. Default S3 backing data storage to 128 GiB or larger; bucket quotas and cache limits are not filesystem allocations, and larger existing allocations remain intact.
+- Revise the private coordinating plan for engine-managed S3 migration, indexer relocation, bounded-cache acceptance and rollback that retains remote access until parts are moved back. End-to-end execution was subsequently authorized, conditional on passing isolated validation before production cutover; no unrelated fleet resizing or expiry changes are included.
+- Implement the initial reusable disk prerequisites locally: stable named additional attachments, identity-preserving growth and a retained serial-selected GPT/ext4 guest-volume provider. Focused Node 26 fixtures and owning typechecks passed; actual disk/S3 migration acceptance remains separate from local implementation.
+
+## 2026-11-16: Add Hatchery saved jobs and one-shot scheduling
+
+- Implement the approved queue with one native SQLite ledger, one dispatcher and a small reusable executor interface. The first executor creates a distinct job-owned worker, keeps work running across caller disconnects, collects requested files and releases the worker on confirmed completion, including known command failure. Failed retrieval or uncertain execution retains it for observation, explicit retry or deliberate release.
+- Add submit/list/status/cancel/logs/retrieve/release commands, submitted-file snapshots, immediate/delayed starts, stable worker systemd handles and persistent completion records. Keep cancellation intent and command, retrieval and release outcomes separate; uncertain commands are observed, not automatically replayed. Wait for workload descendants before publishing durable completion, rather than trusting an early main-process exit after unit loss. Logs stay private and worker-local unless explicitly retrieved before release.
+- Preserve manual commands and existing opt-in TTL behavior. No worker-log storage cap, queue runtime deadline, recurring schedule or permanent guest agent is added. Supply an opt-in dispatcher service and ordinary usage documentation without installing or enabling it. Node 26 local checks cover SQLite, CLI/flock, shell wrappers and simulated lifecycle boundaries; they do not establish live Proxmox/worker-systemd acceptance or deployment.
+
+## 2026-11-16: Reduce running ClickHouse diagnostic generation
+
+- Hot-reload information-level server/text logging and disable automatic per-query processor profiles and CPU/wall-clock sampling without restarting the engine. Keep ordinary query logging, existing retention, analytical data and raw archives unchanged.
+- Add optional generic renderer controls and select the quieter settings in the private site source. In three matched smoke queries, diagnostic text rows fell from 48 to zero and processor-profile rows from 27 to zero; the engine process identity stayed unchanged and temporary observation grants were removed. This bounded check is not a long-term storage-growth measurement.
+- Keep the three-filesystem migration unimplemented and the proposed 24-hour expiry as a fallback rather than enabling it incidentally. Updating managed source does not publish or deploy a new controller release.
+
+## 2026-11-16: Reaffirm durable diagnostic-log and data isolation
+
+- Record the Hatchery requirement for separate diagnostic-log and application-data filesystems, including database-internal diagnostic tables. The current ClickHouse guest separates only OS and service data; its system-log tables exhausted the analytical data filesystem.
+- Mark that deployed layout as an implementation gap rather than treating log purging or shorter retention as equivalent isolation. No storage migration, log purge or retention-policy change is applied by this documentation update.
+- Separately complete the authorized ClickHouse diagnostic-only purge, recovering about 22.3 GiB while preserving analytical tables, raw archives and local session originals. Restore temporary maintenance privileges and the original filesystem reserve afterwards.
+- Coordinate the proposed three-domain layout, in-place migration and disk/partition/filesystem expansion in the private homelab-config storage-isolation plan. Keep routine diagnostic retention pending operator selection; no new storage layout or automatic expiry is implemented.
+
+## 2026-11-16: Import legacy Pi sessions with remote read-back verification
+
+- Add an explicit Onclave import for native session JSONL in the legacy profile's `sessions/` and `history/` directories, preserving profile/path attribution without activating that runtime or changing ordinary background source selection.
+- Reuse the default runtime's upload identity and checkpoints, then compare every remote byte with local originals. Support verification-only runs for default sessions; retain all local history and keep raw archival separate from default-only ClickHouse projections and their indexing coverage.
+
+## 2026-11-16: Treat repository temporary directories as disposable
+
+- Clarify the default Pi cleanup preference across repositories: `.tmp/` contents are disposable without item-by-item approval, including temporary copies and backups. Preserve explicit protection instructions and active use.
+
+## 2026-11-16: Document Windhawk as the current taskbar customization
+
+- Remove the obsolete ExplorerPatcher migration note now that the workstation uses Windhawk. Record the observed Windhawk mods, updated versions and settings in `docs/windhawk.md`.
+- Clarify that Windhawk settings remain machine-local and are not automatically synchronized by dotfiles. Describe settings-only tracking without committing installed binaries or treating local installation metadata as portable configuration; no installer or registry changes are made.
+
+## 2026-11-16: Keep the work stand-up prompt in dotfiles
+
+- Store the approved EISA, gitlab-helm and MPS stand-up instructions in `config/t3-code/tasks/stand-up.md`, with schedule reference notes. The existing work-machine T3 task reads the file each run, so prompt edits have one repository-owned source.
+- Preserve the weekday 11:20 a.m. Eastern schedule, holiday exclusions, reporting window, parallel read-only evidence lookup and work-item bullets with trailing state and optional blocker/detail sub-bullets. Keep active scheduling and conversation bindings in local T3 state; pulling dotfiles or running setup does not create tasks on other machines.
+
+## 2026-11-16: Document the reviewed Hatchery queue and scheduler proposal
+
+- Record independent Sol and ccyl Opus high designs, fresh adversarial reviews from both models, and parent synthesis for reusable work scheduling and lifecycle-owning executors. Keep one-shot scheduling, observable worker outcomes, cancellation semantics, requested output retrieval and job-owned allocation binding distinct from TTL cleanup or speculative safeguards.
+- Recommend a local SQLite ledger and one dispatcher without claiming consensus over the reviewers' locked-JSON/oneshot alternative. Keep data and completion defaults proposed rather than approved. The separate Sol Steward confirmed existing TTL restrictions and advised source preservation during design, not additional gates or a TTL repair framework. No runtime implementation, deployment, tests of a queue, publication or source cleanup is implied.
+
+## 2026-11-15: Verify native Grok delegation through T3
+
+- Confirm a Pi-enforced T3 child executed on `amazon-bedrock/us.xai.grok-4.7`, called `read`, and answered from the tool result. Remove the stale catalog-refresh blocker from the operational docs: an older on-disk T3 cache did not prevent the live launch, and no additional provider refresh was needed.
+- Clarify native Grok selection in the shared caller/council routing instructions without changing role authority, defaults or unrelated roles' prompt budgets. Keep the stale-cache distinction in the on-demand T3 skill rather than adding a global instruction or another refresh gate.
+
+## 2026-11-14: Stop Claude repository-root recursive grep
+
+- Reject Claude Bash recursive grep against the current repository root, including pipelines and worktree roots, through the existing Damage Control hook. Direct the caller to tracked-file or ignore-aware searches after a source review crawled ignored dependencies and runtime history.
+- Reuse parsed search operands and metadata-only repository discovery. Preserve scoped grep, nonrecursive grep, Git grep, ripgrep and Pi's existing policy decisions; do not add monitoring or claim to repair Claude's separate task-cancellation behavior.
+
+## 2026-11-14: Add opt-in Hatchery expiry and activation-impact plans
+
+- Add explicit disposable-worker TTL/absolute expiry, later-only extension, due-only ownership-checked cleanup and retained expiry reasons. Create retries retain the first deadline; nonexpiring version-1 records remain unchanged. Deadline-bound attached operations prevent indefinite cleanup blocking. Sample controller timer units are opt-in and are not installed or enabled by this change.
+- Add `pnpm site plan --impact` through the existing native stack request/result path. Reuse file/service plan observations for will/may/unknown activation annotations, retain native replacements and explicit unknowns for uncovered resources/Actions, and leave default plan shapes unchanged. No extra remote observations, secret reads, shell inference or execution policy is added.
+- Worker-owned jobs and streaming remain unfinished; the agent-added output storage cap is not an operator requirement or prerequisite. Record the operator's proposed generic work queue/scheduler direction for discussion rather than treating TTL-oriented safety gates as the goal. Local checks do not establish production deployment, automatic cleanup activation or live hard-expiry acceptance. Preserve earlier site changes and commits made independently while this work was in progress.
+
+## 2026-11-14: Use the existing native AWS Grok route
+
+- Correct the preceding Grok integration: `amazon-bedrock/us.xai.grok-4.7` already exists in Pi. Remove the duplicate `bedrock-mantle` registration rather than maintaining a second model identity. Keep Claude/GPT routing intact and preserve published history.
+- Preserve the native provider's AWS-profile authentication, API implementation and descriptors while filtering model visibility. Keep the newest native US Grok visible alongside saved Claude selections, and resolve bare `grok` only through authenticated native US models without account, geography or provider fallback.
+- Refresh native Bedrock through its native lifecycle instead of a subscription API-key path or Mantle redirect, retaining Grok's provider identity in model cycling. Local native authentication uses an ignored provider-scoped AWS-profile reference; no AWS credentials are copied or machine-wide environment defaults changed.
+- Verify native Grok inference, file-read tool use, tool-result consumption and priced usage in the full default profile without a shell AWS-profile override. T3's separate cached Pi model inventory still needs a provider refresh before delegation is claimed verified.
+
+## 2026-11-14: Keep ordinary planning independent of command workflows
+
+- Simplify the planning skill and template around standalone intent, settled decisions, bounded tasks/checks and stopping points. Worktrees, archival, Integrator closeout and command-specific reports apply only when the selected workflow uses them; `/do-it` keeps its existing owning prompt. Preserve mandatory Strategist and Steward consultation policy and anti-churn requirements.
+- Trim duplicated role/host prompt guidance without changing tools, routing, account preferences or lifecycle behavior. Keep authority and operational facts with the audiences that need them rather than repeating generic advice.
+- Remove the root instruction that prohibited normal publication merges. Authorized pushes use ordinary Git reconciliation without another approval gate; existing force-push and published-history restrictions remain.
+
+## 2026-11-14: Expose AWS Grok through Pi's consolidated Bedrock provider
+
+- Register the newest supported US Grok inference profile alongside the existing Claude/GPT routes. Reuse native Bedrock Converse and provider-scoped AWS authentication rather than adding a direct xAI client, changing accounts, or silently changing inference geography. Bare Grok subagent selection resolves through the existing AWS provider.
+- Preserve native capabilities, tool-result replay, exact Runtime target identity and regional pricing in the existing usage ledger. Old Mantle inventory snapshots no longer leave Grok absent from the consolidated catalog; Claude/GPT route selection stays unchanged.
+- Verify installed Pi 1.5.1 inference with an actual file-read tool call and a final answer derived from its result. Document the idle Pi reload and separate T3 provider-catalog refresh requirement; live Pi success does not establish T3 delegation or image-input coverage.
+
+## 2026-11-14: Make existing Hatchery workflows easier to use
+
+- Separate ordinary worker and durable-site locking while retaining the controller's exclusive bootstrap gate, serialized VMID reservations and same-allocation protection. Add credential-free local allocation listing; independent worker execution no longer blocks site operations.
+- Expose supported additive package imports without relocating providers or changing resource identity. Private site consumers use those imports and shared equivalent binding validation while retaining specialized checks, explicit adoption/activation and BWS authority.
+- Add fixed phase-specific stack failure guidance without returning or persisting raw secret-bearing logs, plus an offline declared-site catalog and use-first worker/operator/authoring documentation. Local package and Linux flock checks are not a production rollout. Job handles, streaming, TTL and restart prediction remain deferred; no deployment or publication is implied.
+
+## 2026-11-14: Consolidate native web discovery and one-page acquisition
+
+- Keep `web_search` for discovery and `web_fetch` for known-URL retrieval/extraction. Add native Firecrawl and Browserbase clients without new packages, daemons, databases or a local page cache. Keep interactive/authenticated browsing, screenshots, map/crawl and recurring collection separate.
+- Preserve suitable existing mechanisms first: search uses SearXNG and eligible configured Serper/Brave before Firecrawl and included-mode Browserbase; fetch keeps the existing gateway/workstation/Trawl/public Jina paths before eligible raw/static cloud HTTP, Firecrawl and owned rendering. Search acquisition is bounded at 20 seconds, fetch at 60, with separate bounded browser cleanup. Explicit selections and requested filters/capabilities never silently downgrade.
+- Distinguish local retrieval from remote Jina, static Fetch from rendered DOM reads, and actual target status from provider API success. Report known redirects, attempts, truncation and supplied cache facts; unknown facts stay unknown. Provider caching, including Firecrawl’s normal two-day accepted cache age, is allowed without claiming fresh content.
+- Add typed image/news discovery through supported SearXNG, Serper and Firecrawl paths. Browserbase dedicated image/news and direct Brave verticals remain unsupported without contract/account evidence; incidental result images are not an image-search API.
+- Make schema extraction explicit. Validate unchanged JSON values with the installed TypeBox library, screen all returned field content, and omit the full object when only a bounded partial view fits. Ordinary reads never invoke LLM extraction. The requesting agent judges sufficiency: empty/partial data does not trigger another cloud request.
+- Share response-specific **Read it anyway?** approval across both tools. Approval permits reading only that untrusted response, not executing instructions or trusting later responses. Preserve unavailable-review behavior and no-UI blocking; never change providers to evade screening or trust a domain automatically.
+- Conserve Free accounts: no upgrades, deep/premium modes, enhanced proxy retries, incidental OCR, paid overage, invented quotas/reset times or reload-only lockouts. Share Firecrawl credit availability across operations, isolate Browserbase meters, and keep credentials lazy in the existing environment/workstation BWS ownership with child-local settings.
+- Keep private/local acquisition and local authenticated profiles separate from cloud clients. Fresh public rendered reads reuse existing CDP/Readability primitives, deny downloads/CAPTCHA solving/proxies, and release only their created session. Local acquisition is not an end-to-end privacy guarantee because existing Luna review can use its configured remote model.
+- Preserve the running gateway contract and infrastructure ownership. Validation uses finite fixtures/local processes, not live provider/browser/account/deployment gates. Cold extraction fixture windows include measured Windows module startup without increasing production acquisition limits.
+
+## 2026-11-14: Keep nested T3 role delegation callable
+
+- Allow follow-up messages to an authenticated owned thread after an automatic continuation advances beyond the latest parent task receipt. Keep task-specific inspection/cancellation fail-closed and persist only actual new follow-up receipts, rather than borrowing a historical task ID. Two focused T3 files pass 25 cases; caller adoption requires an idle supported reload.
+
+- Keep authorized named-role wrappers' exact installed-bridge dependencies active and callable while hiding them from model declarations through Pi's loadout projection. This fixes nested delegation failing after a coordinator's frozen loadout removed the underlying direct bridge tool.
+- Preserve frozen role permissions, installed-bridge identity checks, normal tool hooks and exact once-only wrapper grants. Direct/raw calls, substituted tool sources and undeclared role operations remain blocked. An installed-Pi offline coordinator regression covers repeated nested launches without exposing bridge declarations; no package upgrade or delegation fallback is introduced.
+
 ## 2026-11-14: Fix GitHub Actions workflow validation
 
 - Move the default Pi job's isolated home setup from job-level environment expressions into its first step. GitHub does not allow the `runner` context in job-level `env`, so it rejected the workflow before any jobs started.
 - Create the same temporary home and export `HOME` and `USERPROFILE` for subsequent steps through `GITHUB_ENV`, preserving isolation on Linux and Windows without changing the checks or runtime installation policy.
+
+## 2026-11-14: Preauthorize confirmed abandoned-process cleanup
+
+- Record the operator's standing permission in the Windows performance skill to clean up confirmed abandoned local processes when found without another approval prompt. Retain exact-identity/state/dependency checks, evidence preservation, removal verification and protection of active or uncertain processes. No continuous monitoring or unrelated process termination is authorized.
+
+## 2026-11-14: Route Opus tasks by project and expose Claude subscription quota
+
+- Prefer work-paid Pi/AWS Bedrock for work-project Opus tasks and personal-subscription ccyl for personal projects, including implementation. Keep classification in agent guidance using project context and existing Git identity, not a new classifier. Honor explicit routes, preserve Pi-only role boundaries, and leave the active `/opus` model switch and bare Pi AWS resolver unchanged. The parent owns external ccyl council participation; the preferred council is Sol, project-routed Opus, and AWS Grok, whose AWS route still needs live verification.
+- Add the on-demand `claude_usage` tool using the existing Claude login in place. Report account-wide five-hour, weekly, and available Opus-specific weekly quota, reset times, observation time, and credential-directory provenance. Consult recent quota when planning ccyl work and refresh after substantial work; absent data is unavailable, not free capacity. No credential copying/refresh, polling, fixed thresholds, paid overage, or silent account fallback is introduced. File-based Claude credentials are supported; keychain-only logins are not implemented.
+
+## 2026-11-14: Start a T3 review after a Defender capture
+
+- Add opt-in `-ReviewInT3` and enable it on the workstation-local capture shortcut. The non-elevated launcher waits for its elevated recorder to exit, then creates a diagnosis-only thread using the running local T3 server and dotfiles project's default model. Capture execution remains elevated; the review launch stays in the normal-user context. Already elevated invocations must omit the switch or relaunch normally.
+- Include partial captures and request evidence-based findings, earlier incident comparisons and recommended next steps, not automatic code edits, process termination or Defender changes. Print the server-returned link and retain thread identity in `t3-review.json`, without waiting for the agent's answer. T3 launch failures leave capture artifacts intact; no continuous monitoring or automatic repair is added.
+
+## 2026-11-14: Keep partial capture counters from flooding the console
+
+- Keep sampling valid process/system counters and saving the Defender trace when individual counters are unavailable, without repeating red errors throughout the capture window. Preserve captured errors in `counter-errors.txt` and the partial-data notice in `report.txt`; recording failures still surface normally. This changes capture presentation, not the CPU workload or Defender settings.
+
+## 2026-11-14: Diagnose instruction-caused workflow friction
+
+- Distinguish guidance unavailable to the acting agent and unsupported, misplaced or conflicting guidance followed as written from instruction-adherence failures. Explicitly consider narrowing or removing guidance, and resolve instruction conflicts at their owning scope, so remedies can remove or narrow guidance instead of only adding more.
+- Reuse selective feedback capture, existing approval boundaries and later comparable-work follow-up. Mandatory consultations and planning guidance remain unchanged; no runtime trigger, background evaluation or additional review gate is introduced.
+
+## 2026-11-14: Add bounded intent review without another completion gate
+
+- Add the explicit-invocation `intent-review` skill, inspired by tstack's sol-loop, to counter long-context scope drift. Brief a fresh reviewer from original user authority and observed checks rather than accumulated implementation rationale; identify both demonstrated completion blockers and unnecessary task-created additions.
+- Reuse existing reviewer, Steward and provider routing with a three-round default ceiling, scoped post-fix reviews and evidence-backed dispositions. Preserve unrelated work and scope authority; optional suggestions, disagreement and exhausted review rounds do not become new requirements or imply approval. Goal continuation/resource control and commit/publication authority remain unchanged, with no runtime changes, automatic review on every goal or persistent ledger.
+
+## 2026-11-14: Add task-scoped full send without a PR lifecycle
+
+- Add the default profile's explicit-invocation `full-send` skill for completing an agreed task without repeated implementation or testing approvals. Include direct verification, independent read-only review, in-scope fixes and completion reporting through existing routing; preserve separately authorized commit/integration/publication/deployment workflows and existing data/history boundaries.
+- Add `/full-send` as an explicit command using the existing same-session goal lifecycle, with status/off controls and branch/session/run-bound restoration. During running goal work, project original task authority into Damage Control and waive only existing eligible local asks after a valid independent task-membership judgment. Recheck active authorization after asynchronous review; preserve hard blocks, human-only prompts, protected paths, disclosure, shell modes, review-failure approvals, child role limits and the separate `/dc off` control. Paused goals suspend this authorization; explicit resume of the same armed run reactivates it. Task membership remains model judgment, not a resource sandbox, and children do not inherit the bypass.
+- Omit tstack's PR creation, publication, babysitting and merge requirements. Keep Forgejo agent reviews, homelab automation and CI workflow design for a separate discussion after the other skills. Plain chat and `/skill:full-send` do not arm runtime preapproval; native browser controls and remote/deployment/publication permission boundaries remain unchanged.
+
+## 2026-11-14: Adapt council review mechanics without forcing consensus
+
+- Adapt the existing non-writing council role with Theo's tstack review mechanics: independent common briefs, stable review scope, known-fix/check preparation, evidence-backed findings, explicit unavailable-member reporting, and review coverage suitable for a PR description. Keep scores opt-in and report missing coverage rather than implying approval.
+- Preserve three independent openings, one focused rebuttal, and synthesis without forced agreement or an automatic fix/review loop. Post-fix reviews are fresh assignments; the parent retains implementation and PR updates. Model/effort defaults, provider/harness routing, and role authority remain unchanged pending separate model-selection discussion.
+
+## 2026-11-14: Keep T3 Pi-provider updates linked to the default runtime
+
+- Configure T3 to launch Pi through a small repository-owned adapter outside pnpm's installation directories. Resolve the current global package and its declared CLI entrypoint on each launch, without pinning a Pi version or pnpm hash path. Normal RPC arguments, streams, working directory, environment and exit status pass through.
+- Handle T3's native `update --self` maintenance request with the same global installation, default runtime-link refresh and installation lock as terminal `/update`. Keep T3 in charge of its session lifetimes, preserve Herdr's cooperative restart behavior, and leave chat `/update` unsupported in T3. An explicit setup `--pi-binary` remains an adapter bypass.
+- No T3 bundle patch, rebuild, Electron dependency or application-update replacement is introduced. Rerun T3 setup once to adopt the adapter and after moving the checkout or Node executable. Future upstream changes to the binary-path/native-update contract may require an adapter adjustment. This closes the missing link-refresh path; it does not establish the cause of the separate unreadable-symlink incident.
+
+## 2026-11-14: Scope instruction context and remove plan-only publication gates
+
+- Trim profile-wide instructions to operator preferences and explicit preservation requirements. Move Pi tooling, launcher and historical-profile detail into `pi/AGENTS.md`, keep a short parent warning for repository-wide operations, and move shell details into `zsh/AGENTS.md`. Remove the duplicated parent Onclave branch rule; its existing module instructions still own it and apply to parent-initiated submodule operations. Keep the Pi README as a directory index.
+- Apply the operator's instruction filter in the prompting skill: retain concise operator-specific requirements or non-obvious knowledge at the narrowest useful scope, rather than generic model advice. Link the Integrator procedure instead of repeating its lifecycle in the Git skill.
+- Accept explicit push/deployment authorization from the current conversation or plan without requiring a plan edit. Describe plain `/commit` as a commit-only invocation and keep Integrator's publication restriction local to that role. Role tools, mandatory consultations, closeout dispatch and stash-approval behavior are unchanged; no automatic-push default is introduced.
+
+## 2026-11-14: Make Pi documentation a personal quick reference
+
+- Reduce the Pi README to a linked directory map. Keep setup command-first for installation, login, updates and troubleshooting; remove repeated policy and smoke-test internals instead of moving them into another wall of text.
+- Keep runtime behavior, agent constraints and publication rules unchanged. Fix the root setup link to point directly to the shorter guide; existing detailed feature docs and dated changelog entries remain available.
+
+## 2026-11-14: Load Pi operational and specialist guidance on demand
+
+- Move detailed Pi dependency, launcher/profile, upgrade, authentication and runtime-acceptance procedures from root instructions into `pi/README.md` and the default profile's setup reference. Retain the root's explicit routing trigger, pnpm-only rule, public-launcher invariant and historical-profile boundary without changing their behavior.
+- Split host-adapter, tool-presentation and subprocess/path guidance into conditional references within the existing `pi-extension` skill. Keep runtime fundamentals, prompt-context responsibilities and bounded validation in the entry point; add no skills, runtime gates or authority changes. Git publication policy and role restrictions are unchanged and remain separate discussion items.
+
+## 2026-11-14: Centralize historical Windows diagnostic findings
+
+- Migrate six missing historical Windows diagnostic records to the shared Onclave improvement store: Claude hook console flashing, the MSYS2 crash/retirement dossier, earlier Defender/orphan-process findings, and three process-churn or cleanup observations. Verify saved contents before replacing standalone tracking notes with lookup pointers; preserve implementation plans and historical research with record references.
+- Preserve dated findings, superseded advice, uncertainty and validation limits rather than treating old hypotheses or Defender workarounds as current policy. Current November incidents were already stored. No runtime, Defender setting, ignored private data or legacy Pi content is changed; active submodule documentation searches found no additional matching incident records.
+
+## 2026-11-14: Guide Windows CPU-spike diagnosis and incident tracking
+
+- Extend the skill to review duplicate processes, distinguish legitimate workers from suspended or abandoned subprocesses, and clean up confirmed leftovers only within authorized cleanup. Trace live owners and recheck exact process identities before termination, preserve uncertain cases, and verify removal without resuming stale commands. Track recurring AI-tool launch/cleanup evidence and address confirmed defects in the owning code; cleanup alone does not prove prevention or Defender causality. No automatic killer or continuous monitor is added.
+
+- Add the on-demand `windows-performance` skill to connect the capture script and desktop shortcut with report interpretation, process-churn diagnosis and concise incident summaries in the existing shared improvement store. Track proven causes, proposals, validation gaps and related episodes without copying raw traces or private command lines into central records.
+- Consolidate the older process-churn procedure, capture/report usage and deferred monitoring note into this skill; root instructions and the T3 guide now route to it instead of maintaining parallel procedures. Link the initial incident's shared record while keeping changing history separate from executable guidance, preserving local raw evidence and Defender settings. This changes instructions only; it does not install a recorder service or start a new capture.
+
+## 2026-11-13: Capture Windows Defender spikes on demand
+
+- Add `scripts/capture-defender-spike.ps1` for an administrator-approved, roughly one-minute recording of Defender scans alongside system and per-process CPU/I/O. Keep readable and machine-readable reports in a unique local temporary folder, include protected Defender processes through performance counters, and distinguish scan duration from CPU usage and process I/O from disk-only activity.
+- Provide a workstation-local **Capture Defender Spike** desktop shortcut that runs the same script and opens its results. Keep Defender protection/exclusions unchanged, preserve other recording sessions, and leave continuous monitoring and automatic spike-triggered recording deferred. The shortcut is not added to automatic installation; documentation covers direct agent/shell use and report locations.
+
+## 2026-11-13: Report late edits without failing completed commit passes
+
+- Define `/commit` completion per repository: eligible work discovered during its pass must still be reviewed, committed or explicitly excluded, and requested publication must finish before moving to its parent. Keep existing within-pass re-review, hooks, ignore rules and failure handling.
+- Report additional changes observed after completed passes as not included instead of retroactively declaring successful commits and pushes failed. Preserve those edits and exclusion reasons without another review, commit, push or catch-up loop; a successful `Pushed.` result may include remaining late changes.
+- Actual Git/hook failures, cancellation, unknown push outcomes and reporting failures still fail. Concurrent external commits/branch movement remain outside this reporting fix. Existing Pi sessions need `/reload-runtime` in T3 or `/reload` in the terminal when idle to load it.
+
+## 2026-11-13: Complete native service-state operations and the Hatchery transition
+
+- Replace the interim retained-backend route with private site implementations for all nine filesystem archive targets and separate explicit SeaweedFS object backup/restore-test. Keep the existing Linux tooling boundary, caller values store, device-local latest/history, checksum/archive formats, quiescing/failure behavior and distinct object identities. No new daemon, retention policy, data relocation or automatic restore is introduced.
+- Forward compatible filesystem CLI calls to the native owner, including ordered `backup all`, and reject stale-checkout recursion without a fallback operation. Retire the old Ansible backup/restore and legacy regeneration entrypoints to owner reports; preserve historical archive contracts as fixtures, not a second runtime catalog.
+- Site Node 26 typecheck/all 117 cases and network-disabled tooling checks pass. Final infrastructure `just validate` passes 464 cases (one existing skip), full Ansible syntax/production lint with zero failures or warnings, and the public/BWS/excluded-data checks. A longer-bound final run and correction of seven stale assertions passed without restoring old writers or changing host/Docker configuration. No production backup, restore, guest SSH or object-endpoint access was run for this port.
+- Reconcile foundation completion from the accepted consuming handovers and archive the completed spec at `modules/homelab-infra/.specs/archive/hatchery-transition/plan.md`. Publish owning repositories before the parent pins; preserve unrelated work, the cancelled private-site plan, excluded data, Pi legacy and the broader proposed product roadmap.
+
+## 2026-11-13: Record approved default-model and profile repairs
+
+- Extend the Windows testing reference with explicit account agreement activation and OpenCode's approved per-client AWS profile capture. Preserve custom profiles, leave global AWS selection unchanged, and distinguish account terms from automatic installer behavior or IAM grants.
+- Claude and OpenCode now pass their discovered Fable 5.2 response/file-read proofs without model overrides; OpenCode needs no process profile marker. Retain the initial post-activation Claude 403 and later successful retry as separate evidence, alongside the remaining Codex WindowsApps PowerShell tool limitation and untested browser SSO/fresh-final-source cases.
+
+## 2026-11-13: Distinguish IAM model tests from browser SSO bootstrap
+
+- Correct the dev-setup testing skill so automated client/model testing can use an IAM-only test user without an email, console password or Identity Center record. Reserve matching SSO usernames and deliverable email for the actual browser-bootstrap scenario; choose incidental test naming when the operator leaves it open.
+- Record limited-user live onboarding and file-read evidence separately from unresolved defaults: Fable 5.2 lacks an available account agreement, OpenCode needs an explicit AWS profile activation marker, and Codex's restricted process cannot launch the WindowsApps PowerShell alias. Keep credential-selection changes and account agreement acceptance distinct from routine installer fixes; preserve test-key cleanup metadata, pre-authentication baselines and existing security boundaries.
+
+## 2026-11-13: Keep sandbox testing in a diagnose-fix-retest loop
+
+- Clarify the dev-setup testing skill so authorized sandbox work includes fixing established installer/runtime defects and retesting from the clean baseline, rather than requesting fresh approval after each finding. Keep missing user-only input and changes outside the agreed repositories/accounts/resources as actual boundaries.
+- Document ordinary package/publisher-checked Windows consent through the console while retaining the limited test-runner token. Do not disable UAC, substitute SYSTEM, erase original failure evidence or broaden cloud-key cleanup. The Windows fixture suite passes for the scoped prerequisite repairs; live installer retesting continues separately.
+
+## 2026-11-14: Reuse neutral repository setup conventions
+
+- Add the on-demand default-profile `repo-setup` skill with adaptable Windows/Python bootstrap, agent/README, ignore and changelog templates. Keep work-specific context conditional in `references/work.md`; personal projects use the neutral baseline without a speculative personal variant. Preserve native instruction ownership instead of copying tenant/deployment workflows, automatic Git synchronization or workstation onboarding into every repo.
+- Native Pi skill discovery, bundled links and Windows-template rendering pass. AI Workbench's adapted script passes prerequisite checks under PowerShell 5.1, an existing-environment locked rerun, configuration preservation and isolated failure paths; fresh-machine installation and authenticated services were not tested. Existing runtime settings and live processes are unchanged; discover the skill in a fresh default-profile session or after an idle resource reload. Operator: Mike Glenn.
+
+## 2026-11-13: Preserve index stat caches during commit reconstruction
+
+- Fix the reproduced cause of repeated `modules/t3code` status timeouts: plain `git read-tree HEAD` cleared cached file metadata even for clean plans, forcing the next status to reread roughly 32,000 tracked files. Use single-tree `read-tree -m` to preserve unchanged entries' stat data while retaining the same reviewed contents and exclusions.
+- The same checkout with a copied index exceeded 15 seconds after plain `read-tree`, while the stat-preserving form completed status in 0.8 seconds. Remove the unrelated native-Git launcher experiment; keep normal launch paths, hooks, deadlines, cancellation and publication behavior unchanged.
+- Preserve sole index-only contents during a directory-to-gitlink conversion through the existing retained index-snapshot path. Git's `stash create` cannot walk both a new gitlink and its former tracked descendants; the snapshot retains the original staged contents and gitlink under the usual `^2` reference without altering working files.
+
+## 2026-11-13: Ground the Windows testing skill in a clean installer trial
+
+- Exercise the real limited-user Windows runner against committed dev-setup source with all clients selected and Bedrock skipped while test-identity setup remains pending. Add practical guidance for pre-install snapshots, source archive/hash staging, installation-only scope, actual runtime command discovery and evidence collection without WinGet progress noise.
+- Record the first trial's PowerShell 5.1-to-7.7 handoff and exit-1 failure: unscoped prerequisite searches were blocked by a Store certificate error, then probing absent pnpm terminated setup before installation. A community-source query succeeded in the same user context. Preserve the failed VM and clean snapshot; do not mask fresh-machine defects by preinstalling tools or weakening certificate checks. No installer source, AWS identity, credentials or shared policies were changed, and client/Bedrock acceptance remains incomplete.
+
+## 2026-11-13: Clean up obsolete T3 scheduled tasks
+
+- Add T3 skill guidance to remove scheduled tasks that no longer serve the current workflow, while preserving useful tasks and respecting thread ownership. This changes instructions only; no existing schedules were changed.
+
+## 2026-11-13: Handle intermittent commit status timeouts without repository repair
+
+- Retry a timed-out read-only `git status` once at the existing 15-second deadline. Distinguish timeouts from operator cancellation, output-cap termination and normal Git failures; do not retry staging, commits, fetches, merges or pushes.
+- Stop after two status timeouts with the repository, command arguments, elapsed time and attempt/timeout details instead of sending a subprocess-read failure into the AI's repository-repair loop. Preserve already confirmed commits when later status reporting fails, and continue collecting results from other repositories.
+- Initial fresh-process checks used warm indexes and did not reproduce the slow status read. The later index-reconstruction investigation above identifies the cause; status-only retries remain bounded error handling, not the root-cause repair. Existing Pi sessions need an idle runtime reload before retrying `/commit`.
+
+## 2026-11-13: Document repeatable installer tests and coordinated resets
+
+- Add an on-demand `dev-setup-testing` skill that composes network-iac VM operations with the existing gitlab-helm Bedrock identity workflow. Distinguish fresh onboarding, authenticated reruns and intentional stale-cloud-key refusal cases, and document the interactive console/SSO requirements instead of treating every installer as an unattended job.
+- Treat cleanup of the run's dedicated IAM test key and local VM reset as separate parts of an authorized test cycle, without repeated approval prompts for already-scoped cleanup. Preserve unexpected failures, employee/unrelated keys, the installer's refusal to replace unknown keys, credential-free clean baselines and the original evaluation deadline. This changes guidance only; no identity, key, VM or installer behavior was changed.
+
+## 2026-11-13: Guide Windows sandbox spawning through network-iac
+
+- Add an on-demand default-profile `network-iac` skill for choosing VM reuse, clean snapshot reset, linked or independent full cloning, and fresh Windows image preparation. Keep normal CLI/testing instructions separate from conditional API and timing references so agents can use the existing controller without repeating Windows installation.
+- Distinguish recommendations from current implementation: the CLI still full-clones and recreates on reset; linked creation and disk rollback were live-tested operations, not invented switches. Preserve repository ownership, primary-session live access, limited-user script execution, local private state, explicit cleanup and the original evaluation deadline. Retain the single-trial timing limits rather than promising fixed startup performance.
+- This adds guidance only, with no VM mutation, CLI-default change, credential movement or legacy-profile edit. Fresh default-profile sessions or an idle resource reload discover the skill.
+
+## 2026-11-13: Commit directory-to-submodule replacements as one group
+
+- Fix `/commit` reconstruction of a reviewed directory-to-gitlink change: restore the replacement root rather than deleted child paths that no longer resolve beneath the gitlink. Keep the root and changed descendants in one commit or exclude them together; the reverse conversion uses the same behavior.
+- Preserve reviewed staged contents, exact changed-path verification, normal hooks, exclusions and working files. This repairs the vault migration failure without rewriting history or changing publication behavior. Existing Pi processes need an idle runtime reload before retrying `/commit`.
+
+## 2026-11-13: Separate the research vault into a Forgejo submodule
+
+- Move research ownership to the private `mike/research-vault` repository while keeping its dotfiles mount at `docs/research/obsidian-vault/`. Existing Obsidian registrations, local note links and research output paths remain unchanged; Onclave's ingestion/search service is separate and unchanged.
+- Carry over 48 research commits, including the earlier `docs/research/agent-workflows/` history, with authors, dates and messages preserved. The extracted tip matches all 129 original files before repository guidance changes. Extraction creates new commit IDs without rewriting or removing dotfiles history.
+- Update clone prerequisites, repository boundaries and research guidance for independent vault commits followed by parent gitlink updates, with vault publication first. Existing checkouts initialize it with `git submodule update --init -- docs/research/obsidian-vault`; standalone clones retain vault-local instructions and applicable ignore rules.
+
+## 2026-11-13: Check preserved workflows when extending shared policies
+
+- Refine code-review guidance to question both prohibited and required behavior when a shared policy reaches new callers, comparing their purposes and lifecycle states.
+- Refine test-design guidance to derive expectations from the requested workflow and exercise relevant lifecycle transitions. These address the completed-goal compaction blind spot without adding a skill, mandatory reviewer, or verification phase.
+
+## 2026-11-13: Allow T3 context compaction after goal completion
+
+- Distinguish successful goal completion from other admission denials so manual and automatic compaction can preserve context without restarting completed work. Keep active-goal budget checks, paused-goal restrictions, authentication, retry behavior and response accounting unchanged.
+- Treat goal-policy refusals as compaction cancellations rather than failed provider requests, avoiding repeated warnings that printed the goal's operational summary. Actual compaction failures remain visible.
+- Existing idle T3/Pi sessions need `/reload-runtime` to load the fix. Previously recorded notices remain in the conversation; no goal state or history is cleared.
+
+## 2026-11-13: Improve native site operation and public Compose drift readback
+
+- Align Hatchery's README, requirements, architecture and decision ledger with the accepted durable migration and active private site repository, while retaining historical evidence limits and the unfinished broader product roadmap.
+- Detect declared public Compose image, mount and published-port drift, normalize Docker representations and verify targeted convergence. Do not inspect environments or credential-derived Compose hashes, refresh images unnecessarily, activate unrelated services or bypass application preparation during adoption.
+- Add the private site's unified plan/apply/status command: resolve BWS once, project each stack's own capabilities, combine native results and order only the selected stacks. Keep existing aliases, separate state and explicit refresh policies. Known-incomplete whole-site apply fails before deployments; targeted selections never silently add prerequisites.
+- Expose existing service-state operations through a compatibility entrypoint, retaining the old backend's archive/checksum/ACL/quiescing/retention/restore behavior. This does not port or redesign the backup engine, and ordinary native deployment still needs no old deployment checkout.
+- H typecheck and 11 focused provider cases pass; S typecheck and all 98 cases pass. The combined live plan covered 27 stacks with only the game stack's expected public-expectation update. Its targeted update converges noop/unchanged/present with existing container/data/configuration identities and release/restart policy retained. Controller source was installed through normal standalone bootstrap without protected binding writes.
+
+## 2026-11-13: Keep Opus on Bedrock and honor explicit ccyl requests
+
+- Correct an agent-routing failure that selected Pi's direct Anthropic OAuth provider for an unspecified “Opus high” request, then treated its expired refresh grant as an operator login problem. Bare Opus family requests now select the newest configured AWS Bedrock release, preferring Mantle, with no direct-Anthropic fallback.
+- Make direct Anthropic delegation overrides deliberate through a separate matching `providerOverride` field in native and T3 launch tools. Preserve explicit configured role defaults and other provider references; do not alter credentials or replace normal AWS renewal.
+- Clarify that an explicit ccyl request selects its configured Claude Code subscription client and models, including after a failed Pi-role attempt. Use generic T3 delegation for this user-selected external task, without claiming Pi role/tool enforcement carries over or substituting Pi's model. Native/Herdr ccyl behavior is unchanged.
+- Changes load in fresh default-profile Pi runtimes or through an idle resource reload (`/reload-runtime` in T3). Other running instances retain their loaded code; no T3 product, generated bridge, existing thread, or desktop process is restarted by this change.
+
+## 2026-11-12: Restore live Codex quota status in T3
+
+- Restore the existing five-minute Codex quota polling in T3 so its Pi status bar does not retain an old weekly percentage while other fields update. Keep periodic refreshes status-only, preserving startup reports, explicit `/usage`, authentication and terminal behavior.
+- Existing T3/Pi runtimes need `/reload-runtime` when idle or a Pi runtime restart to load the fix; no T3 app update is required.
+
+## 2026-11-12: Publish separate workstation, story and migration commits
+
+- Keep the Chrome native-host path refresh and T3 Codex quota polling fix in independent commits. The quota polling check passes all seven focused cases.
+- Commit Story Workshop capture/authorship guidance separately from its saved project development notes, then update its parent pin independently.
+- Publish the accepted Hatchery facilities, homelab-infra ownership handover and private site compositions in their owning repositories before updating the dotfiles migration pins. This subsequent explicit publication authorization does not archive unfinished product work or include ignored runtime/private artifacts.
+
+## 2026-11-12: Reconcile all selected native migration owners
+
+- Document the complete selected lifecycle/configuration/application ownership map and retained security/trust, backup/restore and release-policy boundaries. Old state keeps nonphysical enabled-service validation, not an extra physical writer.
+- Verify production callers using S's own BWS resolver without legacy decoder/fixtures: 27 stack plans contain 352 noop resource rows; the final game caller reapplies unchanged and reports present. No staging, publication or whole-spec archival is included.
+- Include Git in the existing validation tooling image because deterministic source-archive fixtures consume it. This does not change guest software or count as a live handover.
+- Complete the final `just validate`: 487 unit cases (one existing skip), full syntax/production lint and public/BWS/data-boundary checks pass. Adapt stale legacy-writer assertions while keeping restore/release/ownership contracts; retain compatibility inputs rather than deleting them to silence warnings.
+
+## 2026-11-12: Hand over the separate game stack without restarting it
+
+- Adopt the existing complete Docker VM game/Dozzle/RCON Web/selected Playit graph in one retained native resource with noop/unchanged/present convergence. Preserve VM/container/image/start/mount/port, file/data/world/credential identities and actual digest/Steam/update/restart policy.
+- Verify authenticated RCON, three SQLite databases and normal web TLS/auth protection. Matching handover runs no Compose activation, image/Steam refresh, game stop or Caddy restart; original retry-safe graceful reload preserves the shared file bind.
+- Normalize only the existing BWS connection field to the same verified physical route, removing dependence on a workstation-only alias. Preserve logical identity and prior authorization while adding the existing public management key. Retire exact old deployment writers without DNS/router/tunnel, backup or gameplay-workflow changes.
+
+## 2026-11-12: Transfer the existing DNS relationship and verify redundancy
+
+- Adopt the original two-node relationship in one retained Hatchery resource with noop/unchanged/present convergence. Preserve IDs, domain, URLs, native trust, permanent management endpoints and shared token; matching adoption performs no initialization/join, credential or API configuration write.
+- Verify original catalog membership and 41 replicated record/TTL values per node. Separately stop each Keepalived service, verify exclusive other-node VIP with workstation UDP/TCP and normal UI TLS, then restore primary preference and enabled/running state. Guest boots and DNS/Caddy starts remain unchanged.
+- Retire exact old role/CLI writers, including the installed secondary configurator after public-source parity and file-identity checks. Node-local ownership stays with accepted primary/secondary stacks; no routing/address redesign, extra HA mechanism or backup change.
+
+## 2026-11-12: Hand over controller bootstrap and lifecycle without interruption
+
+- Install eligible dirty Hatchery source through its standalone strict-SSH bootstrap, independent of the old deployment checkout or receiver. Preserve the original pinned/frozen release/dependency/CLI ABI and deployment flock; adopted reapply makes no source switch or protected-file repair.
+- Reproduce original sites/two related provider-token bindings through protected stdin only, with no bootstrap/state/application credential forwarding or secret hashes. One retained native LXC row converges noop/unchanged/present; original boot/configuration, 39 operational files and 51 prior caches remain.
+- Retire exact old lifecycle/readiness/source/binding writers and release only the controller reference without destruction. Old state retains only nonphysical service-selection validation; identity/trust, retained trial/allocation records, old releases, security and backups remain. No controller rebuild/stop, new control plane or fresh-controller acceptance gate was added.
+
+## 2026-11-12: Close selected Hermes and runner lifecycle ownership
+
+- Hand over the two existing LXCs through separate Hatchery lifecycle stacks, keeping their accepted application/configuration owners separate. Each converges one noop row, unchanged reapply and present status; complete physical configuration, running state and guest boot identity remain, with no guest/application/disk mutation.
+- Preserve original static addresses/MACs and power/startup/shape policy. Materialize only two observed root references; no speculative DHCP facility, fresh provisioning or credential inventory was added.
+- Retire exact old lifecycle/dispatch/moved writers and release only both guest references plus the unconsumed selected primary template reference, five to two, without destruction. Keep cached template, selection/outputs, security/trust and backups. Final controller/game/cluster and whole selected-coverage acceptance remain open.
+
+## 2026-11-12: Transfer the existing secondary DNS guest in place
+
+- Separate Hatchery host/configuration stacks adopt the original secondary LXC and complete 15.3.0/.NET10/Caddy/Keepalived graph: one plus 22 noop rows, unchanged reapply and present status. Guest/data/release identities, six documents, DNS/SSH/Keepalived starts and existing cluster/VIP policy remain; direct DNS/API and normal UI TLS pass.
+- Repair the failed Caddy 2.6.2 to already-selected 2.11.4 with Cloudflare. After its normal expired-asset cleanup left a stale in-memory renewal, one targeted Caddy restart restored ordinary issuance with the retained ACME account and CF credential. DNS/Keepalived were not restarted and no certificate files were manually deleted.
+- Retire exact secondary and shared transferred writers/interfaces while retaining the separate cluster-relationship owner. Release only the secondary guest and unused template state references, seven to five, without destruction. Preserve physical template, service presence, security/trust and backups.
+
+## 2026-11-12: Transfer the existing shared app-host VM lifecycle
+
+- Adopt the existing shared VM in a separate Hatchery lifecycle stack with noop/unchanged/present convergence. Its complete physical configuration, OS/data/cloud-init volumes, opaque options, MAC, boot/machine/agent/startup and guest identity remain; original mounted filesystem and persistent-directory identities pass.
+- Keep M01's guest baseline/storage owner separate. Lifecycle receives only selected compute/state capabilities, with no guest SSH/application credentials and no second private inventory.
+- Retire the old VM, automatic replacement trigger, unused boot-image writer and all seven shared-service legacy VM targets. Release exactly their three state references, ten to seven, without destroy/resource apply; the cached image, input/output identity, security/trust and backups remain. No rebuild, resize, data migration, guest reboot or new cold-provision/recovery workflow occurred.
+
+## 2026-11-12: Transfer primary DNS and its selected records in place
+
+- Hand over the existing primary LXC and complete Technitium 15.3.0/.NET10, Caddy, primary Keepalived and selected DNS graph through separate Hatchery stacks. One host and 67 configuration/DNS resources converge noop/unchanged/present, retaining guest/account/data ownership, releases, service starts, settings, three Forwarder zones and 41 record values/TTLs. Only previously blank record comments acquire native ownership metadata.
+- Verify permanent and floating DNS addresses over UDP/TCP, upstream resolution, normal UI TLS and the existing API credential with anonymous rejection. Six original documents remain byte-identical with zero activation; no guest/service restart, app upgrade, state move or credential rotation occurred.
+- Correct consumed compatibility gaps without changing policy: recognize the built-in this-server DefaultProxy response while rejecting remote-forwarder proxy drift, and select installed bind9-dnsutils rather than repeatedly requesting its virtual dnsutils alias. Earlier failed adoption refreshed APT indexes but installed/upgraded no selected software.
+- Retire exact primary lifecycle/app/Caddy/DNS entrypoints and release only its old container reference without destruction. Secondary/cluster owners, independent security/ephemeral trust, schema checks, service selection and backup operations remain.
+
+## 2026-11-12: Transfer existing Caddy/Tailscale ingress in place
+
+- Hand over the existing ingress LXC/TUN and complete pinned Caddy/Tailscale/DNS graph through separate Hatchery stacks. Two host and 13 configuration rows converge noop/unchanged/present while boot, service starts, enrollment/preferences, certificates, repository assets, binaries and the existing DNS record identity/binding remain unchanged.
+- Verify normal TLS and existing-key API access on both LAN and the workstation's already-enrolled personal-tailnet route, with anonymous rejection. No VPN/login/client-auth change, key rotation, package reinstall/build/download, guest/service restart or identity copy was needed.
+- Retire only ingress-specific lifecycle/TUN/configuration/external-DNS entrypoints and release exactly its old container state reference without destruction. Shared roles, independent security/ephemeral trust, internal DNS, backup operations and other state retain their owners.
+
+## 2026-11-12: Transfer the existing Herdr guest and transport in place
+
+- Hand over existing LXC lifecycle and complete operator/configuration through separate Hatchery stacks: one host and 34 configuration rows converge noop/unchanged/present. Preserve guest/account/home, original Herdr/Node/pnpm/Pi releases and marker/link ABI, key/trust, SSH/UFW and rootless Podman transport identities without reinstall, restart, data move or client-auth/workstation/T3 changes.
+- Retain strict non-root operator access and the separate forced-command transport. Docker-over-SSH works while shell and non-exact commands remain rejected. Reuse only the controller's management public identity, preserving prior authorization bytes/metadata and leaving its private key and Herdr's transport private key on their respective hosts.
+- Retire exact old lifecycle/bootstrap/package/context/relay/trust writers and release only the Herdr container state reference without destruction. Preserve other state, service selection, release/build policy and backup operations. Remaining selected migrations and final acceptance are still incomplete.
+
+## 2026-11-12: Transfer existing Forgejo runners in place
+
+- Hand over both existing repository-scoped runners through one complete Hatchery configuration stack. All 28 rows converge noop/unchanged/present while preserving guest/account, registration/scope/label, binary/tool, work/cache, key/trust and Docker/runner process identities. Both original heartbeats advance and the original deployment-job key still passes a strict authenticated PVE read. No new registration, credential rotation, scope broadening, download/build, restart or data move was needed.
+- Keep existing separate BWS credential authorities. Derive registration UUIDs and protected configuration only in controller-private memory, without a second identity inventory or credential/hash state. Retain the original group-readable 0640 files through explicit group authorization, leaving strict default secret permissions unchanged. Reuse the controller's protected management identity without copying it into jobs.
+- Retire exact legacy runner configuration, registration/SQL normalization, job-key/trust and restart writers. Preserve the separate existing LXC lifecycle until its own handover, independent security/bootstrap owners, release policies and existing backup operations. Remaining selected migrations and final acceptance are still incomplete.
+
+## 2026-11-12: Transfer Forgejo lifecycle and configuration in place
+
+- Hand over the existing LXC, retained ZFS/bind attachment and full Forgejo configuration through separate complete Hatchery stacks. Two host and 23 configuration rows converge noop/unchanged/present while preserving guest/data/SSH identities, all six repository refs and all prior row IDs in 128 SQLite tables. Normal authenticated Git/API and verified HTTPS pass without a restart, release switch, download/build, data move or credential rotation.
+- Preserve version-first binary adoption, selected INI edits without credential/unmanaged-body export, the Git-owned CLI link and original Caddy/SSH contracts. Reuse the protected deployment identity and verified trust. Restore only the INI's original root-owner policy without rewriting its bytes or replacing its inode.
+- Retire exact old deployment, dataset/attachment and lifecycle writers and release only their two OpenTofu state references without destruction. Preserve other state, encrypted history, release policies, independent security/trust owners and existing backup/restore formats. Remaining selected migrations and final acceptance are still incomplete.
+
+## 2026-11-12: Transfer Hermes configuration in place
+
+- Hand over the complete Hermes application/configuration graph to Hatchery while preserving the existing custom wheel/two-lock identity, Node/tools, user state, credentials and endpoints. All 34 rows converge noop/unchanged/present with retained tool/data/file identities, four SQLite databases and unchanged dashboard/gateway/Caddy/Docker processes. No release upgrade, downloads/rebuilds, data move or credential rotation was needed for adoption.
+- Keep the original lookup-rstrip marker ABI, configurable caller-local lock inputs and atomic runtime/tool activation. Preserve the live public search override instead of dropping it through an empty old default. Retire only the exact routine application writers and temporary partial deployment entry; independent lifecycle/security owners, release selection and existing backup/restore operations remain available.
+- Earlier ingress repair restored an already failed module-less Caddy binary and expired certificate with the selected build and normal ACME issuance. Verified HTTPS now passes without trust bypasses. This accepted Hermes handover does not complete the remaining service/infrastructure migration.
+
+## 2026-11-11: Add Hatchery durable-stack execution
+
+- Integrate native durable composition, scoped encrypted/versioned S3 state and selected runtime bindings delivered over SSH stdin. Keep private site composition and BWS authority outside generic product code, with raw archives, analytical data and orchestration state separate.
+- Add observed file/service/Quadlet and retained fresh-directory resources, explicit secret refresh and persistent activation intent. Preserve the allocation CLI, controller serialization and no-write/no-restart convergence for unchanged successful applies.
+- Add fresh durable-guest bootstrap with native retention, a separate data disk, checksum-selected image preparation, public-key-only NoCloud, private DHCP/DNS and QGA-derived strict SSH trust. After the initial host failed the pinned engine's CPU requirement, deploy a separate AVX2-capable guest instead of moving the existing shared app VM or its data. The exact engine now passes private authentication, retained identity across unit recreation, drift repair and no-restart reapply. Keep existing app DNS unchanged and consume the observed private address where its new-name resolution is unavailable; the real API/indexer containers now use that private path.
+- Extend the current controller installation with checksummed current-worktree source, complete sibling providers and frozen private-site linkage, without requiring a registry or source push. Bootstrap the separate state identity/bucket and deployment key while preserving existing keys, services, data and guest ownership. Native controller plan/apply/status acceptance passed; the full service migration remains incomplete.
+
+- Deploy separately owned API analytics files/drop-in and a supervised listener-free indexer without taking over the base Onclave deployment. Preserve installed images, independent daily registry adoption, common PostgreSQL/archive bindings and existing target coupling. Core activation also cycled its target dependencies; all recovered. Actual authenticated analytics/readiness, checkpoint catch-up, unchanged no-restart apply and explicit outage/recovery passed. Historical backfill remains incomplete, not complete remote coverage.
+- Avoid probing absent/stopped Quadlets during observation, allowing a corrected declaration to replace an incomplete resource's stored failing probe through normal deployment rather than state edits.
+- Add locally checked existing-account/rootless prerequisites and shared-VM representation for serial-free identity-bound disks, startup and disabled-agent operation. Preserve existing memberships, implicit machine settings and unmanaged disk/network options; existing-volume references cannot create or attach a missing VM. This does not transfer guest ownership or complete the broader account/package/storage facilities.
+- Add selected-entry `/var` and `/srv` UUID fstab reconciliation beside existing-layout recognition, preserving unrelated table bytes and metadata without exporting contents or hashes. Missing entries can converge without hot mounts, filesystem changes or reboot; no live handover is claimed.
+- Add local read-only recognition of the shared guest's selected PV/VG, ext4 devices, mount UUIDs and fstab bindings, rejecting an extra PV or changed registered filesystem identity. Add ordinary `.socket` enable/start support for rootless Podman. Storage mutation and live host ownership are not part of this slice.
+- Add local Debian package-presence and concrete pinned Caddy/Cloudflare/Go build facilities. Correct-state apply performs no index refresh, download or build; installation uses normal APT dependencies, and failed archive/output validation preserves the prior Caddy binary. Service activation remains separate, and no live baseline/Caddy handover is claimed.
+- Add a bounded native checksum-selected artifact-file primitive with actual-byte/metadata observation, explicit file adoption, resource-specific ownership and verified temporary-file replacement. Native shell fixtures cover no-op, drift, failed-download preservation and retry. This is local capability work, not a live artifact or Caddy build handover.
+- Complete the standalone SearXNG configuration pilot with its existing rootless Podman-compose shape, cache, secret, desired image pin and Caddy endpoint. Retire the legacy role/playbook's remote writes without disabling service presence or backup coverage. First convergence replaced a stale running image with the already-selected pin; subsequent applies preserve the installed result without restart. Verified HTTPS/configuration/missing-query handling and cache writes passed; a sample JSON search response had no results, so external provider delivery remains unverified. Broader service, substrate and guest handovers remain in progress.
+
+- Hand over the existing shared app-host baseline to Hatchery in place, including account/packages, SSH/UFW, rootless runtime, selected existing fstab entries and shared Caddy. Retire only its legacy baseline writers, preserving guest lifecycle, separate Debian security-update ownership and all backup paths. Mount/data/account/container identities, four verified-TLS routes and rootless/direct SSH access passed; all-noop plan, unchanged apply and present status caused no SSH/Caddy/container restart. Full Onclave and remaining service/infrastructure handovers are still pending.
+
+- Hand over the full existing Onclave deployment to its private Hatchery composition, preserving Core plus all five dependencies, data/mount identities, named SearXNG volumes, private topology, backup helpers and the separately owned analytics overlay. All-noop plan, unchanged apply and present status retain every existing image/container/start identity. Verified-TLS signed API, raw archive reads, fresh registration/heartbeat and analytics readiness pass; routine old deployment writers are read-only, while backup/legacy-format restore operations remain available. Preserve independent daily image adoption and configuration-only installed-image retention. Bound client SSH concurrency after observed MaxStartups drops rather than weakening host policy. Remaining selected service/infrastructure handovers continue without Git publication.
+
+- Transfer FreeLLMAPI configuration in place, preserving its selected digest, encryption key, container-owned SQLite permissions, existing records and Caddy route. Retire routine legacy writes while retaining service presence and existing backups/restores. All-noop plan, unchanged apply and present status preserve container/image/start/mount/data identities. Existing-key authenticated reads and anonymous rejection pass on application loopback, with normal-TLS route verification separately; no upstream provider credential was configured or provisioned.
+
+- Hand over the existing web-fetch gateway/browser in place with exact configuration bytes, retained SQLite routes, existing bearer and unchanged already-built image selection. Keep local base-provenance/168-hour hold checks and explicit digest exceptions without adding builds or pulls. Verified-TLS authenticated retrieval, anonymous rejection, browser isolation and all-noop/unchanged/present convergence retain all existing container/data identities. Retire routine legacy deployment only; application build source and existing backup/restore operations remain available.
+
+- Transfer SeaweedFS service and selected bucket-policy ownership without a server restart, data move, image change or credential rotation. Preserve OpenTofu history, Onclave objects and separate Hatchery state, with all-noop/unchanged/present convergence, retained object versions and verified access/conditional-write semantics. Retire routine legacy deployment and ensure writes while keeping verification/backups/restores available. Retain the existing identity-file mode through explicit owner-private-parent proof without relaxing default secret-file permissions.
+
+## 2026-11-10: Add a private story workshop
+
+- Add `modules/story-workshop` as a private Forgejo submodule on `main`, keeping creative content separate from public workstation configuration.
+- Start with a loose idea inbox, per-project premise/character/plot/discussion notes, and optional shared-universe notes. Starter folders are placeholders, unrelated book ideas remain independent, and brainstorming is not canon unless adopted.
+- Document the additional private repository access needed for recursive clones; use the existing machine-local `forgejo` SSH alias without tracking service addresses or credentials.
+- Add an attributed, project-local adaptation of haowjy's `story-planning` skill with conditional character, worldbuilding, timeline, and outline references. Preserve exploratory notes and existing folders without importing its agent framework or knowledge-base layout; document future drafting/review/series options and Pi's project-scoped discovery.
 
 ## 2026-11-10: Add host-aware Pi workflows and optional central analytics
 

@@ -15,6 +15,7 @@ import { Type } from "typebox";
 import { commitShellCommand, formatStatus } from "./tools.ts";
 import { executeCommitPlan, parseCommitStatus, validateCommitPlan, type CommitPlan } from "./plan.ts";
 import { discoverCommitRepositories } from "./repositories.ts";
+import { withCommitStatusRetry } from "./status.ts";
 
 const MODEL_FAMILY = "terra";
 const FALLBACK_PROVIDER = "anthropic";
@@ -83,7 +84,7 @@ export function formatPublicationEligibility(push: boolean, branch: string): str
 }
 
 export function buildCommitTask(push: boolean, root: string, inventory: readonly string[], currentRepository = "."): string {
-	return `Review the staged changes and submit a complete commit plan now. ${push ? "Publication is code-owned, including clean initialized submodules with outgoing referenced commits. Do not check outgoing commits or run pull/push. The runner integrates and publishes children before parents, silently skipping detached entries. It will request conflict resolution separately if needed." : "Push was NOT requested. Do not run publication-related branch, upstream, outgoing, remote, or push checks or commands."}
+	return `Review the staged changes and submit a complete commit plan now. ${push ? "Publication is code-owned, including clean initialized submodules with outgoing referenced commits. Do not check outgoing commits or run pull/push. The runner integrates and publishes children before parents, silently skipping detached entries. It will request conflict resolution separately if needed." : "This command invocation is commit-only. Do not run publication-related branch, upstream, outgoing, remote, or push checks or commands."}
 
 Location (JSON-quoted absolute path; decode and shell-quote as data):
 Workflow root: ${JSON.stringify(root)}
@@ -131,8 +132,9 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 			let unresolvedPublicationConflict: string | undefined;
 			const unknownPushes = new Set<string>();
 			const usage: Usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
+			const exec = withCommitStatusRetry(pi.exec.bind(pi), message => { failure ??= message; }, progress);
 			const git = async (args: string[], requestSignal?: AbortSignal, cwd?: string, timeout = GIT_TIMEOUT_MS) => {
-				const result = await pi.exec("git", ["-C", cwd ?? root ?? ctx.cwd, ...args], { signal: requestSignal, timeout });
+				const result = await exec("git", ["-C", cwd ?? root ?? ctx.cwd, ...args], { signal: requestSignal, timeout });
 				if (result.killed || result.code !== 0) throw new Error(`Git ${args[0]} failed: ${result.killed ? "cancelled or timed out" : result.stderr.trim()}`);
 				return result.stdout.trimEnd();
 			};
@@ -291,10 +293,13 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 					const entries = parseCommitStatus(await git(STATUS_ARGS, combined, repository));
 					if (entries.some(entry => /U|AA|DD/.test(entry.xy))) throw new Error(`Unresolved conflicts in ${repositoryId(root!, repository)} before review.`);
 					if (entries.some(entry => entry.xy !== "??" && entry.xy[0] !== " " && entry.xy[1] !== " ")) {
-						let oid = await git(["stash", "create"], combined, repository);
+						// stash create cannot walk both a gitlink and its former tracked
+						// descendants. Use the index snapshot for structural replacements.
+						const replacement = entries.some(parent => entries.some(child => child.path.startsWith(`${parent.path}/`)));
+						let oid = replacement ? "" : await git(["stash", "create"], combined, repository);
 						if (!oid) {
-							// stash create can omit submodule-only differences. Retain the
-							// index in the same ^2 layout without changing it or the worktree.
+							// Also covers submodule-only differences omitted by stash create.
+							// Retain the index in the same ^2 layout without changing working files.
 							const base = await head(combined, repository);
 							if (!base) throw new Error("Could not preserve index-only content before staging.");
 							const tree = await git(["write-tree"], combined, repository);
@@ -596,7 +601,8 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 							for (const entry of plan.exclusions) excluded.set(entry.path, entry.reason);
 							exclusionsByRepository.set(currentRepository, excluded);
 							progress("Executing reviewed commits…");
-							const result = await executeCommitPlan(pi.exec.bind(pi), currentRepository, combined, plan);
+							const result = await executeCommitPlan(exec, currentRepository, combined, plan);
+							if (failure) throw new Error(failure);
 							if (result.ok) return;
 							combined.throwIfAborted();
 							progress("Resolving commit problem…");
@@ -675,12 +681,12 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 			// have completed. These read-only queries do not reuse the cancelled signal.
 			progress("Collecting commit results…");
 			let summary = "";
+			const changedAfter: string[] = [];
 			if (root && baselines.size) {
-				try {
-					const commits: string[] = [];
-					const remaining: string[] = [];
-					for (const [repository, base] of [...baselines].sort(([a], [b]) => b.length - a.length)) {
-						const label = repositoryId(root, repository);
+				const commits: string[] = [], remaining: string[] = [], reportingErrors: string[] = [];
+				for (const [repository, base] of [...baselines].sort(([a], [b]) => b.length - a.length)) {
+					const label = repositoryId(root, repository);
+					try {
 						const current = await head(undefined, repository);
 						if (current && current !== base) {
 							const log = await git(["log", "--reverse", "--format=%h %s", ...(base ? [`${base}..${current}`] : [current])], undefined, repository);
@@ -690,11 +696,13 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 						if (status) remaining.push(`${label}:\n${status}`);
 						if (!failure) {
 							const unfinished = await unfinishedPaths(repository);
-							if (unfinished.length) failure = `Uncommitted changes remain in ${label}; commit workflow incomplete:\n${unfinished.join("\n")}`;
+							if (unfinished.length) changedAfter.push(`${label}:\n${unfinished.join("\n")}`);
 						}
-					}
-					summary = [commits.join("\n") || "No commits created.", remaining.length ? `Remaining changes:\n${remaining.join("\n")}` : ""].filter(Boolean).join("\n");
-				} catch (error) { failure = [failure, `Status reporting failed: ${error instanceof Error ? error.message : String(error)}`].filter(Boolean).join("\n"); }
+					} catch (error) { reportingErrors.push(`${label}: ${error instanceof Error ? error.message : String(error)}`); }
+				}
+				// A later status failure must not erase commits already observed above.
+				summary = [commits.join("\n") || (reportingErrors.length ? "Commit reporting incomplete." : "No commits created."), remaining.length ? `Remaining changes:\n${remaining.join("\n")}` : ""].filter(Boolean).join("\n");
+				if (reportingErrors.length) failure = [failure, `Status reporting failed: ${reportingErrors.join("\n")}`].filter(Boolean).join("\n");
 			}
 			const publication = push && publicationBranches.size > 0
 				? [successfulPushes > 0
@@ -706,7 +714,8 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 				const id = repositoryId(root!, repository);
 				return [...paths].filter(([path]) => !requiredExclusions.get(repository)?.has(path)).map(([path, reason]) => `Left out: ${id === "." ? "" : `${id}/`}${path}: ${reason}`);
 			});
-			const report = [summary, ...preservedIndex, ...leftOut.map(line => `Left out: ${line}`), ...exclusions, publication].filter(Boolean).join("\n");
+			const report = [summary, ...preservedIndex, ...leftOut.map(line => `Left out: ${line}`), ...exclusions,
+				changedAfter.length ? `Changed after repository pass; not included:\n${changedAfter.join("\n")}` : "", publication].filter(Boolean).join("\n");
 			if (failure) throw new Error(`${failure}\n${report}\nStopped; existing commits and changes were not undone.`);
 			return { text: report, elapsedMs, model: `${selectedModel?.provider}/${selectedModel?.id}:${thinkingLevel}`, usage };
 }
