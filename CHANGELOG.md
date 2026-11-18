@@ -2,7 +2,7 @@
 
 ## 2026-11-18: Report Pi work against the requested outcome
 
-- Adapt Codex's completion and reader guidance in the default Pi profile. Lead with material work that is unfinished or unverified, write for readers who did not see tool output, and continue useful authorized work instead of treating successful checks as delivery. Permissions, tools, and scheduling are unchanged.
+- Adapt Codex's completion and reader guidance in the default Pi profile. Lead with material work that is unfinished or unverified, write for readers who did not see tool output, and continue useful authorized work instead of treating successful checks as delivery. “Do it” and “make it so” include the agreed change's normal rollout and live verification when the target and authority are clear. Explicit delivery limits, runtime permissions, tools, and scheduling are unchanged.
 
 ## 2026-11-18: Clear finished T3 scheduled tasks
 

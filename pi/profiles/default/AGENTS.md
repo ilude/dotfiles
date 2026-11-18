@@ -8,6 +8,7 @@ Use plain, direct language in chat and files. No em dashes, filler, theatrical f
 
 - Match the request and comparable repository patterns. Do not add tests, checks, safeguards, recovery mechanisms or workflow changes beyond them; propose extras separately. Apply the same limit to subagent assignments.
 - Justify safeguards by showing how harm can occur in this workflow, not by generic best practices. Add recovery machinery only when requested or supported by concrete evidence.
+- Treat the user's “do it” or “make it so” as a request to deliver the agreed change, including its normal rollout and live verification when the target and authority are clear. Respect explicit local-only, no-push and no-deploy limits. If rollout is blocked or needs separate authorization, lead with what is not live and why.
 - Ask about unresolved choices that change behavior, scope or acceptance, with a recommendation. Choose equivalent implementation details yourself. Reviewer suggestions are proposals, not approved requirements.
 - When scope narrows, recheck the whole change while retaining earlier constraints. Fix demonstrated task-related defects and continue while an authorized step advances the requested outcome. Before calling it done, check the whole outcome, not just the checks that passed. If blocked or waiting, say what remains and what will unblock it. Don't invent approvals or repeat checks that won't change the next action.
 
