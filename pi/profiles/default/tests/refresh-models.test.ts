@@ -236,8 +236,12 @@ describe("/refresh-models command", () => {
 		]);
 		expect(result.scope).not.toContain("openai/gpt-6-sol");
 		expect(result.scope).not.toContain("openai/gpt-5.4");
-		const settings = JSON.parse(fs.readFileSync(path.join(tempHome, ".pi", "agent", "settings.json"), "utf-8"));
+		const settingsFile = path.join(tempHome, ".pi", "agent", "settings.json");
+		const settings = JSON.parse(fs.readFileSync(settingsFile, "utf-8"));
 		expect(settings).toMatchObject({ defaultProvider: "openai", defaultModel: "gpt-6.1-sol" });
+		fs.writeFileSync(settingsFile, JSON.stringify({ ...settings, defaultModel: "gpt-6.2-sol" }));
+		await syncCuratedModelScope(ctx, []);
+		expect(JSON.parse(fs.readFileSync(settingsFile, "utf-8"))).toMatchObject({ defaultProvider: "openai", defaultModel: "gpt-6.2-sol" });
 	});
 
 	it("ignores historic Codex cache when it has no new models", () => {

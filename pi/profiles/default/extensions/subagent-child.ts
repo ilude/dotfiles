@@ -1,6 +1,7 @@
 import type { ExtensionAPI, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { TSchema } from "typebox";
 import { Type } from "typebox";
+import { canonicalAgentName } from "../lib/subagents/definitions.ts";
 import { DELEGATION_MODEL_DESCRIPTION, EFFORTS, PROVIDER_OVERRIDE_DESCRIPTION } from "../lib/subagents/options.ts";
 import { SUBAGENT_LAUNCH_DESCRIPTION, SUBAGENT_CONTROL_DESCRIPTION } from "../lib/subagents/guidance.ts";
 import { bindChildSurface } from "../lib/subagents/child-surface.ts";
@@ -124,11 +125,12 @@ export default function childAuthority(pi:ExtensionAPI){
   return record;
  };
  pi.registerTool({name:"subagent",exposure:"model-only",label:"Delegate to subagent",description:`${SUBAGENT_LAUNCH_DESCRIPTION} Commission only permitted roles under your frozen authority. Omit surface to inherit your own. Inside Herdr, select headless only when the user requests it, not merely because work is parallel, unattended, or in a worktree.`,parameters:Type.Object({agent:Type.String(),instructions:Type.String(),background:Type.Optional(Type.Boolean()),blockingReason:Type.Optional(Type.String({description:"Why this launch must block rather than use automatic result delivery; required except for Strategist."})),cwd:Type.Optional(Type.String()),model:Type.Optional(Type.String({description:DELEGATION_MODEL_DESCRIPTION})),providerOverride:Type.Optional(Type.String({description:PROVIDER_OVERRIDE_DESCRIPTION})),effort:Type.Optional(Type.Union(EFFORTS.map(value=>Type.Literal(value)))),skills:Type.Optional(Type.Array(Type.String())),surface:Type.Optional(Type.Union([Type.Literal("visible"),Type.Literal("headless")]))}),async execute(_id,p,signal,onUpdate){
-  if(!allowed.has("subagent")||!authority.delegates.includes(p.agent))throw new Error("Delegation is outside frozen authority");
-  const strategist=p.agent==="strategist";
+  const agent=canonicalAgentName(p.agent);
+  if(!allowed.has("subagent")||!authority.delegates.includes(agent))throw new Error("Delegation is outside frozen authority");
+  const strategist=agent==="strategist";
   const background=strategist?false:p.background??false;
   if(!strategist&&!background&&!p.blockingReason?.trim())throw new Error("Non-Strategist foreground launch requires blockingReason");
-  let result=await requestParent(parentEndpoint(),{type:"delegate",payload:{...p,background}});
+  let result=await requestParent(parentEndpoint(),{type:"delegate",payload:{...p,agent,background}});
   if(!background)result=await waitForChild(result,signal,onUpdate);
   const visible=parentVisibleRecord(result as ChildRecord);
   return{content:[{type:"text",text:JSON.stringify(visible)}],details:visible};

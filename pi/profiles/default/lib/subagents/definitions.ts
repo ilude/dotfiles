@@ -8,6 +8,20 @@ export { EFFORTS, resolveAgentEffort, resolveModel, type AgentEffort } from "./o
 export interface AgentDefinition { name: string; description: string; tools: string[]; delegates: string[]; model?: string; effort?: AgentEffort; skills: string[]; prompt: string; source: "profile" | "project"; filePath: string }
 export interface DefinitionCatalog { agents: Map<string, AgentDefinition>; errors: string[]; projectDir?: string }
 const NAME = /^[a-z][a-z0-9_-]*$/;
+
+export function canonicalAgentName(name: string): string {
+  return name.trim().toLowerCase();
+}
+
+export function resolveAgentDefinition(catalog: DefinitionCatalog, requested: string, permitted?: readonly string[]): AgentDefinition {
+  const definition = catalog.agents.get(canonicalAgentName(requested));
+  if (definition && (!permitted || permitted.includes(definition.name))) return definition;
+  const names = [...catalog.agents.keys()].filter(name => !permitted || permitted.includes(name)).sort();
+  const available = `Available roles: ${names.join(", ") || "none"}.`;
+  if (definition) throw new Error(`Delegation is outside frozen authority. ${available}`);
+  const errors = !permitted && catalog.errors.length ? ` ${catalog.errors.join("; ")}` : "";
+  throw new Error(`Unknown or invalid agent ${JSON.stringify(requested)}. ${available}${errors}`);
+}
 const scalar = (v: unknown) => typeof v === "string" && v.trim() ? v.trim() : undefined;
 function list(v: unknown, required = false): string[] | undefined {
   if (Array.isArray(v) && v.every(x => typeof x === "string")) return v.map(String).map(x => x.trim()).filter(Boolean);

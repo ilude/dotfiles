@@ -2,7 +2,7 @@ import { join } from "node:path";
 import type { T3CloseoutAuthority } from "./t3/closeout.ts";
 import type { ModelRegistry } from "@earendil-works/pi-coding-agent";
 import { resolvePiClient } from "../herdr-host.ts";
-import { loadDefinitions, type AgentDefinition } from "./definitions.ts";
+import { loadDefinitions, resolveAgentDefinition, type AgentDefinition } from "./definitions.ts";
 import { composedAgentPrompt } from "./guidance.ts";
 import { EFFORTS, resolveAgentEffort, resolveAvailableDelegationModel, resolveDelegationModel, resolveSkills, type AgentEffort } from "./options.ts";
 
@@ -61,9 +61,7 @@ export interface ResolveRoleOptions {
 }
 function roleInputs(options: ResolveRoleOptions) {
   const catalog = loadDefinitions(options.cwd, options.projectTrusted, options.profile);
-  const definition = catalog.agents.get(options.agent);
-  if (!definition) throw new Error(`Unknown or invalid agent ${options.agent}. ${catalog.errors.join("; ")}`);
-  if (options.parentDelegates && !options.parentDelegates.includes(definition.name)) throw new Error("Delegation is outside frozen authority");
+  const definition = resolveAgentDefinition(catalog, options.agent, options.parentDelegates);
   return { catalog, definition };
 }
 /** Synchronous snapshot construction for callers that already own catalog/auth state. */

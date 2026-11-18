@@ -68,22 +68,22 @@ describe("fresh subscription-first delegation resolution", () => {
 		const registry = registryFixture([sol], ["bedrock-mantle"]);
 		if (state === "failed") vi.mocked(registry.getAvailableOfType).mockImplementation(async (_type, provider) => {
 			if (provider === "openai") throw new Error("provider unavailable");
-			return [sol];
+			return provider === "bedrock-mantle" ? [sol] : [];
 		});
 		await expect(resolveAvailablePreferredModel("sol", registry)).resolves.toBe(sol);
 		expect(resolvePreferredModel("sol", registry)).toBe(sol);
 	});
 
-	it("recognizes the pinned native AWS Sol namespace without choosing an older Sol", async () => {
+	it("recognizes the native AWS namespace without changing a requested Sol version", async () => {
 		const sol = modelFixture("amazon-bedrock", "us.openai.gpt-6.1-sol");
 		const registry = registryFixture([modelFixture("openai", "gpt-6-sol"), sol], ["openai", "amazon-bedrock"]);
-		await expect(resolveAvailablePreferredModel("sol", registry)).resolves.toBe(sol);
-		expect(resolvePreferredModel("sol", registry)).toBe(sol);
+		await expect(resolveAvailablePreferredModel("gpt-6.1-sol", registry)).resolves.toBe(sol);
+		expect(resolvePreferredModel("gpt-6.1-sol", registry)).toBe(sol);
 	});
 
 	it("keeps the requested family and reports checked routes rather than claiming a missing login", async () => {
 		const registry = registryFixture([modelFixture("openai", "gpt-6.1-terra")], ["openai"]);
-		await expect(resolveAvailablePreferredModel("sol", registry)).rejects.toThrow(/No available.*sol.*openai, bedrock-mantle, amazon-bedrock/);
+		await expect(resolveAvailablePreferredModel("sol", registry)).rejects.toThrow(/No available.*sol.*openai, openai-codex, bedrock-mantle, amazon-bedrock/);
 	});
 
 	it("keeps Opus and Grok on their allowed AWS routes", async () => {
@@ -127,20 +127,22 @@ describe("latest authenticated OpenAI family resolution", () => {
 
 	it.each(["astra", "sol", "terra", "luna"] as const)("resolves %s synchronously with Pi's actual registry API", family => {
 		const latest = modelFixture("openai", `gpt-7-${family}`);
-		const pinned = modelFixture("openai", "gpt-6.1-sol");
-		const registry = registryFixture([modelFixture("openai", `gpt-6-${family}`), latest, pinned], ["openai"]);
+		const registry = registryFixture([modelFixture("openai", `gpt-6-${family}`), latest], ["openai"]);
 		// This real method was missing from the original mock, hiding the crash.
 		expect(Array.isArray(registry.getAvailable())).toBe(true);
-		expect(resolveLatestCodexModelFromRegistry(family, registry)).toBe(family === "sol" ? pinned : latest);
-		expect(resolvePreferredModel(family, registry)).toBe(family === "sol" ? pinned : latest);
+		expect(resolveLatestCodexModelFromRegistry(family, registry)).toBe(latest);
+		expect(resolvePreferredModel(family, registry)).toBe(latest);
 	});
 
-	it("does not substitute Sol 5.6 or Sol 6 when pinned Sol 6.1 is unavailable", async () => {
-		const older = [modelFixture("openai", "gpt-5.6-sol"), modelFixture("openai", "gpt-6-sol")];
-		const registry = registryFixture(older, ["openai"]);
-		const runtime = { getAvailable: vi.fn<ModelRuntime["getAvailable"]>().mockResolvedValue(older) };
-		expect(() => resolvePreferredModel("sol", registry)).toThrow(/No configured subscription or AWS model/);
-		await expect(resolveLatestCodexModelFromRuntime("sol", runtime)).rejects.toThrow(/No authenticated openai sol model/);
+	it("never substitutes another version, dated variant, or display name for an exact GPT ID", async () => {
+		const registry = registryFixture([
+			modelFixture("openai", "gpt-6.1-sol"),
+			modelFixture("openai-codex", "gpt-6.2-sol-preview"),
+			{ ...modelFixture("openai", "gpt-7-sol"), name: "gpt-6.2-sol" },
+			modelFixture("bedrock-mantle", "openai.gpt-6.3-sol"),
+		], ["openai", "openai-codex", "bedrock-mantle"]);
+		expect(() => resolvePreferredModel("gpt-6.2-sol", registry)).toThrow(/No configured subscription or AWS model/);
+		await expect(resolveAvailablePreferredModel("gpt-6.2-sol", registry)).rejects.toThrow(/No available subscription or AWS chat model/);
 	});
 
 	it("rejects missing families and never falls back to another provider", async () => {

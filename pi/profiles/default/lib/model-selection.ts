@@ -3,13 +3,9 @@ import type { ModelRegistry, ModelRuntime } from "@earendil-works/pi-coding-agen
 import { compareModelVersions, modelFamilyVersion } from "./model-family.ts";
 import { selectLatestGrokModelIds } from "./bedrock/model-policy.ts";
 
-const PROVIDER_LADDER = [
-	["openai"],
-	["bedrock-mantle"],
-	["amazon-bedrock"],
-] as const;
-
-const AWS_PROVIDER_LADDER = PROVIDER_LADDER.slice(1);
+const AWS_PROVIDER_LADDER = [["bedrock-mantle"], ["amazon-bedrock"]] as const;
+const PROVIDER_LADDER = [["openai"], ...AWS_PROVIDER_LADDER] as const;
+const GPT_PROVIDER_LADDER = [["openai"], ["openai-codex"], ...AWS_PROVIDER_LADDER] as const;
 
 const MODEL_ALIASES: Readonly<Record<string, string>> = {
 	astra: "astra",
@@ -20,8 +16,22 @@ const MODEL_ALIASES: Readonly<Record<string, string>> = {
 	terra: "terra",
 };
 const CODEX_PROVIDER = "openai";
-export const PINNED_SOL_MODEL = "gpt-6.1-sol";
-type OpenAIFamily = "astra" | "sol" | "terra" | "luna";
+const GPT_FAMILIES = ["astra", "sol", "terra", "luna"] as const;
+type OpenAIFamily = typeof GPT_FAMILIES[number];
+function isGptFamily(value: string): value is OpenAIFamily {
+	return GPT_FAMILIES.some(family => family === value);
+}
+
+function isGptId(value: string): boolean {
+	return /^gpt-\d/i.test(value);
+}
+
+function preferredProviders(requested: string): readonly (readonly string[])[] {
+	const name = requested.toLowerCase();
+	if (name === "grok") return [["amazon-bedrock"]];
+	if (name === "opus" || modelFamilyVersion(name)?.family === "opus") return AWS_PROVIDER_LADDER;
+	return isGptFamily(name) || isGptId(name) ? GPT_PROVIDER_LADDER : PROVIDER_LADDER;
+}
 
 type Candidate = {
 	model: Model<Api>;
@@ -43,6 +53,15 @@ function containsSequence(haystack: readonly string[], needle: readonly string[]
 
 function matchScore(model: Model<Api>, requested: string): number | undefined {
 	const request = requested.toLowerCase();
+	// An explicit GPT model ID is not a request for a dated variant or a
+	// similarly named model. AWS adds a namespace to the same logical ID.
+	if (isGptId(request)) {
+		const id = model.id.toLowerCase();
+		const logicalId = model.provider === "bedrock-mantle" || model.provider === "amazon-bedrock"
+			? id.replace(/^(?:(?:us|eu|apac|global)\.)?openai\./, "")
+			: id;
+		return logicalId === request ? 0 : undefined;
+	}
 	const values = [model.id, model.name].filter((value): value is string => typeof value === "string");
 	if (values.some(value => value.toLowerCase() === request)) return 0;
 
@@ -84,9 +103,7 @@ export function resolvePreferredModel(
 	}
 
 	const alias = trimmed.toLowerCase();
-	if (alias === "astra" || alias === "sol" || alias === "terra" || alias === "luna") {
-		return resolveLatestFamilyModel(alias, registry);
-	}
+	if (isGptFamily(alias)) return resolveLatestFamilyModel(alias, registry, GPT_PROVIDER_LADDER);
 	if (alias === "fable") return resolveLatestFamilyModel("fable", registry);
 	if (alias === "opus") return resolveLatestFamilyModel("opus", registry, AWS_PROVIDER_LADDER);
 	const target = trimmed;
@@ -99,7 +116,7 @@ export function resolvePreferredModel(
 		throw new Error('No configured native AWS Bedrock model matches "grok"');
 	}
 
-	const providerLadder = modelFamilyVersion(trimmed)?.family === "opus" ? AWS_PROVIDER_LADDER : PROVIDER_LADDER;
+	const providerLadder = preferredProviders(trimmed);
 	for (const providers of providerLadder) {
 		const candidates = authenticated
 			.filter(model => (providers as readonly string[]).includes(model.provider))
@@ -123,8 +140,7 @@ export async function resolveAvailablePreferredModel(
 ): Promise<Model<Api>> {
 	const trimmed = requested.trim();
 	if (!trimmed || trimmed.includes("/")) throw new Error(`Expected a bare model name, received ${requested}`);
-	const alias = trimmed.toLowerCase();
-	const providers = alias === "grok" ? [["amazon-bedrock"]] : alias === "opus" || modelFamilyVersion(trimmed)?.family === "opus" ? AWS_PROVIDER_LADDER : PROVIDER_LADDER;
+	const providers = preferredProviders(trimmed);
 	const failures: string[] = [];
 	for (const tier of providers) {
 		for (const provider of tier) {
@@ -151,7 +167,6 @@ export async function resolveAvailablePreferredModel(
 }
 
 function latestFamilyModel(family: OpenAIFamily | "fable" | "opus", models: readonly Model<Api>[]): Model<Api> | undefined {
-	if (family === "sol") return models.find(model => model.id === PINNED_SOL_MODEL || /^(?:(?:us|eu|apac|global)\.)?openai\.gpt-6\.1-sol$/.test(model.id));
 	return models.flatMap(model => {
 		const parsed = modelFamilyVersion(model.id);
 		return parsed?.family === family ? [{ model, version: parsed.version }] : [];
@@ -203,7 +218,7 @@ export function resolveLatestShortcutModel(
 	family: "astra" | "sol" | "terra" | "luna" | "fable" | "opus",
 	registry: Pick<ModelRegistry, "getAll" | "hasConfiguredAuth">,
 ): Model<Api> {
-	return resolveLatestFamilyModel(family, registry, family === "opus" ? AWS_PROVIDER_LADDER : PROVIDER_LADDER);
+	return resolveLatestFamilyModel(family, registry, preferredProviders(family));
 }
 
 export function modelAliasNames(): readonly string[] {

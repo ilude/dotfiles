@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-18: Resolve new GPT releases in Pi named roles
+
+- Exact GPT IDs can use Pi's configured `openai-codex` route before AWS, without switching to the Codex client or substituting another release. Sol family requests follow the catalog rather than a 6.1 pin, and resumed sessions no longer downgrade to that pin.
+- Named launches look up roles in the current catalog, accepting case and whitespace differences and listing available roles when a name is rejected. Frozen role authority and exact named launch settings still apply.
+
 ## 2026-11-18: Close analytical storage workload acceptance
 
 - Confirm all 167 frozen historical indexing failures and both additional observed session incidents completed through ordinary retry, retaining all 10,394 original completed checkpoint keys. No checkpoint reset, corpus rebuild, second indexer or history deletion was needed; exact transient causes remain unproven.
