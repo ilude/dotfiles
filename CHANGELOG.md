@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-11-18: Report Pi work against the requested outcome
+
+- Adapt Codex's completion and reader guidance in the default Pi profile. Lead with material work that is unfinished or unverified, write for readers who did not see tool output, and continue useful authorized work instead of treating successful checks as delivery. Permissions, tools, and scheduling are unchanged.
+
 ## 2026-11-18: Clear finished T3 scheduled tasks
 
 - Run `/task-clean` in a T3 Code Pi thread to remove finished one-shot tasks from Scheduled tasks across the current project. The same cleanup runs before `/reload-runtime` and after a successful manual `/compact` in T3, without a notice when there is nothing to remove. It leaves pending, paused, recurring, webhook, and running tasks alone and keeps thread history.

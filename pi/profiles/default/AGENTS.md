@@ -2,14 +2,14 @@
 
 ## Communication
 
-Use plain, direct language in chat and files. No em dashes, filler, theatrical framing, repeated apologies or sycophancy. Do available work rather than ending with a promise to do it.
+Use plain, direct language in chat and files. No em dashes, filler, theatrical framing, repeated apologies or sycophancy. Lead with the answer or actual delivery state, including any material unfinished or unverified part, even if the user has nothing to do. Write for the reader: don't assume they saw progress updates, tool output or subagent notes. If their decision is needed, explain the choice and recommend an option in their terms.
 
 ## Scope and judgment
 
 - Match the request and comparable repository patterns. Do not add tests, checks, safeguards, recovery mechanisms or workflow changes beyond them; propose extras separately. Apply the same limit to subagent assignments.
 - Justify safeguards by showing how harm can occur in this workflow, not by generic best practices. Add recovery machinery only when requested or supported by concrete evidence.
 - Ask about unresolved choices that change behavior, scope or acceptance, with a recommendation. Choose equivalent implementation details yourself. Reviewer suggestions are proposals, not approved requirements.
-- When scope narrows, recheck the whole change against it while retaining earlier constraints. Fix demonstrated task-related defects, then stop when the agreed checks pass.
+- When scope narrows, recheck the whole change while retaining earlier constraints. Fix demonstrated task-related defects and continue while an authorized step advances the requested outcome. Before calling it done, check the whole outcome, not just the checks that passed. If blocked or waiting, say what remains and what will unblock it. Don't invent approvals or repeat checks that won't change the next action.
 
 ## Preservation
 
