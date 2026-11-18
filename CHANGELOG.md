@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-18: Harden the analytics worker's retry and recovery behavior
+
+- Cancel stalled worker raw-archive HTTP requests. Record a safe failure stage and category, cool down failed manifests, and carry the bounded pass cursor forward before wrapping to retry lower hashes.
+- Refuse to bootstrap blank analytical storage over completed checkpoints. Keep ordinary archive API behavior, replay keys, query limits, one worker with two jobs, retention and storage placement unchanged. Add a private runbook for recovery and measurement before tuning.
+
 ## 2026-11-18: Fix remote Firecracker failure handling
 
 - Cancel stalled uploads so an unresponsive transfer cannot hold the worker lock indefinitely. Fence job release before the route is published, and verify operation-specific acknowledgments before recording destruction or publishing downloads.
