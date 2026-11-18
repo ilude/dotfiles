@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-11-18: Verify Windows template clone and job use
+
+- Pin the Hatchery runner fixes for Windows Limited-token detection, atomic job results and pinned SFTP staging. Linked/full clone use, queued results, release and full-clone independence passed against an isolated Windows 11 reference image. The build needed assisted Audit Mode, so unattended factory acceptance remains open. No controller deployment.
+
 ## 2026-11-18: Deploy the Firecracker-capable Hatchery release
 
 - Activate pinned Hatchery `ac42318` and enable the BWS-backed `firecracker` target on the production controller. Keep both Proxmox targets and tokens unchanged. The dedicated host runs a controller-only, host-key-pinned SSH receiver separate from management SSH. Manual lifecycle, binary transfers, and queued execution with output collection and worker release passed through the production controller. Bootstrap reapplied without changes.
