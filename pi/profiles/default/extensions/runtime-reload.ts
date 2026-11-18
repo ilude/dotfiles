@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { registerProfileCommand } from "../lib/profile-command.ts";
+import { runT3TaskCleanup } from "../lib/t3-scheduler.ts";
 
 /** RPC-callable equivalent of Pi's terminal /reload, without replacing the session. */
 export default function runtimeReload(pi: ExtensionAPI): void {
@@ -24,6 +25,7 @@ export default function runtimeReload(pi: ExtensionAPI): void {
 		handler: async (args, ctx) => {
 			if (args.trim()) throw new Error("Usage: /reload-runtime");
 			await ctx.waitForIdle();
+			await runT3TaskCleanup(ctx, "maintenance");
 			await ctx.reload();
 			return;
 		},

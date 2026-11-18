@@ -4,8 +4,9 @@ import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { formatScheduleFooterStatus, getProcessScheduler } from "../lib/process-scheduler.ts";
 import { T3HostToolError, t3HostToolNames } from "../lib/t3-host-tools.ts";
-import { runT3Schedule, type ScheduleSuccess } from "../lib/t3-scheduler.ts";
+import { runT3Schedule, runT3TaskCleanup, type ScheduleSuccess } from "../lib/t3-scheduler.ts";
 import { resolvePiClient } from "../lib/herdr-host.ts";
+import { registerProfileCommand } from "../lib/profile-command.ts";
 
 const scheduledPromptSchema = Type.Object({ id: Type.String(), runAt: Type.String({ format: "date-time" }), prompt: Type.String(), error: Type.Optional(Type.String()) }, { additionalProperties: false });
 export const scheduleOutputSchema = Type.Union([
@@ -24,6 +25,18 @@ function localDateTime(date: Date): string {
 
 export default function schedulerExtension(pi: ExtensionAPI): void {
   let delivery: ((prompt: string) => void) | undefined;
+
+  registerProfileCommand(pi, "task-clean", {
+    description: "Remove finished one-shot tasks in the current T3 project",
+    handler: async (args, ctx) => {
+      if (args.trim()) throw new Error("Usage: /task-clean");
+      await runT3TaskCleanup(ctx, "task-clean");
+    },
+  });
+
+  pi.on("session_compact", async (event, ctx) => {
+    if (event.reason === "manual") await runT3TaskCleanup(ctx, "maintenance");
+  });
 
   pi.on("session_start", (_event, ctx) => {
     if (resolvePiClient(ctx.mode) === "t3code") return;

@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-11-18: Clear finished T3 scheduled tasks
+
+- Run `/task-clean` in a T3 Code Pi thread to remove finished one-shot tasks from Scheduled tasks across the current project. The same cleanup runs before `/reload-runtime` and after a successful manual `/compact` in T3, without a notice when there is nothing to remove. It leaves pending, paused, recurring, webhook, and running tasks alone and keeps thread history.
+
 ## 2026-11-18: Verify Windows template clone and job use
 
 - Pin the Hatchery runner fixes for Windows Limited-token detection, atomic job results and pinned SFTP staging. Linked/full clone use, queued results, release and full-clone independence passed against an isolated Windows 11 reference image. The build needed assisted Audit Mode, so unattended factory acceptance remains open. No controller deployment.

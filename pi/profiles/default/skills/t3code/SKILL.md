@@ -28,6 +28,8 @@ T3 browser-preview automation controls preview web content, not necessarily the 
 
 ## Scheduled-task cleanup
 
+Run `/task-clean` in a Pi thread to remove finished one-shot entries with no future run from the current T3 project. The same cleanup runs before `/reload-runtime` and after a successful manual `/compact`. It does not affect other projects, pending or paused schedules, recurring or webhook tasks, or thread history.
+
 When managing T3 scheduled tasks, review existing tasks in the current workflow and remove those that no longer serve a purpose, such as checks for completed work, superseded reminders, or tasks targeting resources that no longer exist. Use supported T3 scheduling controls. Age alone does not make a task obsolete; preserve still-useful tasks and respect thread ownership.
 
 ## Models and presentation

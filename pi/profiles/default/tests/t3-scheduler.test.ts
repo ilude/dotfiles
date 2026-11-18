@@ -2,12 +2,13 @@ import { afterEach, expect, it, vi } from "vitest";
 import { Type } from "typebox";
 import { Check } from "typebox/value";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
-import type { ExtensionAPI, ToolInfo } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, SessionCompactEvent, ToolInfo } from "@earendil-works/pi-coding-agent";
 import register, { scheduleOutputSchema } from "../extensions/scheduler.ts";
+import registerRuntimeReload from "../extensions/runtime-reload.ts";
 import { getProcessScheduler } from "../lib/process-scheduler.ts";
-import { createMockPi } from "./helpers/mock-pi.ts";
+import { createMockCtx, createMockPi } from "./helpers/mock-pi.ts";
 
-afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); });
+afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 function fixture() {
   vi.stubEnv("T3_PI_MCP_EXTENSION_PATH", "/fixture/bridge.ts");
@@ -103,4 +104,132 @@ it("does not bind native scheduling for a T3 session and reports bounded lists",
   const output = await f.run({ action: "list" });
   expect(output.structuredContent).toMatchObject({ limit: 64, truncated: true });
   expect(output.structuredContent.jobs).toHaveLength(64);
+});
+
+function cleanupFixture() {
+  const f = fixture();
+  vi.stubEnv("T3_MCP_URL", "http://127.0.0.1/mcp");
+  vi.stubEnv("T3_MCP_BEARER_TOKEN", "fake-token");
+  const reload = vi.fn(async () => {});
+  const ctx = createMockCtx({ mode: "rpc", reload, waitForIdle: async () => {} });
+  registerRuntimeReload(f.pi as unknown as ExtensionAPI);
+  const command = (name: string, args: string) => f.pi._commands.find(command => command.name === name)!.handler(args, ctx);
+  const compact = async (reason: SessionCompactEvent["reason"]) => {
+    for (const hook of f.pi._getHook("session_compact")) await hook.handler({ type: "session_compact", reason }, ctx);
+  };
+  const past = "2020-01-01T00:00:00Z";
+  const finished = (id: string, overrides: Record<string, unknown> = {}) => ({
+    ...f.task(id, "thread-b", null), projectId: "project-a", lastRunStatus: "succeeded",
+    schedule: { type: "once", runAt: past }, ...overrides,
+  });
+  let tasks = [finished("done")];
+  let projectId = "project-a";
+  let lists = 0;
+  const calls: Array<{ name: string; args: Record<string, unknown> }> = [];
+  const failDelete = new Set<string>();
+  const rescheduled = new Set<string>();
+  const fetcher = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+    const request = JSON.parse(String(init?.body));
+    if (request.method === "notifications/initialized") return new Response(null, { status: 202 });
+    let result: unknown = { protocolVersion: "2025-06-18" };
+    if (request.method === "tools/call") {
+      const { name, arguments: args } = request.params;
+      calls.push({ name, args });
+      if (name === "orchestrator_capabilities") result = { structuredContent: { parentThreadId: "thread-a" } };
+      else if (name === "t3_thread_read") result = { structuredContent: { thread: { threadId: "thread-a", projectId } } };
+      else if (name === "list_scheduled_tasks") {
+        lists++;
+        result = { structuredContent: { tasks: tasks.map(task => lists > 1 && rescheduled.has(task.scheduledTaskId) ? { ...task, nextRunAt: f.runAt } : task) } };
+      } else if (name === "delete_scheduled_task") {
+        if (failDelete.has(args.scheduledTaskId)) result = { isError: true, content: [{ type: "text", text: "private host error" }] };
+        else {
+          tasks = tasks.filter(task => task.scheduledTaskId !== args.scheduledTaskId);
+          result = { structuredContent: { scheduledTaskId: args.scheduledTaskId, deleted: true } };
+        }
+      }
+    }
+    return Response.json({ jsonrpc: "2.0", id: request.id, result });
+  });
+  vi.stubGlobal("fetch", fetcher);
+  return { ctx, run: (args = "") => command("task-clean", args), compact, reload,
+    reloadRuntime: () => command("reload-runtime", ""), calls, finished, failDelete, rescheduled, fetcher, runAt: f.runAt,
+    setTasks: (value: typeof tasks) => { tasks = value; },
+    unsetProject: () => { projectId = ""; },
+    deletions: () => calls.filter(call => call.name === "delete_scheduled_task").map(call => call.args.scheduledTaskId),
+  };
+}
+
+it("removes finished one-shots across the project and preserves tasks that might still run", async () => {
+  const f = cleanupFixture();
+  f.setTasks([
+    f.finished("done-other-thread"), f.finished("failed-unbound", { boundThreadId: null, lastRunStatus: "failed" }),
+    f.finished("other-project", { projectId: "project-b" }), f.finished("never-ran", { lastRunStatus: "never" }),
+    f.finished("running", { lastRunStatus: "running" }), f.finished("pending", { nextRunAt: f.runAt }),
+    f.finished("paused", { enabled: false }), f.finished("recurring", { schedule: { type: "interval", everyMs: 60_000 } }),
+    f.finished("webhook", { schedule: { type: "webhook" } }), f.finished("rescheduled"),
+  ]);
+  f.rescheduled.add("rescheduled");
+  await f.run();
+  expect(f.deletions()).toEqual(["done-other-thread", "failed-unbound"]);
+  expect(f.calls.filter(call => call.name === "list_scheduled_tasks").every(call => call.args.projectId === "project-a")).toBe(true);
+  expect(f.ctx.ui.notify).toHaveBeenLastCalledWith("Removed 2 finished one-shot tasks from this project.", "info");
+  await f.run();
+  expect(f.ctx.ui.notify).toHaveBeenLastCalledWith("No finished one-shot tasks to remove in this project.", "info");
+  expect(f.deletions()).toEqual(["done-other-thread", "failed-unbound"]);
+});
+
+it("reports partial cleanup when T3 rejects a deletion", async () => {
+  const f = cleanupFixture();
+  f.setTasks([f.finished("done"), f.finished("denied"), f.finished("untouched")]);
+  f.failDelete.add("denied");
+  await f.run();
+  expect(f.deletions()).toEqual(["done", "denied"]);
+  expect(f.ctx.ui.notify).toHaveBeenLastCalledWith(expect.stringMatching(/^Removed 1 finished one-shot task .* Cleanup stopped:/), "error");
+});
+
+it("does not clean without a current T3 project", async () => {
+  const f = cleanupFixture();
+  f.unsetProject();
+  await f.run();
+  expect(f.ctx.ui.notify).toHaveBeenLastCalledWith(expect.stringContaining("requires a verified current project"), "error");
+  expect(f.calls.map(call => call.name)).toEqual(["orchestrator_capabilities", "t3_thread_read"]);
+  vi.stubEnv("PI_SUBAGENT_AUTHORITY", "native-child");
+  f.fetcher.mockClear();
+  await f.run();
+  expect(f.fetcher).not.toHaveBeenCalled();
+  expect(f.ctx.ui.notify).toHaveBeenLastCalledWith(expect.stringContaining("only available in a T3 Code Pi thread"), "warning");
+});
+
+it("cleans up on /reload-runtime and still reloads when a deletion fails", async () => {
+  const f = cleanupFixture();
+  f.setTasks([f.finished("done"), f.finished("denied")]);
+  f.failDelete.add("denied");
+  f.reload.mockImplementationOnce(async () => {
+    expect(f.deletions()).toEqual(["done", "denied"]);
+  });
+  await f.reloadRuntime();
+  expect(f.reload).toHaveBeenCalledOnce();
+  expect(f.ctx.ui.notify).toHaveBeenLastCalledWith(expect.stringContaining("Cleanup stopped:"), "warning");
+});
+
+it("cleans up after manual compaction only and stays quiet when nothing is removed", async () => {
+  const f = cleanupFixture();
+  await f.compact("threshold");
+  await f.compact("overflow");
+  expect(f.fetcher).not.toHaveBeenCalled();
+  await f.compact("manual");
+  expect(f.deletions()).toEqual(["done"]);
+  expect(f.ctx.ui.notify).toHaveBeenCalledExactlyOnceWith("Removed 1 finished one-shot task from this project.", "info");
+  f.ctx.ui.notify.mockClear();
+  await f.compact("manual");
+  expect(f.ctx.ui.notify).not.toHaveBeenCalled();
+});
+
+it("leaves both maintenance commands alone in a native Pi child", async () => {
+  const f = cleanupFixture();
+  vi.stubEnv("PI_SUBAGENT_AUTHORITY", "native-child");
+  await f.compact("manual");
+  await f.reloadRuntime();
+  expect(f.reload).toHaveBeenCalledOnce();
+  expect(f.fetcher).not.toHaveBeenCalled();
 });
