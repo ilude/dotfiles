@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-11-18: Increase ClickHouse memory headroom
+
+- Resize the production ClickHouse VM to 16 GiB without adding vCPUs. Set the container cap to 12 GiB and the ClickHouse server setting to 9 GiB. Keep the indexer budget and per-query limits unchanged. Both deployment plans converged; all eight concurrent analytics checks passed and the raw archive read matched the baseline. This verifies service recovery, not that memory failures can no longer recur.
+
 ## 2026-11-18: Report Pi work against the requested outcome
 
 - Adapt Codex's completion and reader guidance in the default Pi profile. Lead with material work that is unfinished or unverified, write for readers who did not see tool output, and continue useful authorized work instead of treating successful checks as delivery. “Do it” and “make it so” include the agreed change's normal rollout and live verification when the target and authority are clear. Explicit delivery limits, runtime permissions, tools, and scheduling are unchanged.
