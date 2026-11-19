@@ -5,6 +5,8 @@ description: Operate and diagnose T3 Code hosting Pi, including model defaults, 
 
 # T3 Code
 
+For customization-fork development and disposable Hatchery builds, use [t3-customization](../t3-customization/SKILL.md).
+
 Keep the repository-owned default Pi profile. For extension implementation, load [pi-extension](../pi-extension/SKILL.md) and follow its incremental host-adapter direction. This skill owns T3 operation and validation, not a second extension architecture.
 
 ## Establish the affected runtime

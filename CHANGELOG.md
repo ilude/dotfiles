@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-11-18: Offload T3 customization builds to Hatchery
+
+- Add a Pi skill for maintaining the T3 customization fork, validating changes on disposable Proxmox workers, and transferring Windows previews without installing them. The Windows cross-build recipe accepts a pinned upstream commit plus a patch and records their provenance. It retains the existing Git-bundle input and does not publish or change the installed app.
+
+## 2026-11-18: Reduce Windows clone first-boot work
+
+- New Hatchery templates preinstall the Windows readiness probe while retaining Limited Sandbox proof, per-clone identity, and compatibility with existing templates. A live test showed Windows Setup did not select the clone CD's answer file, so the existing hostname and reboot path stays in place. No speedup has been verified.
+
 ## 2026-11-18: Preserve embedded repository exclusions in `/commit`
 
 - Treat Git's staged path and untracked directory spelling as the same exclusion. Keep the excluded checkout out of retry staging and let unrelated reviewed commits publish. Working files and ignore rules are unchanged.

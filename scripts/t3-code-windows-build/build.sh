@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Input is a Git bundle, so host credentials, ignored files and live T3 state stay out.
+# Input is an explicit Git snapshot, never host credentials, ignored files or live T3 state.
 export CI=true VP_REMOTE_CACHE=off T3CODE_TELEMETRY_CHANNEL=dev
 export T3CODE_HOME=/workspace/.t3
 export TMPDIR
@@ -11,18 +11,32 @@ exec > >(tee /out/build.log) 2>&1
 
 if [[ ! -d /workspace/.git ]]; then
     git init /workspace
-    # Bundles omit shallow boundaries; carry the source checkout's marker separately.
-    if [[ -f /input/shallow ]]; then
-        cp /input/shallow /workspace/.git/shallow
+    if [[ -f /input/upstream-commit ]]; then
+        read -r source_commit </input/upstream-commit
+        [[ $source_commit =~ ^[a-f0-9]{40}$ ]]
+        git fetch --depth=1 --no-tags https://github.com/pingdotgg/t3code.git "$source_commit"
+        [[ $(git rev-parse FETCH_HEAD) == "$source_commit" ]]
+    else
+        # Bundles omit shallow boundaries; carry the source checkout's marker separately.
+        if [[ -f /input/shallow ]]; then
+            cp /input/shallow /workspace/.git/shallow
+        fi
+        git bundle unbundle /input/source.bundle
+        read -r source_commit _ < <(git bundle list-heads /input/source.bundle refs/heads/main)
     fi
-    git bundle unbundle /input/source.bundle
-    read -r source_commit _ < <(git bundle list-heads /input/source.bundle refs/heads/main)
     git sparse-checkout set --no-cone '/*' '!/.repos/'
     git checkout -b main "$source_commit"
+    if [[ -f /input/source.patch ]]; then
+        git apply --check /input/source.patch
+        git apply /input/source.patch
+    fi
 fi
 cd /workspace
 version="${1:-$(node -p 'require("./apps/server/package.json").version')-preview.$(date -u +%Y%m%d).1}"
 git rev-parse HEAD >/out/source-commit.txt
+if [[ -f /input/source.patch ]]; then
+    sha256sum /input/source.patch >/out/source-patch.sha256
+fi
 printf '%s\n' "$version" >/out/version.txt
 node --version
 vp --version
