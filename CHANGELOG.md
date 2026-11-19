@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-11-18: Preserve embedded repository exclusions in `/commit`
+
+- Treat Git's staged path and untracked directory spelling as the same exclusion. Keep the excluded checkout out of retry staging and let unrelated reviewed commits publish. Working files and ignore rules are unchanged.
+
 ## 2026-11-18: Increase ClickHouse memory headroom
 
 - Resize the production ClickHouse VM to 16 GiB without adding vCPUs. Set the container cap to 12 GiB and the ClickHouse server setting to 9 GiB. Keep the indexer budget and per-query limits unchanged. Both deployment plans converged; all eight concurrent analytics checks passed and the raw archive read matched the baseline. This verifies service recovery, not that memory failures can no longer recur.

@@ -1,3 +1,5 @@
+import { parseCommitStatus } from "./plan.ts";
+
 // Check actual Git argv inside the private mutation shell, not model-written
 // command text or localized failure output. -C/global options retain their scope.
 // A nonzero read-only check is a result for the reviewer, not a failed mutation:
@@ -66,15 +68,7 @@ ${command}`;
 
 // NUL records preserve spaces, tabs, newlines, and rename source/destination pairs.
 export function formatStatus(output: string): string {
-	const records = output.split("\0");
-	const lines: string[] = [];
-	for (let i = 0; i < records.length; i++) {
-		const record = records[i];
-		if (!record) continue;
-		const xy = record.slice(0, 2);
-		const destination = JSON.stringify(record.slice(3));
-		const source = /[RC]/.test(xy) ? ` <- ${JSON.stringify(records[++i])}` : "";
-		lines.push(`${xy} ${destination}${source}`);
-	}
+	const lines = parseCommitStatus(output).map(({ xy, path, source }) =>
+		`${xy} ${JSON.stringify(path)}${source === undefined ? "" : ` <- ${JSON.stringify(source)}`}`);
 	return `XY: index/worktree; ?? = untracked. Paths are repository-relative JSON-quoted strings.\n${lines.join("\n") || "Working tree clean."}`;
 }
