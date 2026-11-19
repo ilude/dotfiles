@@ -4,6 +4,18 @@
 
 - Import the same Cloudflare DNS-01 block in eight existing `homelab-config` stacks, preserving rendered routes, endpoints and credentials. No journal retention or monitoring changes are part of this refactor.
 
+## 2026-11-19: Choose plain TypeScript imports for shared Hatchery settings
+
+- The v1 approach uses regular imports from the site repository and explicit overrides where settings are used. Defaults-only deployments need no policy import. The ClickHouse host imports the shared site journal policy and applies a one-field budget override. A monitoring example shows policy reuse without live endpoints or credentials.
+
+## 2026-11-19: Choose familiar units for Hatchery configuration
+
+- Define Prometheus duration strings and Kubernetes resource quantities as the standard for new human-authored settings. Existing numeric interfaces are unchanged. The log policy adapters validate exact conversions before rendering native settings.
+
+## 2026-11-19: Add configurable Linux log policies to Hatchery
+
+- Add opt-in TypeScript helpers for journald budgets and selected plain-file rotation. Logrotate uses distro drop-ins on Ubuntu, Debian, Fedora and Arch, or a native module on NixOS, with overridable size, archive count and 90-day maximum age. Managed journals default to a 90-day maximum age, and sites can override that per guest without changing existing guests implicitly. ClickHouse accepts native retention overrides per routed log table. The setup guide covers activation and how to check actual settings. The selected ClickHouse host adopted the policy on its diagnostics mount. The rollout does not change internal table TTLs, disposable workers, or file rotation on existing guests.
+
 ## 2026-11-18: Offload T3 customization builds to Hatchery
 
 - Add a Pi skill for maintaining the T3 customization fork, validating changes on disposable Proxmox workers, and transferring Windows previews without installing them. The Windows cross-build recipe accepts a pinned upstream commit plus a patch and records their provenance. It retains the existing Git-bundle input and does not publish or change the installed app.
