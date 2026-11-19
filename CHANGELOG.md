@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-11-19: Share the existing homelab Caddy TLS policy
+
+- Import the same Cloudflare DNS-01 block in eight existing `homelab-config` stacks, preserving rendered routes, endpoints and credentials. No journal retention or monitoring changes are part of this refactor.
+
 ## 2026-11-18: Offload T3 customization builds to Hatchery
 
 - Add a Pi skill for maintaining the T3 customization fork, validating changes on disposable Proxmox workers, and transferring Windows previews without installing them. The Windows cross-build recipe accepts a pinned upstream commit plus a patch and records their provenance. It retains the existing Git-bundle input and does not publish or change the installed app.
