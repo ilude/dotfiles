@@ -1,3 +1,4 @@
+import type { AgentToolResult } from "@earendil-works/pi-agent-core";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { StringEnum } from "@earendil-works/pi-ai";
 import { Text } from "@earendil-works/pi-tui";
@@ -10,7 +11,7 @@ import { registerProfileCommand } from "../lib/profile-command.ts";
 
 const scheduledPromptSchema = Type.Object({ id: Type.String(), runAt: Type.String({ format: "date-time" }), prompt: Type.String(), error: Type.Optional(Type.String()) }, { additionalProperties: false });
 export const scheduleOutputSchema = Type.Union([
-  Type.Object({ action: Type.Literal("create_at"), job: scheduledPromptSchema }, { additionalProperties: false }),
+  Type.Object({ action: Type.Literal("create_at"), job: scheduledPromptSchema, replyInstruction: Type.Optional(Type.String()) }, { additionalProperties: false }),
   Type.Object({ action: Type.Literal("list"), jobs: Type.Array(scheduledPromptSchema), limit: Type.Integer(), truncated: Type.Optional(Type.Boolean()) }, { additionalProperties: false }),
   Type.Object({ action: Type.Literal("cancel"), cancelled: scheduledPromptSchema }, { additionalProperties: false }),
   Type.Object({ action: Type.Literal("error"), message: Type.String() }, { additionalProperties: false }),
@@ -21,6 +22,21 @@ function localDateTime(date: Date): string {
     year: "numeric", month: "short", day: "numeric",
     hour: "numeric", minute: "2-digit", timeZoneName: "short",
   }).format(date);
+}
+
+function t3ReplyInstruction(nextRunAt: string | null, now: number): string | undefined {
+  if (nextRunAt === null) return;
+  const runAt = new Date(nextRunAt);
+  const remaining = runAt.getTime() - now;
+  if (remaining <= 0) return;
+  const [amount, unit] = remaining < 60_000
+    ? [Math.ceil(remaining / 1000), "second"] as const
+    : [Math.ceil(remaining / 60_000), "minute"] as const;
+  const timestamp = new Intl.DateTimeFormat("en-US", {
+    year: "numeric", month: "long", day: "numeric",
+    hour: "numeric", minute: "2-digit", timeZoneName: "short",
+  }).format(runAt);
+  return `End your current reply with this exact line:\n**T3 follow-up scheduled in ${amount} ${unit}${amount === 1 ? "" : "s"}. Next run: ${timestamp}.**`;
 }
 
 export default function schedulerExtension(pi: ExtensionAPI): void {
@@ -95,7 +111,7 @@ export default function schedulerExtension(pi: ExtensionAPI): void {
         return theme.fg("toolOutput", line);
       }).join("\n"), 0, 0);
     },
-    async execute(_id, params, signal, _onUpdate, ctx) {
+    async execute(_id, params, signal, _onUpdate, ctx): Promise<AgentToolResult<unknown>> {
       signal?.throwIfAborted();
       let text: string;
       let structuredContent: ScheduleSuccess;
@@ -105,7 +121,15 @@ export default function schedulerExtension(pi: ExtensionAPI): void {
           const data = await runT3Schedule(pi, ctx, { action: params.action, when: params.when, prompt: params.prompt, id: params.id }, { signal, onUpdate: _onUpdate }, _id);
           if (data.action === "create_at") {
             const { job } = data;
-            text = `Schedule create [${job.id}] ${localDateTime(new Date(job.runAt))} ${Math.max(1, Math.ceil((Date.parse(job.runAt) - Date.now()) / 60_000))}m\n   ${job.prompt.replace(/\s+/g, " ").slice(0, 80)}\n\ncreated in T3`;
+            const now = Date.now();
+            const replyInstruction = t3ReplyInstruction(data.nextRunAt, now);
+            text = `Schedule create [${job.id}] ${localDateTime(new Date(job.runAt))} ${Math.max(1, Math.ceil((Date.parse(job.runAt) - now) / 60_000))}m\n   ${job.prompt.replace(/\s+/g, " ").slice(0, 80)}\n\ncreated in T3`;
+            const details = { action: data.action, job };
+            return {
+              content: [{ type: "text", text: replyInstruction ? `${text}\n\n${replyInstruction}` : text }],
+              details,
+              structuredContent: replyInstruction ? { ...details, replyInstruction } : details,
+            };
           } else if (data.action === "list") {
             text = data.jobs.map(job => `${localDateTime(new Date(job.runAt))} [${job.id}]`).join("\n") || "No scheduled reminders.";
             if (data.truncated) text += "\nShowing the first 64 thread reminders.";

@@ -40,20 +40,37 @@ function fixture() {
 }
 
 it("creates an actual thread-bound one-shot request without adding a native timer", async () => {
+  vi.spyOn(Date, "now").mockReturnValue(Date.parse("2026-11-18T15:44:00Z"));
   const f = fixture(); const before = getProcessScheduler().list();
+  const runAt = "2026-11-18T15:52:00.000Z";
+  f.data.schedule_task.nextRunAt = runAt;
   const output = await f.run({ action: "create_at", when: "5m", prompt: "Check\n deployment" });
-  expect(f.executeTool).toHaveBeenCalledWith("mcp__t3_code__schedule_task", expect.objectContaining({ bindToCurrentThread: true, clientRequestId: "stable-user-call", prompt: "Check\n deployment", schedule: { type: "once", runAt: expect.any(String) } }), expect.any(Object));
-  expect(output.structuredContent).toEqual({ action: "create_at", job: { id: "actual-t3-job", runAt: f.runAt, prompt: "Check\n deployment" } });
+  expect(f.executeTool).toHaveBeenCalledWith("mcp__t3_code__schedule_task", expect.objectContaining({ bindToCurrentThread: true, clientRequestId: "stable-user-call", prompt: "Check\n deployment", schedule: { type: "once", runAt: "2026-11-18T15:49:00.000Z" } }), expect.any(Object));
+  const localTime = new Intl.DateTimeFormat("en-US", {
+    year: "numeric", month: "long", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short",
+  }).format(new Date(runAt));
+  const replyInstruction = `End your current reply with this exact line:\n**T3 follow-up scheduled in 8 minutes. Next run: ${localTime}.**`;
+  expect(output.structuredContent).toEqual({ action: "create_at", job: { id: "actual-t3-job", runAt, prompt: "Check\n deployment" }, replyInstruction });
   expect(Check(scheduleOutputSchema, output.structuredContent)).toBe(true);
   expect(getProcessScheduler().list()).toEqual(before);
   expect(output.content[0].text).toContain("Check deployment");
+  expect(output.content[0].text.endsWith(replyInstruction)).toBe(true);
 });
 
-it("uses the requested once time when T3 has already cleared nextRunAt", async () => {
-  const f = fixture(); f.data.schedule_task.nextRunAt = null;
+it("reports a sub-minute delay in seconds", async () => {
+  vi.spyOn(Date, "now").mockReturnValue(Date.parse("2026-11-18T15:44:00Z"));
+  const f = fixture(); f.data.schedule_task.nextRunAt = "2026-11-18T15:44:30Z";
+  const output = await f.run({ action: "create_at", when: "30s", prompt: "Check" });
+  expect(output.structuredContent.replyInstruction).toContain("scheduled in 30 seconds.");
+});
+
+it.each([null, "2020-01-01T00:00:00Z"])("does not claim another run when T3 returns %s", async (nextRunAt) => {
+  const f = fixture(); f.data.schedule_task.nextRunAt = nextRunAt;
   const output = await f.run({ action: "create_at", when: "5m", prompt: "Check" });
-  expect(Date.parse(output.structuredContent.job.runAt)).toBeGreaterThan(Date.now());
+  if (nextRunAt === null) expect(Date.parse(output.structuredContent.job.runAt)).toBeGreaterThan(Date.now());
   expect(Check(scheduleOutputSchema, output.structuredContent)).toBe(true);
+  expect(output.structuredContent).not.toHaveProperty("replyInstruction");
+  expect(output.content[0].text).not.toContain("End your current reply");
 });
 
 it("lists current-thread pending jobs, not unbound, other-thread or completed jobs", async () => {
@@ -68,6 +85,7 @@ it("cancels only a matching current-thread job using its real opaque ID", async 
   const output = await f.run({ action: "cancel", id: "job-" });
   expect(f.executeTool).toHaveBeenCalledWith("mcp__t3_code__delete_scheduled_task", { scheduledTaskId: "job-a" }, expect.any(Object));
   expect(output.structuredContent.cancelled.id).toBe("job-a");
+  expect(output.content[0].text).toBe("Cancelled: [job-a]");
   expect(Check(scheduleOutputSchema, output.structuredContent)).toBe(true);
 });
 

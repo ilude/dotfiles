@@ -9,6 +9,8 @@ export type ScheduleSuccess =
   | { action: "create_at"; job: ScheduleJob }
   | { action: "list"; jobs: ScheduleJob[]; limit: number; truncated?: boolean }
   | { action: "cancel"; cancelled: ScheduleJob };
+type T3ScheduleSuccess = Exclude<ScheduleSuccess, { action: "create_at" }>
+  | (Extract<ScheduleSuccess, { action: "create_at" }> & { nextRunAt: string | null });
 export interface ScheduleInput { action: "create_at" | "list" | "cancel"; when?: string; prompt?: string; id?: string }
 type Task = { id: string; prompt: string; runAt: string | null };
 type ToolContext = Pick<ExtensionToolContext, "mode" | "tools" | "executeTool">;
@@ -40,7 +42,7 @@ export async function runT3Schedule(
   input: ScheduleInput,
   options: ExecuteToolOptions = {},
   clientRequestId?: string,
-): Promise<ScheduleSuccess> {
+): Promise<T3ScheduleSuccess> {
   const caps = await callT3HostTool(pi, ctx, "orchestrator_capabilities", {}, options);
   // This capability's historical field name denotes the current caller, not its lineage parent.
   const threadId = id(caps.parentThreadId);
@@ -55,7 +57,8 @@ export async function runT3Schedule(
       ...(clientRequestId === undefined ? {} : { clientRequestId }),
     }, options);
     if (created.boundThreadId !== threadId) throw new Error("T3 scheduled task is not bound to the current thread");
-    return { action: "create_at", job: { id: id(created.scheduledTaskId), runAt: created.nextRunAt === null ? runAt : time(created.nextRunAt), prompt } };
+    const nextRunAt = created.nextRunAt === null ? null : time(created.nextRunAt);
+    return { action: "create_at", job: { id: id(created.scheduledTaskId), runAt: nextRunAt ?? runAt, prompt }, nextRunAt };
   }
   const listed = await callT3HostTool(pi, ctx, "list_scheduled_tasks", {}, options);
   if (!Array.isArray(listed.tasks)) throw new Error("Invalid T3 scheduled-task list");
