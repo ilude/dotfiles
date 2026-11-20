@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-11-20: Record the standalone Homelab OS runtime checkpoint
+
+- Refresh research pointers to the separate `homelab-os` PRD and accepted v0.2.0 runtime checkpoint. OCI, Firecracker and QEMU/KVM workloads retained data and restarted after appliance reboot. Source and artifacts remain outside dotfiles; production storage, PXE, clustering and the public management API remain future scope.
+
 ## 2026-11-19: Confirm Pi follow-ups scheduled in T3
 
 - After Pi successfully schedules a pending T3 follow-up, the tool asks the agent to end its current reply with the delay and next-run date, time and local time zone. This does not change the scheduled prompt, reminder delivery or normal terminal Pi output.
