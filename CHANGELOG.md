@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-11-21: Repair SponsorBlock API integration
+
+- Encode SponsorBlock category/action filters as JSON arrays and parse the hash-prefix endpoint's nested per-video segments. This fixes HTTP 400 lookups and prevents valid sponsor matches from being mistaken for empty results. Exact-video selection, duration checks, original-transcript preservation and conservative caption boundaries remain unchanged; malformed matching groups are reported as unavailable rather than negative-cached.
+
 ## 2026-11-21: Keep YouTube analysis output compact
 
 - Fix long-video `PARSE_FAILED` errors caused by the model enumerating transcript segment IDs until its JSON response was truncated. YouTube generation and repair now request compact outline endpoints rather than exhaustive ID lists; repair retains the full previous response instead of discarding everything after 3,000 characters. Whole-transcript analysis, server-derived timestamps, and rejection of invalid JSON remain unchanged.
