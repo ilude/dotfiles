@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-22: Enable unattended Hatchery jobs and preview journal settings
+
+- The selected controller runs the systemd job dispatcher. In a Firecracker pilot, restarting the dispatcher did not replay the workload; both outputs arrived and the worker was released. Host expiry is unchanged.
+- The ClickHouse host's opt-in impact plan shows effective journal limits alongside activation effects. The preview exposes only the selected numeric policy values and does not change the live journal.
+
 ## 2026-11-21: Repair SponsorBlock API integration
 
 - Encode SponsorBlock category/action filters as JSON arrays and parse the hash-prefix endpoint's nested per-video segments. This fixes HTTP 400 lookups and prevents valid sponsor matches from being mistaken for empty results. Exact-video selection, duration checks, original-transcript preservation and conservative caption boundaries remain unchanged; malformed matching groups are reported as unavailable rather than negative-cached.
