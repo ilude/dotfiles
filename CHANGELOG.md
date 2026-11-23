@@ -4,6 +4,7 @@
 
 - Reconcile Hatchery's requirements and decision records with the shipped Firecracker dispatcher, journal preview and selected analytics storage cutover. Track remaining confirmed work separately from existing live evidence and deferred homelab migration. This does not change the running controller.
 - Document and verify how native Hatchery recipes register custom providers, repair drift, and wait for asynchronous actions without changing the controller runtime.
+- Default an explicitly managed Hatchery VM data disk to a 64 GiB minimum when its size is omitted. Keep larger attached disks and existing explicit sizes unchanged.
 - Verify the live ClickHouse journal settings and document native readback for covered logs, effective limits, and rotation scheduling. An owned Debian worker proved scheduled file rotation was active and a forced rotation preserved the fixture line; production retention did not change.
 
 ## 2026-11-23: Fix Windows teardown in Pi's damage-control smoke check
