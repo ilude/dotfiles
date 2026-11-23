@@ -6,7 +6,7 @@
 - Document and verify how native Hatchery recipes register custom providers, repair drift, and wait for asynchronous actions without changing the controller runtime.
 - Default an explicitly managed Hatchery VM data disk to a 64 GiB minimum when its size is omitted. Keep larger attached disks and existing explicit sizes unchanged.
 - Support an exact Debian guest-agent package version on a Proxmox worker target. A new allocation records the version and uses it in the bootstrap ISO; existing allocations and targets without a version keep their behavior.
-- Support an exact Debian guest-agent package version on a Proxmox worker target. A new allocation records the version and uses it in its bootstrap ISO; unpinned targets and existing workers keep their behavior.
+- Support a checksum-pinned Nixpkgs archive for native NixOS template builds. The pin is recorded in the build receipt; existing requests and clone seeds are unchanged.
 - Verify Hatchery's systemd lifecycle on a temporary Debian container, including recovery after a guest restart and a readiness probe that fails while its unit is active. No production service was restarted.
 - Verify the live ClickHouse journal settings and document native readback for covered logs, effective limits, and rotation scheduling. An owned Debian worker proved scheduled file rotation was active and a forced rotation preserved the fixture line; production retention did not change.
 
