@@ -3,6 +3,7 @@
 ## 2026-11-23: Track acceptance for the full Hatchery release
 
 - Reconcile Hatchery's requirements and decision records with the shipped Firecracker dispatcher, journal preview and selected analytics storage cutover. Track remaining confirmed work separately from existing live evidence and deferred homelab migration. This does not change the running controller.
+- Document and verify how native Hatchery recipes register custom providers, repair drift, and wait for asynchronous actions without changing the controller runtime.
 
 ## 2026-11-23: Fix Windows teardown in Pi's damage-control smoke check
 
