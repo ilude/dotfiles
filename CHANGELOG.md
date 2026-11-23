@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-11-23: Track acceptance for the full Hatchery release
+
+- Reconcile Hatchery's requirements and decision records with the shipped Firecracker dispatcher, journal preview and selected analytics storage cutover. Track remaining confirmed work separately from existing live evidence and deferred homelab migration. This does not change the running controller.
+
 ## 2026-11-23: Fix Windows teardown in Pi's damage-control smoke check
 
 - Use Pi's SDK extension loader instead of launching `--list-models`, whose forced exit can crash Windows Node after the fixture analyzes a shell command. The offline check still requires the real extension and guard assertions to pass and the child process to exit cleanly.
