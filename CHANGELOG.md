@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-11-23: Fix Windows teardown in Pi's damage-control smoke check
+
+- Use Pi's SDK extension loader instead of launching `--list-models`, whose forced exit can crash Windows Node after the fixture analyzes a shell command. The offline check still requires the real extension and guard assertions to pass and the child process to exit cleanly.
+
 ## 2026-11-22: Enable unattended Hatchery jobs and preview journal settings
 
 - The selected controller runs the systemd job dispatcher. In a Firecracker pilot, restarting the dispatcher did not replay the workload; both outputs arrived and the worker was released. Host expiry is unchanged.
