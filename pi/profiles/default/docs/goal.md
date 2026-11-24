@@ -44,7 +44,9 @@ The original goal and explicit user decisions remain authoritative. Durable goal
 
 The agent investigates facts before asking. If a consequential decision remains unresolved, it asks one focused question with a recommendation and stops for the answer. It reports concrete blockers rather than repeatedly retrying or polling. Optional discoveries are reported separately, not implemented as extra requirements. Defects necessary to meet the stated goal remain in scope; completion means meeting that goal, not inventing more work.
 
-The loop re-presents the same goal at healthy completion boundaries and continues in the current session until an explicit outcome stops it. Progress checkpoints preserve current work without adding requirements. This is not a scheduler or a new session. Questions, blockers, budget pauses, errors, interruption, and completion stop automatic continuation. `/goal status` shows the recorded outcome and reason; use `/goal resume [instruction]` when ready. A direct answer to a waiting question or blocker can also resume work. Asynchronous findings are not user answers.
+The loop re-presents the same goal at healthy completion boundaries. Progress checkpoints preserve current work without adding requirements. Questions, blockers, budget pauses, errors, interruption, and completion stop automatic continuation. `/goal status` shows the recorded outcome and reason; use `/goal resume [instruction]` when ready. A direct answer to a waiting question or blocker can also resume work. Scheduled prompts and delegated findings are not user answers.
+
+When independent work is done and the goal genuinely depends on an external event, `goal_control wait` uses the existing scheduler for one check instead of pausing the goal or spinning the continuation loop. The matching follow-up continues the same run. Pausing, explicitly resuming before the check, or replacing the goal invalidates the old wake. T3 can deliver its check after process replacement; native reminders still require the original process. Reload and branch navigation do not wake a goal.
 
 ## Optional intent review
 

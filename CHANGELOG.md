@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-11-23: Keep Pi goals active during external waits
+
+- Let `/goal` schedule a one-shot check and end its turn without pausing or repeatedly polling. A matching follow-up continues the same run; an explicit pause invalidates that wake. T3 scheduled prompts and delegated reports do not become user decisions.
+
 ## 2026-11-23: Track acceptance for the full Hatchery release
 
 - Reconcile Hatchery's requirements and decision records with the shipped Firecracker dispatcher, journal preview and selected analytics storage cutover. Track remaining confirmed work separately from existing live evidence and deferred homelab migration. This does not change the running controller.

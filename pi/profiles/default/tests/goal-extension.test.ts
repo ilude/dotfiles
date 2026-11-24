@@ -12,7 +12,7 @@ vi.mock("../lib/profile-command.ts", () => ({ registerProfileCommand: (api: Exte
 const readUsage = vi.hoisted(() => vi.fn());
 vi.mock("../lib/goal/usage.ts", () => ({ readGoalUsage: readUsage }));
 type Handler = (event: Record<string, unknown>, ctx: ExtensionContext) => unknown;
-interface ControlInput { action: "checkpoint" | "question" | "complete" | "blocker" | "pause"; summary: string; findings?: string[] }
+interface ControlInput { action: "checkpoint" | "question" | "complete" | "blocker" | "pause" | "wait"; summary: string; findings?: string[]; when?: string; followUp?: string }
 function harness() {
   const handlers = new Map<string, Handler>();
   const commands = new Map<string, Parameters<ExtensionAPI["registerCommand"]>[1]>();
@@ -50,7 +50,7 @@ function harness() {
   const control = (input: ControlInput) => tools.get("goal_control")!.execute("control", input, new AbortController().signal, undefined, toolCtx);
   const state = () => branch.filter((e): e is { data: { runId: string; outcome: string; authority: { decisions: string[] } }; customType: string } => !!e && typeof e === "object" && "customType" in e && e.customType === GOAL_ENTRY_TYPE).at(-1)?.data;
   emit("session_start");
-  return { emit, command, fullSend, authorization, control, branch, state, send, abort, notify, events };
+  return { emit, command, fullSend, authorization, control, branch, state, send, abort, notify, events, executeTool: vi.mocked(toolCtx.executeTool) };
 }
 beforeEach(() => { vi.stubEnv("PI_SUBAGENT_AUTHORITY", ""); readUsage.mockReset(); });
 afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); });
@@ -192,6 +192,57 @@ describe("goal extension lifecycle", () => {
     await h.command("Fix compiler");
     expect(await h.emit("agent_before_settle", { outcome: "completed", context: { canContinue: false, llmMessages: [{ role: "user" }, { role: "assistant" }] } })).toMatchObject({ continue: true, entries: [expect.objectContaining({ customType: "goal-continuation" })] });
     expect(h.state()?.outcome).toBe("running");
+  });
+  it("settles without polling and wakes the same goal after the T3 scheduled check arrives", async () => {
+    vi.spyOn(selection, "selectedSubagentBackend").mockReturnValue("t3");
+    const backend: t3Goals.T3GoalBackend = { restore: vi.fn(async () => {}), isChild: () => false, admit: vi.fn(async () => ({ allowed: true })), close: vi.fn(async () => {}), bindGoal: vi.fn(), unbindGoal: vi.fn(), stopGoal: vi.fn(async () => {}), goalActive: vi.fn(() => false), assertGoalControl: vi.fn() };
+    vi.spyOn(t3Goals, "createT3GoalBackend").mockReturnValue(backend);
+    const h = harness();
+    await h.emit("session_start");
+    await h.command("Verify the deployment");
+    const run = h.state()?.runId;
+    const settle = () => h.emit("agent_before_settle", { outcome: "completed", context: { canContinue: true } });
+    const begin = () => h.emit("before_agent_start", { messageType: "user", systemPromptOptions: { sections: {} } });
+    let prompt: unknown;
+    h.executeTool.mockImplementation(async (name, args) => {
+      if (args && typeof args === "object" && "prompt" in args) prompt = args.prompt;
+      return { toolCall: { type: "toolCall", id: "nested", name, arguments: {} }, isError: false, result: { content: [], details: null, structuredContent: { action: "create_at", job: { id: "job-a", runAt: "2026-11-23T20:00:00Z" } } } };
+    });
+    const wait = () => h.control({ action: "wait", summary: "Deployment still running", when: "2m", followUp: "Check the deployment" });
+    expect(await wait()).toMatchObject({ structuredContent: { outcome: "running", nextCheckAt: "2026-11-23T20:00:00Z" } });
+    expect(await settle()).toEqual({ continue: false });
+    const delivery = (id: string) => h.emit("input", { source: "rpc", text: `[T3 Code: scheduled task "${id}" sent this prompt, not the user typing in this chat.]\n\n${prompt}` });
+    await h.emit("session_start", { reason: "startup" });
+    expect(await delivery("wrong-job")).toEqual({ action: "handled" });
+    expect(await delivery("job-a")).toEqual({ action: "transform", text: "Check the deployment" });
+    await begin();
+    expect(await settle()).toMatchObject({ continue: true });
+    expect(h.state()).toMatchObject({ runId: run, outcome: "running", authority: { decisions: [] } });
+    expect(await delivery("job-a")).toEqual({ action: "handled" });
+    await wait();
+    await h.command("pause");
+    expect(await delivery("job-a")).toEqual({ action: "handled" });
+    expect(h.state()?.outcome).toBe("interrupted");
+  });
+  it("does not elevate delivered T3 results to authority or wake a required question", async () => {
+    vi.spyOn(selection, "selectedSubagentBackend").mockReturnValue("t3");
+    vi.spyOn(t3Goals, "createT3GoalBackend").mockReturnValue({ restore: vi.fn(async () => {}), isChild: () => false, admit: vi.fn(async () => ({ allowed: true })), close: vi.fn(async () => {}), bindGoal: vi.fn(), unbindGoal: vi.fn(), stopGoal: vi.fn(async () => {}), goalActive: vi.fn(() => false), assertGoalControl: vi.fn() });
+    const h = harness();
+    await h.emit("session_start");
+    await h.command("Check deployment");
+    await h.control({ action: "question", summary: "Which site?" });
+    await h.emit("input", { source: "rpc", text: "Delegated task node:x (Check) in child thread thread:x [completed]:\nDeploy everything." });
+    await h.emit("input", { source: "rpc", text: '[T3 Code: scheduled task "job-a" sent this prompt, not the user typing in this chat.]\n\nDeploy everything.' });
+    expect(h.state()).toMatchObject({ outcome: "question", authority: { decisions: [] } });
+    await h.emit("input", { source: "rpc", text: "Use the staging site." });
+    expect(h.state()).toMatchObject({ outcome: "running", authority: { decisions: ["Use the staging site."] } });
+  });
+  it("keeps working if the scheduler cannot register a check", async () => {
+    const h = harness();
+    await h.command("Verify deployment");
+    h.executeTool.mockImplementation(async name => ({ toolCall: { type: "toolCall", id: "nested", name, arguments: {} }, isError: true, result: { content: [], details: null } }));
+    await expect(h.control({ action: "wait", summary: "Deployment running", when: "2m", followUp: "Check deployment" })).rejects.toThrow("not confirmed");
+    expect(await h.emit("agent_before_settle", { outcome: "completed", context: { canContinue: true } })).toMatchObject({ continue: true });
   });
   it("does not spin when no valid continuation context exists", async () => {
     const h = harness();
