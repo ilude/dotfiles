@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-11-25: Verify the default profile with Pi 1.6.1
+
+- Match Pi's read-only rendered-line types in the edit diff extension and approval view tests without changing their display. Refresh the native composition smoke fixture for scheduler command registration and keep the profile reload tests offline. The default profile does not use the retired cache-miss notice API. Installers still resolve the latest stable release, with no change to their pnpm policy.
+
 ## 2026-11-23: Keep Pi goals active during external waits
 
 - Let `/goal` schedule a one-shot check and end its turn without pausing or repeatedly polling. A matching follow-up continues the same run; an explicit pause invalidates that wake. T3 scheduled prompts and delegated reports do not become user decisions.
