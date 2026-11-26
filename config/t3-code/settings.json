@@ -110,7 +110,6 @@
         "openai-codex/gpt-5.6-sol",
         "openai-codex/gpt-5.6-terra",
         "openai-codex/gpt-6-sol",
-        "default",
         "anthropic/claude-fable-5",
         "anthropic/claude-haiku-4-5",
         "anthropic/claude-opus-4-5",
@@ -131,13 +130,7 @@
   "defaultAutoPull": true,
   "defaultModelSelection": {
     "instanceId": "pi",
-    "model": "openai-codex/gpt-6.2-sol",
-    "options": [
-      {
-        "id": "thinking",
-        "value": "high"
-      }
-    ]
+    "model": "default"
   },
   "projectSettingsFolded": true,
   "idleCompaction": "onReturn",

@@ -81,7 +81,7 @@
     "anthropic/claude-haiku-4-5"
   ],
   "followUpMode": "all",
-  "lastChangelogVersion": "1.5.2",
+  "lastChangelogVersion": "1.6.0",
   "quietStartup": false,
   "steeringMode": "all",
   "terminal": {
