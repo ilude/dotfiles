@@ -414,6 +414,21 @@ describe("session-owned managed identity", () => {
 		expect(methods.indexOf("Fetch.enable")).toBeLessThan(methods.indexOf("Runtime.runIfWaitingForDebugger"));
 	});
 
+	it("keeps the selected tab connected when navigation starts a browser-level service worker", async () => {
+		const { wire, transport, registrations } = await managedFixture();
+		await transport.manage("root");
+		wire.setHandler(command => {
+			if (command.method !== "Page.navigate") return false;
+			const filter = wire.commands.find(candidate => candidate.method === "Target.autoAttachRelated")?.params.filter;
+			const match = Array.isArray(filter) ? filter.find(entry => !entry.type || entry.type === "service_worker") : undefined;
+			if (!match?.exclude) wire.send({ method: "Target.attachedToTarget", params: { sessionId: "service-worker-session", targetInfo: { targetId: "service-worker", type: "service_worker" }, waitingForDebugger: false } });
+			return false;
+		});
+		await expect(transport.command("root", "Page.navigate", { url: "https://task.example/" })).resolves.toBeDefined();
+		await expect(transport.command("root", "Page.bringToFront")).resolves.toBeDefined();
+		expect(registrations).toEqual(["root"]);
+	});
+
 	it("refuses browser-level workers whose parent frame is outside managed targets", async () => {
 		const { wire, transport, registrations } = await managedFixture(); await transport.manage("root");
 		wire.send({ method: "Target.attachedToTarget", params: { sessionId: "unrelated-worker-session", waitingForDebugger: true, targetInfo: { targetId: "unrelated-worker", type: "worker", parentFrameId: "unrelated-frame" } } });

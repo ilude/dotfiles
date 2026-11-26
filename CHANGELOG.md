@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-11-26: Keep Brave control connected on Google Cloud Console
+
+- Exclude browser-level service workers from the related-target subscription. Their attachment does not identify an owning tab or frame and was disconnecting the whole browser agent. Exact tab and frame checks, and attachments for dedicated workers with a known parent, are unchanged.
+
 ## 2026-11-25: Verify the default profile with Pi 1.6.1
 
 - Match Pi's read-only rendered-line types in the edit diff extension and approval view tests without changing their display. Refresh the native composition smoke fixture for scheduler command registration and keep the profile reload tests offline. The default profile does not use the retired cache-miss notice API. Installers still resolve the latest stable release, with no change to their pnpm policy.

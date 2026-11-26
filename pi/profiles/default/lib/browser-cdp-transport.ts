@@ -267,7 +267,10 @@ export class BrowserCdpTransport {
 			this.rootAttachments.set(targetId, attached);
 			const timeout = setTimeout(() => reject(failure("cdp_timeout", "CDP target attachment timed out.")), timeoutMs ?? 5000);
 			try {
-				await this.connection.command("Target.autoAttachRelated", { targetId, waitForDebuggerOnStart: true }, undefined, { signal: this.signal, timeoutMs });
+				// Chromium reports related service workers at browser scope without an owning frame.
+				// Leave those workers alone and retain the default filter for all other target types.
+				const filter = [{ type: "service_worker", exclude: true }, { type: "browser", exclude: true }, { type: "tab", exclude: true }, {}];
+				await this.connection.command("Target.autoAttachRelated", { targetId, waitForDebuggerOnStart: true, filter }, undefined, { signal: this.signal, timeoutMs });
 				await cancellable(promise, this.signal);
 			} finally { clearTimeout(timeout); if (this.rootAttachments.get(targetId) === attached) this.rootAttachments.delete(targetId); }
 		}
