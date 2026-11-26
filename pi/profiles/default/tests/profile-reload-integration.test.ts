@@ -25,6 +25,8 @@ beforeEach(() => {
   lastLoader = undefined; vi.useFakeTimers();
   dir = mkdtempSync(join(tmpdir(), "pi-reload-integration-"));
   mkdirSync(join(dir, "lib")); writeFileSync(join(dir, "settings.json"), "{}");
+  // Keep the footer's unrelated release check offline under fake timers.
+  writeFileSync(join(dir, "release-indicators.json"), JSON.stringify({ checkedAt: Date.now(), latest: {} }));
   vi.stubEnv("PI_CODING_AGENT_DIR", dir);
   bus = createEventBus();
 });

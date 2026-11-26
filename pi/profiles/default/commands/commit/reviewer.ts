@@ -13,7 +13,7 @@ import { compareModelVersions, modelFamilyVersion } from "../../lib/model-family
 import { normalizeRepositoryId, repositoryId, samePlatformPath } from "../../lib/path-identity.ts";
 import { Type } from "typebox";
 import { commitShellCommand, formatStatus } from "./tools.ts";
-import { executeCommitPlan, parseCommitStatus, validateCommitPlan, type CommitPlan } from "./plan.ts";
+import { executeCommitPlan, isUnfinishedCommitEntry, parseCommitStatus, validateCommitPlan, type CommitPlan } from "./plan.ts";
 import { discoverCommitRepositories } from "./repositories.ts";
 import { withCommitStatusRetry } from "./status.ts";
 
@@ -147,10 +147,8 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 			};
 			const unfinishedPaths = async (repository: string, requestSignal?: AbortSignal): Promise<string[]> => {
 				const excluded = exclusionsByRepository.get(repository);
-				return parseCommitStatus(await git(STATUS_ARGS, requestSignal, repository)).filter(entry => {
-					const staged = entry.xy !== "??" && entry.xy[0] !== " ";
-					return staged || !excluded?.has(entry.path) || (entry.source !== undefined && !excluded.has(entry.source));
-				}).map(entry => `${entry.xy} ${JSON.stringify(entry.path)}`);
+				return parseCommitStatus(await git(STATUS_ARGS, requestSignal, repository))
+					.filter(entry => isUnfinishedCommitEntry(entry, excluded)).map(entry => `${entry.xy} ${JSON.stringify(entry.path)}`);
 			};
 			progress("Inspecting repositories…");
 			try {
@@ -309,7 +307,12 @@ export async function runCommitReviewer(pi: ExtensionAPI, ctx: ExtensionContext,
 						await git(["stash", "store", "-m", "Pre-commit index content", oid], combined, repository);
 						preservedIndex.push(`Preserved index content: ${oid} (${repositoryId(root!, repository)}; retained in refs/stash)`);
 					}
-					await git(["add", "-A"], combined, repository);
+					const excluded = exclusionsByRepository.get(repository);
+					// Keep previously excluded untracked directory entries out of retry staging.
+					// With --untracked-files=all, regular new files below a directory still
+					// have their own entries and remain eligible for review.
+					const keepUntracked = entries.filter(entry => entry.untrackedDirectory && excluded?.has(entry.path));
+					await git(["add", "-A", ...(keepUntracked.length ? ["--", ...keepUntracked.map(entry => `:(top,literal,exclude)${entry.path}`)] : [])], combined, repository);
 					const staged = parseCommitStatus(await git(STATUS_ARGS, combined, repository));
 					if (staged.some(entry => entry.path === ".pi/settings.json")) {
 						const commonDirectory = await git(["rev-parse", "--path-format=absolute", "--git-common-dir"], combined, repository);

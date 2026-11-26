@@ -1,18 +1,14 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { compareModelVersions, modelFamilyVersion } from "../lib/model-family.ts";
-import { PINNED_SOL_MODEL } from "../lib/model-selection.ts";
 
 export function latestSameFamily<T extends { provider: string; id: string }>(saved: T, available: readonly T[]): T | undefined {
   const original = modelFamilyVersion(saved.id);
   if (!original) return undefined;
-  // Sessions saved before the native OpenAI provider migration use openai-codex.
-  // Resolve only that retired provider to its native replacement on resume.
-  const candidateProvider = saved.provider === "openai-codex" ? "openai" : saved.provider;
-  if (original.family === "sol") {
-    const pinned = available.find(candidate => candidate.provider === candidateProvider &&
-      (candidate.id === PINNED_SOL_MODEL || candidate.id === `openai.${PINNED_SOL_MODEL}`));
-    return pinned?.id === saved.id && pinned.provider === saved.provider ? undefined : pinned;
-  }
+  // Keep the saved subscription route when it still advertises this family.
+  // Retain the old Codex-to-native migration for families removed from Codex.
+  const candidateProvider = saved.provider === "openai-codex" &&
+    !available.some(candidate => candidate.provider === saved.provider && modelFamilyVersion(candidate.id)?.family === original.family)
+    ? "openai" : saved.provider;
   return available.flatMap((candidate) => {
     if (candidate.provider !== candidateProvider) return [];
     const parsed = modelFamilyVersion(candidate.id);

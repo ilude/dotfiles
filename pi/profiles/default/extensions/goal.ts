@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
@@ -15,7 +16,10 @@ import { createT3GoalBackend } from "../lib/subagents/t3/goal.ts";
 import type { SubagentGoalOperations } from "../lib/subagents/t3/contracts.ts";
 
 const CONTEXT_TYPE = "goal-authority";
-const CONTROL_GUIDANCE = "Record current progress and explicit outcomes with goal_control: checkpoint with concrete progress and next work, complete with acceptance evidence, question with the exact required user decision, blocker with the concrete obstacle, or pause. Healthy ordinary stops re-enter the same durable goal; a missing checkpoint does not require user intervention. Complete explicitly when acceptance is met. Do not checkpoint unchanged work, poll for user answers, or continue past a required question. Set restoringBuildability only for a bounded step restoring a broken build, never optional work. Choose workload and concurrency early against observed budget headroom and pace. Configured counters cover only their named provider; an omitted counter does not impose a provider restriction.";
+const CONTROL_GUIDANCE = "Use goal_control to checkpoint concrete progress, complete with acceptance evidence, ask a required question, or record a blocker. When only an external wait remains, list existing schedules and use goal_control wait with when and followUp instead of pause. This schedules the check and ends the turn without stopping the goal. Do not use wait to postpone actionable work. Healthy ordinary stops re-enter the same goal. Do not checkpoint unchanged work, poll for user answers, or continue past a required question. Set restoringBuildability only for bounded build restoration. Choose workload and concurrency against observed budget headroom; an omitted counter does not restrict its provider.";
+const GOAL_WAKE = /^\[Pi goal wake: ([0-9a-f-]{36})\]\r?\n/;
+const T3_SCHEDULE = /^\[T3 Code: scheduled task "([^"\r\n]+)" sent this prompt, not the user typing in this chat\.\]\r?\n(?:\r?\n)?/;
+const T3_DELEGATE = /^Delegated task [^\r\n]+ in child thread [^\r\n]+ \[[^\r\n\]]+\]:\r?\n/;
 export interface GoalCommand { action: "start" | "resume" | "pause" | "status"; text: string; budget: GoalBudgetConfig; restoringBuildability?: boolean }
 export function parseGoalCommand(args: string): GoalCommand {
   let text = args.trim();
@@ -59,12 +63,13 @@ export default function goalExtension(pi: ExtensionAPI): void {
   let guidance: string | undefined;
   let goalTurn = false;
   let fullSend: FullSendArm | undefined;
+  let restoredArmSuspended = false;
   let fullSendSkill: string | undefined;
   const loadFullSendSkill = () => fullSendSkill ??= readFileSync(new URL("../skills/full-send/SKILL.md", import.meta.url), "utf8").replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, "").trim();
   const isFullSendArmed = () => !!fullSend?.armed && fullSend.sessionId === runtime.state?.sessionId && fullSend.runId === runtime.state.runId && runtime.state.outcome !== "complete";
   const authorization = (): FullSendAuthorization | undefined => {
     const state = runtime.state;
-    if (roleChild() || !state || !goalTurn || !isFullSendArmed() || state.outcome !== "running") return;
+    if (roleChild() || !state || !goalTurn || restoredArmSuspended || !isFullSendArmed() || state.outcome !== "running") return;
     return { source: "/full-send", sessionId: state.sessionId, runId: state.runId,
       task: { goal: state.authority.goal, scope: [...state.authority.scope], exclusions: [...state.authority.exclusions], decisions: [...state.authority.decisions] } };
   };
@@ -72,6 +77,7 @@ export default function goalExtension(pi: ExtensionAPI): void {
     const state = runtime.state;
     if (!state || state.outcome === "complete") throw new Error("No incomplete goal. Use /full-send <task>.");
     fullSend = { version: 1, sessionId: state.sessionId, runId: state.runId, armed };
+    restoredArmSuspended = false;
     pi.appendEntry(FULL_SEND_ENTRY, fullSend);
     status();
   };
@@ -112,7 +118,8 @@ export default function goalExtension(pi: ExtensionAPI): void {
   const status = () => {
     if (!current) return;
     const state = runtime.state;
-    current.ui.setStatus("goal", state ? `goal: ${state.outcome}${isFullSendArmed() ? " (full send)" : ""}` : undefined);
+    const outcome = state?.outcome === "running" && runtime.data?.externalWait ? "waiting for scheduled check" : state?.outcome;
+    current.ui.setStatus("goal", outcome ? `goal: ${outcome}${isFullSendArmed() ? " (full send)" : ""}` : undefined);
   };
   const runtime: GoalRuntime = new GoalRuntime({
     persistState: state => { pi.appendEntry(GOAL_ENTRY_TYPE, state); status(); },
@@ -135,7 +142,7 @@ export default function goalExtension(pi: ExtensionAPI): void {
     },
     stopDescendants: runId => subagents.stopGoal(runtime.state!.sessionId, runId),
   });
-  const restore = async (ctx: ExtensionContext) => {
+  const restore = async (ctx: ExtensionContext, keepScheduledWait = false) => {
     if (goalBinding && goalOrigin) subagents.unbindGoal(goalOrigin, goalBinding);
     if (t3) {
       t3Ready = false;
@@ -143,8 +150,9 @@ export default function goalExtension(pi: ExtensionAPI): void {
       catch (error) { ctx.ui.notify(`Goal policy unavailable: ${error instanceof Error ? error.message : String(error)}`, "warning"); return; }
       if (roleChild()) { current = undefined; goalTurn = false; return; }
     } else subagents = getSubagentRuntime();
-    current = ctx; runtime.restore(ctx.sessionManager.getBranch(), ctx.sessionManager.getSessionId(), { stopDescendants: !t3 });
+    current = ctx; runtime.restore(ctx.sessionManager.getBranch(), ctx.sessionManager.getSessionId(), { stopDescendants: !t3, keepScheduledWait: !!t3 && keepScheduledWait });
     fullSend = restoreFullSend(ctx.sessionManager.getBranch(), runtime.state);
+    restoredArmSuspended = !!runtime.data?.externalWait;
     guidance = undefined; goalTurn = false; accounted.clear(); await bind(); status();
   };
   const subscriptions = [
@@ -168,7 +176,7 @@ export default function goalExtension(pi: ExtensionAPI): void {
       if (Array.isArray(event.pending)) event.pending.push(accounting(event));
     }),
   ];
-  pi.on("session_start", (_event, ctx) => restore(ctx));
+  pi.on("session_start", (event, ctx) => restore(ctx, event.reason !== "reload"));
   pi.on("session_tree", async (_event, ctx) => {
     if (!roleChild() && runtime.state) await subagents.stopGoal(runtime.state.sessionId, runtime.state.runId);
     await restore(ctx);
@@ -181,7 +189,16 @@ export default function goalExtension(pi: ExtensionAPI): void {
   });
   pi.on("input", async event => {
     if (roleChild()) return;
-    if (event.source !== "extension" && !event.text.startsWith("/")) {
+    const scheduled = t3 ? T3_SCHEDULE.exec(event.text) : null;
+    const body = scheduled ? event.text.slice(scheduled[0].length) : event.text;
+    const wake = GOAL_WAKE.exec(body);
+    if (wake) {
+      if ((!t3 && event.source !== "extension") || !runtime.wakeExternal(wake[1]!, scheduled?.[1])) return { action: "handled" };
+      return { action: "transform", text: body.slice(wake[0].length) };
+    }
+    // T3 can deliver generated messages via the same RPC input path as real user text.
+    if (scheduled || (t3 && T3_DELEGATE.test(body))) return;
+    if (!runtime.data?.externalWait && event.source !== "extension" && !event.text.startsWith("/")) {
       await runtime.waitForStops();
       runtime.userInstruction(event.text);
     }
@@ -189,14 +206,14 @@ export default function goalExtension(pi: ExtensionAPI): void {
   pi.on("before_agent_start", (event, ctx) => {
     if (roleChild()) return;
     if (!runtime.state || runtime.state.outcome === "complete") { delete event.systemPromptOptions.sections.goal; return; }
-    goalTurn = runtime.state.outcome === "running";
+    goalTurn = runtime.state.outcome === "running" && !runtime.data?.externalWait;
     if (goalTurn) {
       const session = ctx.sessionManager.getSessionFile();
       if (session) runtime.enroll(session);
     }
     // A required question is resumed only by input, never by a child-result message.
     if (event.messageType === "custom" && !goalTurn && ["goal-start", "goal-continuation", "subagent-result"].includes(event.message.customType)) ctx.abort();
-    event.systemPromptOptions.sections.goal = `${renderGoalPrompt(runtime.state)}\n${CONTROL_GUIDANCE}${authorization() ? "\nFull send is active for this goal. Follow the full-send workflow in the goal authority context." : ""}${goalTurn ? "" : "\nThis goal is paused. Ordinary unrelated user requests may proceed; do not resume goal work without /goal resume."}`;
+    event.systemPromptOptions.sections.goal = `${renderGoalPrompt(runtime.state)}\n${CONTROL_GUIDANCE}${authorization() ? "\nFull send is active for this goal. Follow the full-send workflow in the goal authority context." : ""}${goalTurn ? "" : runtime.data?.externalWait ? "\nThis goal is waiting for its scheduled check. Ordinary unrelated user requests may proceed without continuing goal work." : "\nThis goal is paused. Ordinary unrelated user requests may proceed; do not resume goal work without /goal resume."}`;
   });
   pi.on("context", event => {
     if (roleChild()) return;
@@ -226,7 +243,8 @@ export default function goalExtension(pi: ExtensionAPI): void {
     if (!decision.allowed) return { block: true, reason: decision.reason ?? "Goal budget paused delegation" };
   });
   pi.on("agent_before_settle", async (event, ctx) => {
-    if (roleChild()) return;
+    if (roleChild() || !goalTurn) return;
+    if (event.outcome === "completed" && runtime.data?.externalWait) return { continue: false };
     current = ctx;
     const messages = event.context.llmMessages;
     // A healthy final assistant is not continuable until this boundary supplies
@@ -238,30 +256,48 @@ export default function goalExtension(pi: ExtensionAPI): void {
     };
   });
   pi.on("agent_settled", (event) => {
-    if (!roleChild() && event.aborted && runtime.state?.outcome === "running") runtime.pause("interrupted", "Agent interrupted. Use /goal resume to continue.");
+    if (!roleChild() && goalTurn && event.aborted && runtime.state?.outcome === "running") runtime.pause("interrupted", "Agent interrupted. Use /goal resume to continue.");
   });
   const ControlSchema = Type.Object({
-    action: Type.Union([Type.Literal("checkpoint"), Type.Literal("complete"), Type.Literal("question"), Type.Literal("blocker"), Type.Literal("pause")]),
+    action: Type.Union([Type.Literal("checkpoint"), Type.Literal("complete"), Type.Literal("question"), Type.Literal("blocker"), Type.Literal("pause"), Type.Literal("wait")]),
+    when: Type.Optional(Type.String({ description: "For wait only: positive duration or future ISO timestamp." })),
+    followUp: Type.Optional(Type.String({ minLength: 1, maxLength: 3900, description: "For wait only: what to check and how to continue the existing goal." })),
     summary: Type.String({ minLength: 1, description: "Concrete progress and next work, acceptance evidence, exact question, or blocker. Never changes goal scope." }),
     findings: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),
     restoringBuildability: Type.Optional(Type.Boolean({ description: "True only for the next bounded step restoring a broken build. Emergency reserve cannot fund other work." })),
   }, { additionalProperties: false });
-  const ResultSchema = Type.Object({ outcome: Type.String(), summary: Type.String() });
+  const ResultSchema = Type.Object({ outcome: Type.String(), summary: Type.String(), nextCheckAt: Type.Optional(Type.String()) });
   pi.registerTool({
     name: "goal_control", exposure: "model-only", label: "Goal checkpoint", description: CONTROL_GUIDANCE,
     parameters: ControlSchema, outputSchema: ResultSchema, executionMode: "sequential",
-    async execute(_id, input) {
+    reachesTools: ({ args }) => args && typeof args === "object" && "action" in args && args.action === "wait" ? ["schedule", "orchestrator_capabilities"] : [],
+    async execute(_id, input, signal, _onUpdate, ctx) {
       if (roleChild()) throw new Error("Role children cannot control the owning goal");
       if (!goalTurn) throw new Error("No active goal turn. Use /goal resume to continue this goal.");
+      if (input.action === "wait") {
+        const state = runtime.state;
+        if (state?.outcome !== "running" || runtime.data?.externalWait) throw new Error("No goal available to wait");
+        const prompt = input.followUp?.trim();
+        if (!input.when?.trim() || !prompt || prompt.startsWith("/") || !input.summary.trim()) throw new Error("Wait requires when, followUp prose, and a concrete summary");
+        const token = randomUUID();
+        const response = await ctx.executeTool("schedule", { action: "create_at", when: input.when, prompt: `[Pi goal wake: ${token}]\n${prompt}` }, { signal });
+        const data = response.result.structuredContent;
+        const job = data && typeof data === "object" && "job" in data ? data.job : undefined;
+        if (response.isError || response.result.isError || !job || typeof job !== "object" || !("id" in job) || typeof job.id !== "string" || !job.id || !("runAt" in job) || typeof job.runAt !== "string" || !Number.isFinite(Date.parse(job.runAt))) throw new Error("External check was not confirmed by the scheduler; goal was not put into waiting state");
+        runtime.waitForExternal(state.runId, { id: job.id, token }, `${input.summary}\nScheduled check: ${job.runAt}.`);
+        const result = { outcome: "running", summary: input.summary, nextCheckAt: job.runAt };
+        return { content: [{ type: "text", text: `${input.summary}\nNext check: ${job.runAt}. The goal remains active.` }], details: result, structuredContent: result, terminate: true };
+      }
       if (input.action === "complete" && runtime.state && await subagents.goalActive(runtime.state.sessionId, runtime.state.runId)) throw new Error("Goal descendants are still active or cleaning up. Wait for their outcomes before completion.");
-      runtime.control(input);
+      runtime.control({ ...input, action: input.action });
       const result = { outcome: runtime.state!.outcome, summary: input.summary };
       return { content: [{ type: "text", text: input.summary }], details: result, structuredContent: result, terminate: true };
     },
     renderCall(args, theme) { return new Text(theme.fg("toolTitle", `Goal ${args.action ?? "control"}`), 0, 0); },
     renderResult(result, _options, theme) {
       const detail = result.details;
-      return new Text(theme.fg("text", detail ? `${detail.outcome}: ${detail.summary}` : "Goal checkpoint"), 0, 0);
+      const label = detail && typeof detail === "object" && "outcome" in detail && "summary" in detail ? `${detail.outcome}: ${detail.summary}` : "Goal checkpoint";
+      return new Text(theme.fg("text", label), 0, 0);
     },
   });
   const runGoal = async (command: GoalCommand, ctx: ExtensionCommandContext, enableFullSend = false) => {
@@ -276,6 +312,7 @@ export default function goalExtension(pi: ExtensionAPI): void {
       await runtime.waitForStops();
       runtime.resume(command.text, command.restoringBuildability);
     }
+    restoredArmSuspended = false;
     if (enableFullSend) armFullSend(true);
     goalTurn = true;
     const session = ctx.sessionManager.getSessionFile();
@@ -318,7 +355,7 @@ export default function goalExtension(pi: ExtensionAPI): void {
       try {
         const command = parseGoalCommand(args);
         if (command.action === "status") {
-          ctx.ui.notify(runtime.state ? `${renderGoalPrompt(runtime.state)}${runtime.data?.reason ? `\n${runtime.data.reason}` : ""}${guidance ? `\n${guidance}` : ""}` : "No goal in this session. Use /goal <goal>.", "info");
+          ctx.ui.notify(runtime.state ? `${renderGoalPrompt(runtime.state)}${runtime.data?.externalWait ? "\nWaiting for the scheduled check." : ""}${runtime.data?.reason ? `\n${runtime.data.reason}` : ""}${guidance ? `\n${guidance}` : ""}` : "No goal in this session. Use /goal <goal>.", "info");
           return;
         }
         if (command.action === "pause") { ctx.abort(); await runtime.halt("interrupted", "Paused by user. Use /goal resume to continue."); goalTurn = false; status(); return; }

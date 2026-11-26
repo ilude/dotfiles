@@ -20,7 +20,7 @@ function lifecycle(saved: Candidate, available: Candidate[]) {
 describe("resumed model upgrades", () => {
   beforeEach(() => vi.stubEnv("PI_SUBAGENT_AUTHORITY", undefined));
   afterEach(() => vi.unstubAllEnvs());
-  it("keeps provider and tier, choosing pinned Sol 6.1 and newer versions of other families", () => {
+  it("keeps provider and family while selecting newer versions", () => {
     const available = [
       model("openai", "gpt-5.6-sol"), model("openai", "gpt-6-sol"),
       model("openai", "gpt-6-luna"), model("bedrock-mantle", "openai.gpt-6-sol"),
@@ -30,13 +30,13 @@ describe("resumed model upgrades", () => {
     expect(latestSameFamily(model("openai", "gpt-5.6-sol"), available)).toEqual(available[6]);
     expect(latestSameFamily(model("openai-codex", "gpt-6-sol"), available)).toEqual(available[6]);
     expect(latestSameFamily(model("openai", "gpt-6.1-sol"), available)).toBeUndefined();
-    expect(latestSameFamily(model("bedrock-mantle", "openai.gpt-5.6-sol"), available)).toBeUndefined();
+    expect(latestSameFamily(model("bedrock-mantle", "openai.gpt-5.6-sol"), available)).toEqual(available[3]);
     expect(latestSameFamily(model("bedrock-mantle", "anthropic.claude-opus-5"), available)).toEqual(available[5]);
     expect(latestSameFamily(model("openai", "gpt-6-sol"), available)).toEqual(available[6]);
     expect(latestSameFamily(model("openai", "gpt-5.5"), available)).toBeUndefined();
   });
 
-  it("migrates equal versions only across the retired provider without downgrading other families", () => {
+  it("migrates only when the Codex route lacks the family, without downgrading", () => {
     const native = model("openai", "gpt-6-luna");
     const older = model("openai", "gpt-5.6-luna");
     expect(latestSameFamily(model("openai-codex", native.id), [older, native])).toEqual(native);
@@ -44,14 +44,16 @@ describe("resumed model upgrades", () => {
     expect(latestSameFamily(model("openai-codex", "gpt-6.1-luna"), [older, native])).toBeUndefined();
     expect(latestSameFamily(model("bedrock-mantle", "openai.gpt-6-luna"), [native])).toBeUndefined();
     expect(latestSameFamily(model("openai", "gpt-6.2-sol"), [model("openai", "gpt-6.1-sol")]))
-      .toEqual(model("openai", "gpt-6.1-sol"));
+      .toBeUndefined();
+    const codex = model("openai-codex", "gpt-6.2-sol");
+    expect(latestSameFamily(codex, [codex, model("openai", "gpt-6.3-sol")])).toBeUndefined();
   });
 
   it.each(["resume", "startup"])("migrates same-id Sol and Luna providers on %s", async (reason) => {
     for (const id of ["gpt-6.1-sol", "gpt-6-luna"]) {
       const saved = model("openai-codex", id);
       const native = model("openai", id);
-      const { start, setModel, ctx } = lifecycle(saved, [saved, native]);
+      const { start, setModel, ctx } = lifecycle(saved, [native]);
       await start({ reason }, ctx);
       expect(setModel).toHaveBeenCalledExactlyOnceWith(native);
       expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining(`openai/${id}`), "info");
@@ -70,7 +72,7 @@ describe("resumed model upgrades", () => {
 
   it("switches resumed sessions but not new sessions or empty startup sessions", async () => {
     const saved = model("openai-codex", "gpt-6-sol");
-    const newer = model("openai", "gpt-6.1-sol");
+    const newer = model("openai-codex", "gpt-6.3-sol");
     const { start, setModel, ctx } = lifecycle(saved, [saved, newer]);
     await start({ reason: "new" }, ctx);
     expect(setModel).not.toHaveBeenCalled();

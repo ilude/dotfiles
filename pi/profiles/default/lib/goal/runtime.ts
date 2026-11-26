@@ -23,6 +23,7 @@ export interface GoalRuntimeData {
   previousCodex?: GoalCodexCheckpoint;
   reason?: string;
   restoringBuildability: boolean;
+  externalWait?: { id: string; token: string };
 }
 export interface GoalAdmission {
   allowed: boolean;
@@ -55,7 +56,9 @@ export function restoreGoalRuntime(branch: readonly unknown[], state: GoalState)
       attributionComplete: data.attributionComplete, baseline: data.baseline,
       ...(object(data.previousCodex) && [data.previousCodex.usedPercent, data.previousCodex.resetAt, data.previousCodex.observedAt].every(n => typeof n === "number" && Number.isFinite(n))
         ? { previousCodex: { usedPercent: Number(data.previousCodex.usedPercent), resetAt: Number(data.previousCodex.resetAt), observedAt: Number(data.previousCodex.observedAt) } } : {}),
-      reason: data.reason, restoringBuildability: data.restoringBuildability };
+      reason: data.reason, restoringBuildability: data.restoringBuildability,
+      ...(object(data.externalWait) && typeof data.externalWait.id === "string" && data.externalWait.id && typeof data.externalWait.token === "string" && data.externalWait.token
+        ? { externalWait: { id: data.externalWait.id, token: data.externalWait.token } } : {}) };
   }
 }
 
@@ -68,13 +71,14 @@ export class GoalRuntime {
   private stopping?: { runId: string; promise: Promise<void> };
   private readonly options: GoalRuntimeOptions;
   constructor(options: GoalRuntimeOptions) { this.options = options; }
-  restore(branch: readonly unknown[], sessionId: string, options: { stopDescendants?: boolean } = {}): void {
+  restore(branch: readonly unknown[], sessionId: string, options: { stopDescendants?: boolean; keepScheduledWait?: boolean } = {}): void {
     this.state = restoreGoalState(branch, sessionId);
     this.data = this.state ? restoreGoalRuntime(branch, this.state) : undefined;
     if (!this.state) return;
     // Never auto-launch on reload, /resume, tree navigation, or a copied branch.
     if (!this.data) this.data = { version: 1, runId: this.state.runId, sessionId, sessions: [], attributionComplete: false, restoringBuildability: false };
-    if (this.state.outcome === "running") {
+    if (this.state.outcome === "running" && !(options.keepScheduledWait && this.data.externalWait)) {
+      delete this.data.externalWait;
       if (options.stopDescendants !== false) this.pause("interrupted", "Session restored. Use /goal resume to continue.");
       else {
         this.state = withGoalOutcome(this.state, "interrupted");
@@ -103,8 +107,21 @@ export class GoalRuntime {
     this.state = withGoalOutcome(this.state, "running");
     if (instruction?.trim()) this.userInstruction(instruction, false);
     this.data.reason = undefined;
+    delete this.data.externalWait;
     this.data.restoringBuildability = restoringBuildability;
     this.save();
+  }
+  waitForExternal(runId: string, wait: NonNullable<GoalRuntimeData["externalWait"]>, summary: string): void {
+    if (!this.data || this.state?.runId !== runId || this.state.outcome !== "running" || this.data.externalWait) throw new Error("Goal changed while scheduling the external check");
+    this.data.externalWait = wait;
+    this.control({ action: "checkpoint", summary });
+  }
+  wakeExternal(token: string, taskId?: string): boolean {
+    const wait = this.data?.externalWait;
+    if (!this.data || this.state?.outcome !== "running" || wait?.token !== token || (taskId !== undefined && taskId !== wait.id)) return false;
+    delete this.data.externalWait;
+    this.save();
+    return true;
   }
   setBaseline(baseline: unknown): void {
     if (!this.data) throw new Error("No goal runtime");
@@ -139,6 +156,7 @@ export class GoalRuntime {
       const outcome: GoalOutcome = input.action === "pause" ? "interrupted" : input.action;
       this.state = withGoalOutcome(this.state, outcome);
       this.data.reason = input.summary;
+      delete this.data.externalWait;
       this.closeEnrollments(input.action !== "complete");
     }
     this.save();
@@ -148,6 +166,7 @@ export class GoalRuntime {
     if (!this.state || !this.data) return;
     this.state = withGoalOutcome(this.state, outcome);
     this.data.reason = reason;
+    delete this.data.externalWait;
     this.closeEnrollments(true);
     this.save();
     void this.requestStop(this.data.runId);
@@ -208,6 +227,7 @@ export class GoalRuntime {
   }
   async settle(outcome: "completed" | "aborted" | "error", canContinue: boolean): Promise<boolean> {
     if (!this.state || this.state.outcome !== "running") return false;
+    if (outcome === "completed" && this.data?.externalWait) return false;
     if (outcome !== "completed" || !canContinue) {
       this.pause("interrupted", outcome === "completed" ? "Continuation unavailable" : `Agent ${outcome}. Use /goal resume to continue.`);
       return false;

@@ -1,10 +1,165 @@
 # Changelog
 
+## 2026-11-25: Verify the default profile with Pi 1.6.1
+
+- Match Pi's read-only rendered-line types in the edit diff extension and approval view tests without changing their display. Refresh the native composition smoke fixture for scheduler command registration and keep the profile reload tests offline. The default profile does not use the retired cache-miss notice API. Installers still resolve the latest stable release, with no change to their pnpm policy.
+
+## 2026-11-23: Keep Pi goals active during external waits
+
+- Let `/goal` schedule a one-shot check and end its turn without pausing or repeatedly polling. A matching follow-up continues the same run; an explicit pause invalidates that wake. T3 scheduled prompts and delegated reports do not become user decisions.
+
+## 2026-11-23: Track acceptance for the full Hatchery release
+
+- Reconcile Hatchery's requirements and decision records with the shipped Firecracker dispatcher, journal preview and selected analytics storage cutover. Track remaining confirmed work separately from existing live evidence and deferred homelab migration. This does not change the running controller.
+- Document and verify how native Hatchery recipes register custom providers, repair drift, and wait for asynchronous actions without changing the controller runtime.
+- Default an explicitly managed Hatchery VM data disk to a 64 GiB minimum when its size is omitted. Keep larger attached disks and existing explicit sizes unchanged.
+- Support an exact Debian guest-agent package version on a Proxmox worker target. A new allocation records the version and uses it in the bootstrap ISO; existing allocations and targets without a version keep their behavior.
+- Support a checksum-pinned Nixpkgs archive for native NixOS template builds. The pin is recorded in the build receipt; existing requests and clone seeds are unchanged.
+- Record an observed template seal failure before returning it. Later shutdown cannot turn that failed build into a publishable template.
+- Report a Windows template build that powers off before readiness as failed instead of waiting indefinitely. Keep the guest available for diagnosis and explicit cleanup.
+- Verify Hatchery's systemd lifecycle on a temporary Debian container, including recovery after a guest restart and a readiness probe that fails while its unit is active. No production service was restarted.
+- Verify the live ClickHouse journal settings and document native readback for covered logs, effective limits, and rotation scheduling. An owned Debian worker proved scheduled file rotation was active and a forced rotation preserved the fixture line; production retention did not change.
+
+## 2026-11-23: Fix Windows teardown in Pi's damage-control smoke check
+
+- Use Pi's SDK extension loader instead of launching `--list-models`, whose forced exit can crash Windows Node after the fixture analyzes a shell command. The offline check still requires the real extension and guard assertions to pass and the child process to exit cleanly.
+
+## 2026-11-22: Enable unattended Hatchery jobs and preview journal settings
+
+- The selected controller runs the systemd job dispatcher. In a Firecracker pilot, restarting the dispatcher did not replay the workload; both outputs arrived and the worker was released. Host expiry is unchanged.
+- The ClickHouse host's opt-in impact plan shows effective journal limits alongside activation effects. The preview exposes only the selected numeric policy values and does not change the live journal.
+
+## 2026-11-21: Repair SponsorBlock API integration
+
+- Encode SponsorBlock category/action filters as JSON arrays and parse the hash-prefix endpoint's nested per-video segments. This fixes HTTP 400 lookups and prevents valid sponsor matches from being mistaken for empty results. Exact-video selection, duration checks, original-transcript preservation and conservative caption boundaries remain unchanged; malformed matching groups are reported as unavailable rather than negative-cached.
+
+## 2026-11-21: Keep YouTube analysis output compact
+
+- Fix long-video `PARSE_FAILED` errors caused by the model enumerating transcript segment IDs until its JSON response was truncated. YouTube generation and repair now request compact outline endpoints rather than exhaustive ID lists; repair retains the full previous response instead of discarding everything after 3,000 characters. Whole-transcript analysis, server-derived timestamps, and rejection of invalid JSON remain unchanged.
+
+## 2026-11-20: Record the standalone Homelab OS runtime checkpoint
+
+- Refresh research pointers to the separate `homelab-os` PRD and accepted v0.2.0 runtime checkpoint. OCI, Firecracker and QEMU/KVM workloads retained data and restarted after appliance reboot. Source and artifacts remain outside dotfiles; production storage, PXE, clustering and the public management API remain future scope.
+
+## 2026-11-19: Confirm Pi follow-ups scheduled in T3
+
+- After Pi successfully schedules a pending T3 follow-up, the tool asks the agent to end its current reply with the delay and next-run date, time and local time zone. This does not change the scheduled prompt, reminder delivery or normal terminal Pi output.
+
+## 2026-11-19: Share the existing homelab Caddy TLS policy
+
+- Import the same Cloudflare DNS-01 block in eight existing `homelab-config` stacks, preserving rendered routes, endpoints and credentials. No journal retention or monitoring changes are part of this refactor.
+
+## 2026-11-19: Choose plain TypeScript imports for shared Hatchery settings
+
+- The v1 approach uses regular imports from the site repository and explicit overrides where settings are used. Defaults-only deployments need no policy import. The ClickHouse host imports the shared site journal policy and applies a one-field budget override. A monitoring example shows policy reuse without live endpoints or credentials.
+
+## 2026-11-19: Choose familiar units for Hatchery configuration
+
+- Define Prometheus duration strings and Kubernetes resource quantities as the standard for new human-authored settings. Existing numeric interfaces are unchanged. The log policy adapters validate exact conversions before rendering native settings.
+
+## 2026-11-19: Add configurable Linux log policies to Hatchery
+
+- Add opt-in TypeScript helpers for journald budgets and selected plain-file rotation. Logrotate uses distro drop-ins on Ubuntu, Debian, Fedora and Arch, or a native module on NixOS, with overridable size, archive count and 90-day maximum age. Managed journals default to a 90-day maximum age, and sites can override that per guest without changing existing guests implicitly. ClickHouse accepts native retention overrides per routed log table. The setup guide covers activation and how to check actual settings. The selected ClickHouse host adopted the policy on its diagnostics mount. The rollout does not change internal table TTLs, disposable workers, or file rotation on existing guests.
+
+## 2026-11-18: Offload T3 customization builds to Hatchery
+
+- Add a Pi skill for maintaining the T3 customization fork, validating changes on disposable Proxmox workers, and transferring Windows previews without installing them. The Windows cross-build recipe accepts a pinned upstream commit plus a patch and records their provenance. It retains the existing Git-bundle input and does not publish or change the installed app.
+
+## 2026-11-18: Reduce Windows clone first-boot work
+
+- New Hatchery templates preinstall the Windows readiness probe while retaining Limited Sandbox proof, per-clone identity, and compatibility with existing templates. A live test showed Windows Setup did not select the clone CD's answer file, so the existing hostname and reboot path stays in place. No speedup has been verified.
+
+## 2026-11-18: Preserve embedded repository exclusions in `/commit`
+
+- Treat Git's staged path and untracked directory spelling as the same exclusion. Keep the excluded checkout out of retry staging and let unrelated reviewed commits publish. Working files and ignore rules are unchanged.
+
+## 2026-11-18: Increase ClickHouse memory headroom
+
+- Resize the production ClickHouse VM to 16 GiB without adding vCPUs. Set the container cap to 12 GiB and the ClickHouse server setting to 9 GiB. Keep the indexer budget and per-query limits unchanged. Both deployment plans converged; all eight concurrent analytics checks passed and the raw archive read matched the baseline. This verifies service recovery, not that memory failures can no longer recur.
+
+## 2026-11-18: Report Pi work against the requested outcome
+
+- Adapt Codex's completion and reader guidance in the default Pi profile. Lead with material work that is unfinished or unverified, write for readers who did not see tool output, and continue useful authorized work instead of treating successful checks as delivery. “Do it” and “make it so” include the agreed change's normal rollout and live verification when the target and authority are clear. Explicit delivery limits, runtime permissions, tools, and scheduling are unchanged.
+
+## 2026-11-18: Clarify standing approval for Windows spike follow-ups
+
+- The Windows performance skill now allows bounded local workload and alert checks, followed by a controlled repeat when the workload is identified and security triage is clear. Neither requires a new approval. New recordings and Defender changes are outside this approval.
+
+## 2026-11-18: Distinguish analytics insert failures from storage checks
+
+- Indexer warnings distinguish failed schema checks, version reads, and occurrence inserts, with a bounded reason when ClickHouse supplies a recognized exception code. Logs still omit SQL, response bodies, credentials, and archive content. This makes repeat failures diagnosable without changing batch sizes, retry policy, or checkpoints.
+
+## 2026-11-18: Clear finished T3 scheduled tasks
+
+- Run `/task-clean` in a T3 Code Pi thread to remove finished one-shot tasks from Scheduled tasks across the current project. The same cleanup runs before `/reload-runtime` and after a successful manual `/compact` in T3, without a notice when there is nothing to remove. It leaves pending, paused, recurring, webhook, and running tasks alone and keeps thread history.
+
+## 2026-11-18: Clarify Hatchery worker commands and recover interrupted cleanup
+
+- Add target discovery and command help without changing JSON framing. Distinguish saved allocation records from live health, and show when saved jobs lack a dispatcher or still need worker cleanup.
+- Resume a recorded job release after dispatcher interruption, undo a newly created Firecracker TAP when marking it fails, and distinguish a lost execution reply from a confirmed guest exit. Explain host-owned expiry and how to configure its timer separately. Deployed `877cb1f` to the production controller and Firecracker host. Live CLI, worker lifecycle, confirmed guest exit 255, binary transfers, and a manually dispatched job passed. No unattended dispatcher or expiry timer was enabled.
+
+## 2026-11-18: Verify Windows template clone and job use
+
+- Pin the Hatchery runner fixes for Windows Limited-token detection, atomic job results and pinned SFTP staging. Linked/full clone use, queued results, release and full-clone independence passed against an isolated Windows 11 reference image. The build needed assisted Audit Mode, so unattended factory acceptance remains open. No controller deployment.
+
+## 2026-11-18: Deploy the Firecracker-capable Hatchery release
+
+- Activate pinned Hatchery `ac42318` and enable the BWS-backed `firecracker` target on the production controller. Keep both Proxmox targets and tokens unchanged. The dedicated host runs a controller-only, host-key-pinned SSH receiver separate from management SSH. Manual lifecycle, binary transfers, and queued execution with output collection and worker release passed through the production controller. Bootstrap reapplied without changes.
+
+## 2026-11-18: Show context usage in T3 Code
+
+- Enable Context window in Thread details through the portable T3 desktop preferences. The dotfiles installer and T3 setup apply it without enabling the separate Usage limits row.
+
+## 2026-11-18: Give failed analytics indexing jobs a regular turn
+
+- Let the Onclave indexer retry a bounded set of the oldest eligible failed or interrupted jobs without waiting for the fresh-work queue to wrap. Keep the one-minute failure cooldown, the existing concurrency and pass limits, and all completed checkpoints. Deployed to the existing worker. After further write failures with two jobs at a time, switched the worker to one job at a time without changing shared services. The first 20 tracked retries under that setting completed and concurrent analytics reads passed. The remaining backlog is still draining.
+
+## 2026-11-18: Recover expired Codex WebSockets in Pi
+
+- Let the default Pi profile use Pi's native retry once per run when the Codex WebSocket hits its connection lifetime. Retry on a fresh connection without replaying completed tools or changing the configured transport. A second expiry still fails the run, and disabling Pi's automatic retries still disables recovery.
+
+## 2026-11-18: Harden the analytics worker's retry and recovery behavior
+
+- Cancel stalled worker raw-archive HTTP requests. Record a safe failure stage and category, cool down failed manifests, and carry the bounded pass cursor forward before wrapping to retry lower hashes.
+- Refuse to bootstrap blank analytical storage over completed checkpoints. Keep ordinary archive API behavior, replay keys, query limits, one worker with two jobs, retention and storage placement unchanged. Add a private runbook for recovery and measurement before tuning.
+
+## 2026-11-18: Fix remote Firecracker failure handling
+
+- Cancel stalled uploads so an unresponsive transfer cannot hold the worker lock indefinitely. Fence job release before the route is published, and verify operation-specific acknowledgments before recording destruction or publishing downloads.
+- Preserve Unicode job arguments and late command stderr. Report oversized requests as not sent, reject downloads to special files, and clarify SSH setup errors and route-record compatibility. No production rollout.
+
+## 2026-11-18: Resolve new GPT releases in Pi named roles
+
+- Exact GPT IDs can use Pi's configured `openai-codex` route before AWS, without switching to the Codex client or substituting another release. Sol family requests follow the catalog rather than a 6.1 pin, and resumed sessions no longer downgrade to that pin.
+- Named launches look up roles in the current catalog, accepting case and whitespace differences and listing available roles when a name is rejected. Frozen role authority and exact named launch settings still apply.
+
+## 2026-11-18: Close analytical storage workload acceptance
+
+- Confirm all 167 frozen historical indexing failures and both additional observed session incidents completed through ordinary retry, retaining all 10,394 original completed checkpoint keys. No checkpoint reset, corpus rebuild, second indexer or history deletion was needed; exact transient causes remain unproven.
+- Pass the final eight concurrent bounded signed queries and raw read in 3.760 seconds total. Six stable results and all 6,242 referenced raw bytes match baseline; additional usage occurrences grow with ongoing backfill, not deduplicated billing. The same ready worker, selected image/config and engine/API/PostgreSQL/shared-storage identities remain, with no restart and zero failed checkpoints at the closing observation.
+- Complete T9 and align the private runbook and application status. Full backfill/coverage, broad-query guarantees, legacy analytics, production restore and deletion of local originals remain outside this finite acceptance. Temporary diagnostic access stays removed, and all changes other than the authorized concurrency feature remain uncommitted.
+
+## 2026-11-17: Add Hatchery controller access to Firecracker workers
+
+- Let the existing CLI and queue select a remote Firecracker target over restricted SSH with a pinned host key. The controller remembers allocation routes; the dedicated host owns worker lifecycle and expiry. Transfers stream bytes without exposing controller paths to the host. Preserve Proxmox and local Firecracker targets.
+- Verify manual and queued operations, binary transfers, exit codes, host expiry, and recovery from dropped connections in an isolated controller setup. Reject delayed create after release, verify cleanup, and remove temporary test access. No production rollout.
+
+## 2026-11-17: Use the personal Git identity for personal Forgejo repositories
+
+- Match SSH remotes under the personal Forgejo namespace so Hatchery and other personal submodules use the existing personal identity instead of Git's placeholder fallback. The rule references the existing identity file without adding a name or email to the rule or changing work-repository settings.
+
 ## 2026-11-17: Default Pi and T3 to Sol 6.2 at high effort
 
 - Select Sol 6.2 for new default-profile Pi sessions and T3 threads, retaining high reasoning effort and each client's existing provider route. Enable the native Pi model in the profile's model list and save T3's choice in its portable preferences and local settings.
 - Leave existing/resumed sessions, model shortcuts, named-role model pins and unrelated preferences unchanged. These are startup defaults, not a runtime model switch or an authentication check.
 - Add Sol 6.2 and Astra 6.2 to the Pi provider's T3 favorites in portable and local settings, and enable Astra 6.2 in Pi alongside Sol 6.2. Preserve older favorites and the Sol 6.2 high default.
+
+## 2026-11-17: Enable optional two-job analytics indexing
+
+- Add an opt-in two-manifest limit inside the existing supervised Onclave worker. Keep serial behavior by default, one candidate dispatcher, independent bounded batches and existing worker/checkpoint/replay identities. Do not add another indexer process or distributed claims.
+- Verify distinct admission and the pass limit, independent failure/replay, stop without false completion, and draining an active peer before surfacing a control-store failure. Sixteen focused application tests, six private worker-binding tests and owning application/private Node 26 typechecks pass.
+- Wire the optional private worker setting without changing the API environment or default worker delivery. After explicit permission for the bounded Onclave commit/push, publish `ba1c8fc` through the normal successful CI/image pipeline and adopt only the worker. BWS selects two concurrent manifests and the verified image digest, preserving its ID, limits, other inventory and the existing daily update policy. Other repository changes remain uncommitted.
+- Verify two distinct active manifests, original completed checkpoints, unchanged engine/API/PostgreSQL/shared-storage identities, bounded memory and zero OOM events. Eight concurrent API operations pass with empty filesystem cache and again warmed; stable results and exact raw bytes match. Separate three-minute samples show higher native write throughput, but differing inputs do not establish a controlled or universal speedup. Worker reapply is unchanged with no restart; temporary diagnostic access is removed again. The fixed historical-failure cohort subsequently passed retry closure on 2026-11-18.
 
 ## 2026-11-17: Implement and test Hatchery Firecracker Linux workers
 
@@ -17,6 +172,24 @@
 - Restore a plain-object `log_analytics` input while preserving strict operation-specific execution validation. Loading the deferred tool and then switching to native Fable exposed a root union that Bedrock rejected before inference; AWS credentials were not the cause. The September 4 fix and its schema assertion had not survived the default-profile rewrite, and the September 10 analytics expansion reintroduced the union.
 - Check every default-profile extension tool's serialized input at startup and reload, including deferred tools, for an object root without top-level `anyOf`, `oneOf` or `allOf`. This runs in the existing test suite without starting sessions or calling services. Restore the compatibility constraint and the cross-tool test reference in the existing Pi extension skill. Also cover the actual analytics schema in the installed Bedrock request serializer, rather than checking only a hand-written tool fixture.
 - Confirm native `amazon-bedrock/us.anthropic.claude-fable-5-1` accepts the corrected analytics definition in `us-east-2` and returns a capped reply. Existing sessions need an idle runtime reload to replace the loaded tool definition; no account, authentication, model-route or legacy-profile changes are made.
+
+## 2026-11-17: Accept durable analytical storage and worker relocation
+
+- Pass owned isolated acceptance for the exact ClickHouse 26.8.36.3 / SeaweedFS 4.41 pairing: identity-preserving data/diagnostic growth and no-op reapply, native forward/reverse part movement, replay preservation, bounded-cache eviction/repopulation and restart, diagnostic exhaustion, missing-mount boot refusal/recovery and a container-only remote outage. Remove the owned test guest/disks/seed, bucket/identity/objects and protected test credentials afterwards.
+- Correct pinned diagnostic-engine compatibility without adding retention: a stock explicit log engine rejects a separate storage-policy field, so the recipe accepts a complete caller-owned native clause and the private selection preserves the stock keys and absent TTL.
+- Begin the authorized production cutover only after isolated acceptance. Grow the retained data filesystem, add independent diagnostics and root journal routing, select the combined engine/worker budget, and provision the separate BWS-backed analytical capability without restarting shared SeaweedFS or PostgreSQL. Keep initial bucket provisioning explicit because existing bucket configuration resources adopt/configure rather than create buckets.
+- Retire the former worker's generated launcher before replacement startup, preserving its protected files and original worker ID. Move all 16 quiesced analytical parts natively with unchanged checksums and full replay fingerprints, then accept one ready relocated worker retaining all 10,394 original completed checkpoint keys and progressing to 10,411. Include the pinned lazily created S3 queue log and native suffixed variants in diagnostic routing/cleanup; no analytical table is recreated.
+- Pass all six selected production stacks' unchanged plan/apply/status checks with 50 noop plan rows and unchanged engine/worker/API/PostgreSQL/shared-storage identities. Restore original users/grants exactly, reject the temporary login and remove protected maintenance files. Verify independent native S3 bytes, scoped credential persistence, six bounded signed operation results, nonempty tool/usage aggregates and an exact raw byte reference.
+- Reopen workload closure after the initial acceptance missed cold concurrent timeouts and left failed-indexing causes unverified. Reproduce all eight selected requests failing from an empty cache, then correct native cache range alignment from the pinned 4 MiB default to a BWS-selected 64 KiB. Add one optional generic recipe setting, preserving other callers' defaults and all query/scan/memory bounds. After restart and empty-cache eviction, all eight selected concurrent requests pass with the worker running; warmed requests pass too. Seven recipe tests, three private selection tests and all three owning Node 26 typechecks pass.
+- Confirm remaining failed checkpoint attempts predate relocation, while new writes complete without recorded exceptions and every original completed key remains. Verify a fixed cohort of historical failures through normal retry rather than resetting checkpoints or claiming complete backfill; this follow-up subsequently closed on 2026-11-18 after that cohort and both additional observed retry incidents completed. Keep native-reversal and in-place growth procedures and physical-capacity constraints in the private runbook. No universal cold-query performance or production restore claim is added.
+- Preserve local sessions, raw archives/manifests, analytical history and API/replay semantics. Keep existing quieter logging, expiry, query limits and incomplete/unknown coverage unchanged. Cache contents are disposable, not durable metadata or a complete restore artifact.
+
+## 2026-11-17: Exercise and correct Hatchery's live template factory
+
+- Record explicit authorization for owned live acceptance, fixes and module-first publication after completion. Test exact task source in a private controller prefix, using existing coordinated state without replacing the installed release or packaging unrelated dirty changes. Finish the current Windows acceptance run in place; route new Windows test work to the other configured PVE host without hardcoding live placement in generic code.
+- Complete five Linux build/update/seal paths and linked/full real-user command, transfer, log and cancellation checks. Prove retained template-job release, unchanged binary snapshots and standalone full disks. Keep Windows and final cleanup/publication acceptance open rather than presenting local fixtures as live success.
+- Correct import versus ISO placement, storage-format filenames, qcow2 linked support and pre-entry lock contention. Advance existing reservations without holding a global guest-readiness lock. Prepare Fedora's native SELinux management entrypoint without disabling enforcement; use NixOS's real system profile for sealing and command units while preserving existing worker environments.
+- Diagnose Windows QGA MSI failure during specialize and move its one-time bootstrap after Setup, preserving SYSTEM continuation, normal UAC and Limited submitted tests. Restrict generated private SSH host keys to SYSTEM ownership and SYSTEM/Administrators access after the administrative bootstrap exposed permissions rejected by sshd, replacing the DACL atomically rather than temporarily restoring inherited access. Complete DHCP lease acquisition before Windows Update after a startup retained APIPA despite DHCP being enabled. Decode PVE's byte-string guest markers as UTF-8, including Windows BOMs, rather than hiding genuine failures behind JSON errors. Require Windows' documented generalize-to-OOBE state after Sysprep returns: reserved-storage pre-validation failed despite a zero process exit; do not retain a false sealed flag or mistake it for a successful template. Do not replay uncertain installs or native operations; use fresh owned attempts or bounded corrections of proven failed stages and retain evidence.
 
 ## 2026-11-17: Implement Hatchery template building and fast multi-OS clones
 

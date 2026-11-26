@@ -38,6 +38,7 @@ const extensionHandlers = new Map();
 const extensionApi = {
   on(event, handler) { extensionHandlers.set(event, [...(extensionHandlers.get(event) ?? []), handler]); },
   registerTool(spec) { toolSpecs.push(spec); },
+  registerCommand() {},
   sendUserMessage() {},
 };
 scopedInstructions(extensionApi);

@@ -222,12 +222,19 @@ upstream's Linux cross-build path: Rust `1.99.1`, `cargo-xwin` `0.23.1`, and
 Electron Builder produce an unsigned NSIS installer and standalone Windows CLI.
 It also builds the matching Linux CLI archive bundled for WSL. No Windows
 container, Wine, host Visual Studio changes, signing credentials, or live T3
-configuration are needed. The image pins the Node/Vite+ versions above; update
-those pins when building a source revision that requires different versions.
+configuration are needed. Set `--build-arg NODE_VERSION=<source pin>` if the
+revision needs a newer Node than the image default, and check the other pins
+against that revision too.
 
-From the dotfiles root in PowerShell, use a fresh build container for each source
-snapshot. The Git bundle includes committed `main` only, not working-tree edits
-or ignored files. A shallow checkout also needs its shallow-boundary marker:
+For the customization fork, use the [T3 customization skill](../pi/profiles/default/skills/t3-customization/SKILL.md)
+to run the recipe on a disposable Hatchery VM, not on the Windows workstation.
+The recipe also accepts `/input/upstream-commit` (one full public upstream commit
+SHA) and optionally `/input/source.patch` to build an uncommitted prototype. That
+path fetches the exact commit inside the container and records the patch hash.
+
+For an existing Git-bundle workflow, use a fresh build container per source
+snapshot. A bundle created from `main` includes its commits, not working-tree
+edits or ignored files. A shallow checkout also needs its shallow-boundary marker:
 
 ```powershell
 $run = 't3code-windows-' + (Get-Date -Format 'yyyyMMdd-HHmmss')

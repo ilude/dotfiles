@@ -31,7 +31,7 @@ const context = (mode: PromptContext["mode"] = "rpc"): PromptContext => ({
   mode, hasUI: mode === "tui" || mode === "rpc", signal: undefined,
   ui: { select: vi.fn<PromptContext["ui"]["select"]>(async () => "Allow once"), custom: vi.fn(async () => { throw new Error("Unexpected custom UI"); }) },
 });
-const plain = (lines: string[]) => stripTerminalSequences(lines.join("\n"));
+const plain = (lines: readonly string[]) => stripTerminalSequences(lines.join("\n"));
 
 describe("approval presentation", () => {
   it("connects the real matched command to its target without displaying the script", () => {

@@ -1,7 +1,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { normalizeRepositoryId } from "../../lib/path-identity.ts";
 
-export interface StatusEntry { xy: string; path: string; source?: string }
+export interface StatusEntry { xy: string; path: string; source?: string; untrackedDirectory?: true }
 export interface CommitPlan {
 	repo: string;
 	commits: Array<{ subject: string; paths: string[] }>;
@@ -23,7 +23,11 @@ export function parseCommitStatus(status: string): StatusEntry[] {
 		const record = records[i];
 		if (!record) continue;
 		if (record.length < 4 || record[2] !== " ") throw new Error("Malformed Git status record.");
-		const entry: StatusEntry = { xy: record.slice(0, 2), path: record.slice(3) };
+		const xy = record.slice(0, 2), path = record.slice(3);
+		// After unstaging a new gitlink, Git reports the same path as `?? path/`.
+		const entry: StatusEntry = xy === "??" && path.endsWith("/")
+			? { xy, path: path.slice(0, -1), untrackedDirectory: true }
+			: { xy, path };
 		if (/[RC]/.test(entry.xy)) {
 			const source = records[++i];
 			if (!source) throw new Error("Missing Git rename/copy source.");
@@ -32,6 +36,11 @@ export function parseCommitStatus(status: string): StatusEntry[] {
 		entries.push(entry);
 	}
 	return entries;
+}
+
+export function isUnfinishedCommitEntry(entry: StatusEntry, exclusions?: Pick<ReadonlySet<string>, "has">): boolean {
+	const staged = entry.xy !== "??" && entry.xy[0] !== " ";
+	return staged || !exclusions?.has(entry.path) || (entry.source !== undefined && !exclusions.has(entry.source));
 }
 
 function object(value: unknown): value is Record<string, unknown> {
@@ -161,10 +170,7 @@ export async function executeCommitPlan(exec: ExtensionAPI["exec"], repository: 
 		if (output.killed || output.code !== 0) throw new Error(output.stderr.trim() || "Git status failed.");
 		result.remaining = parseCommitStatus(output.stdout);
 		const excluded = new Set(plan.exclusions.map(entry => entry.path));
-		const unfinished = result.remaining.filter(entry => {
-			const staged = entry.xy !== "??" && entry.xy[0] !== " ";
-			return staged || !excluded.has(entry.path) || (entry.source !== undefined && !excluded.has(entry.source));
-		});
+		const unfinished = result.remaining.filter(entry => isUnfinishedCommitEntry(entry, excluded));
 		if (unfinished.length) result.error = [result.error, `Unfinished eligible changes: ${unfinished.map(entry => `${entry.xy} ${JSON.stringify(entry.path)}`).join(", ")}.`].filter(Boolean).join("\n");
 	} catch (error) { result.error = [result.error, `Status reporting failed: ${String(error)}`].filter(Boolean).join("\n"); }
 	result.ok = !result.error;

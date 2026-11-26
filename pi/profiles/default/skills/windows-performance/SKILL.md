@@ -78,6 +78,25 @@ Follow the hot process into its actual workload/repository before proposing a
 fix. Keep confirmed causes separate from plausible explanations and preserve
 concurrent work.
 
+## Follow up on an identified workload
+
+The operator grants standing approval for these incident follow-ups. Do not ask
+again unless the current request narrows the scope:
+
+- Correlate the capture with relevant existing local task and package logs.
+  Identify the command, repository and package provenance when possible; check
+  Defender Protection History or available endpoint alerts for flagged files.
+  Keep raw logs and command lines local.
+- Once the operation is identified and security triage is clear, run a bounded
+  comparison of the same workload without concurrent heavy jobs. Keep Defender
+  unchanged and compare elapsed time and responsiveness under comparable cache
+  conditions. Do not replay commands from logs blindly or interrupt other work.
+  If the workload cannot be identified, safely repeated or isolated, report why
+  the comparison was not run.
+
+This approval does not cover new recordings, Defender changes, or unrelated
+cleanup. Follow the current request's limits on diagnosis and reproduction.
+
 ## Diagnose process churn
 
 When agent work coincides with high LSM, CryptSvc, Git LFS, MSYS-helper or

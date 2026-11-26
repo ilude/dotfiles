@@ -3,7 +3,7 @@ import { loadProviderCache, writeProviderCache } from "../lib/models/cache.ts";
 import { buildProviderModelDefinitions, buildCachedProviderModelDefinitions } from "../lib/models/reconcile.ts";
 import type { ModelLike, ProviderModelDef } from "../lib/models/types.ts";
 import { registerProfileCommand } from "../lib/profile-command.ts";
-import { PINNED_SOL_MODEL } from "../lib/model-selection.ts";
+import { compareModelVersions, modelFamilyVersion } from "../lib/model-family.ts";
 import { selectLatestGrokModelIds } from "../lib/bedrock/model-policy.ts";
 import {
 	getConfiguredBedrockModelIds,
@@ -312,10 +312,16 @@ export async function syncCuratedModelScope(
 			)).map((model) => `${provider}/${model.id}`),
 		);
 		scope = [...new Set([...openai, ...bedrock, ...nativeBedrock, ...remaining])];
-		const latestSol = availableOpenAI.find((id) => id === `openai/${PINNED_SOL_MODEL}`);
+		const latestSol = availableOpenAI.find((id) => modelFamilyVersion(id)?.family === "sol");
+		const latestSolVersion = latestSol && modelFamilyVersion(latestSol);
+		const savedVersion = settings.defaultProvider === "openai" && typeof settings.defaultModel === "string"
+			? modelFamilyVersion(settings.defaultModel)
+			: undefined;
+		const upgradeSol = latestSol && latestSolVersion && (savedVersion?.family !== "sol" ||
+			compareModelVersions(latestSolVersion.version, savedVersion.version) >= 0);
 		const next = {
 			...settings,
-			...(latestSol ? { defaultProvider: "openai", defaultModel: latestSol.split("/")[1] } : {}),
+			...(upgradeSol ? { defaultProvider: "openai", defaultModel: latestSol.split("/")[1] } : {}),
 			enabledModels: scope,
 		};
 		if (JSON.stringify(settings) === JSON.stringify(next)) return settings;

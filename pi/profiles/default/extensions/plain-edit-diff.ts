@@ -1,4 +1,5 @@
 import { createEditToolDefinition, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { Component } from "@earendil-works/pi-tui";
 
 /**
  * Keep the built-in edit tool, but render word-level diff changes in bold, brighter text instead of
@@ -68,10 +69,9 @@ export function inverseToHighlight(line: string): string {
 	});
 }
 
-type Renderable = { render(width: number): string[] };
-const patched = new WeakSet<object>();
+const patched = new WeakSet<Component>();
 
-function highlightChanges<T extends Renderable>(component: T): T {
+function highlightChanges(component: Component): Component {
 	if (!patched.has(component)) {
 		const render = component.render.bind(component);
 		component.render = (width: number) => render(width).map(inverseToHighlight);

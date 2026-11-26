@@ -52,11 +52,10 @@ for (const [language, source] of Object.entries(fixtures)) {
   console.log(`${language}: load ${loadMs.toFixed(1)}ms, first parse ${parseMs.toFixed(2)}ms, warm ${warmMs.toFixed(2)}ms; ${wasm}`);
 }
 
-// Resolve the supported CLI from package metadata rather than an internal module path.
 // The child has an empty profile/cwd; no credentials or project resources are copied.
 const manifestPath = fileURLToPath(new URL("../node_modules/@earendil-works/pi-coding-agent/package.json", import.meta.url));
 const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
-const cli = path.resolve(path.dirname(manifestPath), manifest.bin.pi);
+const sdk = import.meta.resolve("@earendil-works/pi-coding-agent");
 const scratch = await mkdtemp(path.join(tmpdir(), "pi-dc-loader-"));
 try {
   const extension = path.join(scratch, "fixture.js");
@@ -105,24 +104,21 @@ export default async function(pi) {
  } catch(error) { writeFileSync(${JSON.stringify(marker)}, JSON.stringify({error:String(error),stack:error?.stack})); }
 }
 `);
-  // The installed CLI calls process.exit after --list-models. Windows Node
-  // 25.9 asserts UV_HANDLE_CLOSING during that immediate teardown after this
-  // fixture. Let the CLI unwind and Node drain naturally instead. Preserve
-  // the requested exit code and propagate every unrelated rejection; parent
-  // assertions still require a successful child and a complete fixture marker.
-  const exitPreload = path.join(scratch, "natural-exit.mjs");
-  await writeFile(exitPreload, `
-class CliExit extends Error {
-  constructor(code) { super('CLI requested exit'); this.code = code; }
-}
-process.exit = code => { throw new CliExit(code ?? process.exitCode ?? 0); };
-process.on('unhandledRejection', error => {
-  if (error instanceof CliExit) process.exitCode = error.code;
-  else throw error;
+  // Load the fixture through Pi's SDK without creating a session. The unrelated
+  // CLI model-listing path forces process.exit(), which can race Windows libuv
+  // teardown after the fixture's shell analysis.
+  const loadFixture = `
+import assert from 'node:assert/strict';
+import { DefaultResourceLoader, SettingsManager } from ${JSON.stringify(sdk)};
+const loader = new DefaultResourceLoader({
+  cwd: process.cwd(), agentDir: process.env.PI_CODING_AGENT_DIR,
+  settingsManager: SettingsManager.inMemory(), additionalExtensionPaths: [process.argv[1]],
+  noSkills: true, noPromptTemplates: true, noThemes: true, noContextFiles: true,
 });
-`);
-  const nodeArgs = ["--import", pathToFileURL(exitPreload).href];
-  const childOutput = await promisify(execFile)(process.execPath, [...nodeArgs, cli, "--offline", "--no-session", "-e", extension, "--list-models"], {
+await loader.reload();
+assert.deepEqual(loader.getExtensions().errors, []);
+`;
+  const childOutput = await promisify(execFile)(process.execPath, ["--input-type=module", "--eval", loadFixture, extension], {
     cwd: scratch,
     env: { ...process.env, PI_SUBAGENT_AUTHORITY: "", PI_CODING_AGENT_DIR: path.join(scratch, "profile") },
     timeout: 20_000,

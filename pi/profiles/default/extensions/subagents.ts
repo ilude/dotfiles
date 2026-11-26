@@ -4,7 +4,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { getAgentDir, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { loadDefinitions, resolveAgentEffort, EFFORTS, type AgentDefinition, type AgentEffort } from "../lib/subagents/definitions.ts";
+import { loadDefinitions, resolveAgentDefinition, resolveAgentEffort, EFFORTS, type AgentDefinition, type AgentEffort } from "../lib/subagents/definitions.ts";
 import { VisibleChild } from "../lib/subagents/visible.ts";
 import { HERDR_COMPANION_REQUEST, type CompanionEvent } from "../lib/herdr-companions.ts";
 import { getSubagentRuntime, retireSubagentRuntime, resetSubagentRuntime, SUBAGENT_RUNTIME_RESET, type Delivery } from "../lib/subagents/runtime.ts";
@@ -129,7 +129,7 @@ export default function subagents(pi:ExtensionAPI){
 
 ${preparedPlanRunContext(prepared)}`:"")}));
  pi.registerTool({name:"subagent",exposure:"model-only",label:"Subagent",description:`${SUBAGENT_LAUNCH_DESCRIPTION} Omit surface for normal delegation: visible in Herdr, headless elsewhere. Inside Herdr, select headless only when the user requests it, not merely because work is parallel, unattended, or in a worktree.`,parameters:Type.Object({agent:Type.String(),instructions:Type.String(),cwd:Type.Optional(Type.String()),model:Type.Optional(Type.String({description:DELEGATION_MODEL_DESCRIPTION})),providerOverride:Type.Optional(Type.String({description:PROVIDER_OVERRIDE_DESCRIPTION})),effort:Type.Optional(Effort),skills:Type.Optional(Type.Array(Type.String())),background:Type.Optional(Type.Boolean()),blockingReason:Type.Optional(Type.String({description:"Why this launch must block rather than use automatic result delivery; required except for Strategist."})),surface:Type.Optional(Surface)}),renderCall:renderSubagentCall,renderResult:renderSubagentResult,async execute(_id,p,signal,onUpdate,ctx){try{
-  catalog=loadDefinitions(ctx.cwd,ctx.isProjectTrusted());const d=catalog.agents.get(p.agent);if(!d)throw new Error(`Unknown or invalid agent ${p.agent}. ${catalog.errors.join("; ")}`);
+  catalog=loadDefinitions(ctx.cwd,ctx.isProjectTrusted());const d=resolveAgentDefinition(catalog,p.agent);
   const handoff=extractCloseoutHandoff(p.instructions);
   if(handoff&&d.name!=="integrator")throw new Error("Closeout manifests are restricted to the Integrator role");
   if(d.name==="integrator"&&!handoff)throw new Error("Integrator launch requires an explicit closeout manifest handoff");

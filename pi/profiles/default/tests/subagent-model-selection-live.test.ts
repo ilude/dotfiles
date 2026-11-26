@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { getAgentDir, ModelRegistry, ModelRuntime } from "@earendil-works/pi-coding-agent";
 import subagents from "../extensions/subagents.ts";
+import { modelFamilyVersion } from "../lib/model-family.ts";
 import { resetSubagentRuntime } from "../lib/subagents/runtime.ts";
 import { createMockCtx, createMockPi } from "./helpers/mock-pi.ts";
 
@@ -18,9 +19,9 @@ describe.skipIf(process.env.PI_SUBAGENT_LIVE !== "1")("bare family launch with r
     });
     try {
       const modelRegistry = new ModelRegistry(modelRuntime);
-      const candidate = modelRegistry.getAll().find(model => model.provider === "openai" && model.id === (family === "sol" ? "gpt-6.1-sol" : "gpt-6-luna"));
-      expect(candidate).toBeDefined();
-      expect(modelRegistry.hasConfiguredAuth(candidate!)).toBe(false);
+      const nativeCandidates = modelRegistry.getAll().filter(model => model.provider === "openai" && modelFamilyVersion(model.id)?.family === family);
+      expect(nativeCandidates.length).toBeGreaterThan(0);
+      expect(nativeCandidates.every(model => !modelRegistry.hasConfiguredAuth(model))).toBe(true);
       const pi = createMockPi();
       subagents(pi as never);
       const ctx = createMockCtx({ cwd, modelRegistry, isProjectTrusted: () => false, isIdle: () => true });
@@ -30,7 +31,7 @@ describe.skipIf(process.env.PI_SUBAGENT_LIVE !== "1")("bare family launch with r
         instructions: "Bounded model-routing acceptance check. Reply with exactly MODEL_ROUTE_OK. Do not call tools, read files, delegate, or change anything.",
       }, AbortSignal.timeout(90_000), undefined, ctx);
       expect(result.isError, JSON.stringify(result.details)).not.toBe(true);
-      expect(result.details.model).toBe(`openai/${candidate!.id}`);
+      expect(nativeCandidates.map(model => `openai/${model.id}`)).toContain(result.details.model);
       expect(result.details.outcome, result.details.error ?? result.details.result).toBe("complete");
       expect(result.details.result).toContain("MODEL_ROUTE_OK");
     } finally {

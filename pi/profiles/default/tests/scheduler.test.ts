@@ -125,7 +125,6 @@ describe("schedule tool", () => {
   it.each(["new", "resume", "reload", "fork"])("survives %s with follow-up delivery into the active session", async reason => {
     const first = harness();
     first.event("session_start", "startup");
-    expect(first.pi.registerCommand).not.toHaveBeenCalled();
     expect(first.tool.parameters.properties.action.enum).toEqual(["create_at", "list", "cancel"]);
     await first.call({ action: "create_at", when: "1s", prompt: "continue" });
     first.event("session_shutdown", reason);
@@ -165,6 +164,7 @@ describe("schedule tool", () => {
     const h = harness();
     const result = await h.call({ action: "create_at", when: "1m", prompt: "Check pipeline\n" + "x".repeat(90) });
     expect(Check(scheduleOutputSchema, result.structuredContent)).toBe(true);
+    expect(result.structuredContent).not.toHaveProperty("replyInstruction");
     const [job] = getProcessScheduler().list();
     const localTime = new Intl.DateTimeFormat(undefined, {
       year: "numeric", month: "short", day: "numeric",

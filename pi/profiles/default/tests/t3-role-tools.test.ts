@@ -72,6 +72,38 @@ it("launches source-verified actual callable delegation with bootstrap prefix, r
   expect(output.details).toMatchObject({ threadId: "child", taskId: "task-one", runId: "child-run", childLink: "t3://child", t3Status: "running" });
   expect(await f.store.read((args as Record<string, string>).clientRequestId)).toMatchObject({ commissioner: { threadId: "parent", runId: "parent-run" } });
 });
+it.each([["gpt-6.2-sol", "xhigh"], ["gpt-6.2-astra", "high"], ["gpt-7.3-sol", "high"]])(
+  "launches an exact %s reviewer on the advertised Pi subscription route",
+  async (id, effort) => {
+    const f = await fixture();
+    const model = `openai-codex/${id}`;
+    const registry = registryFixture([
+      modelFixture("openai", "gpt-6.1-sol"),
+      modelFixture("openai", `${id}-preview`),
+      modelFixture("openai-codex", id),
+      modelFixture("bedrock-mantle", `openai.${id}`),
+    ], ["openai", "openai-codex", "bedrock-mantle"]);
+    Object.assign(f.ctx, { modelRegistry: registry });
+    f.domains.orchestrator_capabilities = { inheritedProviderInstanceId: "pi-actual", providers: [
+      { driverKind: "pi", providerInstanceId: "pi-actual", canRunChildTask: true, models: [{ id: model, options: [{ id: "thinking", values: [effort] }] }] },
+    ] };
+    const result = await f.run("t3_delegate_role", { agent: " Reader ", instructions: "Inspect", model: id, effort, background: true });
+    expect(result.isError).not.toBe(true);
+    expect(f.executeTool.mock.calls[0]).toEqual(expect.arrayContaining(["mcp__t3_code__orchestrator_capabilities", { search: model }]));
+    expect(f.executeTool.mock.calls[1][1]).toMatchObject({ target: { providerInstanceId: "pi-actual", model, options: { thinking: effort } } });
+    const [handoff] = await f.store.ownedHandoffs("parent");
+    expect(handoff.snapshot).toMatchObject({ model: { qualified: model }, definition: { name: "reader" }, effort });
+    expect(registry.getAvailableOfType).not.toHaveBeenCalledWith("chat", "bedrock-mantle", expect.anything());
+  },
+);
+it("reports names from the current role catalog without launching a guessed role", async () => {
+  const f = await fixture();
+  const result = await f.run("t3_delegate_role", { agent: "gpt-6.2-sol", instructions: "Inspect", background: true });
+  expect(result).toMatchObject({ isError: true });
+  expect(result.content[0]).toMatchObject({ text: expect.stringContaining("Available roles: reader, strategist.") });
+  expect(f.executeTool).not.toHaveBeenCalled();
+  expect(await f.store.ownedHandoffs("parent")).toEqual([]);
+});
 it("routes Opus high to the AWS model in the actual T3 launch target", async () => {
   const f = await fixture();
   const model = "bedrock-mantle/anthropic.claude-opus-5-5";

@@ -36,7 +36,7 @@ describe("model shortcuts", () => {
 		expect(ctx.ui.notify).toHaveBeenCalledWith(`Switched to ${provider}/${id}.`, "info");
 	});
 
-	it("selects pinned Sol 6.1 and latest Luna without changing the provider ladder", async () => {
+	it("selects the latest Sol and Luna on the first available provider", async () => {
 		const models = [
 			{ provider: "bedrock-mantle", id: "openai.gpt-7-sol" },
 			{ provider: "bedrock-mantle", id: "openai.gpt-7-terra" },
@@ -44,7 +44,7 @@ describe("model shortcuts", () => {
 			{ provider: "openai", id: "gpt-6-luna" },
 			{ provider: "openai", id: "gpt-6-sol" },
 			{ provider: "openai", id: "gpt-5.6-luna" },
-			{ provider: "openai", id: "gpt-6.1-sol" },
+			{ provider: "openai", id: "gpt-6.2-sol" },
 		];
 		const { commands, pi, ctx } = setup(models);
 		await commands.get("sol")!.handler("", ctx);
@@ -80,14 +80,14 @@ describe("model shortcuts", () => {
 		expect(pi.setModel).toHaveBeenCalledExactlyOnceWith(newest);
 	});
 
-	it("does not select a variant when pinned Sol is unavailable", async () => {
+	it("breaks same-version family ties by configured cost", async () => {
 		const expensive = { provider: "openai", id: "gpt-6.1-sol-preview", cost: { input: 5, output: 20 } };
 		const cheap = { provider: "openai", id: "gpt-6.1-sol-stable", cost: { input: 1, output: 4 } };
 		const { commands, pi, ctx } = setup([expensive, cheap]);
 
 		await commands.get("sol")!.handler("", ctx);
 
-		expect(pi.setModel).not.toHaveBeenCalled();
+		expect(pi.setModel).toHaveBeenCalledWith(cheap);
 	});
 
 	it("does not fall through to unapproved providers", async () => {

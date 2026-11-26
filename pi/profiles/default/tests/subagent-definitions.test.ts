@@ -61,7 +61,7 @@ describe("subagent definitions",()=>{
  });
  it("routes the Sol role default to 6.1 while preserving explicit 5.6 selection",()=>{
   const source=registry([model("openai","gpt-5.6-sol"),model("openai","gpt-6-sol"),model("openai","gpt-6.1-sol"),model("openai","gpt-7-sol")],["openai"]);
-  expect(resolveModel(undefined,"sol",source)).toEqual({provider:"openai",id:"gpt-6.1-sol"});
+  expect(resolveModel(undefined,"sol",source)).toEqual({provider:"openai",id:"gpt-7-sol"});
   expect(resolveModel("openai-codex/gpt-5.6-sol","sol",source)).toEqual({provider:"openai-codex",id:"gpt-5.6-sol"});
  });
  it("uses the canonical bare model before effort restrictions",()=>{

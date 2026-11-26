@@ -51,7 +51,9 @@
   "boringSidebarMultilineRows": false,
   "toolCallVisibility": "showAll",
   "threadDetailsUsageEnabled": false,
-  "threadDetailsItems": {},
+  "threadDetailsItems": {
+    "context": true
+  },
   "legacySidebarEnabled": false,
   "sidebarWorkingShelfEnabled": true,
   "sidebarProjectGroupingMode": "repository",

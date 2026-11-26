@@ -348,6 +348,46 @@ it("reviews a file arriving after a commit and preserves an operator exclusion a
 	expect(report.text).toContain("Left out: cache.txt"); expect(requestTexts.some(text => text.includes("Unfinished eligible changes"))).toBe(true);
 }, 45_000);
 
+it.each([false, true])("publishes while leaving an excluded embedded repository untracked (retry=%s)", async retry => {
+	const embedded = "scratch/[embedded]";
+	const checkout = join(root, embedded);
+	mkdirSync(checkout, { recursive: true }); init(checkout);
+	const childHead = git(checkout, "rev-parse", "HEAD");
+	writeFileSync(join(checkout, "base.txt"), "local-only child work\n");
+	const remote = join(root, ".git", "origin.git");
+	git(root, "init", "--quiet", "--bare", remote);
+	git(root, "remote", "add", "origin", remote);
+	git(root, "push", "--quiet", "origin", "main");
+	writeFileSync(join(root, "new.txt"), "publish this\n");
+	// The candidate is staged under its bare path, then untracked with a trailing slash.
+	git(root, "--literal-pathspecs", "add", "--", embedded);
+	if (retry) {
+		const hook = join(root, ".git", "hooks", "post-commit");
+		writeFileSync(hook, "#!/bin/sh\nif ! test -f arrived.txt; then printf 'new work\\n' > arrived.txt; fi\n"); chmodSync(hook, 0o755);
+	}
+	const exclusions = [{ path: embedded, reason: "Embedded repository has no .gitmodules entry" }];
+	steps.push(plan("publish root work", ["new.txt"], ".", exclusions));
+	if (retry) steps.push(plan("publish new arrival", ["arrived.txt"], ".", exclusions));
+	const stream = provider.stream.getMockImplementation()!;
+	provider.stream.mockImplementation((model, context, options) => {
+		if (!steps.length) throw new Error("Unexpected extra review for the excluded repository");
+		return stream(model, context, options);
+	});
+	const report = await run(true);
+	expect(report.text).toContain(`Left out: ${embedded}`);
+	expect(report.text).toContain("Pushed.");
+	expect(report.text).not.toContain("Changed after repository pass");
+	expect(git(root, "rev-parse", "HEAD")).toBe(git(remote, "rev-parse", "main"));
+	expect(git(root, "ls-files", "--stage", "--", embedded)).toBe("");
+	expect(git(root, "status", "--porcelain", "--untracked-files=all").trim()).toBe(`?? ${embedded}/`);
+	expect(git(checkout, "rev-parse", "HEAD")).toBe(childHead);
+	expect(readFileSync(join(checkout, "base.txt"), "utf8")).toBe("local-only child work\n");
+	if (retry) {
+		expect(git(root, "show", "HEAD:arrived.txt")).toBe("new work\n");
+		expect(requestTexts[1]).toContain('?? \\"scratch/[embedded]\\"');
+	}
+}, 45_000);
+
 it("reviews formatter hook edits and commits the corrected contents without bypassing the hook", async () => {
 	writeFileSync(join(root, "base.txt"), "unformatted\n");
 	const hook = join(root, ".git", "hooks", "pre-commit");
