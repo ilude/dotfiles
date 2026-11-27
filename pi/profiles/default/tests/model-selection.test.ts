@@ -56,11 +56,18 @@ describe("Grok AWS routing", () => {
 describe("fresh subscription-first delegation resolution", () => {
 	it("uses working OpenAI availability even when the cached auth snapshot is false", async () => {
 		const sol = modelFixture("openai", "gpt-6.1-sol");
-		const registry = registryFixture([sol], ["openai"]);
+		const registry = registryFixture([sol, modelFixture("openai-codex", sol.id)], ["openai", "openai-codex"]);
 		vi.mocked(registry.hasConfiguredAuth).mockReturnValue(false);
 		await expect(resolveAvailablePreferredModel("sol", registry)).resolves.toBe(sol);
 		expect(registry.hasConfiguredAuth).not.toHaveBeenCalled();
 		expect(registry.getAvailableOfType).toHaveBeenCalledExactlyOnceWith("chat", "openai", { signal: undefined });
+		expect(registry.getApiKeyForProvider).toHaveBeenCalledExactlyOnceWith("openai");
+	});
+
+	it("identifies the rejected route without exposing credentials when no authorized fallback is available", async () => {
+		const registry = registryFixture([modelFixture("openai-codex", "gpt-6.2-astra")], ["openai-codex"]);
+		vi.mocked(registry.getApiKeyForProvider).mockResolvedValue(undefined);
+		await expect(resolveAvailablePreferredModel("astra", registry)).rejects.toThrow(/Request authentication unavailable for openai-codex/);
 	});
 
 	it.each(["empty", "failed"])("uses Mantle when OpenAI availability is %s", async state => {

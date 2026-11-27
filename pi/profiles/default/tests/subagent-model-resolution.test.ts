@@ -15,7 +15,7 @@ const oldAuthority = process.env.PI_SUBAGENT_AUTHORITY;
 const runtimes: SubagentRuntime[] = [];
 const model = (provider: string, id: string) => ({ provider, id, name: id }) as any;
 function registry(models: any[], authenticated: string[] = []) {
-  return { getAll: () => models, hasConfiguredAuth: () => false, getAvailableOfType: async (_type: string, provider: string) => models.filter(candidate => candidate.provider === provider && authenticated.includes(provider)) } as any;
+  return { getAll: () => models, hasConfiguredAuth: () => false, getApiKeyForProvider: async (provider: string) => authenticated.includes(provider) ? "fixture" : undefined, getAvailableOfType: async (_type: string, provider: string) => models.filter(candidate => candidate.provider === provider && authenticated.includes(provider)) } as any;
 }
 function definition(name: string, extra: Partial<AgentDefinition> = {}): AgentDefinition {
   return { name, description: name, tools: [], delegates: [], skills: [], prompt: name, source: "profile", filePath: `${name}.md`, ...extra };

@@ -20,11 +20,12 @@ export function modelFixture(provider: string, id: string): Model<Api> {
 }
 
 // Use Pi's actual class, including its synchronous getAvailable method.
-// Only catalog contents and configured-auth answers are controlled by tests.
+// Only catalog contents and the test credentials are controlled by fixtures.
 export function registryFixture(models: Model<Api>[], authenticated: string[]): ModelRegistry {
 	const registry = new ModelRegistry(runtime);
 	vi.spyOn(registry, "getAll").mockReturnValue(models);
 	vi.spyOn(registry, "hasConfiguredAuth").mockImplementation(model => authenticated.includes(model.provider));
+	vi.spyOn(registry, "getApiKeyForProvider").mockImplementation(async provider => authenticated.includes(provider) ? "fixture" : undefined);
 	vi.spyOn(registry, "getAvailableOfType").mockImplementation(async (_type, provider) => models.filter(model => model.provider === provider && authenticated.includes(model.provider)));
 	return registry;
 }

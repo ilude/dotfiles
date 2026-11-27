@@ -4,6 +4,8 @@ import { join } from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { ModelRegistry, ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { CODEX_QUOTA_LOGIN, resolveCodexAuth } from "../lib/codex-auth.ts";
+import { resolveAvailablePreferredModel } from "../lib/model-selection.ts";
+import { modelFixture } from "./helpers/model-selection.ts";
 
 const token = (accountId: string) => `header.${Buffer.from(JSON.stringify({ "https://api.openai.com/auth": { chatgpt_account_id: accountId } })).toString("base64url")}.signature`;
 const native = { type: "oauth", access: "native-model-token", refresh: "native-refresh", expires: Date.now() + 3_600_000 };
@@ -79,6 +81,26 @@ it("reports renewal failures without leaking provider responses or changing mode
   vi.mocked(fetch).mockResolvedValue(Response.json({ error: "invalid_grant", privateFixture: "not-for-report" }, { status: 400 }));
   await expect(resolveCodexAuth(registry, signal())).rejects.toMatchObject({ status: "auth renewal failed", message: expect.not.stringContaining("not-for-report") });
   expect(JSON.parse(readFileSync(authFile(), "utf8")).openai).toEqual(native);
+});
+
+it("does not pin an automatic role launch to catalog-listed Astra when Codex refresh is rejected", async () => {
+  writeFileSync(authFile(), JSON.stringify({ "openai-codex": { ...quota, expires: 0 } }));
+  const registry = new ModelRegistry(await runtime());
+  const available = registry.getAvailableOfType.bind(registry);
+  const [astra] = (await available("chat", "openai-codex")).filter(model => model.id.endsWith("-astra"));
+  expect(astra).toBeDefined();
+  expect(fetch).not.toHaveBeenCalled();
+  const fallback = modelFixture("bedrock-mantle", `openai.${astra!.id}`);
+  vi.spyOn(registry, "getAvailableOfType").mockImplementation(async (type, provider, options) => {
+    if (provider === "openai-codex") return available(type, provider, options);
+    return provider === "bedrock-mantle" ? [fallback] : [];
+  });
+  vi.mocked(fetch).mockImplementation(async input => {
+    expect(String(input)).toBe("https://auth.openai.com/oauth/token");
+    return Response.json({ error: { code: "refresh_token_reused", message: "fixture rejection" } }, { status: 401 });
+  });
+  await expect(resolveAvailablePreferredModel(astra!.id, registry, signal())).resolves.toBe(fallback);
+  expect(fetch).toHaveBeenCalledOnce();
 });
 
 it("cancels the reader promptly without discarding a credential Pi is renewing", async () => {

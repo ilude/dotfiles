@@ -132,16 +132,34 @@ export function resolvePreferredModel(
 	throw new Error(`No configured ${providerLadder === AWS_PROVIDER_LADDER ? "AWS Bedrock" : "subscription or AWS"} model matches "${requested}"`);
 }
 
+type LaunchModelRegistry = Pick<ModelRegistry, "getAvailableOfType" | "getApiKeyForProvider">;
+
+async function hasRequestAuth(registry: LaunchModelRegistry, provider: string, signal?: AbortSignal): Promise<boolean> {
+	signal?.throwIfAborted();
+	const resolving = registry.getApiKeyForProvider(provider);
+	if (!signal) return Boolean(await resolving);
+	let onAbort!: () => void;
+	const cancelled = new Promise<never>((_resolve, reject) => {
+		onAbort = () => reject(signal.reason);
+		signal.addEventListener("abort", onAbort, { once: true });
+		if (signal.aborted) onAbort();
+	});
+	// Cancel this launch's wait, not Pi's locked credential renewal.
+	try { return Boolean(await Promise.race([resolving, cancelled])); }
+	finally { signal.removeEventListener("abort", onAbort); }
+}
+
 /** Resolve against current, provider-scoped availability, not the registry's cached auth snapshot. */
 export async function resolveAvailablePreferredModel(
 	requested: string,
-	registry: Pick<ModelRegistry, "getAvailableOfType">,
+	registry: LaunchModelRegistry,
 	signal?: AbortSignal,
 ): Promise<Model<Api>> {
 	const trimmed = requested.trim();
 	if (!trimmed || trimmed.includes("/")) throw new Error(`Expected a bare model name, received ${requested}`);
 	const providers = preferredProviders(trimmed);
 	const failures: string[] = [];
+	const authFailures: string[] = [];
 	for (const tier of providers) {
 		for (const provider of tier) {
 			signal?.throwIfAborted();
@@ -157,13 +175,23 @@ export async function resolveAvailablePreferredModel(
 			// Selection policy is shared with shortcuts and synchronous catalog callers.
 			// Only this provider's fresh, available chat models enter that policy.
 			if (models.length === 0) continue;
-			try { return resolvePreferredModel(trimmed, { getAll: () => [...models], hasConfiguredAuth: () => true }); }
+			let candidate: Model<Api>;
+			try { candidate = resolvePreferredModel(trimmed, { getAll: () => [...models], hasConfiguredAuth: () => true }); }
 			catch (error) {
 				if (!(error instanceof Error) || !error.message.startsWith("No configured ")) throw error;
+				continue;
 			}
+			// The installed Pi lists static OpenAI models for a stored OAuth grant
+			// without renewing it. Resolve request-time auth before freezing a route.
+			if ((provider === "openai" || provider === "openai-codex") && !await hasRequestAuth(registry, provider, signal)) {
+				authFailures.push(provider);
+				continue;
+			}
+			signal?.throwIfAborted();
+			return candidate;
 		}
 	}
-	throw new Error(`No available subscription or AWS chat model matches "${requested}". Checked ${providers.flat().join(", ")}.${failures.length ? ` Availability lookup failed for ${failures.join(", ")}.` : ""}`);
+	throw new Error(`No available subscription or AWS chat model matches "${requested}". Checked ${providers.flat().join(", ")}.${failures.length ? ` Availability lookup failed for ${failures.join(", ")}.` : ""}${authFailures.length ? ` Request authentication unavailable for ${authFailures.join(", ")}.` : ""}`);
 }
 
 function latestFamilyModel(family: OpenAIFamily | "fable" | "opus", models: readonly Model<Api>[]): Model<Api> | undefined {
