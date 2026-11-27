@@ -5,7 +5,8 @@ import { selectLatestGrokModelIds } from "./bedrock/model-policy.ts";
 
 const AWS_PROVIDER_LADDER = [["bedrock-mantle"], ["amazon-bedrock"]] as const;
 const PROVIDER_LADDER = [["openai"], ...AWS_PROVIDER_LADDER] as const;
-const GPT_PROVIDER_LADDER = [["openai"], ["openai-codex"], ...AWS_PROVIDER_LADDER] as const;
+const CODEX_PROXY_PROVIDER = "cliproxy-codex";
+const GPT_PROVIDER_LADDER = [["openai"], [CODEX_PROXY_PROVIDER], ["openai-codex"], ...AWS_PROVIDER_LADDER] as const;
 
 const MODEL_ALIASES: Readonly<Record<string, string>> = {
 	astra: "astra",
@@ -181,9 +182,8 @@ export async function resolveAvailablePreferredModel(
 				if (!(error instanceof Error) || !error.message.startsWith("No configured ")) throw error;
 				continue;
 			}
-			// The installed Pi lists static OpenAI models for a stored OAuth grant
-			// without renewing it. Resolve request-time auth before freezing a route.
-			if ((provider === "openai" || provider === "openai-codex") && !await hasRequestAuth(registry, provider, signal)) {
+			// A listed model does not prove its OAuth grant or proxy key is available.
+			if ((provider === "openai" || provider === "openai-codex" || provider === CODEX_PROXY_PROVIDER) && !await hasRequestAuth(registry, provider, signal)) {
 				authFailures.push(provider);
 				continue;
 			}

@@ -64,6 +64,26 @@ describe("fresh subscription-first delegation resolution", () => {
 		expect(registry.getApiKeyForProvider).toHaveBeenCalledExactlyOnceWith("openai");
 	});
 
+	it("uses the configured Codex proxy before trying the separate local Codex login", async () => {
+		const proxy = modelFixture("cliproxy-codex", "gpt-6-luna");
+		const native = modelFixture("openai", proxy.id);
+		const direct = modelFixture("openai-codex", proxy.id);
+		const registry = registryFixture([native, proxy, direct], ["cliproxy-codex", "openai-codex"]);
+		await expect(resolveAvailablePreferredModel("luna", registry)).resolves.toBe(proxy);
+		expect(resolvePreferredModel("luna", registry)).toBe(proxy);
+		expect(resolveLatestShortcutModel("luna", registry)).toBe(proxy);
+		expect(registry.getApiKeyForProvider).toHaveBeenCalledExactlyOnceWith("cliproxy-codex");
+		expect(registry.getAvailableOfType).not.toHaveBeenCalledWith("chat", "openai-codex", expect.anything());
+	});
+
+	it("keeps the direct Codex fallback when the configured proxy key cannot be resolved", async () => {
+		const proxy = modelFixture("cliproxy-codex", "gpt-6-luna");
+		const direct = modelFixture("openai-codex", proxy.id);
+		const registry = registryFixture([proxy, direct], ["cliproxy-codex", "openai-codex"]);
+		vi.mocked(registry.getApiKeyForProvider).mockResolvedValueOnce(undefined);
+		await expect(resolveAvailablePreferredModel("gpt-6-luna", registry)).resolves.toBe(direct);
+	});
+
 	it("identifies the rejected route without exposing credentials when no authorized fallback is available", async () => {
 		const registry = registryFixture([modelFixture("openai-codex", "gpt-6.2-astra")], ["openai-codex"]);
 		vi.mocked(registry.getApiKeyForProvider).mockResolvedValue(undefined);
@@ -90,7 +110,7 @@ describe("fresh subscription-first delegation resolution", () => {
 
 	it("keeps the requested family and reports checked routes rather than claiming a missing login", async () => {
 		const registry = registryFixture([modelFixture("openai", "gpt-6.1-terra")], ["openai"]);
-		await expect(resolveAvailablePreferredModel("sol", registry)).rejects.toThrow(/No available.*sol.*openai, openai-codex, bedrock-mantle, amazon-bedrock/);
+		await expect(resolveAvailablePreferredModel("sol", registry)).rejects.toThrow(/No available.*sol.*openai, cliproxy-codex, openai-codex, bedrock-mantle, amazon-bedrock/);
 	});
 
 	it("keeps Opus and Grok on their allowed AWS routes", async () => {

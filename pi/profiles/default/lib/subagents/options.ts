@@ -4,7 +4,7 @@ import type { ModelRegistry } from "@earendil-works/pi-coding-agent";
 import { resolveAvailablePreferredModel, resolvePreferredModel } from "../model-selection.ts";
 export const EFFORTS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
 export type AgentEffort = typeof EFFORTS[number];
-export const DELEGATION_MODEL_DESCRIPTION = 'Omit for the role default. Use a family such as "sol" for its latest available release, a bare model ID to keep the requested release, or provider/model to pin both. For GPT, Pi checks configured openai, openai-codex, then AWS; this does not switch to the Codex client. Opus uses AWS in Pi; Claude subscription work uses ccyl.';
+export const DELEGATION_MODEL_DESCRIPTION = 'Omit for the role default. Use a family such as "sol" for its latest available release, a bare model ID to keep the requested release, or provider/model to pin both. For GPT, Pi checks configured openai, cliproxy-codex, openai-codex, then AWS; this does not switch to the Codex client. Opus uses AWS in Pi; Claude subscription work uses ccyl.';
 export const PROVIDER_OVERRIDE_DESCRIPTION = 'Provider explicitly requested by the user; must match a provider-qualified model. Required for direct anthropic overrides. Do not set for an ordinary Opus request or for ccyl.';
 export function resolveModel(model: string | undefined, fallback: string | undefined, registry?: ModelRegistry): { provider: string; id: string } {
  const value=model??fallback;
