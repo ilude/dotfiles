@@ -65,9 +65,17 @@ export function browserTextExpression(selector?: string): string {
     if (stack.length || size > 160) factsTruncated = true;
     return parts.join(' ').slice(0, 161);
   };
+  // Structural candidates repeat across controls. Cache the unique match (or lack
+  // of one) only within this synchronous projection, not across snapshots.
+  const selectorMatches = new Map();
   const unique = (candidate, node) => {
     if (candidate.length > 512) return false;
-    try { const matches = document.querySelectorAll(candidate); return matches.length === 1 && matches[0] === node; } catch { return false; }
+    if (!selectorMatches.has(candidate)) {
+      let match = null;
+      try { const matches = document.querySelectorAll(candidate); if (matches.length === 1) match = matches[0]; } catch { /* invalid candidate */ }
+      selectorMatches.set(candidate, match);
+    }
+    return selectorMatches.get(candidate) === node;
   };
   const selectorFor = node => {
     if (node.id) { const candidate = '#' + CSS.escape(node.id); if (unique(candidate, node)) return candidate; }

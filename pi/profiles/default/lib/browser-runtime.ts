@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
+import { createInterface } from "node:readline";
 import { randomUUID } from "node:crypto";
 import {
 	BrowserControlError,
@@ -36,10 +37,18 @@ export interface ProcessInfo {
 	profileDirectory?: string;
 }
 
+interface ProcessInspector {
+	inspect(pid: number): Promise<ProcessInfo | undefined>;
+	list?(): Promise<ProcessInfo[]>;
+	dispose(): void;
+}
+
 export interface ProcessAdapter {
 	inspect(pid: number): Promise<ProcessInfo | undefined>;
+	openInspector?(): ProcessInspector;
 	list(): Promise<ProcessInfo[]>;
 	terminate(pid: number): Promise<void>;
+	isRunning?(pid: number): boolean;
 }
 
 function fields(argv: string[]): Partial<ProcessInfo> {
@@ -93,19 +102,91 @@ function windowsItems(value: unknown): ProcessInfo[] {
 	});
 }
 
+const WINDOWS_PROCESS_FIELDS = "Select-Object ProcessId,ParentProcessId,CreationDate,ExecutablePath,CommandLine | ConvertTo-Json -Compress";
+const WINDOWS_INSPECT_TIMEOUT_MS = 3_000;
+
+// Keep Windows PowerShell warm for this session, not the process data. Stdin accepts
+// a PID or a fixed list command; every reply is a fresh CIM query.
+function openWindowsInspector(): ProcessInspector {
+	const script = `
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+Import-Module CimCmdlets -ErrorAction Stop
+while ($null -ne ($line = [Console]::ReadLine())) {
+  $processId = 0
+  try {
+    if ($line -eq 'list') { $json = Get-CimInstance Win32_Process -ErrorAction Stop | ${WINDOWS_PROCESS_FIELDS} }
+    elseif ([int]::TryParse($line, [ref]$processId) -and $processId -gt 0) { $json = Get-CimInstance Win32_Process -Filter "ProcessId = $processId" -ErrorAction Stop | ${WINDOWS_PROCESS_FIELDS} }
+    else { break }
+  } catch { $json = $null }
+  if ($null -eq $json) { $json = 'null' }
+  [Console]::WriteLine($json)
+}
+`;
+	const child = spawn("powershell", ["-NoProfile", "-NonInteractive", "-EncodedCommand", Buffer.from(script, "utf16le").toString("base64")], { stdio: ["pipe", "pipe", "ignore"], windowsHide: true });
+	const replies = createInterface({ input: child.stdout, crlfDelay: Infinity });
+	let closed = false;
+	let pending: { pid?: number; resolve: (items: ProcessInfo[]) => void; timer: NodeJS.Timeout } | undefined;
+	const finish = (items: ProcessInfo[] = []) => {
+		if (!pending) return;
+		const { resolve, timer } = pending;
+		pending = undefined;
+		clearTimeout(timer);
+		resolve(items);
+	};
+	const dispose = () => {
+		if (closed) return;
+		closed = true;
+		finish();
+		replies.close();
+		child.stdin.destroy();
+		child.stdout.destroy();
+		child.kill();
+	};
+	child.on("error", dispose);
+	child.stdin.on("error", dispose);
+	replies.on("error", dispose);
+	replies.on("close", dispose);
+	replies.on("line", (line) => {
+		if (!pending) { dispose(); return; }
+		try {
+			const items = windowsItems(JSON.parse(line));
+			if (pending.pid !== undefined && items.some(item => item.pid !== pending?.pid)) { dispose(); return; }
+			finish(items);
+		} catch { dispose(); }
+	});
+	const query = async (pid?: number) => {
+		if (closed || pending) return [];
+		return await new Promise<ProcessInfo[]>((resolve) => {
+			pending = { pid, resolve, timer: setTimeout(dispose, pid === undefined ? 10_000 : WINDOWS_INSPECT_TIMEOUT_MS) };
+			child.stdin.write(`${pid ?? "list"}\n`);
+		});
+	};
+	return {
+		inspect: async (pid) => Number.isSafeInteger(pid) && pid > 0 ? (await query(pid))[0] : undefined,
+		list: () => query(),
+		dispose,
+	};
+}
+
 export function createProcessAdapter(platform = process.platform): ProcessAdapter {
 	if (platform === "win32") {
 		const query = async (filter?: number) => {
-			const command = `Get-CimInstance Win32_Process${filter ? ` -Filter 'ProcessId = ${filter}'` : ""} | Select-Object ProcessId,ParentProcessId,CreationDate,ExecutablePath,CommandLine | ConvertTo-Json -Compress`;
+			const command = `Get-CimInstance Win32_Process${filter ? ` -Filter 'ProcessId = ${filter}'` : ""} | ${WINDOWS_PROCESS_FIELDS}`;
 			try {
-				const { stdout } = await execFileAsync("powershell", ["-NoProfile", "-Command", command], { timeout: filter ? 3000 : 10000, windowsHide: true });
+				const { stdout } = await execFileAsync("powershell", ["-NoProfile", "-Command", command], { timeout: filter ? WINDOWS_INSPECT_TIMEOUT_MS : 10_000, windowsHide: true });
 				return windowsItems(stdout.trim() ? JSON.parse(stdout) : []);
 			} catch { return []; }
 		};
 		return {
 			inspect: async (pid) => (await query(pid))[0],
+			openInspector: openWindowsInspector,
 			list: () => query(),
-			terminate: async (pid) => { await execFileAsync("powershell", ["-NoProfile", "-Command", "Stop-Process", "-Id", String(pid)], { timeout: 5000, windowsHide: true }); },
+			// Node uses TerminateProcess on Windows, the same forced stop as Stop-Process.
+			terminate: async (pid) => { process.kill(pid, "SIGTERM"); },
+			isRunning: (pid) => {
+				try { return process.kill(pid, 0); }
+				catch (error) { if ((error as NodeJS.ErrnoException).code === "ESRCH") return false; throw error; }
+			},
 		};
 	}
 	if (platform === "darwin") {
@@ -143,6 +224,10 @@ function sameSessionTuple(expected: BrowserSessionState, current: BrowserSession
 		&& current.executablePath === expected.executablePath && current.userDataDir === expected.userDataDir
 		&& current.profileDirectory === expected.profileDirectory && current.cdpPort === expected.cdpPort
 		&& current.launchMarker === expected.launchMarker);
+}
+
+function processKey(state: BrowserSessionState): string {
+	return JSON.stringify([state.sessionId, state.pid, state.processStartTime, state.executablePath, state.userDataDir, state.profileDirectory, state.cdpPort, state.sessionMode, state.launchMarker]);
 }
 
 export function windowsCreationTime(value: string | number): number | undefined {
@@ -250,12 +335,12 @@ const PROCESS_VERIFICATION_REUSE_MS = 2_000;
 export class BrowserRuntime {
 	private readonly processes: ProcessAdapter;
 	private transport?: BrowserCdpTransport;
+	private inspector?: ProcessInspector;
+	private launchedInspector?: { state: BrowserSessionState; inspector: ProcessInspector };
 	private transportGeneration = 0;
 	private readonly stateReader: () => BrowserSessionState | undefined;
-	// Windows process inspection spawns PowerShell (about 1-2 s). Every CDP command revalidates, so
-	// concurrent commands would otherwise spawn many simultaneous inspections, exceed their timeout,
-	// and be misreported as a stale or cancelled session. Concurrent callers share one in-flight
-	// inspection, and a successful match is reused briefly while the same CDP connection stays open.
+	// Every CDP command revalidates. Concurrent callers share one in-flight OS inspection,
+	// and a successful match is reused briefly while the same CDP connection stays open.
 	// A replaced browser process closes that connection, which already disposes the transport; the
 	// saved session tuple is still reread on every call, and every new connection re-inspects.
 	private inspecting?: { key: string; promise: Promise<boolean> };
@@ -266,21 +351,24 @@ export class BrowserRuntime {
 	/** Check saved session identity and current OS tuple before every executor operation. Never recover implicitly. */
 	async revalidateSession(expected: BrowserSessionState, signal?: AbortSignal): Promise<void> {
 		if (signal?.aborted) throw new BrowserControlError("cancelled", "Browser operation was cancelled.");
-		const same = sameSessionTuple(expected, this.stateReader());
-		const matched = same && await this.processVerified(expected);
-		if (!same || !matched || !sameSessionTuple(expected, this.stateReader())) {
-			this.disposeTransport();
-			throw new BrowserControlError("session_stale", "Browser process/session identity changed. Use a normal verified attach to reconnect.");
+		if (sameSessionTuple(expected, this.stateReader())) {
+			const key = processKey(expected);
+			// The fresh cached match has no intervening await. Only asynchronous inspection
+			// needs a second registry read to detect a replacement during the query.
+			if (this.verifiedProcess?.key === key && Date.now() - this.verifiedProcess.at < this.processReuseMs) return;
+			if (await this.processVerified(expected, key) && sameSessionTuple(expected, this.stateReader())) {
+				if (signal?.aborted) throw new BrowserControlError("cancelled", "Browser operation was cancelled.");
+				return;
+			}
 		}
-		if (signal?.aborted) throw new BrowserControlError("cancelled", "Browser operation was cancelled.");
+		this.disposeTransport();
+		throw new BrowserControlError("session_stale", "Browser process/session identity changed. Use a normal verified attach to reconnect.");
 	}
 
-	private async processVerified(expected: BrowserSessionState): Promise<boolean> {
-		const key = JSON.stringify([expected.sessionId, expected.pid, expected.processStartTime, expected.executablePath, expected.userDataDir, expected.profileDirectory, expected.cdpPort, expected.sessionMode, expected.launchMarker]);
-		if (this.verifiedProcess?.key === key && Date.now() - this.verifiedProcess.at < this.processReuseMs) return true;
+	private async processVerified(expected: BrowserSessionState, key: string, inspector = this.inspector ?? this.processes): Promise<boolean> {
 		if (this.inspecting?.key !== key) {
 			const generation = this.transportGeneration;
-			const promise = this.processes.inspect(expected.pid).then((observed) => processMatches(expected, observed), () => false);
+			const promise = inspector.inspect(expected.pid).then((observed) => processMatches(expected, observed), () => false);
 			const inspecting = { key, promise };
 			this.inspecting = inspecting;
 			void promise.then((matched) => {
@@ -293,23 +381,51 @@ export class BrowserRuntime {
 
 	/** The owning extension creates once, retains this instance, and disposes on session invalidation/reload. */
 	async connectTransport(state: BrowserSessionState, options: Omit<BrowserCdpOptions, "revalidate">): Promise<BrowserCdpTransport> {
+		const launched = this.launchedInspector;
+		const reuse = launched && sameSessionTuple(state, launched.state);
+		if (reuse) this.launchedInspector = undefined;
 		this.disposeTransport();
 		const generation = this.transportGeneration;
 		const snapshot = { ...state };
-		const transport = await BrowserCdpTransport.connect(snapshot, { ...options, revalidate: (signal) => this.revalidateSession(snapshot, signal) });
-		if (generation !== this.transportGeneration) { transport.dispose(); throw new BrowserControlError("cancelled", "Browser transport was invalidated while connecting."); }
-		this.transport = transport;
-		return transport;
+		const inspector = this.inspector = reuse ? launched.inspector : this.processes.openInspector?.();
+		const releaseInspector = () => {
+			if (this.inspector === inspector) this.inspector = undefined;
+			inspector?.dispose();
+		};
+		try {
+			const transport = await BrowserCdpTransport.connect(snapshot, { ...options, revalidate: (signal) => this.revalidateSession(snapshot, signal) });
+			if (generation !== this.transportGeneration) { transport.dispose(); throw new BrowserControlError("cancelled", "Browser transport was invalidated while connecting."); }
+			if (transport.signal.aborted) releaseInspector();
+			else transport.signal.addEventListener("abort", releaseInspector, { once: true });
+			this.transport = transport;
+			return transport;
+		} catch (error) { releaseInspector(); throw error; }
 	}
 
 	/** Resource shutdown only. In particular, attached operator browsers and every tab are preserved. */
-	disposeTransport(): void { this.transportGeneration++; this.verifiedProcess = undefined; this.transport?.dispose(); this.transport = undefined; }
+	disposeTransport(): void {
+		this.transportGeneration++;
+		this.verifiedProcess = undefined;
+		this.inspecting = undefined;
+		this.transport?.dispose();
+		this.transport = undefined;
+		this.inspector?.dispose();
+		this.inspector = undefined;
+		this.launchedInspector?.inspector.dispose();
+		this.launchedInspector = undefined;
+	}
 
 	async status(_signal?: AbortSignal): Promise<BrowserCommandResult> {
 		const state = loadBrowserState();
 		if (!state) return { code: 0, stdout: "status: no owned session state", stderr: "" };
 		const online = await cdpOnline(state.cdpPort);
-		const verified = online && processMatches(state, await this.processes.inspect(state.pid));
+		const launched = this.launchedInspector;
+		const inspector = launched && sameSessionTuple(state, launched.state) ? launched.inspector
+			: this.transport && !this.transport.signal.aborted && sameSessionTuple(state, this.transport.state) ? this.inspector : undefined;
+		const verified = online && (inspector
+			? await this.processVerified(state, processKey(state), inspector)
+			: processMatches(state, await this.processes.inspect(state.pid)))
+			&& sameSessionTuple(state, loadBrowserState());
 		return { code: 0, stdout: `status: ${state.sessionMode === "attached" ? "attached session" : "owned session"} record found\nsessionMode: ${state.sessionMode ?? "owned"}\nprofileMode: ${state.profileMode}\ncdpOnline: ${online}\nprocessTupleVerified: ${verified}`, stderr: "" };
 	}
 
@@ -384,42 +500,53 @@ export class BrowserRuntime {
 		child.stdout?.on("data", (chunk: Buffer) => { stdoutBytes += chunk.length; });
 		child.stderr?.on("data", (chunk: Buffer) => { stderrBytes += chunk.length; });
 		child.on("error", (error) => { spawnError = error.name; });
+		const launchGeneration = this.transportGeneration;
+		const inspector = this.processes.openInspector?.();
+		const list = () => inspector?.list?.() ?? this.processes.list();
+		let keepInspector = false;
 		try {
-			await waitForCdp(port, (probe) => { lastProbe = probe; }, input.signal, "launch_failed", input.timeoutMs);
-		} catch (error) {
-			const observedAtFailure = await this.processes.list();
-			const markerMatches = observedAtFailure.filter((item) => item.marker === marker && item.port === String(port));
-			const childState = child.exitCode !== null ? `exited(${child.exitCode})` : child.signalCode ? `signaled(${child.signalCode})` : "running";
-			const diagnostics = [
-				`endpoint=${lastProbe.status}`,
-				...(lastProbe.httpStatus === undefined ? [] : [`httpStatus=${lastProbe.httpStatus}`]),
-				...(lastProbe.product ? [`product=${lastProbe.product}`] : []),
-				...(lastProbe.protocolVersion ? [`protocolVersion=${lastProbe.protocolVersion}`] : []),
-				`child=${childState}`,
-				`markerProcesses=${markerMatches.length}`,
-				`stdoutBytes=${stdoutBytes}`,
-				`stderrBytes=${stderrBytes}`,
-				...(spawnError ? [`spawnError=${spawnError}`] : []),
-			].join(", ");
-			try { child.kill(); } catch {}
-			if (error instanceof BrowserControlError) throw new BrowserControlError(error.code, `${error.message} Diagnostics: ${diagnostics}.`);
-			throw error;
-		}
-		const observed = await this.processes.list();
-		const matches = observed.filter((item) => item.marker === marker && item.port === String(port) && canonical(item.userDataDir ?? "") === canonical(userDataDir) && item.profileDirectory === profileDirectory);
-		const ids = new Set(matches.map((item) => item.pid));
-		const root = matches.filter((item) => !ids.has(item.parentPid)).sort((a, b) => String(a.creationTime).localeCompare(String(b.creationTime)))[0];
-		if (!root || canonical(root.executablePath) !== canonical(executable)) { try { child.kill(); } catch {} throw new BrowserControlError("ownership_unverified", "Surviving Brave root process could not be verified."); }
-		let state: BrowserSessionState = { version: 1, sessionId: randomUUID().replaceAll("-", ""), sessionMode: "owned", launchMarker: marker, profileMode: input.profileMode, ...(input.profileAlias ? { profileAlias: input.profileAlias } : {}), cdpPort: port, pid: root.pid, processStartTime: root.creationTime, executablePath: path.resolve(root.executablePath), userDataDir: path.resolve(userDataDir), profileDirectory, extensionMode: input.extensionMode, allowLocalhostTlsErrors: input.allowLocalhostTlsErrors ?? false, extensionsExpected, comparisonGeneration: 0 };
-		await saveBrowserState(state);
-		if (input.url) {
-			const response = await fetch(`http://127.0.0.1:${port}/json/new?${encodeURIComponent(input.url)}`, { method: "PUT", signal: input.signal });
-			if (!response.ok) { await this.stop(); throw new BrowserControlError("target_missing", "CDP could not open the requested URL; owned launch was cleaned up."); }
-			const target = await response.json() as { id?: string }; state = { ...state, targetId: target.id }; await saveBrowserState(state);
-		}
-		const extensionTargets = (await listAllTargets(port)).filter((target) => target.url.startsWith("chrome-extension://"));
-		if ((input.extensionMode === "disabled" && extensionTargets.length) || (input.extensionMode === "enabled" && extensionsExpected && !extensionTargets.length)) { await this.stop(); throw new BrowserControlError("extension_mode_mismatch", "Extension mode and observable runtime targets disagree; owned launch was cleaned up."); }
-		return { code: 0, stdout: `started: ${state.sessionId}`, stderr: "" };
+			try {
+				await waitForCdp(port, (probe) => { lastProbe = probe; }, input.signal, "launch_failed", input.timeoutMs);
+			} catch (error) {
+				const observedAtFailure = await list();
+				const markerMatches = observedAtFailure.filter((item) => item.marker === marker && item.port === String(port));
+				const childState = child.exitCode !== null ? `exited(${child.exitCode})` : child.signalCode ? `signaled(${child.signalCode})` : "running";
+				const diagnostics = [
+					`endpoint=${lastProbe.status}`,
+					...(lastProbe.httpStatus === undefined ? [] : [`httpStatus=${lastProbe.httpStatus}`]),
+					...(lastProbe.product ? [`product=${lastProbe.product}`] : []),
+					...(lastProbe.protocolVersion ? [`protocolVersion=${lastProbe.protocolVersion}`] : []),
+					`child=${childState}`,
+					`markerProcesses=${markerMatches.length}`,
+					`stdoutBytes=${stdoutBytes}`,
+					`stderrBytes=${stderrBytes}`,
+					...(spawnError ? [`spawnError=${spawnError}`] : []),
+				].join(", ");
+				try { child.kill(); } catch {}
+				if (error instanceof BrowserControlError) throw new BrowserControlError(error.code, `${error.message} Diagnostics: ${diagnostics}.`);
+				throw error;
+			}
+			const observed = await list();
+			const matches = observed.filter((item) => item.marker === marker && item.port === String(port) && canonical(item.userDataDir ?? "") === canonical(userDataDir) && item.profileDirectory === profileDirectory);
+			const ids = new Set(matches.map((item) => item.pid));
+			const root = matches.filter((item) => !ids.has(item.parentPid)).sort((a, b) => String(a.creationTime).localeCompare(String(b.creationTime)))[0];
+			if (!root || canonical(root.executablePath) !== canonical(executable)) { try { child.kill(); } catch {} throw new BrowserControlError("ownership_unverified", "Surviving Brave root process could not be verified."); }
+			let state: BrowserSessionState = { version: 1, sessionId: randomUUID().replaceAll("-", ""), sessionMode: "owned", launchMarker: marker, profileMode: input.profileMode, ...(input.profileAlias ? { profileAlias: input.profileAlias } : {}), cdpPort: port, pid: root.pid, processStartTime: root.creationTime, executablePath: path.resolve(root.executablePath), userDataDir: path.resolve(userDataDir), profileDirectory, extensionMode: input.extensionMode, allowLocalhostTlsErrors: input.allowLocalhostTlsErrors ?? false, extensionsExpected, comparisonGeneration: 0 };
+			await saveBrowserState(state);
+			if (input.url) {
+				const response = await fetch(`http://127.0.0.1:${port}/json/new?${encodeURIComponent(input.url)}`, { method: "PUT", signal: input.signal });
+				if (!response.ok) { await this.stop(); throw new BrowserControlError("target_missing", "CDP could not open the requested URL; owned launch was cleaned up."); }
+				const target = await response.json() as { id?: string }; state = { ...state, targetId: target.id }; await saveBrowserState(state);
+			}
+			const extensionTargets = (await listAllTargets(port)).filter((target) => target.url.startsWith("chrome-extension://"));
+			if ((input.extensionMode === "disabled" && extensionTargets.length) || (input.extensionMode === "enabled" && extensionsExpected && !extensionTargets.length)) { await this.stop(); throw new BrowserControlError("extension_mode_mismatch", "Extension mode and observable runtime targets disagree; owned launch was cleaned up."); }
+			if (inspector && launchGeneration === this.transportGeneration) {
+				this.launchedInspector?.inspector.dispose();
+				this.launchedInspector = { state, inspector };
+				keepInspector = true;
+			}
+			return { code: 0, stdout: `started: ${state.sessionId}`, stderr: "" };
+		} finally { if (!keepInspector) inspector?.dispose(); }
 	}
 
 	async stop(_signal?: AbortSignal): Promise<BrowserCommandResult> {
@@ -429,7 +556,13 @@ export class BrowserRuntime {
 		if (state.sessionMode === "attached") { await fs.promises.rm(getBrowserStatePath(), { force: true }); return { code: 0, stdout: "close-attached: preserved", stderr: "" }; }
 		if (!processMatches(state, await this.processes.inspect(state.pid))) { await fs.promises.rm(getBrowserStatePath(), { force: true }); return { code: 0, stdout: "close-owned: detached", stderr: "" }; }
 		try { await this.processes.terminate(state.pid); } catch (error) { return { code: 1, stdout: "close-owned: failed", stderr: String(error) }; }
-		for (let attempt = 0; attempt < 20; attempt++) { if (!await this.processes.inspect(state.pid)) { await fs.promises.rm(getBrowserStatePath(), { force: true }); return { code: 0, stdout: "close-owned: stopped", stderr: "" }; } await new Promise((resolve) => setTimeout(resolve, 100)); }
+		for (let attempt = 0; attempt < 20; attempt++) {
+			let alive: boolean;
+			try { alive = this.processes.isRunning?.(state.pid) ?? Boolean(await this.processes.inspect(state.pid)); }
+			catch (error) { return { code: 1, stdout: "close-owned: failed", stderr: String(error) }; }
+			if (!alive) { await fs.promises.rm(getBrowserStatePath(), { force: true }); return { code: 0, stdout: "close-owned: stopped", stderr: "" }; }
+			await new Promise((resolve) => setTimeout(resolve, 100));
+		}
 		return { code: 1, stdout: "close-owned: incomplete", stderr: "Process remained after termination." };
 	}
 }

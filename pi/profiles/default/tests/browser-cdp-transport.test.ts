@@ -354,11 +354,17 @@ describe("session-owned managed identity", () => {
 	});
 
 	it("maps OOPIF owner sessions and independently projects request events", async () => {
-		const { wire, transport } = await managedFixture(); await transport.manage("root");
+		const { wire, transport, processes } = await managedFixture(); await transport.manage("root");
 		wire.send({ method: "Target.attachedToTarget", params: { sessionId: "oop-session", waitingForDebugger: true, targetInfo: { targetId: "oop-target", type: "iframe", parentId: "root", url: "https://login.example/" } } });
 		await waitFor(() => wire.commands.some((command) => command.sessionId === "oop-session" && command.method === "Runtime.runIfWaitingForDebugger"));
 		wire.send({ method: "Runtime.executionContextCreated", sessionId: "oop-session", params: { context: { id: 99, auxData: { frameId: "login-frame", isDefault: true } } } });
 		await vi.waitFor(async () => expect(await transport.frame("root", "login-frame")).toMatchObject({ targetId: "oop-target", sessionId: "oop-session", executionContextId: 99 }));
+		vi.mocked(processes.inspect).mockClear();
+		expect(await transport.resolvedFrames("root", 2)).toMatchObject([
+			{ frameId: "frame-session-root", targetId: "root" },
+			{ frameId: "login-frame", targetId: "oop-target", sessionId: "oop-session", executionContextId: 99 },
+		]);
+		expect(processes.inspect).toHaveBeenCalledOnce();
 		const events: CdpEvent[] = []; transport.onEvent((event) => { events.push(event); });
 		wire.send({ method: "Fetch.requestPaused", sessionId: "oop-session", params: { requestId: "iframe-request", frameId: "login-frame" } });
 		wire.send({ method: "Network.requestWillBeSent", sessionId: "unrelated-session", params: { requestId: "ignore" } });
@@ -495,6 +501,28 @@ describe("session-owned managed identity", () => {
 		expect(wire.commands.some((command) => ["Browser.close", "Target.closeTarget"].includes(command.method))).toBe(false);
 	});
 
+	it("only terminates an exact owned process, then uses the native liveness check before clearing the record", async () => {
+		const saved: BrowserSessionState = { ...state(9222), sessionMode: "owned", launchMarker: "marker" };
+		const info = { ...processInfo(saved), marker: saved.launchMarker };
+		const inspect = vi.fn(async () => info);
+		const terminate = vi.fn(async () => {});
+		const isRunning = vi.fn(() => false);
+		vi.spyOn(browserControl, "loadBrowserState").mockReturnValue(saved);
+		const rm = vi.spyOn(fs.promises, "rm").mockResolvedValue(undefined);
+		const runtime = new BrowserRuntime({ inspect, terminate, isRunning, list: async () => [] });
+		await expect(runtime.stop()).resolves.toMatchObject({ code: 0, stdout: "close-owned: stopped" });
+		expect(inspect).toHaveBeenCalledOnce();
+		expect(terminate).toHaveBeenCalledWith(saved.pid);
+		expect(isRunning).toHaveBeenCalledWith(saved.pid);
+		expect(rm).toHaveBeenCalledOnce();
+
+		terminate.mockClear(); isRunning.mockClear();
+		inspect.mockResolvedValue({ ...info, creationTime: "different" });
+		await expect(runtime.stop()).resolves.toMatchObject({ code: 0, stdout: "close-owned: detached" });
+		expect(terminate).not.toHaveBeenCalled();
+		expect(isRunning).not.toHaveBeenCalled();
+	});
+
 	it("coalesces concurrent process inspections so slow Windows checks do not stale a page operation", async () => {
 		const wire = await fixture(), saved = state(wire.port);
 		let inspections = 0;
@@ -508,17 +536,26 @@ describe("session-owned managed identity", () => {
 	it("reuses a verified process briefly, then re-inspects and detects a replaced process", async () => {
 		const wire = await fixture(), saved = state(wire.port);
 		let info: ProcessInfo = processInfo(saved), inspections = 0;
-		const runtime = new BrowserRuntime({ inspect: async () => { inspections++; return info; }, list: async () => [], terminate: async () => {} }, () => saved, 2_000);
+		let current = saved;
+		const read = vi.fn(() => current);
+		const runtime = new BrowserRuntime({ inspect: async () => { inspections++; return info; }, list: async () => [], terminate: async () => {} }, read, 2_000);
 		const now = vi.spyOn(Date, "now");
 		try {
 			now.mockReturnValue(1_000);
 			await runtime.revalidateSession(saved);
+			read.mockClear();
 			await runtime.revalidateSession(saved);
+			expect(read).toHaveBeenCalledOnce();
 			expect(inspections).toBe(1);
 			info = { ...info, creationTime: "replaced" };
 			now.mockReturnValue(3_001);
 			await expect(runtime.revalidateSession(saved)).rejects.toMatchObject({ code: "session_stale" });
 			expect(inspections).toBe(2);
+			info = processInfo(saved);
+			await runtime.revalidateSession(saved);
+			current = { ...saved, sessionId: "replaced" };
+			await expect(runtime.revalidateSession(saved)).rejects.toMatchObject({ code: "session_stale" });
+			expect(inspections).toBe(3);
 		} finally { now.mockRestore(); }
 	});
 
@@ -530,6 +567,30 @@ describe("session-owned managed identity", () => {
 		runtime.disposeTransport();
 		await runtime.revalidateSession(saved);
 		expect(inspections).toBe(2);
+	});
+
+	it("uses a connection-scoped inspector for current OS checks and releases it on socket loss", async () => {
+		const wire = await fixture(), saved = state(wire.port);
+		const openInspector = vi.fn(() => ({ inspect: vi.fn(async () => processInfo(saved)), dispose: vi.fn() }));
+		const processes: ProcessAdapter = { openInspector, inspect: vi.fn(async () => undefined), list: async () => [], terminate: async () => {} };
+		const runtime = new BrowserRuntime(processes, () => saved, 0);
+		cleanup.push(() => runtime.disposeTransport());
+		const options = { register: async () => {} };
+		const first = await runtime.connectTransport(saved, options);
+		await first.manage("root");
+		const inspector = openInspector.mock.results[0]!.value!;
+		expect(openInspector).toHaveBeenCalledOnce();
+		expect(inspector.inspect.mock.calls.length).toBeGreaterThan(1);
+		expect(processes.inspect).not.toHaveBeenCalled();
+		wire.disconnect();
+		await waitFor(() => inspector.dispose.mock.calls.length === 1);
+
+		const second = await runtime.connectTransport(saved, options);
+		await second.manage("root");
+		const current = openInspector.mock.results[1]!.value!;
+		current.inspect.mockResolvedValue({ ...processInfo(saved), creationTime: "different" });
+		await expect(second.revalidate()).rejects.toMatchObject({ code: "session_stale" });
+		expect(current.dispose).toHaveBeenCalledOnce();
 	});
 
 	it("shutdown while connecting cannot publish a stale transport", async () => {

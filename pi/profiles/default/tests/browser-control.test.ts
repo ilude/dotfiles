@@ -99,6 +99,15 @@ describe("profile configuration", () => {
 		expect(() => resolveConfiguredProfile("missing", config, [])).toThrowError(expect.objectContaining({ code: "profile_unknown" }));
 	});
 
+	it("atomically replaces the runtime session record without changing its ownership tuple", async () => {
+		const file = path.join(tempDir(), "session.json");
+		const saved = { ...state(), sessionMode: "owned" as const, launchMarker: "fixture-marker" };
+		await browserControl.saveBrowserState(saved, file);
+		await browserControl.saveBrowserState({ ...saved, targetId: "target-2" }, file);
+		expect(browserControl.loadBrowserState(file)).toEqual({ ...saved, targetId: "target-2" });
+		expect(fs.readdirSync(path.dirname(file))).toEqual(["session.json"]);
+	});
+
 	it("preserves unrelated aliases during atomic setup writes", async () => {
 		const file = path.join(tempDir(), "browser-profiles.json");
 		fs.writeFileSync(file, JSON.stringify({ version: 1, profiles: { existing: { profileDirectory: "Default" } } }, null, 2));
@@ -239,8 +248,8 @@ describe("session and page boundaries", () => {
 	it("returns sanitized exact page targets and redacted snapshots matching its schema", async () => {
 		vi.spyOn(browserControl, "loadBrowserState").mockReturnValue(state());
 		vi.spyOn(browserControl.BrowserPageProtocol.prototype, "list").mockResolvedValue([{ id: "exact-id", type: "page", url: "https://example.test/path?token=secret#private" }]);
-		vi.spyOn(browserControl.BrowserPageProtocol.prototype, "snapshot").mockResolvedValue("button: public #field\\\\:name");
-		vi.spyOn(browserControl.BrowserPageProtocol.prototype, "frames").mockResolvedValue([]);
+		const frames = [{ id: "exact-frame", targetId: "exact-id", origin: "https://example.test" }];
+		vi.spyOn(browserControl.BrowserPageProtocol.prototype, "snapshot").mockResolvedValue({ text: "button: public #field\\\\:name", frames });
 		const pi = createMockPi();
 		registerBrowserControl(pi as never);
 		const tool = pi._getTool("browser_page")!;
@@ -252,6 +261,7 @@ describe("session and page boundaries", () => {
 		expect(Value.Check(tool.outputSchema, list.structuredContent)).toBe(true);
 		const snapshot = await tool.execute("snapshot", { action: "snapshot", session_id: "session-1", target_id: "exact-id", frame_id: "exact-frame", selector: "#subtree" });
 		expect(browserControl.BrowserPageProtocol.prototype.snapshot).toHaveBeenCalledWith(expect.anything(), "exact-id", undefined, "exact-frame", "#subtree", undefined);
+		expect(snapshot.structuredContent.frames).toEqual(frames);
 		expect(snapshot.structuredContent.snapshot).toBe(snapshot.content[0].text);
 		expect(snapshot.structuredContent.snapshot).toContain("#field\\\\:name");
 		expect(Value.Check(tool.outputSchema, snapshot.structuredContent)).toBe(true);
@@ -289,15 +299,13 @@ describe("session and page boundaries", () => {
 	it.each(["list", "open", "select", "snapshot", "scroll", "screenshot", "click", "fill", "close"] as const)("forwards the call-local timeout for page %s", async action => {
 		vi.spyOn(browserControl, "loadBrowserState").mockReturnValue(state());
 		vi.spyOn(browserControl, "saveBrowserState").mockResolvedValue();
-		const responses = { list: [], open: { id: "exact-id", url: "https://public.example/" }, select: undefined, snapshot: "Public text", scroll: { moved: false, movements: [], ancestorsTruncated: false }, screenshot: { origin: "https://public.example", classification: "public" }, click: { visible: true }, fill: { visible: true }, close: undefined };
+		const responses = { list: [], open: { id: "exact-id", url: "https://public.example/" }, select: undefined, snapshot: { text: "Public text", frames: [] }, scroll: { moved: false, movements: [], ancestorsTruncated: false }, screenshot: { origin: "https://public.example", classification: "public" }, click: { visible: true }, fill: { visible: true }, close: undefined };
 		const method = vi.spyOn(browserControl.BrowserPageProtocol.prototype, action).mockResolvedValue(responses[action] as never);
-		const frames = vi.spyOn(browserControl.BrowserPageProtocol.prototype, "frames").mockResolvedValue([]);
 		const pi = createMockPi(); registerBrowserControl(pi as never);
 		const tool = pi._getTool("browser_page")!;
 		const params = { action, session_id: "session-1", target_id: "exact-id", url: "https://public.example/", selector: "#control", value: "disposable", delta_y: 100, output_path: "image.png" };
 		await tool.execute("extended", { ...params, timeout_ms: 60_000 }, undefined, undefined, { cwd: "/synthetic" } as never);
 		expect(method.mock.calls[0]?.at(-1)).toBe(60_000);
-		if (action === "snapshot") expect(frames.mock.calls[0]?.at(-1)).toBe(60_000);
 		await tool.execute("default", params, undefined, undefined, { cwd: "/synthetic" } as never);
 		expect(method.mock.calls[1]?.at(-1)).toBeUndefined();
 	});

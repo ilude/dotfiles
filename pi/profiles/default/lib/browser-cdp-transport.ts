@@ -311,11 +311,30 @@ export class BrowserCdpTransport {
 		const root = this.targets.get(targetId);
 		if (!root) throw failure("target_missing", "Target is not managed by this session.");
 		const matches = [...this.frames.values()].filter((frame) => frame.frameId === frameId && this.isWithin(frame.targetId, root.targetId));
+		return this.resolveFrame(matches);
+	}
+
+	private resolveFrame(matches: readonly CdpFrame[]): Readonly<CdpFrame> {
 		// An OOPIF can temporarily appear in both parent and child frame trees. Its default context identifies the executor.
 		const executable = matches.filter((frame) => frame.executionContextId !== undefined);
 		const candidates = executable.length ? executable : matches;
 		if (candidates.length !== 1) throw failure("frame_missing", "Exact frame is absent or ambiguous; refresh the frame mapping.");
 		return { ...candidates[0]! };
+	}
+
+	/** Resolve a bounded frame index from one live mapping and one ownership check. */
+	async resolvedFrames(targetId: string, limit: number, signal?: AbortSignal): Promise<Readonly<CdpFrame>[]> {
+		await this.revalidate(signal);
+		if (!this.targets.has(targetId)) throw failure("target_missing", "Target is not managed by this session.");
+		const byId = new Map<string, CdpFrame[]>();
+		for (const frame of this.frames.values()) {
+			const matches = byId.get(frame.frameId);
+			if (!matches && byId.size >= limit) continue;
+			if (!this.isWithin(frame.targetId, targetId)) continue;
+			if (matches) matches.push(frame);
+			else byId.set(frame.frameId, [frame]);
+		}
+		return Array.from(byId.values(), matches => this.resolveFrame(matches));
 	}
 
 	async frameList(targetId: string, signal?: AbortSignal): Promise<Readonly<CdpFrame>[]> {

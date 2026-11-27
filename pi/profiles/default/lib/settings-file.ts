@@ -114,6 +114,7 @@ export async function writeJsonObjectAtomic(
 	filePath: string,
 	value: JsonObject,
 	sourceRaw?: string,
+	options?: { useNativeRename?: boolean },
 ): Promise<void> {
 	assertJsonObject(value, filePath);
 	const directory = path.dirname(filePath);
@@ -133,7 +134,8 @@ export async function writeJsonObjectAtomic(
 			mode: destination?.mode,
 		});
 		preservePosixMetadata(tempPath, destination);
-		await replaceFile(tempPath, filePath);
+		if (options?.useNativeRename) fs.renameSync(tempPath, filePath);
+		else await replaceFile(tempPath, filePath);
 	} catch (error) {
 		if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
 		throw error;

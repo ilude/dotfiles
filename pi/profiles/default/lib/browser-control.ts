@@ -207,7 +207,9 @@ export function loadBrowserState(filePath = getBrowserStatePath()): BrowserSessi
 }
 
 export async function saveBrowserState(state: BrowserSessionState, filePath = getBrowserStatePath()): Promise<void> {
-	await writeJsonObjectAtomic(filePath, state as unknown as Record<string, unknown>);
+	// This is a Pi-owned runtime record, not user configuration. Its same-directory
+	// temporary file inherits the runtime directory's permissions on Windows.
+	await writeJsonObjectAtomic(filePath, state as unknown as Record<string, unknown>, undefined, { useNativeRename: true });
 	if (process.platform !== "win32") await fs.promises.chmod(filePath, 0o600);
 }
 
@@ -401,7 +403,7 @@ export class BrowserPageProtocol {
 	private readonly options?: BrowserPageOptions;
 	constructor(options?: BrowserPageOptions) { this.options = options; }
 	private async connection(state: BrowserSessionState, signal?: AbortSignal, timeoutMs?: number): Promise<BrowserCdpTransport> {
-		if (this.sessionId !== state.sessionId) this.dispose();
+		if (this.sessionId !== undefined && this.sessionId !== state.sessionId) this.dispose();
 		this.sessionId = state.sessionId;
 		if (this.transport?.signal.aborted) this.dispose();
 		if (!this.transport) {
@@ -471,19 +473,15 @@ export class BrowserPageProtocol {
 		return response.result.value;
 	}
 	private filter(text: string): string { return projectBrowserText(text, [...this.protectedValues]); }
-	async frames(state: BrowserSessionState, targetId: string, signal?: AbortSignal, timeoutMs?: number): Promise<Array<{ id: string; targetId: string; origin: string }>> {
-		const transport = await this.target(state, targetId, signal, timeoutMs);
-		const ids = [...new Set((await transport.frameList(targetId, signal)).map(frame => frame.frameId))].slice(0, MAX_ITEMS);
-		const frames = await Promise.all(ids.map(id => transport.frame(targetId, id, signal)));
-		return frames.map(frame => ({ id: frame.frameId, targetId: frame.targetId, origin: this.filter(frameOrigin(frame)) }));
-	}
-	async snapshot(state: BrowserSessionState, targetId: string, signal?: AbortSignal, frameId?: string, selector?: string, timeoutMs?: number): Promise<string> {
+	async snapshot(state: BrowserSessionState, targetId: string, signal?: AbortSignal, frameId?: string, selector?: string, timeoutMs?: number): Promise<{ text: string; frames: Array<{ id: string; targetId: string; origin: string }> }> {
 		const transport = await this.target(state, targetId, signal, timeoutMs), frame = await this.frame(transport, targetId, frameId, signal);
 		const text = await this.evaluate<string | { error: string }>(transport, frame, browserTextExpression(selector), signal);
 		await transport.revalidateFrame(frame, signal);
 		if (typeof text !== "string") this.controlFailure(text.error, frame, targetId);
-		const filtered = this.filter(text);
-		return filtered;
+		const frames = (await transport.resolvedFrames(targetId, MAX_ITEMS, signal))
+			.map(frame => ({ id: frame.frameId, targetId: frame.targetId, origin: this.filter(frameOrigin(frame)) }));
+		this.assertNativeSafe(targetId);
+		return { text: this.filter(text), frames };
 	}
 	async scroll(state: BrowserSessionState, targetId: string, input: BrowserScroll, signal?: AbortSignal, timeoutMs?: number): Promise<BrowserScrollResult> {
 		validateScroll(input);

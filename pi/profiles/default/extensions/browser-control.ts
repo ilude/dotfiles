@@ -339,9 +339,8 @@ export default function registerBrowserControl(pi: ExtensionAPI) {
 					return toolResult(`Selected raw CDP target ${targetId}.`, { state: publicState(state) });
 				}
 				if (input.action === "snapshot") {
-					const snapshot = redactOutput(await pages.snapshot(state, targetId, signal, input.frame_id, input.selector, input.timeout_ms));
-					const frames = await pages.frames(state, targetId, signal, input.timeout_ms);
-					const text = `${snapshot}\nExact frames: ${JSON.stringify(frames)}`;
+					const { text: snapshot, frames } = await pages.snapshot(state, targetId, signal, input.frame_id, input.selector, input.timeout_ms);
+					const text = `${redactOutput(snapshot)}\nExact frames: ${JSON.stringify(frames)}`;
 					return toolResult(text, { state: publicState(state), targetId, snapshot: text, frames });
 				}
 				if (input.action === "scroll") {

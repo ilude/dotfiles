@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-11-26: Reduce Brave agent tool latency
+
+- Start the Windows PowerShell helper alongside Brave and carry it through to the first CDP connection. Each scheduled check still queries the live Windows process tuple; closing the connection releases the helper.
+- Save the browser's runtime session record with a native atomic rename instead of launching PowerShell on tab updates. When the process check is still current, read the saved tuple once per validation instead of twice. User settings and profile configuration retain their existing writer behavior.
+- Reuse an already-running Windows inspector for status when it belongs to the exact session. For owned stop and restart, verify the process tuple before using Windows native termination and liveness checks; stopping an attached session still only detaches.
+- Resolve the snapshot frame index in one pass and reuse repeated selector lookups within each individual snapshot. Snapshot output and exact session, target, and frame checks are unchanged.
+
 ## 2026-11-26: Keep Brave control connected on Google Cloud Console
 
 - Exclude browser-level service workers from the related-target subscription. Their attachment does not identify an owning tab or frame and was disconnecting the whole browser agent. Exact tab and frame checks, and attachments for dedicated workers with a known parent, are unchanged.
