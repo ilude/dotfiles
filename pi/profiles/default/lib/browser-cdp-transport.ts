@@ -102,9 +102,11 @@ export class CdpConnection {
 			if (message.sessionId !== pending.sessionId) { this.close(); return; }
 			// Browser error strings can contain page values; never surface them. The command method and
 			// numeric protocol error code are local, value-free diagnostics.
-			const protocolCode = record(message.error)?.code, code = typeof protocolCode === "number" ? ` (code ${protocolCode})` : "";
+			const protocolError = record(message.error), protocolCode = protocolError?.code;
+			const code = typeof protocolCode === "number" ? ` (code ${protocolCode})` : "";
+			const staleContext = pending.method === "Runtime.evaluate" && protocolCode === -32000 && ["Cannot find context with specified id", "Execution context was destroyed.", "Inspected target navigated or closed"].includes(String(protocolError?.message));
 			// -32601: the domain/method does not exist for this target type (for example Fetch on a dedicated worker).
-			pending.finish(message.error ? failure(protocolCode === -32601 ? "cdp_unsupported" : "cdp_failed", `CDP command ${pending.method} failed${code}.`) : undefined, message.result);
+			pending.finish(message.error ? failure(staleContext ? "frame_stale" : protocolCode === -32601 ? "cdp_unsupported" : "cdp_failed", `CDP command ${pending.method} failed${code}.`) : undefined, message.result);
 		} else if (typeof message.method === "string") {
 			const params = record(message.params) ?? {};
 			for (const listener of [...this.listeners]) {
@@ -177,7 +179,7 @@ export class BrowserCdpTransport {
 	private readonly managing = new Map<string, Promise<Readonly<ManagedCdpTarget>>>();
 	private readonly registrations = new Map<string, Promise<void>>();
 	private readonly listeners = new Set<(event: CdpEvent) => void | Promise<void>>();
-	private readonly contexts = new Map<string, string>();
+	private readonly contexts = new Map<string, { frameKey: string; id: number; origin?: string }>();
 	private readonly initializingEvents = new Map<string, CdpEvent[]>();
 	private readonly queuedEvents = new Map<string, CdpEvent[]>();
 	private closed = false;
@@ -223,7 +225,7 @@ export class BrowserCdpTransport {
 	async revalidate(signal?: AbortSignal): Promise<void> {
 		if (this.closed || signal?.aborted) throw failure(signal?.aborted ? "cancelled" : "cdp_disconnected", "Browser transport is no longer active.");
 		try { await this.options.revalidate(signal); }
-		catch (error) { this.dispose(); throw error; }
+		catch (error) { if (!signal?.aborted) this.dispose(); throw error; }
 		if (this.closed || signal?.aborted) throw failure("cancelled", "Browser operation was cancelled.");
 	}
 
@@ -236,6 +238,7 @@ export class BrowserCdpTransport {
 				if (key === "command") return <T = Record<string, unknown>>(targetId: string, method: string, params: Record<string, unknown> = {}, options: CdpCommandOptions = {}) => owner.command<T>(targetId, method, params, { ...options, timeoutMs: options.timeoutMs ?? timeoutMs });
 				if (key === "manage") return (targetId: string, signal?: AbortSignal) => owner.manage(targetId, signal, timeoutMs);
 				if (key === "create") return (signal?: AbortSignal) => owner.create(signal, timeoutMs);
+				if (key === "observeDownloads") return (signal?: AbortSignal) => owner.observeDownloads(signal, timeoutMs);
 				const value = Reflect.get(target, key, target);
 				return typeof value === "function" ? value.bind(target) : value;
 			},
@@ -267,9 +270,10 @@ export class BrowserCdpTransport {
 			this.rootAttachments.set(targetId, attached);
 			const timeout = setTimeout(() => reject(failure("cdp_timeout", "CDP target attachment timed out.")), timeoutMs ?? 5000);
 			try {
-				// Chromium reports related service workers at browser scope without an owning frame.
-				// Leave those workers alone and retain the default filter for all other target types.
-				const filter = [{ type: "service_worker", exclude: true }, { type: "browser", exclude: true }, { type: "tab", exclude: true }, {}];
+				// Service workers have no exact owning frame at browser scope. Iframes
+				// are already attached recursively by their embedding session; a
+				// second waiting attachment can leave a cross-process frame paused.
+				const filter = [{ type: "service_worker", exclude: true }, { type: "iframe", exclude: true }, { type: "browser", exclude: true }, { type: "tab", exclude: true }, {}];
 				await this.connection.command("Target.autoAttachRelated", { targetId, waitForDebuggerOnStart: true, filter }, undefined, { signal: this.signal, timeoutMs });
 				await cancellable(promise, this.signal);
 			} finally { clearTimeout(timeout); if (this.rootAttachments.get(targetId) === attached) this.rootAttachments.delete(targetId); }
@@ -305,6 +309,13 @@ export class BrowserCdpTransport {
 		return result;
 	}
 
+	async observeDownloads(signal?: AbortSignal, timeoutMs?: number): Promise<void> {
+		if (this.state.profileMode !== "isolated" || this.state.sessionMode !== "owned" || !this.state.downloadDirectory) throw failure("download_scope", "Start an isolated session with a download directory before observing downloads.");
+		await this.revalidate(signal);
+		await this.connection.command("Browser.setDownloadBehavior", { behavior: "default", eventsEnabled: true }, undefined, { signal: signal ? AbortSignal.any([signal, this.signal]) : this.signal, timeoutMs });
+		await this.revalidate(signal);
+	}
+
 	/** Exact frame and CDP owning session, including OOPIF descendants. No fallback to the top frame. */
 	async frame(targetId: string, frameId: string, signal?: AbortSignal): Promise<Readonly<CdpFrame>> {
 		await this.revalidate(signal);
@@ -334,7 +345,14 @@ export class BrowserCdpTransport {
 			if (matches) matches.push(frame);
 			else byId.set(frame.frameId, [frame]);
 		}
-		return Array.from(byId.values(), matches => this.resolveFrame(matches));
+		// A process swap may temporarily expose both a parent placeholder and a
+		// new child without an execution context. Keep the other observations
+		// available without publishing a guess for the unresolved frame.
+		return Array.from(byId.values()).flatMap(matches => {
+			const executable = matches.filter(frame => frame.executionContextId !== undefined);
+			const candidates = executable.length ? executable : matches;
+			return candidates.length === 1 ? [{ ...candidates[0]! }] : [];
+		});
 	}
 
 	async frameList(targetId: string, signal?: AbortSignal): Promise<Readonly<CdpFrame>[]> {
@@ -372,6 +390,16 @@ export class BrowserCdpTransport {
 			if (target) this.remove(target);
 			return;
 		}
+		if (!event.sessionId && this.state.downloadDirectory) {
+			if (event.method === "Browser.downloadWillBegin") {
+				const frameId = string(event.params.frameId);
+				const roots = new Set([...this.frames.values()].filter(frame => frame.frameId === frameId).map(frame => this.targets.get(frame.targetId)?.rootTargetId).filter((id): id is string => id !== undefined));
+				if (roots.size === 1) this.projectEvent({ method: event.method, targetId: roots.values().next().value, params: { guid: event.params.guid } });
+			} else if (event.method === "Browser.downloadProgress") {
+				const { guid, state, filePath } = event.params;
+				this.projectEvent({ method: event.method, params: { guid, state, filePath } });
+			}
+		}
 		const target = event.sessionId ? this.sessions.get(event.sessionId) : undefined;
 		if (!target) return; // Never project/control unrelated attached tabs.
 		if (event.method.startsWith("Page.frame") || event.method.startsWith("Runtime.executionContext")) this.initializingEvents.get(target.targetId)?.push(event);
@@ -390,7 +418,7 @@ export class BrowserCdpTransport {
 			}
 		} else if (event.method === "Page.frameNavigated") {
 			const frame = record(event.params.frame);
-			if (frame) this.saveFrame(target, frame);
+			if (frame) this.saveFrame(target, frame, event.params.type === "BackForwardCacheRestore");
 		} else if (event.method === "Page.frameDetached") {
 			this.removeFrameTree(target.sessionId, string(event.params.frameId));
 		} else if (event.method === "Runtime.executionContextCreated") {
@@ -400,14 +428,14 @@ export class BrowserCdpTransport {
 				const key = `${target.sessionId}:${frameId}`;
 				const frame = this.frames.get(key);
 				if (frame) frame.executionContextId = context.id;
-				this.contexts.set(`${target.sessionId}:${context.id}`, key);
+				this.contexts.set(`${target.sessionId}:${context.id}`, { frameKey: key, id: context.id, origin: string(context.origin) });
 			}
 		} else if (event.method === "Runtime.executionContextsCleared") {
 			for (const frame of this.frames.values()) if (frame.sessionId === target.sessionId) delete frame.executionContextId;
 			for (const key of this.contexts.keys()) if (key.startsWith(`${target.sessionId}:`)) this.contexts.delete(key);
 		} else if (event.method === "Runtime.executionContextDestroyed") {
 			const key = `${target.sessionId}:${event.params.executionContextId}`;
-			const frameKey = this.contexts.get(key);
+			const frameKey = this.contexts.get(key)?.frameKey;
 			if (frameKey) { const frame = this.frames.get(frameKey); if (frame && frame.executionContextId === event.params.executionContextId) delete frame.executionContextId; this.contexts.delete(key); }
 		}
 	}
@@ -499,12 +527,17 @@ export class BrowserCdpTransport {
 		if (frame) this.saveFrame(target, frame);
 		if (Array.isArray(tree?.childFrames)) for (const child of tree.childFrames) this.saveTree(target, child);
 	}
-	private saveFrame(target: ManagedCdpTarget, value: Record<string, unknown>): void {
+	private saveFrame(target: ManagedCdpTarget, value: Record<string, unknown>, restored = false): void {
 		const frameId = string(value.id);
 		if (!frameId || typeof value.url !== "string" || typeof value.securityOrigin !== "string") return;
 		const key = `${target.sessionId}:${frameId}`;
+		// Chromium republishes restored default contexts before frameNavigated.
+		// Carry forward only the single context matching this exact restored origin.
+		const matching = restored ? [...this.contexts.values()].filter(context => context.frameKey === key && context.origin === value.securityOrigin) : [];
+		const context = matching.length === 1 ? matching[0] : undefined;
 		this.removeFrameTree(target.sessionId, frameId);
-		this.frames.set(key, { targetId: target.targetId, sessionId: target.sessionId, frameId, parentFrameId: string(value.parentId), url: value.url, securityOrigin: value.securityOrigin, loaderId: string(value.loaderId) });
+		this.frames.set(key, { targetId: target.targetId, sessionId: target.sessionId, frameId, parentFrameId: string(value.parentId), url: value.url, securityOrigin: value.securityOrigin, loaderId: string(value.loaderId), ...(context ? { executionContextId: context.id } : {}) });
+		if (context) this.contexts.set(`${target.sessionId}:${context.id}`, context);
 		if (!string(value.parentId)) target.url = value.url;
 	}
 	private removeFrameTree(sessionId: string, frameId?: string): void {
@@ -512,7 +545,7 @@ export class BrowserCdpTransport {
 		for (const frame of [...this.frames.values()]) if (frame.sessionId === sessionId && frame.parentFrameId === frameId) this.removeFrameTree(sessionId, frame.frameId);
 		const key = `${sessionId}:${frameId}`;
 		this.frames.delete(key);
-		for (const [context, frame] of this.contexts) if (frame === key) this.contexts.delete(context);
+		for (const [context, mapped] of this.contexts) if (mapped.frameKey === key) this.contexts.delete(context);
 	}
 	private remove(target: ManagedCdpTarget): void {
 		this.rootAttachments.get(target.targetId)?.reject(failure("target_missing", "Target detached before attachment completed."));

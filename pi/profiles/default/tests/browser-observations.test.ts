@@ -44,6 +44,18 @@ describe("browser observation projections", () => {
     expect(text).toContain('"name":"Password"'); expect(text).toContain('"selector":"#password"'); expect(text).toContain("?topic=token"); expect(text).toContain("Token documentation");
     for (const secret of ["hidden-secret", "textarea-secret", "select-secret", "editable-secret"]) expect(text).not.toContain(secret);
   });
+  it("emits distinct refs for duplicate and shadow controls without projecting form values", () => {
+    const dom = browserDom('<button>Same</button><div id="host"><button id="slotted">Through slot</button></div>');
+    dom.window.document.querySelector('#host')!.attachShadow({ mode: 'open' }).innerHTML = '<button>Same</button><input value="shadow-hidden-value"><slot></slot>';
+    const text = dom.evaluate(browserTextExpression(undefined, '0123456789abcdef')) as string;
+    const records = text.split('\n').filter(line => line.startsWith('[control] ')).map(line => JSON.parse(line.slice(10)));
+    expect(records).toHaveLength(4);
+    expect(records[0]).toMatchObject({ name: 'Same', ref: '0123456789abcdef:0' });
+    expect(records[1]).toMatchObject({ name: 'Same', selector: null, ref: '0123456789abcdef:1' });
+    expect(records[2]).toMatchObject({ tag: 'input', selector: null });
+    expect(records[3]).toMatchObject({ name: 'Through slot', selector: '#slotted', ref: '0123456789abcdef:3' });
+    expect(text).not.toContain('shadow-hidden-value');
+  });
   it.each([undefined, "#arizona", "#virginia"])("projects listbox resource options and unique selectors with subtree %s", selector => {
     const apps = ["Edge", "Logoff", "Outlook", "Teams", "Army Desktop"];
     const regions = ["arizona", "virginia"];

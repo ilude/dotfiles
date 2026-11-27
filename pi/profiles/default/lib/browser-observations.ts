@@ -42,25 +42,39 @@ export const BROWSER_CONTROL_STATE = `(element => {
   const style = getComputedStyle(element);
   const visible = element.getClientRects().length > 0 && style.display !== 'none' && style.visibility !== 'hidden' && style.visibility !== 'collapse' && style.opacity !== '0'
     && (typeof element.checkVisibility !== 'function' || element.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true }));
-  return { disabled: element.matches(':disabled') || !!element.closest('[aria-disabled="true"],[inert]'), visible };
+  let disabled = element.matches(':disabled');
+  for (let node = element; node && !disabled; node = node.assignedSlot || node.parentElement || node.getRootNode().host) disabled = node.matches('[aria-disabled="true"],[inert]');
+  return { disabled, visible };
 })`;
 
 /** Fixed internal projection. Text and controls have independent budgets below the outer 16K limit. */
-export function browserTextExpression(selector?: string): string {
+export function browserTextExpression(selector?: string, referenceScope?: string): string {
   return `(() => {
   const lines = [], controls = []; let textSize = 0, controlSize = 0, textTruncated = false, controlsTruncated = false, factsTruncated = false;
+  const scope = ${JSON.stringify(referenceScope ?? null)};
+  const refs = [];
+  if (scope) globalThis.__piBrowserSnapshot = { scope, refs };
   let root = document.body;
   ${selector === undefined ? "" : `let roots; try { roots = document.querySelectorAll(${JSON.stringify(selector)}); } catch { return { error: 'selector_invalid' }; }
   if (roots.length !== 1) return { error: roots.length ? 'selector_ambiguous' : 'selector_missing' }; root = roots[0];`}
   const bounded = (value, limit) => { value = String(value || ''); if (value.length > limit) factsTruncated = true; return value.slice(0, limit); };
   // Composite listboxes contain observable options; native/select and editable values remain opaque.
   const field = node => ['INPUT','TEXTAREA','SELECT'].includes(node.tagName) || node.hasAttribute('contenteditable') || ['textbox','searchbox','combobox','spinbutton','slider'].includes(node.getAttribute('role'));
+  const children = node => {
+    if (!scope) return node.childNodes;
+    if (node.shadowRoot) return node.shadowRoot.childNodes;
+    if (node.tagName === 'SLOT') { const assigned = node.assignedNodes({ flatten: true }); if (assigned.length) return assigned; }
+    return node.childNodes;
+  };
   const nameText = node => {
     const parts = [], stack = [node]; let size = 0;
     while (stack.length && size < 161) {
       const item = stack.pop();
       if (item.nodeType === 3) { const text = item.textContent.trim(); parts.push(text.slice(0, 161 - size)); size += text.length; }
-      else if (item.nodeType === 1 && !field(item) && !['SCRIPT','STYLE','NOSCRIPT'].includes(item.tagName)) for (let i = item.childNodes.length - 1; i >= 0; i--) stack.push(item.childNodes[i]);
+      else if (item.nodeType === 1 && !field(item) && !['SCRIPT','STYLE','NOSCRIPT'].includes(item.tagName)) {
+        const nodes = children(item);
+        for (let i = nodes.length - 1; i >= 0; i--) stack.push(nodes[i]);
+      }
     }
     if (stack.length || size > 160) factsTruncated = true;
     return parts.join(' ').slice(0, 161);
@@ -78,6 +92,7 @@ export function browserTextExpression(selector?: string): string {
     return selectorMatches.get(candidate) === node;
   };
   const selectorFor = node => {
+    if (node.getRootNode() !== document) return null;
     if (node.id) { const candidate = '#' + CSS.escape(node.id); if (unique(candidate, node)) return candidate; }
     const tag = node.tagName.toLowerCase(), name = node.getAttribute('name');
     if (name) { const candidate = tag + '[name="' + CSS.escape(name) + '"]'; if (unique(candidate, node)) return candidate; }
@@ -108,12 +123,15 @@ export function browserTextExpression(selector?: string): string {
       if (controls.length >= 64 || controlSize >= 8000) controlsTruncated = true;
       else {
         const label = node.getAttribute('aria-label') || Array.from(node.labels || []).map(nameText).join(' ') || node.getAttribute('placeholder') || (isField ? '' : nameText(node)) || node.getAttribute('name') || node.type || node.tagName.toLowerCase();
-        const record = { tag: bounded(node.tagName.toLowerCase(), 32), role: bounded(role, 32), name: bounded(label, 160), ...${BROWSER_CONTROL_STATE}(node), selector: selectorFor(node), ...(node.tagName === 'A' && node.href ? { href: bounded(node.href, 300) } : {}) };
+        const record = { tag: bounded(node.tagName.toLowerCase(), 32), role: bounded(role, 32), name: bounded(label, 160), ...${BROWSER_CONTROL_STATE}(node), selector: selectorFor(node), ...(scope ? { ref: scope + ':' + refs.length } : {}), ...(node.tagName === 'A' && node.href ? { href: bounded(node.href, 300) } : {}) };
         const line = '[control] ' + JSON.stringify(record);
-        if (controlSize + line.length + 1 <= 8000) { controls.push(line); controlSize += line.length + 1; } else controlsTruncated = true;
+        if (controlSize + line.length + 1 <= 8000) { controls.push(line); if (scope) refs.push(new WeakRef(node)); controlSize += line.length + 1; } else controlsTruncated = true;
       }
     }
-    if (!isField) for (let i = node.childNodes.length - 1; i >= 0; i--) stack.push(node.childNodes[i]);
+    if (!isField) {
+      const nodes = children(node);
+      for (let i = nodes.length - 1; i >= 0; i--) stack.push(nodes[i]);
+    }
   }
   return '[snapshot budgets: text=6000 chars; controls=8000 chars/64 records; selector=null means unavailable]\\n'
     + '[truncation] ' + JSON.stringify({ text: textTruncated, controls: controlsTruncated, facts: factsTruncated })

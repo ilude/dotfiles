@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-11-26: Verify OpenAI credentials before selecting a Pi role model
+
+- A stored OAuth grant can make Pi list GPT models even when its refresh token has already been rejected. Check request-time authentication before binding an automatically selected role to an OpenAI model. Preserve the existing provider order, exact releases, explicit provider pins, and separate quota login.
+
+## 2026-11-26: Expand native Brave page actions
+
+- Navigate, reload, and traverse history on the exact existing tab. Report failed navigations and wait for a visible selector or text with a deadline. Restore execution contexts on Back/Forward cache hits and prevent cross-process frames from getting stuck on duplicate debugger attachments.
+- Give snapshots document-bound control refs, including controls in open shadow roots. Use native mouse input with hit testing across embedding frames, and add verified checkbox, radio, and native option actions and explicit JavaScript dialog responses.
+- Add opt-in exact-tab console and request error summaries without raw console text, URLs, headers, or bodies. Set a native download directory in a fresh isolated session and observe downloads by their originating tab without changing real-profile preferences or bypassing Brave's native download handling.
+
 ## 2026-11-26: Reduce Brave agent tool latency
 
 - Start the Windows PowerShell helper alongside Brave and carry it through to the first CDP connection. Each scheduled check still queries the live Windows process tuple; closing the connection releases the helper.

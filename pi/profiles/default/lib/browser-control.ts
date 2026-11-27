@@ -1,6 +1,8 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { randomBytes, randomUUID } from "node:crypto";
+import { setTimeout as delay } from "node:timers/promises";
 import { getAgentDir, updateJsonObjectAtomic, writeJsonObjectAtomic } from "./settings-file.js";
 import { BrowserRuntime } from "./browser-runtime.js";
 import type { BrowserCdpTransport, CdpFrame } from "./browser-cdp-transport.js";
@@ -16,7 +18,8 @@ export type ProfileMode = "isolated" | "real";
 export type SessionMode = "owned" | "attached";
 export type ExtensionMode = "enabled" | "disabled";
 export type SessionAction = "discover" | "status" | "start" | "attach" | "restart" | "stop";
-export type PageAction = "list" | "open" | "select" | "snapshot" | "scroll" | "screenshot" | "click" | "fill" | "press" | "paste" | "upload" | "close";
+export const PAGE_ACTIONS = ["list", "open", "navigate", "reload", "back", "forward", "wait", "select", "snapshot", "scroll", "screenshot", "click", "fill", "check", "uncheck", "select_option", "dialog", "diagnostics", "downloads", "press", "paste", "upload", "close"] as const;
+export type PageAction = typeof PAGE_ACTIONS[number];
 
 export interface BrowserProfileConfig {
 	profileDirectory: string;
@@ -50,6 +53,7 @@ export interface BrowserSessionState {
 	profileDirectory: string;
 	extensionMode: ExtensionMode;
 	allowLocalhostTlsErrors?: boolean;
+	downloadDirectory?: string;
 	extensionsExpected?: boolean;
 	targetId?: string;
 	comparisonGeneration: number;
@@ -292,10 +296,16 @@ async function actionWork<T>(work: Promise<T>, signal: AbortSignal): Promise<T> 
 		void work.then(resolve, reject).finally(() => signal.removeEventListener("abort", abort));
 	});
 }
-export type BrowserFill = { value?: string; secret_ref?: string; frame_id?: string };
+export type BrowserFill = { value?: string; secret_ref?: string; frame_id?: string; ref?: string };
+type BrowserElement = string | { scope: string; index: number };
+type SnapshotLease = { targetId: string; frame: Readonly<CdpFrame>; contextId: number };
 type ControlFacts = { tag: string; type: string; name: string; autocomplete: string; label: string; form: string; href: string; captcha: boolean; password: boolean; loginForm: boolean; disabled: boolean; visible: boolean; readOnly: boolean; contentEditable: boolean };
 type ControlResult = { ok: boolean; error?: string; visible?: boolean };
 export type BrowserActionResult = { visible: boolean };
+export type BrowserWait = { selector?: string; text?: string; frame_id?: string };
+type BrowserDialog = { id: string; type: "alert" | "confirm" | "prompt" | "beforeunload"; message: string };
+export type BrowserDownload = { id: string; state: "in_progress" | "completed" | "canceled"; path?: string };
+export type BrowserDiagnostic = { kind: "console"; level: "warning" | "error" } | { kind: "page_error" | "request_failed" } | { kind: "http_error"; status: number };
 export type BrowserScroll = { scroll_mode?: "by" | "into_view"; selector?: string; delta_x?: number; delta_y?: number; frame_id?: string };
 export type BrowserScrollPosition = { x: number; y: number };
 export type BrowserScrollMovement = {
@@ -371,12 +381,30 @@ function sameControlFacts(left: ControlFacts, right: ControlFacts): boolean {
 }
 
 /** All action resolutions use the same document-wide, exact-frame uniqueness semantics. */
-function uniqueControlExpression(selector: string): string {
-	return `let matches; try { matches = document.querySelectorAll(${JSON.stringify(selector)}); } catch { return { ok: false, error: 'selector_invalid' }; } if (matches.length !== 1) return { ok: false, error: matches.length ? 'selector_ambiguous' : 'selector_missing' }; const element = matches[0]; const state = ${BROWSER_CONTROL_STATE}(element); if (state.disabled) return { ok: false, error: 'control_disabled' };`;
+const CAPTCHA_CONTROL = `(element => {
+	for (let node = element; node; node = node.assignedSlot || node.parentElement || node.getRootNode().host) {
+		if (node.matches('.g-recaptcha,.h-captcha')) return true;
+	}
+	return false;
+})`;
+
+const CLICK_HIT_TEST = `(element, x, y) => {
+	for (let expected = element, root = expected.getRootNode(); ; expected = root.host, root = expected.getRootNode()) {
+		const actual = root.elementFromPoint(x, y);
+		if (!actual || (actual !== expected && !expected.contains(actual))) return false;
+		if (root === document) return true;
+	}
+}`;
+
+function uniqueControlExpression(target: BrowserElement): string {
+	const resolve = typeof target === "string"
+		? `let matches; try { matches = document.querySelectorAll(${JSON.stringify(target)}); } catch { return { ok: false, error: 'selector_invalid' }; } if (matches.length !== 1) return { ok: false, error: matches.length ? 'selector_ambiguous' : 'selector_missing' }; const element = matches[0];`
+		: `const snapshot = globalThis.__piBrowserSnapshot; const element = snapshot?.scope === ${JSON.stringify(target.scope)} ? snapshot.refs[${target.index}]?.deref() : undefined; if (!element?.isConnected || element.ownerDocument !== document) return { ok: false, error: 'ref_stale' };`;
+	return `${resolve} const state = ${BROWSER_CONTROL_STATE}(element); if (state.disabled) return { ok: false, error: 'control_disabled' };`;
 }
 
 /** Fixed native setter remains independent of framework instance value trackers. */
-export function browserFillExpression(selector: string, value: string, facts?: ControlFacts): string {
+export function browserFillExpression(selector: BrowserElement, value: string, facts?: ControlFacts): string {
 	return `(() => { ${uniqueControlExpression(selector)} if (element.readOnly) return { ok: false, error: 'control_readonly' }; ${facts ? `if (element.tagName.toLowerCase() !== ${JSON.stringify(facts.tag)} || (element.getAttribute('type') || '').toLowerCase() !== ${JSON.stringify(facts.type)} || (element.getAttribute('name') || '') !== ${JSON.stringify(facts.name)} || (element.getAttribute('autocomplete') || '') !== ${JSON.stringify(facts.autocomplete)} || (element.form ? element.form.action : '') !== ${JSON.stringify(facts.form)}) return { ok: false, error: 'control_changed' };` : ""} element.focus(); const contentEditable = element.isContentEditable || ['', 'true', 'plaintext-only'].includes(element.getAttribute('contenteditable')); if (contentEditable) element.textContent = ${JSON.stringify(value)}; else { const prototype = element instanceof HTMLInputElement ? HTMLInputElement.prototype : element instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : undefined; const setter = prototype && Object.getOwnPropertyDescriptor(prototype, 'value')?.set; if (!setter) return { ok: false, error: 'control_invalid' }; setter.call(element, ${JSON.stringify(value)}); } element.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: ${JSON.stringify(value)} })); element.dispatchEvent(new Event('change', { bubbles: true })); return { ok: true, visible: state.visible }; })()`;
 }
 
@@ -399,18 +427,32 @@ export class BrowserPageProtocol {
 	private connecting?: Promise<BrowserCdpTransport>;
 	private protectedValues = new Set<string>();
 	private warningTargets = new Set<string>();
+	private dialogs = new Map<string, BrowserDialog>();
+	private snapshots = new Map<string, SnapshotLease>();
+	private diagnosticEvents = new Map<string, { sessionId: string; events: BrowserDiagnostic[]; dropped: number }>();
+	private downloadsByTab = new Map<string, Map<string, BrowserDownload>>();
 	private lifetime = new AbortController();
 	private readonly options?: BrowserPageOptions;
 	constructor(options?: BrowserPageOptions) { this.options = options; }
 	private async connection(state: BrowserSessionState, signal?: AbortSignal, timeoutMs?: number): Promise<BrowserCdpTransport> {
-		if (this.sessionId !== undefined && this.sessionId !== state.sessionId) this.dispose();
+		if ((this.sessionId !== undefined && this.sessionId !== state.sessionId) || this.transport?.signal.aborted) this.dispose();
 		this.sessionId = state.sessionId;
-		if (this.transport?.signal.aborted) this.dispose();
 		if (!this.transport) {
-			if (!this.connecting) this.connecting = this.options!.runtime.connectTransport(state, { register: async setup => {
-				if (setup.target.type === "page") { await setup.command("Page.enable"); await setup.command("Security.enable"); }
-			}, signal: this.lifetime.signal, timeoutMs });
-			try { this.transport = await this.connecting; this.transport.onEvent(event => this.observeNativeWarning(this.transport!, event)); } catch (error) { this.dispose(); throw error; } finally { this.connecting = undefined; }
+			if (!this.connecting) {
+				const lifetime = this.lifetime.signal;
+				this.connecting = this.options!.runtime.connectTransport(state, { register: async setup => {
+					if (setup.target.type === "page") { await setup.command("Page.enable"); await setup.command("Security.enable"); }
+				}, signal: lifetime, timeoutMs }).then(transport => {
+					if (lifetime.aborted) throw new BrowserControlError("cancelled", "Browser connection ended during setup.");
+					this.transport = transport;
+					transport.onEvent(event => this.observeEvent(transport, event));
+					return transport;
+				});
+			}
+			const connecting = this.connecting;
+			try { await connecting; }
+			catch (error) { if (this.connecting === connecting) this.dispose(); throw error; }
+			finally { if (this.connecting === connecting) this.connecting = undefined; }
 		}
 		await this.transport!.revalidate(signal);
 		return timeoutMs === undefined ? this.transport! : this.transport!.withCommandTimeout(timeoutMs);
@@ -428,9 +470,25 @@ export class BrowserPageProtocol {
 		this.assertNativeSafe(targetId);
 		return transport;
 	}
-	private observeNativeWarning(transport: BrowserCdpTransport, event: { method: string; params: Record<string, unknown>; sessionId?: string }): void {
+	private observeEvent(transport: BrowserCdpTransport, event: { method: string; params: Record<string, unknown>; sessionId?: string; targetId?: string }): void {
+		if (event.targetId && this.diagnosticEvents.has(event.targetId)) this.observeDiagnostic(event.targetId, event);
+		if (event.method.startsWith("Browser.download")) this.observeDownload(transport, event);
+		if (event.method === "Page.frameNavigated" || event.method === "Runtime.executionContextsCleared") {
+			const navigated = event.params.frame as { id?: string; parentId?: string } | undefined;
+			for (const [key, lease] of this.snapshots) {
+				const sameFrame = lease.frame.sessionId === event.sessionId && (!navigated || lease.frame.frameId === navigated.id);
+				const rootNavigation = navigated && !navigated.parentId && lease.targetId === event.targetId;
+				if (sameFrame || rootNavigation) this.snapshots.delete(key);
+			}
+		}
+		if (!event.method.startsWith("Security.") && !["Page.interstitialShown", "Page.interstitialHidden", "Page.javascriptDialogOpening", "Page.javascriptDialogClosed"].includes(event.method)) return;
 		const target = transport.managedTargets().find(item => item.sessionId === event.sessionId);
 		if (!target) return;
+		if (event.method === "Page.javascriptDialogOpening") {
+			const type = event.params.type;
+			if (type === "alert" || type === "confirm" || type === "prompt" || type === "beforeunload") this.dialogs.set(target.targetId, { id: randomUUID(), type, message: this.filter(typeof event.params.message === "string" ? event.params.message : "").slice(0, 500) });
+		}
+		if (event.method === "Page.javascriptDialogClosed") this.dialogs.delete(target.targetId);
 		if (event.method === "Page.interstitialShown" || event.method === "Security.certificateError") this.warningTargets.add(target.targetId);
 		if (event.method === "Page.interstitialHidden") this.warningTargets.delete(target.targetId);
 		if (event.method === "Security.visibleSecurityStateChanged") {
@@ -444,6 +502,71 @@ export class BrowserPageProtocol {
 			if (warned) this.warningTargets.add(target.targetId);
 		}
 	}
+	private observeDiagnostic(targetId: string, event: { method: string; params: Record<string, unknown>; sessionId?: string }): void {
+		const buffer = this.diagnosticEvents.get(targetId);
+		if (!buffer || buffer.sessionId !== event.sessionId) return;
+		let item: BrowserDiagnostic | undefined;
+		if (event.method === "Runtime.consoleAPICalled" && (event.params.type === "warning" || event.params.type === "error")) item = { kind: "console", level: event.params.type };
+		if (event.method === "Runtime.exceptionThrown") item = { kind: "page_error" };
+		if (event.method === "Network.loadingFailed" && event.params.canceled !== true) item = { kind: "request_failed" };
+		if (event.method === "Network.responseReceived") {
+			const status = (event.params.response as { status?: unknown } | undefined)?.status;
+			if (typeof status === "number" && Number.isInteger(status) && status >= 400 && status <= 599) item = { kind: "http_error", status };
+		}
+		if (!item) return;
+		if (buffer.events.length === 50) { buffer.events.shift(); buffer.dropped++; }
+		buffer.events.push(item);
+	}
+	async diagnostics(state: BrowserSessionState, targetId: string, signal?: AbortSignal, timeoutMs?: number): Promise<{ events: BrowserDiagnostic[]; dropped: number }> {
+		const transport = await this.target(state, targetId, signal, timeoutMs);
+		const target = transport.managedTargets().find(item => item.targetId === targetId);
+		if (!target) throw new BrowserControlError("target_missing", "Exact diagnostic target is no longer managed.");
+		let buffer = this.diagnosticEvents.get(targetId);
+		if (!buffer || buffer.sessionId !== target.sessionId) {
+			buffer = { sessionId: target.sessionId, events: [], dropped: 0 };
+			// Enable only after an explicit request on the exact tab. No interception,
+			// request URLs, headers/bodies, raw console arguments, or text cross the tool boundary.
+			await transport.command(targetId, "Network.enable", {}, { signal });
+			this.diagnosticEvents.set(targetId, buffer);
+			if (this.diagnosticEvents.size > MAX_ITEMS) {
+				const expired = this.diagnosticEvents.keys().next().value!;
+				this.diagnosticEvents.delete(expired);
+			}
+		}
+		return { events: [...buffer.events], dropped: buffer.dropped };
+	}
+	private observeDownload(transport: BrowserCdpTransport, event: { method: string; params: Record<string, unknown>; targetId?: string }): void {
+		const { guid, state, filePath } = event.params;
+		if (typeof guid !== "string" || !/^[0-9a-f-]{36}$/i.test(guid)) return;
+		if (event.method === "Browser.downloadWillBegin" && event.targetId) {
+			const buffer = this.downloadsByTab.get(event.targetId);
+			if (buffer) {
+				buffer.set(guid, { id: guid, state: "in_progress" });
+				if (buffer.size > 20) buffer.delete(buffer.keys().next().value!);
+			}
+		}
+		if (event.method !== "Browser.downloadProgress" || (state !== "completed" && state !== "canceled")) return;
+		for (const buffer of this.downloadsByTab.values()) {
+			const item = buffer.get(guid);
+			if (!item) continue;
+			item.state = state;
+			const directory = transport.state.downloadDirectory;
+			if (state === "completed" && directory && typeof filePath === "string" && path.isAbsolute(filePath) && path.relative(directory, path.dirname(filePath)) === "") item.path = this.filter(filePath);
+			break;
+		}
+	}
+	async downloads(state: BrowserSessionState, targetId: string, signal?: AbortSignal, timeoutMs?: number): Promise<BrowserDownload[]> {
+		if (!state.downloadDirectory || state.profileMode !== "isolated" || state.sessionMode !== "owned") throw new BrowserControlError("download_scope", "Start an owned isolated session with download_directory to observe native downloads.");
+		const transport = await this.target(state, targetId, signal, timeoutMs);
+		let buffer = this.downloadsByTab.get(targetId);
+		if (!buffer) {
+			await transport.observeDownloads(signal);
+			buffer = new Map();
+			this.downloadsByTab.set(targetId, buffer);
+			if (this.downloadsByTab.size > MAX_ITEMS) this.downloadsByTab.delete(this.downloadsByTab.keys().next().value!);
+		}
+		return [...buffer.values()].map(item => ({ ...item }));
+	}
 	private assertNativeSafe(targetId: string): void {
 		if (this.warningTargets.has(targetId)) throw new BrowserControlError("native_warning", "The browser reports a native security warning. Resolve it manually without bypassing TLS or Safe Browsing.");
 	}
@@ -452,8 +575,62 @@ export class BrowserPageProtocol {
 		signal = this.actionSignal(transport, signal);
 		const target = await transport.create(signal);
 		this.assertNativeSafe(target.targetId);
-		await transport.command(target.targetId, "Page.navigate", { url }, { signal });
+		await this.navigateUrl(transport, target.targetId, url, signal);
 		return { id: target.targetId, url, type: "page" };
+	}
+	private async navigateUrl(transport: BrowserCdpTransport, targetId: string, url: string, signal?: AbortSignal): Promise<void> {
+		const result = await transport.command<{ errorText?: string; isDownload?: boolean }>(targetId, "Page.navigate", { url }, { signal });
+		// CDP errors can include page-controlled URLs or query values.
+		if (result.isDownload) throw new BrowserControlError("navigation_download", "Navigation started a download instead of opening a document.");
+		if (result.errorText) {
+			const reason = /^net::ERR_[A-Z_0-9]+$/.test(result.errorText) ? ` (${result.errorText})` : "";
+			throw new BrowserControlError("navigation_failed", `Brave could not navigate to the requested URL${reason}.`);
+		}
+	}
+	async navigate(state: BrowserSessionState, targetId: string, action: "navigate" | "reload" | "back" | "forward", url?: string, signal?: AbortSignal, timeoutMs?: number): Promise<void> {
+		if ((action === "navigate") !== Boolean(url)) throw new BrowserControlError("url_required", "Only navigate takes a URL, and it requires one.");
+		const transport = await this.target(state, targetId, signal, timeoutMs);
+		signal = this.actionSignal(transport, signal);
+		await this.interruptOnDialog(transport, targetId, signal, async (bounded) => {
+			if (action === "navigate") return await this.navigateUrl(transport, targetId, url!, bounded);
+			if (action === "reload") { await transport.command(targetId, "Page.reload", {}, { signal: bounded }); return; }
+			const history = await transport.command<{ currentIndex: number; entries: Array<{ id: number }> }>(targetId, "Page.getNavigationHistory", {}, { signal: bounded });
+			const entry = history.entries[history.currentIndex + (action === "back" ? -1 : 1)];
+			if (!entry) throw new BrowserControlError("history_unavailable", `No ${action} entry in this tab's history.`);
+			await transport.command(targetId, "Page.navigateToHistoryEntry", { entryId: entry.id }, { signal: bounded });
+		});
+	}
+	async wait(state: BrowserSessionState, targetId: string, input: BrowserWait, signal?: AbortSignal, timeoutMs = 5_000): Promise<void> {
+		if ((input.selector === undefined) === (input.text === undefined) || !(input.selector ?? input.text)?.trim()) throw new BrowserControlError("wait_condition_required", "Wait takes exactly one non-empty selector or text condition.");
+		const deadline = AbortSignal.timeout(timeoutMs);
+		const transport = await this.target(state, targetId, signal ? AbortSignal.any([signal, deadline]) : deadline, timeoutMs).catch(error => {
+			if (deadline.aborted && !signal?.aborted) throw new BrowserControlError("wait_timeout", "The required page state was not observed in time.");
+			throw error;
+		});
+		const bounded = this.actionSignal(transport, signal ? AbortSignal.any([signal, deadline]) : deadline);
+		const expression = input.selector !== undefined
+			? `(() => { let nodes; try { nodes = document.querySelectorAll(${JSON.stringify(input.selector)}); } catch { return 'invalid'; } return nodes.length > 1 ? 'ambiguous' : nodes.length === 1 && ${BROWSER_CONTROL_STATE}(nodes[0]).visible ? 'ready' : 'pending'; })()`
+			: `(() => document.body?.getClientRects().length && document.body.innerText.includes(${JSON.stringify(input.text)}) ? 'ready' : 'pending')()`;
+		try {
+			while (!bounded.aborted) {
+				this.assertNativeSafe(targetId);
+				this.assertNoDialog(targetId);
+				try {
+					const frame = await this.frame(transport, targetId, input.frame_id, bounded);
+					const result = await this.evaluate<string>(transport, frame, expression, bounded);
+					await transport.revalidateFrame(frame, bounded);
+					if (result === "ready") return;
+					if (result === "invalid" || result === "ambiguous") this.controlFailure(`selector_${result}`, frame, targetId);
+				} catch (error) {
+					if (!(error instanceof BrowserControlError) || !["frame_stale", "frame_unavailable", "frame_missing", "frame_required"].includes(error.code)) throw error;
+				}
+				await delay(125, undefined, { signal: bounded });
+			}
+		} catch (error) {
+			if (!bounded.aborted) throw error;
+		}
+		if (deadline.aborted && !signal?.aborted) throw new BrowserControlError("wait_timeout", "The required page state was not observed in time.");
+		throw new BrowserControlError("cancelled", "Browser operation was cancelled or disconnected.");
 	}
 	async select(state: BrowserSessionState, targetId: string, signal?: AbortSignal, timeoutMs?: number): Promise<void> {
 		const transport = await this.target(state, targetId, signal, timeoutMs);
@@ -465,23 +642,69 @@ export class BrowserPageProtocol {
 		if (frames.length !== 1) throw new BrowserControlError("frame_required", "Specify the exact frame_id for this control.");
 		return frames[0]!;
 	}
-	private async evaluate<T>(transport: BrowserCdpTransport, frame: Readonly<CdpFrame>, expression: string, signal?: AbortSignal): Promise<T> {
+	private assertNoDialog(targetId: string): void {
+		if (this.dialogs.has(targetId)) throw new BrowserControlError("dialog_open", "A JavaScript dialog is open. Inspect it using browser_page dialog, then explicitly accept or dismiss it.");
+	}
+	private async interruptOnDialog<T>(transport: BrowserCdpTransport, targetId: string, signal: AbortSignal | undefined, work: (bounded: AbortSignal) => Promise<T>): Promise<T> {
+		this.assertNoDialog(targetId);
+		const interrupted = new AbortController();
+		const off = transport.onEvent(event => { if (event.targetId === targetId && event.method === "Page.javascriptDialogOpening") interrupted.abort(); });
+		try { return await work(signal ? AbortSignal.any([signal, interrupted.signal]) : interrupted.signal); }
+		catch (error) { if (interrupted.signal.aborted && !signal?.aborted) this.assertNoDialog(targetId); throw error; }
+		finally { off(); }
+	}
+	async dialog(state: BrowserSessionState, targetId: string, decision?: "accept" | "dismiss", id?: string, text?: string, signal?: AbortSignal, timeoutMs?: number): Promise<BrowserDialog> {
+		const transport = await this.target(state, targetId, signal, timeoutMs);
+		const dialog = this.dialogs.get(targetId);
+		if (!dialog) throw new BrowserControlError("dialog_missing", "This exact tab has no observed JavaScript dialog.");
+		if (decision === undefined) return dialog;
+		if (id !== dialog.id) throw new BrowserControlError("dialog_stale", "Inspect this dialog and pass its current dialog ID before responding.");
+		if (text !== undefined && (decision !== "accept" || dialog.type !== "prompt")) throw new BrowserControlError("dialog_text_invalid", "Only accepting a prompt takes text.");
+		await transport.command(targetId, "Page.handleJavaScriptDialog", { accept: decision === "accept", ...(text === undefined ? {} : { promptText: text }) }, { signal });
+		return dialog;
+	}
+	private async evaluate<T>(transport: BrowserCdpTransport, frame: Readonly<CdpFrame>, expression: string, signal?: AbortSignal, contextId = frame.executionContextId): Promise<T> {
 		await transport.revalidateFrame(frame, signal); this.assertNativeSafe(frame.targetId);
-		if (frame.executionContextId === undefined) throw new BrowserControlError("frame_unavailable", "The exact frame has no current execution context.");
-		const response = await transport.command<{ result?: { value?: T }; exceptionDetails?: unknown }>(frame.targetId, "Runtime.evaluate", { expression, contextId: frame.executionContextId, returnByValue: true }, { signal });
+		if (contextId === undefined) throw new BrowserControlError("frame_unavailable", "The exact frame has no current execution context.");
+		const response = await this.interruptOnDialog(transport, frame.targetId, signal, async bounded => await transport.command<{ result?: { value?: T }; exceptionDetails?: unknown }>(frame.targetId, "Runtime.evaluate", { expression, contextId, returnByValue: true }, { signal: bounded }));
 		if (response.exceptionDetails || response.result?.value === undefined) throw new BrowserControlError("control_failed", "Browser control inspection or execution failed.");
 		return response.result.value;
 	}
 	private filter(text: string): string { return projectBrowserText(text, [...this.protectedValues]); }
 	async snapshot(state: BrowserSessionState, targetId: string, signal?: AbortSignal, frameId?: string, selector?: string, timeoutMs?: number): Promise<{ text: string; frames: Array<{ id: string; targetId: string; origin: string }> }> {
 		const transport = await this.target(state, targetId, signal, timeoutMs), frame = await this.frame(transport, targetId, frameId, signal);
-		const text = await this.evaluate<string | { error: string }>(transport, frame, browserTextExpression(selector), signal);
+		const scope = randomBytes(8).toString("hex");
+		const executionContextId = await this.observationContext(transport, frame, signal);
+		const text = await this.evaluate<string | { error: string }>(transport, frame, browserTextExpression(selector, scope), signal, executionContextId);
 		await transport.revalidateFrame(frame, signal);
 		if (typeof text !== "string") this.controlFailure(text.error, frame, targetId);
 		const frames = (await transport.resolvedFrames(targetId, MAX_ITEMS, signal))
 			.map(frame => ({ id: frame.frameId, targetId: frame.targetId, origin: this.filter(frameOrigin(frame)) }));
 		this.assertNativeSafe(targetId);
+		for (const [key, prior] of this.snapshots) if (prior.frame.sessionId === frame.sessionId && prior.frame.frameId === frame.frameId) this.snapshots.delete(key);
+		this.snapshots.set(scope, { targetId, frame, contextId: executionContextId });
+		if (this.snapshots.size > MAX_ITEMS) this.snapshots.delete(this.snapshots.keys().next().value!);
 		return { text: this.filter(text), frames };
+	}
+	private async observationContext(transport: BrowserCdpTransport, frame: Readonly<CdpFrame>, signal?: AbortSignal): Promise<number> {
+		this.assertNoDialog(frame.targetId);
+		await transport.revalidateFrame(frame, signal);
+		const { executionContextId } = await transport.command<{ executionContextId?: number }>(frame.targetId, "Page.createIsolatedWorld", { frameId: frame.frameId, worldName: "pi-browser-observation" }, { signal });
+		if (executionContextId === undefined) throw new BrowserControlError("frame_unavailable", "The exact frame has no observation context.");
+		await transport.revalidateFrame(frame, signal);
+		return executionContextId;
+	}
+	private async element(transport: BrowserCdpTransport, targetId: string, selector: string | undefined, ref: string | undefined, frameId?: string, signal?: AbortSignal): Promise<{ frame: Readonly<CdpFrame>; element: BrowserElement; contextId?: number }> {
+		if ((selector === undefined) === (ref === undefined) || !(selector ?? ref)) throw new BrowserControlError("control_required", "Provide exactly one selector or snapshot ref.");
+		if (ref === undefined) return { frame: await this.frame(transport, targetId, frameId, signal), element: selector! };
+		const key = /^([0-9a-f]{16}):([0-9]{1,2})$/.exec(ref);
+		const lease = key && this.snapshots.get(key[1]!);
+		if (!key || !lease || lease.targetId !== targetId || (frameId !== undefined && frameId !== lease.frame.frameId)) throw new BrowserControlError("ref_stale", "That ref is not current on this exact tab and frame. Take a fresh snapshot.");
+		const frame = await transport.revalidateFrame(lease.frame, signal).catch(error => {
+			if (error instanceof BrowserControlError && ["frame_stale", "frame_missing", "target_missing"].includes(error.code)) this.controlFailure("ref_stale", lease.frame, targetId);
+			throw error;
+		});
+		return { frame, contextId: lease.contextId, element: { scope: key[1]!, index: Number(key[2]) } };
 	}
 	async scroll(state: BrowserSessionState, targetId: string, input: BrowserScroll, signal?: AbortSignal, timeoutMs?: number): Promise<BrowserScrollResult> {
 		validateScroll(input);
@@ -502,12 +725,12 @@ export class BrowserPageProtocol {
 	}
 	observationClass(source: { origin: string; targetId?: string; frameId?: string }): "public" | "private" { return originVisibility(source.origin) === "public" ? "public" : "private"; }
 	private controlFailure(error: string | undefined, frame: Readonly<CdpFrame>, targetId: string): never {
-		const messages: Record<string, string> = { selector_invalid: "Invalid CSS selector.", selector_missing: "Selector did not match an element.", selector_ambiguous: "Selector matches multiple elements; use one uniquely verified selector.", control_disabled: "Control is disabled; choose an enabled control after observing current state.", control_readonly: "Control is read-only.", control_invalid: "Control is not editable.", control_changed: "Control changed before execution.", scroll_unavailable: "The exact frame has no scrolling document." };
+		const messages: Record<string, string> = { selector_invalid: "Invalid CSS selector.", selector_missing: "Selector did not match an element.", selector_ambiguous: "Selector matches multiple elements; use one uniquely verified selector.", control_disabled: "Control is disabled; choose an enabled control after observing current state.", control_readonly: "Control is read-only.", control_invalid: "Control is not editable.", control_changed: "Control changed before execution.", scroll_unavailable: "The exact frame has no scrolling document.", option_ambiguous: "More than one option has that exact value or label.", option_missing: "No option has that exact value or label.", manual_captcha: "Complete the actual CAPTCHA manually.", ref_stale: "Snapshot ref no longer identifies its original element.", control_covered: "The control is covered or outside the viewport. Scroll it into view or inspect the overlay." };
 		const code = error && Object.hasOwn(messages, error) ? error : "control_changed";
 		throw new BrowserControlError(code, `${messages[code]} Snapshot target_id=${JSON.stringify(this.filter(targetId))} frame_id=${JSON.stringify(this.filter(frame.frameId))} again; for a missing/ambiguous subtree root, omit selector first. Do not guess or automatically retry the action.`);
 	}
-	private async inspect(transport: BrowserCdpTransport, frame: Readonly<CdpFrame>, targetId: string, selector: string, signal?: AbortSignal): Promise<ControlFacts> {
-		const facts = await this.evaluate<ControlFacts | ControlResult>(transport, frame, `(() => { ${uniqueControlExpression(selector)} const captcha = !!element.closest('.g-recaptcha,.h-captcha') || (element.tagName === 'IFRAME' && (() => { try { const url = new URL(element.src); return ((url.hostname === 'www.google.com' || url.hostname === 'www.recaptcha.net') && url.pathname.startsWith('/recaptcha/')) || url.hostname === 'hcaptcha.com' || url.hostname.endsWith('.hcaptcha.com'); } catch { return false; } })()); return { tag: element.tagName.toLowerCase(), type: (element.getAttribute('type') || '').toLowerCase(), name: (element.getAttribute('name') || '').slice(0, 100), autocomplete: (element.getAttribute('autocomplete') || '').slice(0,100), label: (element.getAttribute('aria-label') || Array.from(element.labels || []).map(label => label.textContent || '').join(' ') || (['INPUT','TEXTAREA','SELECT'].includes(element.tagName) ? '' : element.textContent) || '').slice(0,200), form: element.form ? element.form.action : '', href: element.href || '', ...state, readOnly: !!element.readOnly, contentEditable: !!element.isContentEditable || ['', 'true', 'plaintext-only'].includes(element.getAttribute('contenteditable')), captcha, loginForm: !!element.form?.querySelector('input[type="password"],input[autocomplete="current-password"]'), password: element.getAttribute('type') === 'password' || element.getAttribute('autocomplete') === 'current-password' || element.getAttribute('autocomplete') === 'new-password' }; })()`, signal);
+	private async inspect(transport: BrowserCdpTransport, frame: Readonly<CdpFrame>, targetId: string, selector: BrowserElement, signal?: AbortSignal, contextId?: number): Promise<ControlFacts> {
+		const facts = await this.evaluate<ControlFacts | ControlResult>(transport, frame, `(() => { ${uniqueControlExpression(selector)} const captcha = (${CAPTCHA_CONTROL})(element) || (element.tagName === 'IFRAME' && (() => { try { const url = new URL(element.src); return ((url.hostname === 'www.google.com' || url.hostname === 'www.recaptcha.net') && url.pathname.startsWith('/recaptcha/')) || url.hostname === 'hcaptcha.com' || url.hostname.endsWith('.hcaptcha.com'); } catch { return false; } })()); return { tag: element.tagName.toLowerCase(), type: (element.getAttribute('type') || '').toLowerCase(), name: (element.getAttribute('name') || '').slice(0, 100), autocomplete: (element.getAttribute('autocomplete') || '').slice(0,100), label: (element.getAttribute('aria-label') || Array.from(element.labels || []).map(label => label.textContent || '').join(' ') || (['INPUT','TEXTAREA','SELECT'].includes(element.tagName) ? '' : element.textContent) || '').slice(0,200), form: element.form ? element.form.action : '', href: element.href || '', ...state, readOnly: !!element.readOnly, contentEditable: !!element.isContentEditable || ['', 'true', 'plaintext-only'].includes(element.getAttribute('contenteditable')), captcha, loginForm: !!element.form?.querySelector('input[type="password"],input[autocomplete="current-password"]'), password: element.getAttribute('type') === 'password' || element.getAttribute('autocomplete') === 'current-password' || element.getAttribute('autocomplete') === 'new-password' }; })()`, signal, contextId);
 		if ("ok" in facts) this.controlFailure(facts.error, frame, targetId);
 		if (facts.captcha || actualCaptchaFrame(frame.url)) throw new BrowserControlError("manual_captcha", "Complete the actual CAPTCHA manually; other page controls remain available.");
 		return facts;
@@ -515,25 +738,98 @@ export class BrowserPageProtocol {
 	private actionSignal(transport: BrowserCdpTransport, signal?: AbortSignal): AbortSignal {
 		return AbortSignal.any([this.lifetime.signal, transport.signal, ...(signal ? [signal] : [])]);
 	}
-	async click(state: BrowserSessionState, targetId: string, selector: string, signal?: AbortSignal, frameId?: string, timeoutMs?: number): Promise<BrowserActionResult> {
-		const transport = await this.target(state, targetId, signal, timeoutMs), frame = await this.frame(transport, targetId, frameId, signal), facts = await this.inspect(transport, frame, targetId, selector, signal);
-		signal = this.actionSignal(transport, signal);
-		const navigation = facts.href ? new URL(facts.href).href : undefined;
-		const current = await this.inspect(transport, frame, targetId, selector, signal);
-		if (!sameControlFacts(current, facts)) this.controlFailure("control_changed", frame, targetId);
-		const result = await this.evaluate<ControlResult>(transport, frame, `(() => { ${uniqueControlExpression(selector)} ${navigation ? `element.href = ${JSON.stringify(navigation)};` : ""} element.click(); return { ok: true, visible: state.visible }; })()`, signal);
-		if (!result.ok) this.controlFailure(result.error, frame, targetId);
-		return { visible: result.visible === true };
+	private async frameClickPoint(transport: BrowserCdpTransport, targetId: string, leaf: Readonly<CdpFrame>, point: { x: number; y: number }, signal?: AbortSignal): Promise<{ x: number; y: number }> {
+		const root = await this.frame(transport, targetId, undefined, signal);
+		if (leaf.frameId === root.frameId && leaf.sessionId === root.sessionId) return point;
+		const frames = await transport.frameList(targetId, signal);
+		const visited = new Set<string>();
+		let frame = leaf;
+		while (frame.frameId !== root.frameId || frame.sessionId !== root.sessionId) {
+			if (visited.has(frame.frameId) || visited.size >= 16) this.controlFailure("control_covered", leaf, targetId);
+			visited.add(frame.frameId);
+			// OOPIF roots can omit the parent. The embedding session can report
+			// the same frame ID with an exact parent, but never guess a parent.
+			const parents = new Set(frames.filter(item => item.frameId === frame.frameId && item.parentFrameId).map(item => item.parentFrameId!));
+			if (frame.parentFrameId) parents.add(frame.parentFrameId);
+			if (parents.size !== 1) this.controlFailure("control_covered", leaf, targetId);
+			const parent = await transport.frame(targetId, parents.values().next().value!, signal);
+			const { backendNodeId } = await transport.command<{ backendNodeId?: number }>(parent.targetId, "DOM.getFrameOwner", { frameId: frame.frameId }, { signal });
+			if (backendNodeId === undefined) this.controlFailure("control_covered", leaf, targetId);
+			const contextId = await this.observationContext(transport, parent, signal);
+			const { object } = await transport.command<{ object?: { objectId?: string } }>(parent.targetId, "DOM.resolveNode", { backendNodeId, executionContextId: contextId }, { signal });
+			if (!object?.objectId) this.controlFailure("control_covered", leaf, targetId);
+			const { objectId } = object;
+			try {
+				const { result } = await transport.command<{ result?: { value?: { x: number; y: number } | null } }>(parent.targetId, "Runtime.callFunctionOn", {
+					objectId, returnByValue: true, arguments: [{ value: point }],
+					functionDeclaration: `function (point) {
+						if (!this.isConnected) return null;
+						for (let node = this; node; node = node.parentElement || node.getRootNode().host) {
+							const style = getComputedStyle(node);
+							if (style.transform !== 'none' || style.translate !== 'none' || style.rotate !== 'none' || style.scale !== 'none' || Number(style.zoom) !== 1) return null;
+						}
+						const rect = this.getBoundingClientRect(), style = getComputedStyle(this);
+						const x = rect.left + this.clientLeft + parseFloat(style.paddingLeft) + point.x;
+						const y = rect.top + this.clientTop + parseFloat(style.paddingTop) + point.y;
+						return (${CLICK_HIT_TEST})(this, x, y) ? { x, y } : null;
+					}`,
+				}, { signal });
+				if (!result?.value) this.controlFailure("control_covered", leaf, targetId);
+				point = result.value;
+			} finally {
+				await transport.command(parent.targetId, "Runtime.releaseObject", { objectId }, { signal }).catch(() => {});
+			}
+			await transport.revalidateFrame(parent, signal);
+			frame = parent;
+		}
+		return point;
 	}
-	async fill(state: BrowserSessionState, targetId: string, selector: string, input: string | BrowserFill, signal?: AbortSignal, timeoutMs?: number): Promise<BrowserActionResult> {
+	async click(state: BrowserSessionState, targetId: string, selector: string | undefined, signal?: AbortSignal, frameId?: string, timeoutMs?: number, ref?: string): Promise<BrowserActionResult> {
+		const transport = await this.target(state, targetId, signal, timeoutMs);
+		const { frame, element, contextId } = await this.element(transport, targetId, selector, ref, frameId, signal);
+		signal = this.actionSignal(transport, signal);
+		this.assertNoDialog(targetId);
+		const clickContext = contextId ?? await this.observationContext(transport, frame, signal);
+		const facts = await this.inspect(transport, frame, targetId, element, signal, clickContext);
+		const locate = async () => {
+			const result = await this.evaluate<ControlResult & { point?: { x: number; y: number } }>(transport, frame, `(() => { ${uniqueControlExpression(element)}
+				if (!state.visible) return { ok: false, error: 'control_covered' };
+				if ((element.href || '') !== ${JSON.stringify(facts.href)}) return { ok: false, error: 'control_changed' };
+				for (const rect of element.getClientRects()) {
+					const left = Math.max(rect.left, 0), right = Math.min(rect.right, innerWidth), top = Math.max(rect.top, 0), bottom = Math.min(rect.bottom, innerHeight);
+					if (left >= right || top >= bottom) continue;
+					const x = (left + right) / 2, y = (top + bottom) / 2;
+					if ((${CLICK_HIT_TEST})(element, x, y)) return { ok: true, point: { x, y } };
+				}
+				return { ok: false, error: 'control_covered' };
+			})()`, signal, clickContext);
+			if (!result.ok || !result.point) this.controlFailure(result.error, frame, targetId);
+			return await this.frameClickPoint(transport, targetId, frame, result.point, signal);
+		};
+		const initial = await locate();
+		await transport.command(targetId, "Page.bringToFront", {}, { signal });
+		await this.interruptOnDialog(transport, targetId, signal, async bounded => await transport.command(targetId, "Input.dispatchMouseEvent", { ...initial, type: "mouseMoved", button: "none", buttons: 0 }, { signal: bounded }));
+		if (!sameControlFacts(await this.inspect(transport, frame, targetId, element, signal, clickContext), facts)) this.controlFailure("control_changed", frame, targetId);
+		const point = await locate();
+		await transport.revalidateFrame(frame, signal);
+		this.assertNativeSafe(targetId);
+		await this.interruptOnDialog(transport, targetId, signal, async bounded => {
+			await transport.command(targetId, "Input.dispatchMouseEvent", { ...point, type: "mousePressed", button: "left", buttons: 1, clickCount: 1 }, { signal: bounded });
+			await transport.command(targetId, "Input.dispatchMouseEvent", { ...point, type: "mouseReleased", button: "left", buttons: 0, clickCount: 1 }, { signal: bounded });
+		});
+		return { visible: true };
+	}
+	async fill(state: BrowserSessionState, targetId: string, selector: string | undefined, input: string | BrowserFill, signal?: AbortSignal, timeoutMs?: number): Promise<BrowserActionResult> {
 		const fill = typeof input === "string" ? { value: input } : input;
 		if ((fill.value === undefined) === (fill.secret_ref === undefined)) throw new BrowserControlError("value_required", "Fill requires exactly one of value or secret_ref.");
-		const transport = await this.target(state, targetId, signal, timeoutMs), frame = await this.frame(transport, targetId, fill.frame_id, signal), facts = await this.inspect(transport, frame, targetId, selector, signal);
+		const transport = await this.target(state, targetId, signal, timeoutMs);
+		const { frame, element, contextId } = await this.element(transport, targetId, selector, fill.ref, fill.frame_id, signal);
+		const facts = await this.inspect(transport, frame, targetId, element, signal, contextId);
 		signal = this.actionSignal(transport, signal);
 		if (facts.readOnly) this.controlFailure("control_readonly", frame, targetId);
 		if ((!facts.contentEditable && !["input", "textarea"].includes(facts.tag)) || ["file", "hidden", "checkbox", "radio", "submit", "button"].includes(facts.type)) throw new BrowserControlError("control_invalid", "Fill requires an editable input, textarea, or contenteditable element.");
 		// Reinspect exact field/form immediately before local resolution, then again before setter.
-		if (!sameControlFacts(await this.inspect(transport, frame, targetId, selector, signal), facts)) this.controlFailure("control_changed", frame, targetId);
+		if (!sameControlFacts(await this.inspect(transport, frame, targetId, element, signal, contextId), facts)) this.controlFailure("control_changed", frame, targetId);
 		let value = fill.value;
 		if (fill.secret_ref !== undefined) {
 			if (!this.options?.resolveCredential) throw new BrowserControlError("credential_unavailable", "Credential references require a configured credential binding.");
@@ -546,10 +842,33 @@ export class BrowserPageProtocol {
 			} catch { throw new BrowserControlError("credential_unavailable", "Bound browser credential is unavailable or the destination is not authorized."); }
 		}
 		await transport.revalidateFrame(frame, signal);
-		if (!sameControlFacts(await this.inspect(transport, frame, targetId, selector, signal), facts)) this.controlFailure("control_changed", frame, targetId);
+		if (!sameControlFacts(await this.inspect(transport, frame, targetId, element, signal, contextId), facts)) this.controlFailure("control_changed", frame, targetId);
 		if (facts.password || fill.secret_ref !== undefined) this.protectedValues.add(value!);
-		const result = await this.evaluate<ControlResult>(transport, frame, browserFillExpression(selector, value!, facts), signal);
+		const result = await this.evaluate<ControlResult>(transport, frame, browserFillExpression(element, value!, facts), signal, contextId);
 		value = undefined;
+		if (!result.ok) this.controlFailure(result.error, frame, targetId);
+		return { visible: result.visible === true };
+	}
+	async form(state: BrowserSessionState, targetId: string, selector: string | undefined, action: "check" | "uncheck" | "select_option", value?: string, by: "value" | "label" = "value", signal?: AbortSignal, frameId?: string, timeoutMs?: number, ref?: string): Promise<BrowserActionResult> {
+		const transport = await this.target(state, targetId, signal, timeoutMs);
+		const { frame, element, contextId } = await this.element(transport, targetId, selector, ref, frameId, signal);
+		if (actualCaptchaFrame(frame.url)) throw new BrowserControlError("manual_captcha", "Complete the actual CAPTCHA manually.");
+		const result = await this.evaluate<ControlResult>(transport, frame, `(() => { ${uniqueControlExpression(element)}
+			if ((${CAPTCHA_CONTROL})(element)) return { ok: false, error: 'manual_captcha' };
+			if (${JSON.stringify(action)} === 'select_option') {
+				if (!(element instanceof HTMLSelectElement)) return { ok: false, error: 'control_invalid' };
+				const options = Array.from(element.options).filter(option => option[${JSON.stringify(by)}] === ${JSON.stringify(value)});
+				if (options.length !== 1) return { ok: false, error: options.length ? 'option_ambiguous' : 'option_missing' };
+				const option = options[0];
+				if (option.matches(':disabled')) return { ok: false, error: 'control_disabled' };
+				if (!option.selected) { option.selected = true; element.dispatchEvent(new Event('input', { bubbles: true })); element.dispatchEvent(new Event('change', { bubbles: true })); }
+				return { ok: element.isConnected && option.selected && option.closest('select') === element, error: 'control_changed', visible: state.visible };
+			}
+			const checked = ${action === "check"};
+			if (!(element instanceof HTMLInputElement) || (element.type !== 'checkbox' && !(checked && element.type === 'radio'))) return { ok: false, error: 'control_invalid' };
+			if (element.checked !== checked) element.click();
+			return { ok: element.isConnected && element.checked === checked, error: 'control_changed', visible: state.visible };
+		})()`, signal, contextId);
 		if (!result.ok) this.controlFailure(result.error, frame, targetId);
 		return { visible: result.visible === true };
 	}
@@ -561,11 +880,11 @@ export class BrowserPageProtocol {
 	}
 	async press(state: BrowserSessionState, targetId: string, key: string, signal?: AbortSignal, frameId?: string, selector?: string, timeoutMs?: number): Promise<void> {
 		const transport = await this.target(state, targetId, signal, timeoutMs), frame = await this.inputFrame(transport, targetId, frameId, selector, signal);
-		await pressBrowserKey(transport, targetId, frame, key, selector, this.actionSignal(transport, signal));
+		await this.interruptOnDialog(transport, targetId, this.actionSignal(transport, signal), bounded => pressBrowserKey(transport, targetId, frame, key, selector, bounded));
 	}
 	async paste(state: BrowserSessionState, targetId: string, value: string, signal?: AbortSignal, frameId?: string, selector?: string, timeoutMs?: number): Promise<void> {
 		const transport = await this.target(state, targetId, signal, timeoutMs), frame = await this.inputFrame(transport, targetId, frameId, selector, signal);
-		await pasteBrowserText(transport, targetId, frame, value, selector, this.actionSignal(transport, signal));
+		await this.interruptOnDialog(transport, targetId, this.actionSignal(transport, signal), bounded => pasteBrowserText(transport, targetId, frame, value, selector, bounded));
 	}
 	async upload(state: BrowserSessionState, targetId: string, selector: string, files: string[], signal?: AbortSignal, frameId?: string, timeoutMs?: number): Promise<void> {
 		const transport = await this.target(state, targetId, signal, timeoutMs), frame = await this.inputFrame(transport, targetId, frameId, selector, signal);
@@ -576,5 +895,5 @@ export class BrowserPageProtocol {
 		this.assertNativeSafe(targetId);
 		await transport.command(targetId, "Target.closeTarget", { targetId }, { signal });
 	}
-	dispose(): void { this.lifetime.abort(); this.lifetime = new AbortController(); this.options?.runtime.disposeTransport(); this.transport = undefined; this.connecting = undefined; this.sessionId = undefined; this.protectedValues.clear(); this.warningTargets.clear(); }
+	dispose(): void { this.lifetime.abort(); this.lifetime = new AbortController(); this.options?.runtime.disposeTransport(); this.transport = undefined; this.connecting = undefined; this.sessionId = undefined; this.protectedValues.clear(); this.warningTargets.clear(); this.dialogs.clear(); this.snapshots.clear(); this.diagnosticEvents.clear(); this.downloadsByTab.clear(); }
 }

@@ -473,7 +473,8 @@ export class BrowserRuntime {
 		return { code: 0, stdout: `attached: ${state.sessionId}`, stderr: "" };
 	}
 
-	async start(input: { profileMode: ProfileMode; profileAlias?: string; extensionMode: ExtensionMode; allowLocalhostTlsErrors?: boolean; url?: string; signal?: AbortSignal; timeoutMs?: number }): Promise<BrowserCommandResult> {
+	async start(input: { profileMode: ProfileMode; profileAlias?: string; extensionMode: ExtensionMode; allowLocalhostTlsErrors?: boolean; downloadDirectory?: string; url?: string; signal?: AbortSignal; timeoutMs?: number }): Promise<BrowserCommandResult> {
+		if (input.downloadDirectory !== undefined && input.profileMode !== "isolated") throw new BrowserControlError("download_scope", "A download directory can only be configured for an owned isolated session.");
 		const statePath = getBrowserStatePath();
 		const old = loadBrowserState();
 		if (old && processMatches(old, await this.processes.inspect(old.pid))) throw new BrowserControlError("session_occupied", "An owned browser session is already running.");
@@ -481,19 +482,29 @@ export class BrowserRuntime {
 		if (old) await fs.promises.rm(statePath, { force: true });
 		const executable = findBrave();
 		if (!executable) throw new BrowserControlError("brave_missing", "Brave executable not found. Install Brave or set BRAVE_PATH.");
+		const marker = randomUUID().replaceAll("-", "");
 		let userDataDir: string, profileDirectory: string, extensionsExpected = false;
+		let downloadDirectory: string | undefined;
 		if (input.profileMode === "real") {
 			if (!input.profileAlias) throw new BrowserControlError("profile_required", "Real profile start requires a configured alias.");
 			const configured = readBrowserConfig().profiles[input.profileAlias];
 			const profile = resolveConfiguredProfile(input.profileAlias, undefined, discoverBraveProfiles(configured?.userDataDir ? [configured.userDataDir] : undefined));
 			userDataDir = profile.userDataDir; profileDirectory = profile.profileDirectory; extensionsExpected = configured?.extensionsExpected ?? false;
 		} else {
-			userDataDir = path.join(getAgentDir(), "browser", "pi-profile"); profileDirectory = "Pi";
+			userDataDir = path.join(getAgentDir(), "browser", input.downloadDirectory === undefined ? "pi-profile" : `pi-download-${marker}`); profileDirectory = "Pi";
 			await fs.promises.mkdir(userDataDir, { recursive: true });
+			if (input.downloadDirectory !== undefined) {
+				// A normal native preference in the disposable profile preserves
+				// Brave's filename collision, warning and download policies.
+				await fs.promises.mkdir(input.downloadDirectory, { recursive: true });
+				downloadDirectory = await fs.promises.realpath(input.downloadDirectory);
+				const preferences = path.join(userDataDir, profileDirectory, "Preferences");
+				await fs.promises.mkdir(path.dirname(preferences), { recursive: true });
+				await fs.promises.writeFile(preferences, JSON.stringify({ download: { default_directory: downloadDirectory, prompt_for_download: false } }), { flag: "wx" });
+			}
 		}
 		if (input.allowLocalhostTlsErrors && input.profileMode !== "isolated") throw new BrowserControlError("tls_exception_scope", "The localhost TLS exception is available only for Pi-owned isolated sessions.");
 		const port = await freePort();
-		const marker = randomUUID().replaceAll("-", "");
 		const args = browserLaunchArgs({ cdpPort: port, userDataDir, profileDirectory, marker, extensionMode: input.extensionMode, allowLocalhostTlsErrors: input.allowLocalhostTlsErrors });
 		const child = spawn(executable, args, { detached: false, stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
 		let stdoutBytes = 0, stderrBytes = 0, spawnError: string | undefined, lastProbe: CdpProbeResult = { status: "unreachable" };
@@ -531,7 +542,7 @@ export class BrowserRuntime {
 			const ids = new Set(matches.map((item) => item.pid));
 			const root = matches.filter((item) => !ids.has(item.parentPid)).sort((a, b) => String(a.creationTime).localeCompare(String(b.creationTime)))[0];
 			if (!root || canonical(root.executablePath) !== canonical(executable)) { try { child.kill(); } catch {} throw new BrowserControlError("ownership_unverified", "Surviving Brave root process could not be verified."); }
-			let state: BrowserSessionState = { version: 1, sessionId: randomUUID().replaceAll("-", ""), sessionMode: "owned", launchMarker: marker, profileMode: input.profileMode, ...(input.profileAlias ? { profileAlias: input.profileAlias } : {}), cdpPort: port, pid: root.pid, processStartTime: root.creationTime, executablePath: path.resolve(root.executablePath), userDataDir: path.resolve(userDataDir), profileDirectory, extensionMode: input.extensionMode, allowLocalhostTlsErrors: input.allowLocalhostTlsErrors ?? false, extensionsExpected, comparisonGeneration: 0 };
+			let state: BrowserSessionState = { version: 1, sessionId: randomUUID().replaceAll("-", ""), sessionMode: "owned", launchMarker: marker, profileMode: input.profileMode, ...(input.profileAlias ? { profileAlias: input.profileAlias } : {}), cdpPort: port, pid: root.pid, processStartTime: root.creationTime, executablePath: path.resolve(root.executablePath), userDataDir: path.resolve(userDataDir), profileDirectory, extensionMode: input.extensionMode, allowLocalhostTlsErrors: input.allowLocalhostTlsErrors ?? false, ...(downloadDirectory ? { downloadDirectory } : {}), extensionsExpected, comparisonGeneration: 0 };
 			await saveBrowserState(state);
 			if (input.url) {
 				const response = await fetch(`http://127.0.0.1:${port}/json/new?${encodeURIComponent(input.url)}`, { method: "PUT", signal: input.signal });
@@ -560,7 +571,15 @@ export class BrowserRuntime {
 			let alive: boolean;
 			try { alive = this.processes.isRunning?.(state.pid) ?? Boolean(await this.processes.inspect(state.pid)); }
 			catch (error) { return { code: 1, stdout: "close-owned: failed", stderr: String(error) }; }
-			if (!alive) { await fs.promises.rm(getBrowserStatePath(), { force: true }); return { code: 0, stdout: "close-owned: stopped", stderr: "" }; }
+			if (!alive) {
+				await fs.promises.rm(getBrowserStatePath(), { force: true });
+				if (state.profileMode === "isolated" && state.downloadDirectory && /^[a-f0-9]{32}$/.test(state.launchMarker ?? "")
+					&& path.resolve(state.userDataDir) === path.join(getAgentDir(), "browser", `pi-download-${state.launchMarker}`)) {
+					try { await fs.promises.rm(state.userDataDir, { recursive: true, force: true, maxRetries: 4, retryDelay: 100 }); }
+					catch { return { code: 0, stdout: "close-owned: stopped\nDisposable download profile cleanup incomplete.", stderr: "" }; }
+				}
+				return { code: 0, stdout: "close-owned: stopped", stderr: "" };
+			}
 			await new Promise((resolve) => setTimeout(resolve, 100));
 		}
 		return { code: 1, stdout: "close-owned: incomplete", stderr: "Process remained after termination." };

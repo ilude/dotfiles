@@ -194,7 +194,7 @@ describe("page form interaction", () => {
 			set value(value: string) { this.currentValue = value; }
 			getAttribute() { return null; }
 			matches() { return false; }
-			closest() { return null; }
+			getRootNode() { return {}; }
 			getClientRects() { return [{}]; }
 			focus() {}
 		}
@@ -287,11 +287,12 @@ describe("session and page boundaries", () => {
 		expect(Value.Check(tool.outputSchema!, result.structuredContent)).toBe(true);
 	});
 
-	it.each(["click", "fill"] as const)("reports non-rendered %s results in text and structured data", async action => {
+	it("reports non-rendered fill results in text and structured data", async () => {
+		const action = "fill";
 		vi.spyOn(browserControl, "loadBrowserState").mockReturnValue(state());
 		vi.spyOn(browserControl.BrowserPageProtocol.prototype, action).mockResolvedValue({ visible: false });
 		const pi = createMockPi(); registerBrowserControl(pi as never); const tool = pi._getTool("browser_page")!;
-		const result = await tool.execute(action, { action, session_id: "session-1", target_id: "exact-id", frame_id: "exact-frame", selector: "#control", ...(action === "fill" ? { value: "disposable" } : {}) });
+		const result = await tool.execute(action, { action, session_id: "session-1", target_id: "exact-id", frame_id: "exact-frame", selector: "#control", value: "disposable" });
 		expect(result.content[0].text).toContain("control was not rendered"); expect(result.structuredContent.visible).toBe(false);
 		expect(Value.Check(tool.outputSchema!, result.structuredContent)).toBe(true);
 	});
@@ -422,7 +423,7 @@ describe("session and page boundaries", () => {
 		expect(publicState(state({ sessionMode: "attached" })).sessionMode).toBe("attached");
 		const page = pi._getTool("browser_page");
 		expect(page).toBeDefined();
-		expect(page?.parameters.properties.action.enum).toEqual(["list", "open", "select", "snapshot", "scroll", "screenshot", "click", "fill", "press", "paste", "upload", "close"]);
+		expect(page?.parameters.properties.action.enum).toEqual(["list", "open", "navigate", "reload", "back", "forward", "wait", "select", "snapshot", "scroll", "screenshot", "click", "fill", "check", "uncheck", "select_option", "dialog", "diagnostics", "downloads", "press", "paste", "upload", "close"]);
 		expect(page?.outputSchema).toHaveProperty("properties.targets");
 		expect(page?.outputSchema).toHaveProperty("properties.targetId");
 		expect(pi._getTool("browser_session")?.outputSchema).toHaveProperty("properties.candidates");

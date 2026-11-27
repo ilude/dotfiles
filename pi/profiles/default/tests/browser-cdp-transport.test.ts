@@ -90,6 +90,112 @@ async function managedFixture(register?: Parameters<typeof BrowserCdpTransport.c
 	return { wire, saved, transport, runtime, processes, registrations, replaceState: (value: typeof current) => { current = value; }, replaceProcess: (value: typeof info) => { info = value; } };
 }
 
+async function pageFixture(overrides: Partial<BrowserSessionState> = {}) {
+	const wire = await fixture(), saved = { ...state(wire.port), ...overrides };
+	const info = { ...processInfo(saved), marker: saved.launchMarker };
+	const runtime = new BrowserRuntime({ inspect: async () => info, list: async () => [info], terminate: async () => {} }, () => saved, 0);
+	const pages = new browserControl.BrowserPageProtocol({ runtime });
+	cleanup.push(() => pages.dispose());
+	await pages.select(saved, "root");
+	const context = (id: number, target = "root") => wire.send({ method: "Runtime.executionContextCreated", sessionId: `session-${target}`, params: { context: { id, origin: "https://task.example", auxData: { frameId: `frame-session-${target}`, isDefault: true } } } });
+	context(10);
+	await pages.select(saved, "root"); // Wait for the context event on the same wire.
+	return { wire, saved, pages, context };
+}
+
+describe("exact-tab page actions", () => {
+	it("checks navigation replies and uses only the requested tab's history and reload", async () => {
+		const { wire, pages, saved } = await pageFixture();
+		wire.setHandler(command => {
+			const result = command.method === "Page.navigate" ? { errorText: "secret-bearing failure" }
+				: command.method === "Page.getNavigationHistory" ? { currentIndex: 1, entries: [{ id: 15 }, { id: 20 }, { id: 25 }] } : undefined;
+			if (!result) return false;
+			wire.send({ id: command.id, sessionId: command.sessionId, result }); return true;
+		});
+		await expect(pages.open(saved, "https://task.example/failed")).rejects.toMatchObject({ code: "navigation_failed", message: "Brave could not navigate to the requested URL." });
+		await expect(pages.navigate(saved, "root", "navigate", "https://task.example/failed")).rejects.toMatchObject({ code: "navigation_failed" });
+		await pages.navigate(saved, "root", "back");
+		await pages.navigate(saved, "root", "forward");
+		await pages.navigate(saved, "root", "reload");
+		expect(wire.commands.filter(command => command.method === "Page.navigateToHistoryEntry").map(command => [command.sessionId, command.params.entryId])).toEqual([["session-root", 15], ["session-root", 25]]);
+		expect(wire.commands).toContainEqual(expect.objectContaining({ sessionId: "session-root", method: "Page.reload" }));
+	});
+
+	it("waits through a discarded execution context and observes only the exact restored document", async () => {
+		const { wire, pages, saved, context } = await pageFixture();
+		let evaluations = 0;
+		wire.setHandler(command => {
+			if (command.method !== "Runtime.evaluate") return false;
+			if (++evaluations === 1) {
+				wire.send({ id: command.id, sessionId: command.sessionId, error: { code: -32000, message: "Cannot find context with specified id" } });
+				wire.send({ method: "Runtime.executionContextsCleared", sessionId: "session-root", params: {} });
+				context(21);
+				wire.send({ method: "Page.frameNavigated", sessionId: "session-root", params: { type: "BackForwardCacheRestore", frame: { id: "frame-session-root", url: "https://task.example/restored", securityOrigin: "https://task.example", loaderId: "restored-loader" } } });
+			} else wire.send({ id: command.id, sessionId: command.sessionId, result: { result: { value: "ready" } } });
+			return true;
+		});
+		await pages.wait(saved, "root", { text: "restored" }, undefined, 1500);
+		expect(wire.commands.filter(command => command.method === "Runtime.evaluate").map(command => [command.sessionId, command.params.contextId])).toEqual([["session-root", 10], ["session-root", 21]]);
+	});
+
+	it("stops a wait on cancellation or exact-tab detach without replaying the action on another tab", async () => {
+		const { wire, pages, saved } = await pageFixture();
+		wire.setHandler((command) => command.method === "Runtime.evaluate");
+		const abort = new AbortController();
+		const cancelled = expect(pages.wait(saved, "root", { selector: "#ready" }, abort.signal)).rejects.toMatchObject({ code: "cancelled" });
+		await waitFor(() => wire.commands.filter(command => command.method === "Runtime.evaluate").length === 1);
+		abort.abort(); await cancelled;
+		const detached = expect(pages.wait(saved, "root", { text: "ready" })).rejects.toMatchObject({ code: "target_missing" });
+		await waitFor(() => wire.commands.filter(command => command.method === "Runtime.evaluate").length === 2);
+		wire.send({ method: "Target.detachedFromTarget", params: { sessionId: "session-root" } });
+		await detached;
+		expect(wire.commands.filter(command => command.method === "Target.autoAttachRelated")).toHaveLength(1);
+	});
+
+	it("requires the observed dialog ID on the same tab and excludes default prompt values", async () => {
+		const { wire, pages, saved } = await pageFixture();
+		wire.send({ method: "Page.javascriptDialogOpening", sessionId: "session-root", params: { type: "prompt", message: "Fixture question", defaultPrompt: "unreported value" } });
+		await expect(pages.dialog(saved, "other")).rejects.toMatchObject({ code: "dialog_missing" });
+		const dialog = await pages.dialog(saved, "root");
+		expect(dialog).toEqual({ id: expect.any(String), message: "Fixture question", type: "prompt" });
+		await expect(pages.dialog(saved, "root", "accept", "stale", "answer")).rejects.toMatchObject({ code: "dialog_stale" });
+		expect(wire.commands.some(command => command.method === "Page.handleJavaScriptDialog")).toBe(false);
+		await pages.dialog(saved, "root", "accept", dialog.id, "answer");
+		expect(wire.commands).toContainEqual(expect.objectContaining({ sessionId: "session-root", method: "Page.handleJavaScriptDialog", params: { accept: true, promptText: "answer" } }));
+	});
+
+	it("bounds opt-in diagnostics to one tab and projects no page-controlled messages or URLs", async () => {
+		const { wire, pages, saved } = await pageFixture();
+		await pages.diagnostics(saved, "root");
+		await pages.diagnostics(saved, "other");
+		for (let i = 0; i < 52; i++) wire.send({ method: "Runtime.consoleAPICalled", sessionId: "session-root", params: { type: "error", args: [{ value: "sensitive" }] } });
+		wire.send({ method: "Network.responseReceived", sessionId: "session-root", params: { response: { status: 503, url: "https://task.example/?token=sensitive" } } });
+		await pages.select(saved, "root");
+		const results = await pages.diagnostics(saved, "root");
+		expect(results).toEqual({ events: [...Array(49).fill({ kind: "console", level: "error" }), { kind: "http_error", status: 503 }], dropped: 3 });
+		expect(await pages.diagnostics(saved, "other")).toEqual({ events: [], dropped: 0 });
+	});
+
+	it("observes native downloads without accepting unknown GUIDs or sharing paths across tabs", async () => {
+		const directory = fs.realpathSync(process.cwd());
+		const { wire, pages, saved } = await pageFixture({ sessionMode: "owned", profileMode: "isolated", launchMarker: "marker", downloadDirectory: directory });
+		const id = "fe588d96-846f-4024-a2d5-09121d122312", canceled = "fe588d96-846f-4024-a2d5-09121d122313";
+		await pages.downloads(saved, "root");
+		await pages.downloads(saved, "other");
+		const begin = (guid: string, frameId: string) => wire.send({ method: "Browser.downloadWillBegin", params: { guid, frameId, url: "https://task.example/?token=sensitive" } });
+		const finish = (guid: string, state: string) => wire.send({ method: "Browser.downloadProgress", params: { guid, state, filePath: `${directory}/fixture (1).txt` } });
+		begin(id, "unmanaged"); finish(id, "completed");
+		await pages.select(saved, "root");
+		expect(await pages.downloads(saved, "root")).toEqual([]);
+		begin(id, "frame-session-root"); finish(id, "completed");
+		begin(canceled, "frame-session-root"); finish(canceled, "canceled");
+		await pages.select(saved, "root");
+		expect(await pages.downloads(saved, "root")).toEqual([{ id, state: "completed", path: `${directory}/fixture (1).txt` }, { id: canceled, state: "canceled" }]);
+		expect(await pages.downloads(saved, "other")).toEqual([]);
+		expect(wire.commands).toContainEqual(expect.objectContaining({ method: "Browser.setDownloadBehavior", params: { behavior: "default", eventsEnabled: true } }));
+	});
+});
+
 describe("persistent CDP wire", () => {
 	it("multiplexes concurrent real commands and events on one persistent socket", async () => {
 		const wire = await fixture();
