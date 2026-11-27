@@ -7,7 +7,7 @@ import { getAgentDir, updateJsonObjectAtomic, writeJsonObjectAtomic } from "./se
 import { BrowserRuntime } from "./browser-runtime.js";
 import type { BrowserCdpTransport, CdpFrame } from "./browser-cdp-transport.js";
 import type { CredentialTarget } from "./browser-credentials.js";
-import { BROWSER_CONTROL_STATE, browserTextExpression, projectBrowserText } from "./browser-observations.js";
+import { BROWSER_CONTROL_STATE, browserTextExpression, browserVisibleTextExpression, projectBrowserText } from "./browser-observations.js";
 import { pressBrowserKey, pasteBrowserText, uploadBrowserFiles } from "./browser-input.js";
 
 export const MAX_OUTPUT = 50_000;
@@ -400,12 +400,42 @@ function uniqueControlExpression(target: BrowserElement): string {
 	const resolve = typeof target === "string"
 		? `let matches; try { matches = document.querySelectorAll(${JSON.stringify(target)}); } catch { return { ok: false, error: 'selector_invalid' }; } if (matches.length !== 1) return { ok: false, error: matches.length ? 'selector_ambiguous' : 'selector_missing' }; const element = matches[0];`
 		: `const snapshot = globalThis.__piBrowserSnapshot; const element = snapshot?.scope === ${JSON.stringify(target.scope)} ? snapshot.refs[${target.index}]?.deref() : undefined; if (!element?.isConnected || element.ownerDocument !== document) return { ok: false, error: 'ref_stale' };`;
-	return `${resolve} const state = ${BROWSER_CONTROL_STATE}(element); if (state.disabled) return { ok: false, error: 'control_disabled' };`;
+	return `${resolve} const controlState = ${BROWSER_CONTROL_STATE}; const state = controlState(element); if (state.disabled) return { ok: false, error: 'control_disabled' };`;
 }
 
 /** Fixed native setter remains independent of framework instance value trackers. */
-export function browserFillExpression(selector: BrowserElement, value: string, facts?: ControlFacts): string {
-	return `(() => { ${uniqueControlExpression(selector)} if (element.readOnly) return { ok: false, error: 'control_readonly' }; ${facts ? `if (element.tagName.toLowerCase() !== ${JSON.stringify(facts.tag)} || (element.getAttribute('type') || '').toLowerCase() !== ${JSON.stringify(facts.type)} || (element.getAttribute('name') || '') !== ${JSON.stringify(facts.name)} || (element.getAttribute('autocomplete') || '') !== ${JSON.stringify(facts.autocomplete)} || (element.form ? element.form.action : '') !== ${JSON.stringify(facts.form)}) return { ok: false, error: 'control_changed' };` : ""} element.focus(); const contentEditable = element.isContentEditable || ['', 'true', 'plaintext-only'].includes(element.getAttribute('contenteditable')); if (contentEditable) element.textContent = ${JSON.stringify(value)}; else { const prototype = element instanceof HTMLInputElement ? HTMLInputElement.prototype : element instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : undefined; const setter = prototype && Object.getOwnPropertyDescriptor(prototype, 'value')?.set; if (!setter) return { ok: false, error: 'control_invalid' }; setter.call(element, ${JSON.stringify(value)}); } element.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: ${JSON.stringify(value)} })); element.dispatchEvent(new Event('change', { bubbles: true })); return { ok: true, visible: state.visible }; })()`;
+export function browserFillExpression(selector: BrowserElement, value: string, facts?: ControlFacts, protectedValue = false): string {
+	const expectedIdentity = facts && JSON.stringify([facts.tag, facts.type, facts.name, facts.autocomplete, facts.form, facts.contentEditable]);
+	const stillCurrent = typeof selector === "string"
+		? `const current = document.querySelectorAll(${JSON.stringify(selector)}); if (current.length !== 1 || current[0] !== element) return changed;`
+		: `if (globalThis.__piBrowserSnapshot !== snapshot) return changed;`;
+	return `(() => { ${uniqueControlExpression(selector)}
+		const changed = { ok: false, error: 'control_changed' };
+		const captcha = ${CAPTCHA_CONTROL};
+		const editable = () => !!element.isContentEditable || ['', 'true', 'plaintext-only'].includes(element.getAttribute('contenteditable'));
+		const identity = () => JSON.stringify([element.tagName.toLowerCase(), (element.getAttribute('type') || '').toLowerCase(), element.getAttribute('name') || '', element.getAttribute('autocomplete') || '', element.form?.action || '', editable()]);
+		const before = identity(), form = element.form, root = element.getRootNode();
+		if (element.readOnly) return { ok: false, error: 'control_readonly' };
+		if (captcha(element)) return { ok: false, error: 'manual_captcha' };
+		${expectedIdentity ? `if (before !== ${JSON.stringify(expectedIdentity)}) return changed;` : ""}
+		const contentEditable = editable();
+		const prototype = element instanceof HTMLInputElement ? HTMLInputElement.prototype : element instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : undefined;
+		const setter = prototype && Object.getOwnPropertyDescriptor(prototype, 'value')?.set;
+		if (!contentEditable && (!setter || ['file', 'hidden', 'checkbox', 'radio', 'submit', 'button'].includes(element.type))) return { ok: false, error: 'control_invalid' };
+		element.focus();
+		if (!element.isConnected || element.ownerDocument !== document || element.getRootNode() !== root || element.form !== form || identity() !== before || element.readOnly || captcha(element)) return changed;
+		${stillCurrent}
+		const after = controlState(element);
+		if (after.disabled) return changed;
+		// Ordinary edits cross shadow boundaries, but replacement text must not travel with the retargeted event.
+		const protectedInput = ${protectedValue || facts?.password === true} || element.type === 'password' || ['current-password', 'new-password'].includes(element.getAttribute('autocomplete'));
+		const retargeted = root !== document || !!element.assignedSlot;
+		if (contentEditable) element.textContent = ${JSON.stringify(value)};
+		else setter.call(element, ${JSON.stringify(value)});
+		element.dispatchEvent(new InputEvent('input', { bubbles: true, composed: !protectedInput, inputType: 'insertText', data: protectedInput || retargeted ? null : ${JSON.stringify(value)} }));
+		element.dispatchEvent(new Event('change', { bubbles: true }));
+		return { ok: true, visible: after.visible };
+	})()`;
 }
 
 /** Bounded executor URL-route evidence, not a claim to identify every private account UI. */
@@ -610,7 +640,7 @@ export class BrowserPageProtocol {
 		const bounded = this.actionSignal(transport, signal ? AbortSignal.any([signal, deadline]) : deadline);
 		const expression = input.selector !== undefined
 			? `(() => { let nodes; try { nodes = document.querySelectorAll(${JSON.stringify(input.selector)}); } catch { return 'invalid'; } return nodes.length > 1 ? 'ambiguous' : nodes.length === 1 && ${BROWSER_CONTROL_STATE}(nodes[0]).visible ? 'ready' : 'pending'; })()`
-			: `(() => document.body?.getClientRects().length && document.body.innerText.includes(${JSON.stringify(input.text)}) ? 'ready' : 'pending')()`;
+			: browserVisibleTextExpression(input.text!);
 		try {
 			while (!bounded.aborted) {
 				this.assertNativeSafe(targetId);
@@ -844,7 +874,7 @@ export class BrowserPageProtocol {
 		await transport.revalidateFrame(frame, signal);
 		if (!sameControlFacts(await this.inspect(transport, frame, targetId, element, signal, contextId), facts)) this.controlFailure("control_changed", frame, targetId);
 		if (facts.password || fill.secret_ref !== undefined) this.protectedValues.add(value!);
-		const result = await this.evaluate<ControlResult>(transport, frame, browserFillExpression(element, value!, facts), signal, contextId);
+		const result = await this.evaluate<ControlResult>(transport, frame, browserFillExpression(element, value!, facts, fill.secret_ref !== undefined), signal, contextId);
 		value = undefined;
 		if (!result.ok) this.controlFailure(result.error, frame, targetId);
 		return { visible: result.visible === true };
@@ -861,7 +891,7 @@ export class BrowserPageProtocol {
 				if (options.length !== 1) return { ok: false, error: options.length ? 'option_ambiguous' : 'option_missing' };
 				const option = options[0];
 				if (option.matches(':disabled')) return { ok: false, error: 'control_disabled' };
-				if (!option.selected) { option.selected = true; element.dispatchEvent(new Event('input', { bubbles: true })); element.dispatchEvent(new Event('change', { bubbles: true })); }
+				if (!option.selected) { option.selected = true; element.dispatchEvent(new Event('input', { bubbles: true, composed: true })); element.dispatchEvent(new Event('change', { bubbles: true })); }
 				return { ok: element.isConnected && option.selected && option.closest('select') === element, error: 'control_changed', visible: state.visible };
 			}
 			const checked = ${action === "check"};

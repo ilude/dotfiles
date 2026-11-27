@@ -189,12 +189,15 @@ describe("page form interaction", () => {
 		// React-style tracking installs an instance setter. Calling it before an
 		// input event makes the framework think the value has not changed.
 		class TextControl extends EventTarget {
+			readonly isConnected = true;
+			get ownerDocument(): unknown { return context.document; }
+			readonly tagName = tag.toUpperCase();
 			private currentValue = "";
 			get value() { return this.currentValue; }
 			set value(value: string) { this.currentValue = value; }
 			getAttribute() { return null; }
 			matches() { return false; }
-			getRootNode() { return {}; }
+			getRootNode() { return this.ownerDocument; }
 			getClientRects() { return [{}]; }
 			focus() {}
 		}

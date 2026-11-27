@@ -47,6 +47,60 @@ export const BROWSER_CONTROL_STATE = `(element => {
   return { disabled, visible };
 })`;
 
+/** Check rendered text in the document, not visibility of the body enclosing it. */
+export function browserVisibleTextExpression(text: string): string {
+  return `(() => {
+    const body = document.body, needle = ${JSON.stringify(text)};
+    // Keep the common pending poll cheap, and preserve the browser's rendered substring semantics.
+    if (!body || !body.innerText?.includes(needle)) return 'pending';
+    const styles = new WeakMap();
+    const styleFor = element => {
+      let style = styles.get(element);
+      if (!style) { style = getComputedStyle(element); styles.set(element, style); }
+      return style;
+    };
+    const notPainted = style => style.display === 'none' || style.opacity === '0' || style.contentVisibility === 'hidden';
+    if (notPainted(styleFor(document.documentElement)) || notPainted(styleFor(body))) return 'pending';
+    const range = document.createRange(), stack = [body];
+    let tail = '', excluded = false;
+    const omit = text => { if (text.trim()) { excluded = true; tail = ''; } };
+    const append = (text, collapseSpace = false) => {
+      if (collapseSpace && /[ \\n\\t]$/.test(tail)) text = text.replace(/^ +/, '');
+      const run = tail + text;
+      tail = run.slice(Math.max(0, run.length - needle.length));
+      return run.includes(needle);
+    };
+    while (stack.length) {
+      const node = stack.pop();
+      if (typeof node === 'string') { if (append(node)) return 'ready'; continue; }
+      if (node.nodeType === Node.TEXT_NODE) {
+        const style = styleFor(node.parentElement);
+        if (style.visibility === 'hidden' || style.visibility === 'collapse') { omit(node.data); continue; }
+        range.selectNodeContents(node);
+        if (!range.getClientRects().length) { omit(node.data); continue; }
+        const collapseSpace = !['pre', 'pre-wrap', 'break-spaces'].includes(style.whiteSpace);
+        let part = collapseSpace ? node.data.replace(style.whiteSpace === 'pre-line' ? /[ \\t\\r\\f]+/g : /[ \\t\\r\\n\\f]+/g, ' ') : node.data;
+        if (style.textTransform === 'uppercase') part = part.toUpperCase();
+        if (style.textTransform === 'lowercase') part = part.toLowerCase();
+        if (append(part, collapseSpace)) return 'ready';
+        continue;
+      }
+      if (node.nodeType !== Node.ELEMENT_NODE || ['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE'].includes(node.tagName)) continue;
+      const style = styleFor(node);
+      if (style.display === 'none') continue;
+      if (notPainted(style)) { omit(node.textContent); continue; }
+      const boundary = node.tagName === 'BR' ? '\\n' : style.display === 'table-cell' ? '\\t'
+        : style.display === 'contents' || style.display.startsWith('inline') ? '' : '\\n';
+      if (boundary && append(boundary)) return 'ready';
+      if (boundary && node.tagName !== 'BR') stack.push(boundary);
+      for (let child = node.lastChild; child; child = child.previousSibling) stack.push(child);
+    }
+    // When no rendered part was excluded, keep native innerText for details
+    // such as locale-specific casing and browser-generated line breaks.
+    return excluded ? 'pending' : 'ready';
+  })()`;
+}
+
 /** Fixed internal projection. Text and controls have independent budgets below the outer 16K limit. */
 export function browserTextExpression(selector?: string, referenceScope?: string): string {
   return `(() => {

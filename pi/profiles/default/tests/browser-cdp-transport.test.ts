@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { BrowserCdpTransport, CdpConnection, type CdpEvent } from "../lib/browser-cdp-transport.js";
 import { BrowserRuntime, processMatches, windowsCreationTime, type ProcessAdapter, type ProcessInfo } from "../lib/browser-runtime.js";
 import type { BrowserSessionState } from "../lib/browser-control.js";
+import { browserDom } from "./helpers/browser-dom.js";
 
 interface WireCommand { id: number; method: string; params: Record<string, unknown>; sessionId?: string }
 const cleanup: Array<() => void | Promise<void>> = [];
@@ -136,6 +137,68 @@ describe("exact-tab page actions", () => {
 		});
 		await pages.wait(saved, "root", { text: "restored" }, undefined, 1500);
 		expect(wire.commands.filter(command => command.method === "Runtime.evaluate").map(command => [command.sessionId, command.params.contextId])).toEqual([["session-root", 10], ["session-root", 21]]);
+	});
+
+	it("waits for visible text on the exact tab and only resolves after a transparent ancestor is shown", async () => {
+		const { wire, pages, saved } = await pageFixture();
+		const dom = browserDom('<div id="hidden" style="opacity: 0"><span>Now</span> <b>ready</b></div><p>Page loaded</p>');
+		const { document } = dom.window;
+		// Chromium innerText includes transparent text. Supply that and synthetic
+		// text range geometry; run the real wait predicate and CDP polling loop.
+		Object.defineProperty(document.body, "innerText", { value: "Now ready\n\nPage loaded" });
+		Object.defineProperty(dom.window.Range.prototype, "getClientRects", { value: () => [{}] });
+		const results: unknown[] = [];
+		wire.setHandler(command => {
+			if (command.method !== "Runtime.evaluate") return false;
+			expect(command.sessionId).toBe("session-root");
+			expect(command.params.contextId).toBe(10);
+			const value = dom.evaluate(String(command.params.expression));
+			results.push(value);
+			wire.send({ id: command.id, sessionId: command.sessionId, result: { result: { value } } });
+			return true;
+		});
+		await expect(pages.wait(saved, "root", { text: "Page loaded" })).resolves.toBeUndefined();
+		await expect(pages.wait(saved, "root", { text: "Now ready" }, undefined, 300)).rejects.toMatchObject({ code: "wait_timeout" });
+		expect(results.slice(1).length).toBeGreaterThan(0);
+		expect(results.slice(1).every(result => result === "pending")).toBe(true);
+		const before = results.length;
+		const wait = pages.wait(saved, "root", { text: "Now ready" }, undefined, 1500);
+		await waitFor(() => results.length > before);
+		expect(results[before]).toBe("pending");
+		document.querySelector<HTMLElement>("#hidden")!.style.opacity = "1";
+		await expect(wait).resolves.toBeUndefined();
+		expect(results.at(-1)).toBe("ready");
+	});
+
+	it("retargets a shadow select's input event once and keeps change in the shadow tree", async () => {
+		const { wire, pages, saved } = await pageFixture();
+		const dom = browserDom('<div id="host"></div>');
+		const { document } = dom.window;
+		const host = document.querySelector("#host")!;
+		const root = host.attachShadow({ mode: "open" });
+		root.innerHTML = '<select><option value="a">A</option><option value="b">B</option></select>';
+		const select = root.querySelector("select")!;
+		const input = vi.fn(), change = vi.fn(), outerChange = vi.fn();
+		document.addEventListener("input", event => input(event.target, event.isTrusted));
+		select.addEventListener("change", change);
+		document.addEventListener("change", outerChange);
+		wire.setHandler(command => {
+			const result = command.method === "Page.createIsolatedWorld" ? { executionContextId: 11 }
+				: command.method === "Runtime.evaluate" ? { result: { value: dom.evaluate(String(command.params.expression)) } }
+				: undefined;
+			if (!result) return false;
+			wire.send({ id: command.id, sessionId: command.sessionId, result });
+			return true;
+		});
+		const snapshot = await pages.snapshot(saved, "root");
+		const control = snapshot.text.split("\n").find(line => line.startsWith("[control] "))!;
+		const ref = JSON.parse(control.slice(10)).ref;
+		await pages.form(saved, "root", undefined, "select_option", "b", "value", undefined, undefined, undefined, ref);
+		await pages.form(saved, "root", undefined, "select_option", "b", "value", undefined, undefined, undefined, ref);
+		expect(select.value).toBe("b");
+		expect(input).toHaveBeenCalledExactlyOnceWith(host, false);
+		expect(change).toHaveBeenCalledOnce();
+		expect(outerChange).not.toHaveBeenCalled();
 	});
 
 	it("stops a wait on cancellation or exact-tab detach without replaying the action on another tab", async () => {

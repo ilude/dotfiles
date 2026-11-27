@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { browserKey, pasteBrowserText, pressBrowserKey, uploadBrowserFiles } from "../lib/browser-input.js";
 import { browserFillExpression } from "../lib/browser-control.js";
+import { browserTextExpression } from "../lib/browser-observations.js";
 import { browserDom } from "./helpers/browser-dom.js";
 import type { BrowserCdpTransport, CdpFrame } from "../lib/browser-cdp-transport.js";
 
@@ -55,7 +56,49 @@ describe("browser keyboard and text input", () => {
 	});
 });
 
-describe("contenteditable fill", () => {
+describe("fill", () => {
+	it.each(["replace", "change action", "reassociate", "disable"] as const)("does not write or emit input if focus handlers %s the field", (change) => {
+		const dom = browserDom('<form id="original" action="/login"><input id="field" value="old"></form><form id="other" action="/login"></form>');
+		const { document } = dom.window;
+		const field = document.querySelector<HTMLInputElement>("#field")!;
+		const replacement = field.cloneNode() as HTMLInputElement;
+		const input = vi.fn();
+		for (const node of [field, replacement]) node.addEventListener("input", input);
+		field.addEventListener("focus", () => {
+			if (change === "replace") field.replaceWith(replacement);
+			if (change === "change action") field.form!.action = "/different";
+			if (change === "reassociate") field.setAttribute("form", "other");
+			if (change === "disable") field.disabled = true;
+		});
+		expect(dom.evaluate(browserFillExpression("#field", "disposable"))).toEqual({ ok: false, error: "control_changed" });
+		expect(field.value).toBe("old");
+		expect(replacement.value).toBe("old");
+		expect(input).not.toHaveBeenCalled();
+	});
+
+	it.each(["ordinary", "password", "bound"] as const)("delivers %s shadow fill without an outer value payload", (kind) => {
+		const dom = browserDom('<div id="host"></div>');
+		const { document } = dom.window;
+		const host = document.querySelector("#host")!;
+		const root = host.attachShadow({ mode: "open" });
+		root.innerHTML = kind === "password" ? '<input type="password">' : '<input>';
+		const field = root.querySelector("input")!;
+		const scope = "0123456789abcdef";
+		dom.evaluate(browserTextExpression(undefined, scope));
+		const inner = vi.fn(), outer = vi.fn(), change = vi.fn(), outerChange = vi.fn();
+		field.addEventListener("input", (event) => inner((event as InputEvent).data, event.isTrusted));
+		field.addEventListener("change", change);
+		document.addEventListener("input", (event) => outer(event.target, (event as InputEvent).data, event.isTrusted));
+		document.addEventListener("change", outerChange);
+		expect(dom.evaluate(browserFillExpression({ scope, index: 0 }, "disposable", undefined, kind === "bound"))).toMatchObject({ ok: true });
+		expect(field.value).toBe("disposable");
+		expect(inner).toHaveBeenCalledExactlyOnceWith(null, false);
+		if (kind === "ordinary") expect(outer).toHaveBeenCalledExactlyOnceWith(host, null, false);
+		else expect(outer).not.toHaveBeenCalled();
+		expect(change).toHaveBeenCalledOnce();
+		expect(outerChange).not.toHaveBeenCalled();
+	});
+
 	it("replaces rich-editor text and emits an input event without interpreting HTML", () => {
 		const dom = browserDom('<div id="rich" contenteditable="true">old content</div>');
 		const editor = dom.window.document.querySelector("#rich")!;

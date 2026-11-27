@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-27: Verify Brave fill targets and visible text
+
+- Recheck the original fill target and form after focus handlers run, before writing or dispatching edit events. Text waits no longer succeed on a match in a fully transparent subtree.
+- Let ordinary shadow-root fill and select input events reach the app outside the root without adding replacement text to the event payload. Keep change events and protected fills within their existing boundaries.
+
 ## 2026-11-26: Keep native OpenAI visible to T3 and Pi role launches
 
 - Apply the Bedrock allowlist only to Bedrock. The startup visibility filter was also applying it to OpenAI and dropping every native subscription model, which kept T3 from launching an Astra or Sol role on that route. Keep each provider's existing curation and authentication unchanged.
