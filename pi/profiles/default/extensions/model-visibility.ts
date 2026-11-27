@@ -381,19 +381,13 @@ function planProvider(
 ): ProviderPlan | undefined {
 	const providerModels = models.filter((model) => model.provider === provider);
 	if (providerModels.length === 0) return undefined;
-	const filtered = providerModels.filter(
-		(model) =>
-			!shouldHideModel(
-				provider,
-				model,
-				provider === "amazon-bedrock" ? bedrockAllowedIds : undefined,
-			),
-	);
+	const allowedOverride = provider === "amazon-bedrock" ? bedrockAllowedIds : undefined;
+	const filtered = providerModels.filter((model) => !shouldHideModel(provider, model, allowedOverride));
 	return {
 		provider,
 		models: providerModels,
 		filtered,
-		bedrockAllowedIds,
+		bedrockAllowedIds: allowedOverride,
 		apiKeyEnv:
 			provider === "opencode" || provider === "opencode-go"
 				? "$OPENCODE_API_KEY"

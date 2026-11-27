@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-11-26: Keep native OpenAI visible to T3 and Pi role launches
+
+- Apply the Bedrock allowlist only to Bedrock. The startup visibility filter was also applying it to OpenAI and dropping every native subscription model, which kept T3 from launching an Astra or Sol role on that route. Keep each provider's existing curation and authentication unchanged.
+
 ## 2026-11-26: Verify OpenAI credentials before selecting a Pi role model
 
 - A stored OAuth grant can make Pi list GPT models even when its refresh token has already been rejected. Check request-time authentication before binding an automatically selected role to an OpenAI model. Preserve the existing provider order, exact releases, explicit provider pins, and separate quota login.

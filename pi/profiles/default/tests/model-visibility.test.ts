@@ -78,7 +78,7 @@ describe("applyProviderFilter", () => {
 });
 
 describe("model visibility startup", () => {
-	it("reads models once, resolves credentials concurrently, and registers in target order", async () => {
+	it("keeps native OpenAI visible when startup also plans Bedrock curation", async () => {
 		const registerProvider = vi.fn();
 		const models = [
 			{
@@ -95,8 +95,8 @@ describe("model visibility startup", () => {
 			},
 			{
 				provider: "openai",
-				id: "gpt-5.5",
-				name: "GPT-5.5",
+				id: "gpt-6.2-astra",
+				name: "GPT-6.2 Astra",
 				api: "responses",
 				baseUrl: "https://codex.example",
 				reasoning: true,
@@ -129,6 +129,9 @@ describe("model visibility startup", () => {
 		expect(pendingCredentials).toBe(0);
 		expect(registerProvider.mock.calls.map(([provider]) => provider.id)).toEqual([
 			"openai",
+		]);
+		expect(registerProvider.mock.calls[0][0].getModels().map(model => model.id)).toEqual([
+			"gpt-6.2-astra",
 		]);
 	});
 });
