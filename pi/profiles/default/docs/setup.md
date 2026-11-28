@@ -31,11 +31,18 @@ to the active profile. Do not copy or relabel credentials between providers or p
 Run `/update` in idle default-profile Pi. It upgrades Pi, refreshes runtime links
 and resumes eligible sessions; busy sessions are skipped.
 
-After upgrading global Pi another way, refresh the links yourself:
+Update Pi when needed. If pnpm's release-age policy holds back the requested
+version, do not wait. Confirm the version on npm, then pin it for this install
+(replace `X.Y.Z` below). Exempt only the upstream Pi package family for this
+command. Leave the global policy and the age check for other packages in place.
 
 ```sh
+pnpm --config.minimumReleaseAgeExclude='@earendil-works/pi-*' add -g --allow-build=koffi --allow-build=protobufjs '@earendil-works/pi-coding-agent@X.Y.Z'
 bash scripts/pi-deps-link-setup --profile default
 ```
+
+After any manual upgrade, verify `pi --version`. On a T3 host, also verify
+`node scripts/t3-pi.mjs --version`.
 
 Restart existing Pi processes to use the new version. Herdr setup does not need
 rerunning for an ordinary Pi upgrade. T3's provider-settings update action uses

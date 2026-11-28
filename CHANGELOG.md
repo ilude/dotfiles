@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-11-28: Update Pi without waiting for the release-age window
+
+- Document on-demand Pi upgrades with a one-command release-age exemption for the upstream Pi package family. Keep the global pnpm policy in place and refresh only the default-profile runtime links.
+
 ## 2026-11-27: Verify Brave fill targets and visible text
 
 - Recheck the original fill target and form after focus handlers run, before writing or dispatching edit events. Text waits no longer succeed on a match in a fully transparent subtree.
